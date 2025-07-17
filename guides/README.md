@@ -44,3 +44,14 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 - **Architecture Decision Records (ADRs)**: See `/ADRs/` for design decisions
 - **API Documentation**: Generated docs in `/backend/docs/`
 - **Project Instructions**: See `/CLAUDE.md` for development guidelines
+
+## Walking the Talk
+
+Quite apart from the Ooloi documentation aspect, the guides also represent my attempt to walk my talk
+in this article: 
+
+- https://peterbengtson.medium.com/functional-programming-beyond-the-vampire-castle-b601c8faf1cf. 
+
+You may also be interested in this article: 
+
+- https://peterbengtson.medium.com/the-musical-journey-to-understanding-transducers-building-oolois-piece-walker-e2b015e76fe2.
