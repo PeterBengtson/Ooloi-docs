@@ -6,7 +6,7 @@
 
 - [Overview](#overview)
 - [Prerequisites and Intended Audience](#prerequisites-and-intended-audience)
-- [What timewalk Returns: The Power of Triplets](#what-timewalk-returns-the-power-of-triplets)
+- [What timewalk Returns: The Power of Tuples](#what-timewalk-returns-the-power-of-tuples)
 - [🟢 Starting Simple: Direct Lazy Sequences](#-starting-simple-direct-lazy-sequences)
 - [🟡 The Magic of Composition](#-the-magic-of-composition)
 - [Why Not Just Use `->>` for Everything?](#why-not-just-use-----for-everything)
@@ -38,9 +38,9 @@ This guide assumes:
 
 The guide progresses from basic timewalking to advanced transducer patterns. Each section builds on previous concepts, so working through sequentially is recommended.
 
-## What Timewalking Returns: The Power of Triplets
+## What Timewalking Returns: The Power of Tuples
 
-Every item returned by timewalking is a **triplet** containing everything you need:
+Every item returned by timewalking is a **three-element tuple** containing everything you need:
 
 ```clojure
 [item vpd position]
@@ -50,10 +50,10 @@ Every item returned by timewalking is a **triplet** containing everything you ne
 - **`vpd`** - Vector Path Descriptor - the exact location of this item in the piece
 - **`position`** - Rhythmic position within the measure (0, 1/4, 1/2, 3/4, etc.)
 
-This triplet gives you **complete context** for any musical element:
+This tuple gives you **complete context** for any musical element:
 
 ```clojure
-;; Example triplet for a pitch
+;; Example tuple for a pitch
 [#Pitch{:note "C4"} [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2 :items 1] 1/4]
 ;;   ^actual pitch    ^exact location in piece structure                                    ^beat position
 ```
@@ -63,9 +63,9 @@ With this information, you can:
 - **Know its location**: Navigate to related elements using the VPD
 - **Know its timing**: Place it correctly in time for MIDI or formatting
 
-### Essential Helper Functions for Triplet Destructuring
+### Essential Helper Functions for Tuple Destructuring
 
-Since the `timewalk` function returns `[item vpd position]` triplets, these helper functions extract the components and provide type predicates:
+Since the `timewalk` function returns `[item vpd position]` tuples, these helper functions extract the components and provide type predicates:
 
 ```clojure
 ;; Core destructuring helpers
@@ -231,7 +231,7 @@ Let's start with practical examples that show the power of this approach.
 ;; => ["C4" "E4" "G4" "C5" "E5" ...]
 ```
 
-Notice how each step builds on the previous one, and we always have access to the full triplet `[item vpd position]` for complete context.
+Notice how each step builds on the previous one, and we always have access to the full tuple `[item vpd position]` for complete context.
 
 ## 🟡 The Magic of Composition
 
