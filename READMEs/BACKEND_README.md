@@ -10,11 +10,13 @@ This directory contains the source code for the backend of Ooloi.
 - [Class-specific Operations](#class-specific-operations)
 - [Programming Paradigm](#programming-paradigm)
   - [Key Concepts](#key-concepts)
-- [Constructors, Accessors and Mutators](#constructors-accessors-and-mutators)s
+- [Constructors, Accessors and Mutators](#constructors-accessors-and-mutators)
   - [Constructors](#constructors)
   - [Accessors and Mutators](#accessors-and-mutators)
+- [Core and API Polymorphism](#core-and-api-polymorphism)
 - [Parallelism and Thread-Safety](#parallelism-and-thread-safety)
 - [Principles and Requirements](#principles-and-requirements)
+- [Namespace Organization and Import Guidelines](#namespace-organization-and-import-guidelines)
 - [Coding Conventions](#coding-conventions)
 
 
@@ -327,10 +329,10 @@ This gives you access to:
 - **When to use**: In model files, trait files, or when you can't import core
 - **How to import**: `[ooloi.backend.models.interfaces :as i]`
 
-#### 4. `ooloi.backend.api` - **LEGACY COMPATIBILITY**
-- **What it is**: Legacy namespace for backward compatibility
-- **What it contains**: Same as core, but older interface
-- **When to use**: Only for testing the API explicitly or legacy code
+#### 4. `ooloi.backend.api` - **EXTERNAL CONSUMER INTERFACE**
+- **What it is**: Public API namespace for external consumers (gRPC, external services)
+- **What it contains**: Same as core, but designed for external access
+- **When to use**: For external service integration, gRPC endpoints, or explicit API testing
 - **How to import**: `[ooloi.backend.api :as api]`
 
 ### When You Can't Use Core
@@ -362,7 +364,7 @@ Some files cannot import `core` because it would create circular dependencies:
 
 1. **Start with core**: `[ooloi.backend.models.core :refer :all]` for 90% of your code
 2. **Use selective imports**: Only in architecture-constrained files
-3. **Don't use api**: Core is preferred for new development
+3. **Use api for external consumers**: Core is preferred for internal code, api for external services
 4. **When in doubt**: Use core with `:refer :all`
 
 ### Core Namespace Architecture
@@ -391,9 +393,9 @@ predicates.clj → interfaces.clj → models/*.clj → core.clj → api.clj
 - **Usage**: Primary namespace for application code
 
 #### `ooloi.backend.api`
-- **Purpose**: Legacy namespace for backward compatibility
+- **Purpose**: Public API namespace for external consumers (gRPC, external services)
 - **Dependencies**: Re-exports from core
-- **Usage**: Maintained for backward compatibility, but core is preferred
+- **Usage**: Designed for external service integration and gRPC endpoints
 
 #### Model Files (`models/musical/*.clj`, `models/visual/*.clj`)
 - **Purpose**: Implement multimethods and define constructors
@@ -486,7 +488,7 @@ Test predicates explicitly using qualified imports:
 - **Never import core in model files**: This creates circular dependencies
 - **Don't use `:refer :all` for predicates in predicate tests**: Be explicit about what you're testing
 - **Don't mix qualified and unqualified calls**: Pick one style per namespace
-- **Don't use api namespace for new code**: Core is preferred for new development
+- **Use api namespace for external integration**: Core is preferred for internal code, api for external consumers like gRPC
 
 ## Coding Conventions
 
