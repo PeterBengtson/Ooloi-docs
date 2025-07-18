@@ -287,6 +287,207 @@ Overall Principles and Requirements:
   - Use docstrings everywhere. The documentation tool (Codox) uses them. They are crucial in a collaborative environment.
   - Use STM for managing concurrency, ensuring thread-safe operations and data integrity.
 
+## Namespace Organization and Import Guidelines
+
+Ooloi uses a carefully structured namespace organization to eliminate circular dependencies while providing a clean, unified API. Understanding when to use which namespace is crucial for maintainable code.
+
+### Quick Start: What to Import
+
+**For 90% of your code, you only need this:**
+
+```clojure
+(ns my-namespace
+  (:require [ooloi.backend.models.core :refer :all]))
+```
+
+This gives you access to:
+- **All constructors**: `create-pitch`, `create-chord`, `create-measure`, etc.
+- **All predicates**: `pitch?`, `chord?`, `measure?`, etc.
+- **All multimethods**: `get-duration`, `add-item`, `set-name`, etc.
+
+**Why this works**: The `core` namespace is the unified entry point that re-exports everything you need from the entire Ooloi system.
+
+### Most Important Namespaces
+
+#### 1. `ooloi.backend.models.core` - **YOUR PRIMARY NAMESPACE**
+- **What it is**: The main entry point for all Ooloi functionality
+- **What it contains**: All constructors, predicates, and multimethods
+- **When to use**: For application code, tests, examples, and most development
+- **How to import**: `[ooloi.backend.models.core :refer :all]`
+
+#### 2. `ooloi.backend.models.predicates` - **FOR ARCHITECTURE-CONSTRAINED FILES**
+- **What it is**: Type checking functions (pitch?, chord?, measure?, etc.)
+- **What it contains**: Only type predicates
+- **When to use**: In model files, trait files, or when you can't import core
+- **How to import**: `[ooloi.backend.models.predicates :refer [pitch? chord?]]` (selective)
+
+#### 3. `ooloi.backend.models.interfaces` - **FOR ARCHITECTURE-CONSTRAINED FILES**
+- **What it is**: Multimethod definitions (method signatures only)
+- **What it contains**: get-duration, add-item, set-name, etc.
+- **When to use**: In model files, trait files, or when you can't import core
+- **How to import**: `[ooloi.backend.models.interfaces :as i]`
+
+#### 4. `ooloi.backend.api` - **LEGACY COMPATIBILITY**
+- **What it is**: Legacy namespace for backward compatibility
+- **What it contains**: Same as core, but older interface
+- **When to use**: Only for testing the API explicitly or legacy code
+- **How to import**: `[ooloi.backend.api :as api]`
+
+### When You Can't Use Core
+
+Some files cannot import `core` because it would create circular dependencies:
+
+**Architecture-constrained files:**
+- Model implementation files (`models/musical/*.clj`, `models/visual/*.clj`)
+- Trait files (`models/traits/*.clj`)
+- Some ops files (`ops/timewalk.clj`, `ops/attachment-resolver.clj`)
+
+**In these files, use selective imports:**
+
+```clojure
+(ns ooloi.backend.models.musical.pitch
+  (:require [ooloi.backend.models.interfaces :as i]
+            [ooloi.backend.models.predicates :refer [pitch? rhythmic-item?]]))
+
+;; Use predicates unqualified (clean and readable)
+(pitch? item)
+(rhythmic-item? item)
+
+;; Use multimethods qualified
+(i/get-duration item)
+(i/set-duration item new-duration)
+```
+
+### Summary: What Most Developers Need to Know
+
+1. **Start with core**: `[ooloi.backend.models.core :refer :all]` for 90% of your code
+2. **Use selective imports**: Only in architecture-constrained files
+3. **Don't use api**: Core is preferred for new development
+4. **When in doubt**: Use core with `:refer :all`
+
+### Core Namespace Architecture
+
+The namespace architecture follows a clean dependency flow:
+
+```
+predicates.clj → interfaces.clj → models/*.clj → core.clj → api.clj
+```
+
+### Namespace Descriptions
+
+#### `ooloi.backend.models.predicates`
+- **Purpose**: Contains all type predicates (pitch?, chord?, measure?, etc.)
+- **Dependencies**: Only imports hierarchy (no circular dependencies)
+- **Usage**: For type checking and validation
+
+#### `ooloi.backend.models.interfaces`
+- **Purpose**: Contains all multimethod definitions (method signatures only)
+- **Dependencies**: Imports predicates and hierarchy
+- **Usage**: For defining polymorphic operations
+
+#### `ooloi.backend.models.core`
+- **Purpose**: Unified namespace re-exporting multimethods, predicates, AND constructors
+- **Dependencies**: Imports and re-exports from interfaces, predicates, and all model files
+- **Usage**: Primary namespace for application code
+
+#### `ooloi.backend.api`
+- **Purpose**: Legacy namespace for backward compatibility
+- **Dependencies**: Re-exports from core
+- **Usage**: Maintained for backward compatibility, but core is preferred
+
+#### Model Files (`models/musical/*.clj`, `models/visual/*.clj`)
+- **Purpose**: Implement multimethods and define constructors
+- **Dependencies**: Import interfaces and predicates (NOT core)
+- **Usage**: Internal implementation files
+
+### Import Guidelines by File Type
+
+#### **Most Application Code, Tests, and Examples**
+Use the core namespace with `:refer :all` for clean, readable code:
+
+```clojure
+(ns my-application
+  (:require [ooloi.backend.models.core :refer :all]))
+
+;; All functions available unqualified:
+(create-pitch :note :C4 :duration 1/4)  ; Constructor
+(pitch? some-item)                       ; Predicate
+(get-duration some-item)                 ; Multimethod
+```
+
+#### **API Tests (testing the API explicitly)**
+Use qualified API imports to ensure you're testing the API namespace:
+
+```clojure
+(ns api-test
+  (:require [ooloi.backend.api :as api]
+            [ooloi.backend.models.core :refer [get-musicians get-name]]))
+
+;; Constructors explicitly qualified
+(api/create-pitch :note :C4 :duration 1/4)
+;; Multimethods from core (selective import)
+(get-musicians piece)
+```
+
+#### **Files with Architecture Constraints (Model Files, Traits, Some Ops)**
+These files CANNOT import core (would create circular dependencies). Use selective imports:
+
+```clojure
+(ns ooloi.backend.models.musical.pitch
+  (:require [ooloi.backend.models.interfaces :as i]
+            [ooloi.backend.models.predicates :refer [pitch? rhythmic-item?]]))
+
+;; Clean, unqualified predicates
+(pitch? item)
+(rhythmic-item? item)
+;; Qualified multimethods
+(i/get-duration item)
+```
+
+#### **Predicate Test Files**
+Test predicates explicitly using qualified imports:
+
+```clojure
+(ns predicates-test
+  (:require [ooloi.backend.models.core :refer :all]  ; For constructors
+            [ooloi.backend.models.predicates :as p])) ; For predicates
+
+;; Constructors unqualified
+(create-pitch :note :C4 :duration 1/4)
+;; Predicates explicitly qualified
+(p/pitch? item)
+```
+
+### Decision Tree: Which Namespace to Use?
+
+1. **Are you writing application code, tests, or examples?**
+   → Use `[ooloi.backend.models.core :refer :all]`
+
+2. **Are you explicitly testing the API namespace?**
+   → Use `[ooloi.backend.api :as api]` with selective core imports
+
+3. **Are you in a model file, trait file, or constrained ops file?**
+   → Use selective imports from `interfaces` and `predicates`
+
+4. **Are you testing predicates explicitly?**
+   → Use `[ooloi.backend.models.predicates :as p]`
+
+### Key Benefits of This Architecture
+
+- **No Circular Dependencies**: Clean unidirectional dependency flow
+- **Unified API**: Core namespace provides access to all functions
+- **Selective Imports**: Architecture-constrained files can import only what they need
+- **Readable Code**: Unqualified function calls in application code
+- **Explicit Testing**: API and predicate tests are explicit about what they're testing
+- **Maintainability**: Clear separation of concerns and dependencies
+
+### Common Mistakes to Avoid
+
+- **Never import core in model files**: This creates circular dependencies
+- **Don't use `:refer :all` for predicates in predicate tests**: Be explicit about what you're testing
+- **Don't mix qualified and unqualified calls**: Pick one style per namespace
+- **Don't use api namespace for new code**: Core is preferred for new development
+
 ## Coding Conventions
 
   - Use Methodical (`m/defmulti` and `m/defmethod`) for defining and implementing multimethods.
