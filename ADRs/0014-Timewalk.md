@@ -1,6 +1,6 @@
 # ADR-0014: Timewalk Temporal Coordination System
 
-## Status: Implemented
+## Status: Implemented (Updated 20 July 2025)
 
 ## Context
 
@@ -18,9 +18,46 @@ Ooloi requires sophisticated traversal capabilities for its hierarchical musical
 
 6. **Memory Constraints**: Professional scores can contain millions of elements, requiring memory-efficient processing that avoids intermediate collections.
 
+7. **Computational-Musical Alignment**: Traditional music software forces musical concepts into object hierarchies, creating impedance mismatch between musical thinking and computational thinking. Ooloi requires an abstraction where musical concepts **are** the computational primitives.
+
 ## Decision
 
 We implement a comprehensive timewalk system based on temporal coordination principles, using transducer-based traversal with boundary-VPD scope limiting. The system provides "measure N across all voices before measure N+1" traversal guarantees while supporting efficient filtering, early termination, and scope limitation.
+
+## Paradigm Shift: Musical Time as Computational Foundation
+
+The timewalk system represents a fundamental shift from **object-oriented musical manipulation** to **temporal stream processing**. Rather than treating musical time as a byproduct of object relationships, Ooloi makes temporal coordination the foundational abstraction for all musical computation.
+
+This transforms musical software development:
+
+- **Musical relationships become stream transformations** rather than pointer manipulations
+- **Complex operations emerge** from composition of simple temporal filters  
+- **Mathematical guarantees** apply to musical computation through functional composition
+- **Problem domains unify** under temporal stream processing (MIDI, layout, analysis, attachments)
+- **Musical intent maps directly** to computational expressions without translation overhead
+- **Domain expertise becomes executable code** rather than being lost in abstraction layers
+
+### From Imperative to Temporal-Functional
+
+**Traditional Approach** (imperative object manipulation):
+```clojure
+;; Navigate object graph, modify state
+(doseq [musician (get-musicians piece)]
+  (doseq [instrument (get-instruments musician)]
+    (when (violin? instrument)
+      (transpose-instrument! instrument 4))))
+```
+
+**Ooloi Approach** (temporal stream processing):
+```clojure
+;; Define transformations, compose operations
+(->> (timewalk piece {:boundary-vpd []})
+     (filter #(violin-instrument? (item %)))
+     (filter pitch?)
+     (map #(transpose-pitch (item %) 4)))
+```
+
+The temporal approach eliminates impedance mismatch—musical thinking and computational thinking become isomorphic.
 
 ## Dual-Arity API Pattern Decision
 
@@ -327,6 +364,29 @@ This ensures complete temporal coordination across all musical elements regardle
 
 ## Key Applications
 
+### Cross-Domain Pattern Unification
+
+The timewalk demonstrates that diverse musical operations share identical computational patterns:
+
+```clojure
+;; Attachment endpoints: temporal stream → filter by ID → first match
+(->> (timewalk piece scope) (filter has-endpoint-id?) (take 1))
+
+;; Visual formatting: temporal stream → filter by span → map coordinates  
+(->> (timewalk piece scope) (filter within-slur?) (map pitch->coordinates))
+
+;; MIDI generation: temporal stream → map to events → maintain time order
+(->> (timewalk piece scope) (map item->midi-event) (remove nil?))
+
+;; Harmonic analysis: temporal stream → group by simultaneity → analyze
+(->> (timewalk piece scope) (group-by measure-position) (map analyze-harmony))
+
+;; Layout calculation: temporal stream → map to widths → accumulate
+(->> (timewalk piece scope) (map calculate-width) (scan +))
+```
+
+This pattern unification proves that **musical time is the correct organizing principle** for musical computation. Complex musical operations reduce to temporal stream operations with different predicates and transformations.
+
 ### 1. MIDI Playback Generation
 
 The temporal coordination guarantee directly solves MIDI's core requirement for time-ordered event streams:
@@ -385,6 +445,8 @@ Musical analysis tools require comprehensive piece traversal:
 
 7. **Multi-Application Support**: Single traversal mechanism serves diverse use cases from MIDI to layout to analysis.
 
+8. **Mathematical Foundation**: Functional composition provides mathematical guarantees for musical computation.
+
 ## Consequences
 
 ### Positive
@@ -397,6 +459,8 @@ Musical analysis tools require comprehensive piece traversal:
 - **MIDI-Ready Architecture**: Directly enables professional-quality MIDI playback
 - **Layout Foundation**: Provides basis for sophisticated visual layout algorithms
 - **Streaming Compatible**: Supports real-time applications without modification
+- **Mathematical Guarantees**: Functional composition provides mathematical properties for musical computation
+- **Pattern Unification**: Diverse musical operations reduce to identical computational patterns
 
 ### Negative
 
@@ -410,7 +474,21 @@ Musical analysis tools require comprehensive piece traversal:
 - **VPD Dependency**: Requires understanding of Ooloi's VPD addressing system
 - **Functional Paradigm**: Benefits developers familiar with functional programming concepts
 
+## Architectural Validation
 
+The timewalk's success across multiple domains validates the core architectural insight: **when you find the right abstraction for a domain, complex problems become simple applications of fundamental patterns**.
+
+This creates a **composable musical computing platform** where:
+
+- **Attachment resolution** and **visual formatting** use identical temporal stream patterns
+- **Complex features emerge naturally** from existing abstractions without new architecture
+- **Musical intent maps directly** to computational expressions
+- **Domain expertise becomes executable code** rather than being lost in translation
+- **Mathematical rigor** applies to musical computation through functional composition
+
+The fact that slur rendering, MIDI generation, attachment endpoint resolution, and harmonic analysis all reduce to temporal stream operations with different predicates demonstrates that musical time is the **natural computational structure** of the musical domain.
+
+This represents **architecture as compression** - reducing the complexity of an entire problem domain to a small set of composable primitives. The timewalker demonstrates that Ooloi has discovered **musical time's computational essence**, making musical software development fundamentally more powerful and elegant.
 
 ## Related ADRs
 
