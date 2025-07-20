@@ -1,108 +1,154 @@
-# ADR: Slur Formatting and Convex Hull Calculation
+# ADR: Slur Formatting with Temporal Stream Processing
 
-## Status: Accepted
+## Status: Accepted (Revised 20 July 2025)
 
 ## Context
 
-For the basic considerations and graphical examples, please refer to "ADR: Pure Tree Structure with Integer ID References".
+Ooloi needs to efficiently handle the creation, formatting, and rendering of slurs in musical notation. This involves two distinct architectural concerns:
 
-Ooloi needs to efficiently handle the creation, formatting, and rendering of slurs in musical notation. This involves:
-1. Creating and managing slurs using integer ID references
-2. Efficiently collecting points for slur rendering, considering complex nested musical structures
-3. Accurately representing the true positions of pitches in the musical score
-4. Generating aesthetically pleasing slur shapes using hull calculations and Bézier curves
+**Musical Hierarchy (Creation)**: Establishing slur relationships within the pure musical tree structure
+**Visual Hierarchy (Formatting)**: Computing visual representations (glyphs and Bézier curves) in the separate visual tree, lazily recomputed as needed
 
-Key considerations:
-- Performance and memory efficiency for large musical pieces
-- Compatibility with Ooloi's pure tree structure architecture
-- Handling of integer ID references
-- Efficient point collection and processing, including nested musical elements
-- Accurate representation of pitch positions in complex musical contexts
-- Generating natural-looking slur curves that respect the left-to-right order of notes
-- Utilizing available context, particularly access to start and end pitches via their IDs
-- Adapting the slur shape based on its placement above or below the music
+This separation ensures:
+1. Musical relationships remain independent of visual representation
+2. Visual formatting can be recomputed efficiently without affecting musical data
+3. The timewalker operates on musical structure to generate visual output
+4. Lazy evaluation minimises computational overhead for large scores
+
+The timewalker's temporal coordination transforms slur processing from complex manual traversal into elegant stream operations, bridging musical relationships and visual computation.
+
+Key architectural insights:
+- Slurs represent temporal-spatial relationships that map naturally to stream filtering
+- The timewalker's boundary control eliminates the need for bespoke search strategies
+- Trait-based filtering replaces manual type checking and nested structure handling
+- Temporal coordination ensures proper musical ordering for complex slur spans
 
 ## Decision
 
-We will implement slur handling and curve generation using:
-1. Integer ID references for slurs
-2. Transducers for efficient point collection, with recursive extraction for nested structures
-3. A position provider abstraction for accurate pitch positioning
-4. Adaptive search strategy for traversing the musical structure
-5. Upper or lower hull calculation for initial slur shape determination, based on slur placement
-6. Bézier curve generation for final slur rendering
+We will implement slur handling using:
+1. VPD-based slur definitions with temporal boundaries
+2. Timewalker stream processing for point collection
+3. Trait-based filtering for robust element identification
+4. Position provider abstraction for accurate coordinate calculation
+5. Convex hull calculation for natural slur shape determination
+6. Bézier curve generation for smooth visual rendering
 
 ## Detailed Design
 
-### 1. Slur Data Structure and Creation
+### 1. Slur Creation in Musical Hierarchy
 
 ```clojure
-(ns ooloi.slur)
+(ns ooloi.slur
+  (:require [ooloi.backend.ops.timewalk :refer [timewalk]]
+            [ooloi.backend.models.core :refer :all]))
 
-(defrecord Slur [start-id end-id placement])
+(defrecord Slur [start-vpd end-vpd placement])
 
-(defn create-slur [piece start-pitch-id end-pitch-id placement]
-  (let [slur (->Slur start-pitch-id end-pitch-id placement)
-        slur-id (generate-id piece [:m (instrument-index start-pitch-id)])]
+(defn create-slur [piece start-vpd end-vpd placement]
+  "Create slur relationship in musical hierarchy - no visual computation."
+  (let [slur (->Slur start-vpd end-vpd placement)
+        slur-id (generate-id)]
     (-> piece
-        (update-in [:attachments start-pitch-id] (fnil conj []) slur-id)
-        (update-in [:slur-ends end-pitch-id] (fnil conj #{}) slur-id)
-        (assoc-in [:slurs slur-id] slur))))
+        (add-attachment start-vpd slur-id slur)
+        (mark-visual-dirty start-vpd end-vpd))))  ; Flag visual recomputation needed
+
+(defn slur-temporal-scope [slur]
+  "Determine optimal boundary VPD and measure range for slur processing."
+  (let [start-measure (vpd->measure-number (:start-vpd slur))
+        end-measure (vpd->measure-number (:end-vpd slur))
+        common-scope (find-common-scope (:start-vpd slur) (:end-vpd slur))]
+    {:boundary-vpd common-scope
+     :start-measure start-measure  
+     :end-measure end-measure}))
 ```
 
-### 2. Real Position Abstraction
+### 2. Position Provider Abstraction
 
 ```clojure
 (defprotocol PositionProvider
-  (get-x-position [this pitch])
-  (get-y-position [this pitch]))
+  (pitch->coordinates [this pitch vpd] "Convert pitch to x,y coordinates"))
 
-(defrecord ScorePositionProvider []
+(defrecord ScorePositionProvider [layout-context]
   PositionProvider
-  (get-x-position [this pitch]
-    ;; Implementation to calculate real X position
-    )
-  (get-y-position [this pitch]
-    ;; Implementation to calculate real Y position
-    ))
-
-(def position-provider (ScorePositionProvider.))
+  (pitch->coordinates [this pitch vpd]
+    {:x (calculate-x-position pitch vpd layout-context)
+     :y (calculate-y-position pitch vpd layout-context)
+     :pitch pitch
+     :vpd vpd}))
 ```
 
-### 3. Point Collection
+### 3. Visual Hierarchy Formatting (Lazy Computation)
 
 ```clojure
-(defn extract-pitches
-  "Recursively extracts pitch IDs from musical elements, maintaining order and structure."
-  [elem]
-  (cond
-    (instance? Pitch elem) [(:id elem)]
-    (instance? Chord elem) (map :id (:pitches elem))
-    (instance? Tuplet elem) (mapcat extract-pitches (:contents elem))
-    (instance? Tremolando elem) (mapcat extract-pitches (:pitches elem))
-    :else []))
+(defn format-slur-visual [piece slur position-provider]
+  "Compute visual representation in visual hierarchy - called lazily when needed."
+  (let [points (collect-slur-points piece slur position-provider)
+        above? (= (:placement slur) :above)
+        hull (calculate-hull points above?)
+        control-points (calculate-control-points hull above?)
+        curve-points (generate-bezier-curve control-points 100)]
+    {:type :bezier-curve
+     :points curve-points
+     :stroke-width 1.5
+     :fill nil}))
 
-(defn collect-points-xf [end-pitch-id position-provider piece]
-  (comp
-    (take-while #(not= % end-pitch-id))
-    (mapcat extract-pitches)
-    (map (fn [pitch-id]
-           (let [pitch (get-in piece [:pitches pitch-id])]
-             {:x (get-x-position position-provider pitch)
-              :y (get-y-position position-provider pitch)
-              :highest (when (instance? Chord (:parent pitch))
-                         (= pitch-id (apply max-key #(get-y-position position-provider (get-in piece [:pitches %])) 
-                                            (map :id (:pitches (:parent pitch))))))
-              :lowest (when (instance? Chord (:parent pitch))
-                        (= pitch-id (apply min-key #(get-y-position position-provider (get-in piece [:pitches %])) 
-                                           (map :id (:pitches (:parent pitch))))))}))))
+(defn update-visual-hierarchy [visual-tree piece slur position-provider]
+  "Add computed slur curve to visual hierarchy at appropriate location."
+  (let [visual-slur (format-slur-visual piece slur position-provider)
+        target-vpd (slur-visual-location slur)]
+    (add-visual-element visual-tree target-vpd visual-slur)))
 
-(defn collect-points [piece start-pitch-id end-pitch-id position-provider]
-  (sequence (collect-points-xf end-pitch-id position-provider piece)
-            (search/adaptive-search piece start-pitch-id)))
+(defn lazy-slur-formatting [visual-tree piece slurs position-provider]
+  "Lazily compute slur visuals only when visual hierarchy is accessed."
+  (reduce (partial update-visual-hierarchy piece position-provider)
+          visual-tree
+          (filter needs-visual-update? slurs)))
 ```
 
-### 4. Hull Calculation
+### 4. Stream-Based Point Collection (Musical → Visual Bridge)
+
+```clojure
+(defn within-slur? [result slur]
+  "Check if a timewalker result falls within the slur's temporal span."
+  (let [item-vpd (vpd result)
+        start-pos (vpd->absolute-position (:start-vpd slur))
+        end-pos (vpd->absolute-position (:end-vpd slur))
+        item-pos (vpd->absolute-position item-vpd)]
+    (and (>= item-pos start-pos) (<= item-pos end-pos))))
+
+(defn collect-slur-points [piece slur position-provider]
+  "Bridge musical hierarchy to visual coordinates using temporal stream processing."
+  (let [scope (slur-temporal-scope slur)]
+    (->> (timewalk piece scope)
+         (filter takes-attachment?)  ; Only elements that can have slurs
+         (filter #(within-slur? % slur))
+         (map (fn [result]
+                (pitch->coordinates position-provider 
+                                   (item result) 
+                                   (vpd result)))))))
+```
+
+### 5. Compositional Slur Processing
+
+```clojure
+(defn slur-processing-pipeline [position-provider]
+  "Reusable transducer for slur point processing."
+  (comp (filter takes-attachment?)
+        (map (fn [result]
+               (pitch->coordinates position-provider 
+                                  (item result) 
+                                  (vpd result))))))
+
+(defn process-slur-in-context [piece slur position-provider context]
+  "Process slur with specific temporal context (e.g., system, page)."
+  (let [scope (merge (slur-temporal-scope piece slur) context)]
+    (sequence (comp (timewalk scope)
+                    (filter #(within-slur? % slur))
+                    (slur-processing-pipeline position-provider))
+              [piece])))
+```
+
+### 6. Hull Calculation (Unchanged - Still Optimal)
 
 ```clojure
 (defn cross-product [[x1 y1] [x2 y2] [x3 y3]]
@@ -110,6 +156,7 @@ We will implement slur handling and curve generation using:
      (* (- y2 y1) (- x3 x1))))
 
 (defn calculate-hull [points above?]
+  "Calculate upper or lower convex hull preserving left-to-right order."
   (let [comparator (if above? <= >=)]
     (reduce (fn [hull point]
               (loop [h hull]
@@ -120,13 +167,13 @@ We will implement slur handling and curve generation using:
             [] points)))
 ```
 
-### 5. Bézier Curve Generation
+### 7. Bézier Curve Generation (Unchanged - Still Optimal)
 
 ```clojure
 (defn calculate-control-points [hull above?]
+  "Generate control points for smooth Bézier curve from hull."
   (let [start (first hull)
         end (last hull)
-        mid-x (/ (+ (:x start) (:x end)) 2)
         extreme-point (apply (if above? max-key min-key) :y hull)
         offset (if above? 10 -10)
         control1 {:x (+ (:x start) (* 0.25 (- (:x end) (:x start))))
@@ -136,6 +183,7 @@ We will implement slur handling and curve generation using:
     [start control1 control2 end]))
 
 (defn bezier-point [t [p0 p1 p2 p3]]
+  "Calculate point on cubic Bézier curve at parameter t."
   (let [t1 (- 1 t)
         t2 (* t t)
         t3 (* t2 t)]
@@ -149,104 +197,132 @@ We will implement slur handling and curve generation using:
            (* t3 (:y p3)))}))
 
 (defn generate-bezier-curve [control-points steps]
+  "Generate points along Bézier curve for rendering."
   (map #(bezier-point (/ % steps) control-points) (range (inc steps))))
 ```
 
-### 6. Slur Formatting
+### 8. Complete Slur Pipeline (Musical Creation + Visual Formatting)
 
 ```clojure
-(defn format-slur [piece slur-id position-provider]
-  (let [slur (get-in piece [:slurs slur-id])
-        points (collect-points piece (:start-id slur) (:end-id slur) position-provider)
+(defn render-slur 
+  "Complete slur rendering as composable transformation."
+  ([position-provider] 
+   (fn [slur]
+     (comp (timewalk (slur-temporal-scope piece slur))
+           (filter #(within-slur? % slur))
+           (slur-processing-pipeline position-provider)
+           (map (fn [points]
+                  (let [above? (= (:placement slur) :above)
+                        hull (calculate-hull points above?)
+                        control-points (calculate-control-points hull above?)]
+                    (generate-bezier-curve control-points 100)))))))
+
+(defn format-slur [piece slur position-provider]
+  "Format single slur with full rendering pipeline."
+  (let [points (collect-slur-points piece slur position-provider)
         above? (= (:placement slur) :above)
         hull (calculate-hull points above?)
-        control-points (calculate-control-points hull above?)
-        curve-points (generate-bezier-curve control-points 100)]
-    (assoc-in piece [:slurs slur-id :curve-points] curve-points)))
-```
+        control-points (calculate-control-points hull above?)]
+    {:slur slur
+     :points points
+     :hull hull  
+     :control-points control-points
+     :curve-points (generate-bezier-curve control-points 100)}))
 
-### 7. Combined Slur Creation and Formatting
-
-```clojure
-(defn add-and-format-slur [piece start-pitch-id end-pitch-id placement position-provider]
-  (let [piece-with-slur (create-slur piece start-pitch-id end-pitch-id placement)
-        slur-id (first (filter #(instance? Slur (get-in piece-with-slur [:slurs %])) 
-                               (get-in piece-with-slur [:attachments start-pitch-id])))]
-    (format-slur piece-with-slur slur-id position-provider)))
+(defn format-all-slurs [piece slurs position-provider]
+  "Process multiple slurs efficiently using stream composition."
+  (sequence (comp (map #(format-slur piece % position-provider))
+                  (filter #(not-empty (:points %))))
+            slurs))
 ```
 
 ## Rationale
 
-1. The `Slur` record uses integer IDs to reference start and end pitches, maintaining the pure tree structure.
-2. The `placement` field in the Slur record allows for determining whether to use upper or lower hull calculation.
-3. Transducers in `collect-points` provide efficient, lazy processing of points.
-4. The hull calculation gives a good initial shape for the slur while preserving the left-to-right order of notes.
-5. Bézier curve generation creates a smooth, aesthetically pleasing final curve.
-6. The adaptive search strategy (assumed in `search/adaptive-search`) allows for efficient traversal of the musical structure.
-7. The pitch extraction process handles complex nested musical structures while maintaining efficiency through the use of transducers.
-8. The position provider abstraction allows for accurate representation of pitch positions in complex musical contexts.
+### Paradigm Shift: From Manual Traversal to Stream Processing
 
-### Key Considerations for Hull Calculation
+1. **Architectural Separation**: Musical relationships (slur creation) remain in the pure musical hierarchy, whilst visual computation (formatting) occurs lazily in the separate visual hierarchy.
 
-1. **Preservation of Note Order**: We calculate either the upper or lower hull, preserving the left-to-right order of notes, crucial for creating a natural-looking slur.
-2. **Efficiency**: Focusing on a single hull reduces computational complexity, beneficial for large musical pieces with many slurs.
-3. **No Sorting Required**: Points are already in their natural left-to-right order as they appear in the score.
-4. **Suitability for Slur Shape**: The hull provides an excellent basis for generating a slur shape, naturally following the contour of the notes under the slur.
-5. **Adaptability**: The hull calculation adapts to whether the slur is placed above or below the notes.
+2. **Temporal Coordination**: The timewalker's natural temporal ordering eliminates complex search strategies. Musical time becomes the organizing principle for bridging musical and visual representations.
 
-### Complex Musical Structures and Pitch Extraction
+3. **Trait-Based Filtering**: `(filter takes-attachment?)` replaces manual type checking across nested structures like chords, tuplets, and tremolandos.
 
-The `extract-pitches` function recursively traverses nested musical structures to extract all relevant pitch IDs, maintaining the left-to-right order and handling various musical elements like chords, tuplets, and tremolandos.
+4. **VPD-Based Scope**: Slur boundaries map naturally to VPD scope control, eliminating bespoke traversal logic.
 
-### Real Position Abstraction
+5. **Lazy Visual Computation**: Visual hierarchy elements (Bézier curves, glyphs) are computed only when needed, keeping musical data separate from presentation.
 
-The `PositionProvider` protocol and `ScorePositionProvider` implementation allow for accurate calculation of pitch positions, considering various factors that affect positioning in a real musical score.
+6. **Compositional Processing**: Slur rendering becomes a reusable transformation that bridges musical structure to visual output.
+
+### Technical Benefits
+
+1. **Clean Architectural Separation**: Musical hierarchy remains pure whilst visual hierarchy contains only rendering elements
+2. **Lazy Visual Computation**: Bézier curves computed only when visual hierarchy is accessed  
+3. **No Adaptive Search Required**: Timewalker provides optimal traversal by design
+4. **Natural Boundary Handling**: VPD scope control handles complex slur spans automatically  
+5. **Trait System Integration**: Robust element identification without manual type checking
+6. **Temporal Guarantees**: Items arrive in proper musical time order
+7. **Memory Efficiency**: Lazy evaluation processes only what's needed
+8. **Visual Independence**: Musical changes don't immediately trigger visual recomputation
+
+### What Disappears
+
+- Complex `adaptive-search` implementation
+- Manual `extract-pitches` recursion across nested structures  
+- Bespoke ID resolution mechanisms
+- Edge case handling for structure traversal
+- Complex transducer composition for basic operations
+
+### What Emerges
+
+- **Musical Intent as Code**: Slur processing reads like musical thinking
+- **Compositional Reusability**: Same transformation works across different contexts
+- **Natural Performance**: Stream processing scales automatically
+- **Robust Error Handling**: Trait-based filtering is inherently safe
 
 ## Consequences
 
 ### Positive
 
-- Efficient handling of slurs in large musical pieces
-- Aesthetically pleasing slur shapes that respect the natural order of notes
-- Consistent with Ooloi's pure tree structure architecture
-- Lazy evaluation and efficient memory usage
-- Flexible handling of complex nested musical structures
-- Accurate representation of pitch positions in complex musical contexts
-- Adapts to slur placement above or below the music
+- **Clean Architectural Separation**: Musical and visual concerns completely decoupled
+- **Lazy Visual Efficiency**: Visual computations occur only when rendering is needed
+- **Dramatic Simplification**: Eliminates entire categories of traversal complexity
+- **Musical Clarity**: Code directly expresses musical relationships  
+- **Performance by Design**: Lazy evaluation and temporal coordination provide optimal processing
+- **Compositional Power**: Slur rendering becomes part of larger formatting pipelines
+- **Robust Processing**: Trait-based filtering handles edge cases automatically
+- **Reusable Abstractions**: Same patterns apply to ties, hairpins, and other spanning elements
+- **Memory Efficiency**: Visual hierarchy grows only as needed, not with musical complexity
 
 ### Negative
 
-- Potential performance impact for pieces with many slurs, though mitigated by the optimized hull calculation
-- Increased complexity in pitch extraction logic, though localized to the collection phase
-- Additional complexity introduced by the position provider abstraction
+- **Paradigm Learning Curve**: Developers must understand stream-based musical thinking
+- **Temporal Reasoning**: Requires understanding of VPD-based temporal boundaries
 
 ### Neutral
 
-- Developers need to understand the concept of hull calculation and its application to slur generation
-- Requirement for careful management of nested musical structures in pitch extraction
-- Need for comprehensive understanding of musical notation and layout principles for accurate position provider implementation
+- **Hull Calculation Unchanged**: Geometric algorithms remain optimal as designed
+- **Position Provider**: Coordinate calculation abstraction still required
+- **Bézier Generation**: Curve mathematics unchanged from original design
 
 ## Implementation Notes
 
-1. Implement the `search/adaptive-search` function to efficiently traverse the musical structure.
-2. Thoroughly test the hull calculation with various musical scenarios, including edge cases.
-3. Optimize the Bézier curve generation for performance, considering the number of steps needed for smooth rendering.
-4. Add slur midpoint thickness: the slur shape really consists of two bezier curves and a fill.
-5. Implement comprehensive error handling, especially for edge cases in complex musical structures.
-6. Develop a suite of unit and integration tests covering various slur scenarios and nested structures.
-7. Optimize the `ScorePositionProvider` implementation for efficient calculation of pitch positions.
-8. Consider caching strategies for frequently calculated positions or curves to improve performance.
-9. Implement efficient lookup mechanisms for resolving ID references during slur processing.
-10. Ensure that serialization and deserialization processes correctly handle the integer ID references of slurs.
+1. **Leverage Timewalker Patterns**: Use established temporal coordination for all spanning elements
+2. **Trait-Based Design**: Extend `takes-attachment?` trait for new musical elements  
+3. **VPD Scope Optimization**: Cache common scope calculations for performance
+4. **Stream Composition**: Build reusable transformation libraries for musical formatting
+5. **Early Termination**: Use `take` and filtering for efficient processing of large scores
+6. **Memory Management**: Rely on timewalker's lazy evaluation for memory efficiency
 
 ## Future Considerations
 
-1. Explore optimizations for scenarios with a high density of slurs.
-2. Investigate adaptive curve generation based on musical context (e.g., different curves for different musical styles or notations).
-3. Consider extending this approach to other curved notations (e.g., ties, phrase markings).
-4. Implement user controls for fine-tuning slur shapes if needed.
-5. Explore the possibility of using machine learning techniques to refine slur shapes based on expert human-drawn slurs.
-6. Investigate the potential for parallelizing certain aspects of the slur generation process for very large scores.
-7. Develop a visual debugging tool for inspecting the calculated pitch positions and resulting slur shapes.
-8. Consider implementing a system for handling collisions between slurs and other notation elements.
-9. Investigate optimizations for traversing and processing structures with ID references in very large musical pieces.
+1. **Universal Spanning Elements**: Extend pattern to ties, hairpins, glissandos, ottavas
+2. **Parallel Processing**: Leverage stream processing for concurrent slur rendering  
+3. **Visual Debugging**: Stream processing enables elegant debugging pipelines
+4. **Machine Learning Integration**: Stream transformations could feed ML curve optimization
+5. **Real-Time Formatting**: Temporal streams enable incremental slur updates
+6. **Cross-Staff Optimization**: Timewalker's temporal coordination naturally handles complex spans
+
+## Meta-Insight
+
+This revision demonstrates the paradigm shift from **imperative object manipulation** to **functional stream processing** in musical software. Slurs become temporal-spatial filters operating on musical event streams rather than complex graph traversals.
+
+The timewalker transforms slur rendering from a **traversal problem** into a **stream transformation problem**, making musical intent explicit in the computational model.
