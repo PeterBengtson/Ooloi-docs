@@ -4,18 +4,22 @@
 
 ## Context
 
-Ooloi needs to efficiently handle the creation, formatting, and rendering of slurs in musical notation. This involves two distinct architectural concerns:
+Ooloi needs to efficiently handle the creation, formatting, and rendering of slurs in musical notation. This builds upon Ooloi's existing attachment architecture, which already uses temporal stream processing for endpoint resolution.
 
-**Musical Hierarchy (Creation)**: Establishing slur relationships within the pure musical tree structure
-**Visual Hierarchy (Formatting)**: Computing visual representations (glyphs and Bézier curves) in the separate visual tree, lazily recomputed as needed
+The system involves three distinct architectural layers:
+
+**Musical Hierarchy (Creation)**: Slurs are created as `ExtendsForward` attachments using the existing attachment system
+**Endpoint Resolution**: The `endpoint-item` multimethod already uses timewalker to locate attachment endpoints through temporal stream processing  
+**Visual Hierarchy (Formatting)**: Computing visual representations (Bézier curves) in the separate visual tree, lazily recomputed as needed
 
 This separation ensures:
 1. Musical relationships remain independent of visual representation
-2. Visual formatting can be recomputed efficiently without affecting musical data
-3. The timewalker operates on musical structure to generate visual output
-4. Lazy evaluation minimises computational overhead for large scores
+2. Endpoint resolution leverages proven temporal stream patterns
+3. Visual formatting can be recomputed efficiently without affecting musical data
+4. The attachment resolver system provides intuitive string-based slur creation
+5. Lazy evaluation minimises computational overhead for large scores
 
-The timewalker's temporal coordination transforms slur processing from complex manual traversal into elegant stream operations, bridging musical relationships and visual computation.
+The timewalker's temporal coordination transforms slur processing from complex manual traversal into elegant stream operations, building on established patterns for attachment endpoint resolution.
 
 Key architectural insights:
 - Slurs represent temporal-spatial relationships that map naturally to stream filtering
@@ -25,44 +29,76 @@ Key architectural insights:
 
 ## Decision
 
-We will implement slur handling using:
-1. VPD-based slur definitions with temporal boundaries
-2. Timewalker stream processing for point collection
-3. Trait-based filtering for robust element identification
-4. Position provider abstraction for accurate coordinate calculation
-5. Convex hull calculation for natural slur shape determination
-6. Bézier curve generation for smooth visual rendering
+We will implement slur handling building upon Ooloi's existing attachment architecture:
+1. Slur creation using the established `ExtendsForward` attachment system
+2. Endpoint resolution leveraging existing timewalker-based `endpoint-item` multimethod
+3. Attachment resolver integration for intuitive string-based slur creation (`"slur"`)
+4. Visual formatting using temporal stream processing for point collection
+5. Position provider abstraction for accurate coordinate calculation
+6. Convex hull calculation for natural slur shape determination
+7. Bézier curve generation for smooth visual rendering
 
 ## Detailed Design
 
-### 1. Slur Creation in Musical Hierarchy
+### 1. Slur Creation Using Existing Attachment System
 
 ```clojure
-(ns ooloi.slur
-  (:require [ooloi.backend.ops.timewalk :refer [timewalk]]
-            [ooloi.backend.models.core :refer :all]))
+(ns ooloi.slur-integration
+  (:require [ooloi.backend.models.core :refer :all]))
 
-(defrecord Slur [start-vpd end-vpd placement])
+;; Slur creation leverages existing attachment resolver and add-attachment API
+(defn create-slur-attachment [piece start-vpd end-vpd]
+  "Create slur using established attachment system - builds on existing patterns."
+  (add-attachment start-vpd piece "slur" end-vpd))
 
-(defn create-slur [piece start-vpd end-vpd placement]
-  "Create slur relationship in musical hierarchy - no visual computation."
-  (let [slur (->Slur start-vpd end-vpd placement)
-        slur-id (generate-id)]
-    (-> piece
-        (add-attachment start-vpd slur-id slur)
-        (mark-visual-dirty start-vpd end-vpd))))  ; Flag visual recomputation needed
+;; Alternative: Direct attachment creation for programmatic use
+(defn create-slur-programmatic [piece start-vpd end-vpd]
+  "Create slur using direct attachment creation."
+  (let [slur (create-slur)]  ; Uses existing slur constructor
+    (add-attachment start-vpd piece slur end-vpd)))
 
-(defn slur-temporal-scope [slur]
-  "Determine optimal boundary VPD and measure range for slur processing."
-  (let [start-measure (vpd->measure-number (:start-vpd slur))
-        end-measure (vpd->measure-number (:end-vpd slur))
-        common-scope (find-common-scope (:start-vpd slur) (:end-vpd slur))]
-    {:boundary-vpd common-scope
-     :start-measure start-measure  
-     :end-measure end-measure}))
+;; The attachment system automatically:
+;; 1. Resolves "slur" string to Slur instance via attachment-resolver
+;; 2. Generates endpoint-id for the end-vpd TakesAttachment item
+;; 3. Sets the endpoint-id on the slur attachment
+;; 4. Adds the slur to the start item's attachment vector
+;; 5. Marks visual hierarchy as needing recomputation
 ```
 
-### 2. Position Provider Abstraction
+### 2. Endpoint Resolution (Already Implemented)
+
+```clojure
+;; The endpoint-item multimethod already uses timewalker for slur endpoint resolution
+;; This is the EXISTING implementation from ooloi.backend.models.traits.attachment
+
+(m/defmethod endpoint-item ::h/ExtendsForward
+  [piece attachment start-vpd]
+  "Existing implementation - slurs use this pattern for endpoint resolution."
+  (let [target-endpoint-id (:endpoint-id attachment)]
+    (if target-endpoint-id
+      (let [canonical-start-vpd (vpd/canonicalize start-vpd)
+            instrument-boundary-vpd (vec (take 4 canonical-start-vpd))
+            current-measure (or (get canonical-start-vpd 9) 0)
+            end-measure (+ current-measure MAX_LOOKAHEAD_MEASURES -1)
+            ;; Temporal stream processing - the pattern we use everywhere
+            result (first (sequence (comp 
+                                     (timewalk {:boundary-vpd instrument-boundary-vpd 
+                                               :start-measure current-measure
+                                               :end-measure end-measure})
+                                     (filter p/takes-attachment?)
+                                     (filter #(= target-endpoint-id (ta/get-endpoint-id (item %))))
+                                     (take 1))
+                                   [piece]))]
+        (or result [nil nil nil]))
+      [nil nil nil])))
+
+;; Usage: Find the endpoint of any slur
+(defn get-slur-endpoint [piece slur start-vpd]
+  "Get slur endpoint using existing endpoint-item multimethod."
+  (endpoint-item piece slur start-vpd))
+```
+
+### 3. Position Provider for Visual Coordinates
 
 ```clojure
 (defprotocol PositionProvider
@@ -77,58 +113,57 @@ We will implement slur handling using:
      :vpd vpd}))
 ```
 
-### 3. Visual Hierarchy Formatting (Lazy Computation)
+### 4. Visual Hierarchy Formatting (Building on Attachment Patterns)
 
 ```clojure
-(defn format-slur-visual [piece slur position-provider]
-  "Compute visual representation in visual hierarchy - called lazily when needed."
-  (let [points (collect-slur-points piece slur position-provider)
-        above? (= (:placement slur) :above)
-        hull (calculate-hull points above?)
-        control-points (calculate-control-points hull above?)
-        curve-points (generate-bezier-curve control-points 100)]
-    {:type :bezier-curve
-     :points curve-points
-     :stroke-width 1.5
-     :fill nil}))
+(defn collect-slur-points [piece slur start-vpd position-provider]
+  "Collect points for slur rendering using same temporal pattern as endpoint resolution."
+  (let [canonical-start-vpd (vpd/canonicalize start-vpd)
+        instrument-boundary-vpd (vec (take 4 canonical-start-vpd))
+        current-measure (or (get canonical-start-vpd 9) 0)
+        ;; Find the endpoint first using existing endpoint resolution
+        [end-item end-vpd end-position] (endpoint-item piece slur start-vpd)
+        end-measure (if end-vpd (or (get end-vpd 9) current-measure) 
+                                (+ current-measure MAX_LOOKAHEAD_MEASURES -1))]
+    (if end-item
+      ;; Use temporal stream processing to collect all points between start and end
+      (sequence (comp 
+                 (timewalk {:boundary-vpd instrument-boundary-vpd 
+                           :start-measure current-measure
+                           :end-measure end-measure})
+                 (filter takes-attachment?)
+                 (filter #(temporal-between? % start-vpd end-vpd))  ; Within slur span
+                 (map (fn [result]
+                        (pitch->coordinates position-provider 
+                                           (item result) 
+                                           (vpd result)))))
+                [piece])
+      [])))  ; No endpoint found, empty point collection
 
-(defn update-visual-hierarchy [visual-tree piece slur position-provider]
-  "Add computed slur curve to visual hierarchy at appropriate location."
-  (let [visual-slur (format-slur-visual piece slur position-provider)
-        target-vpd (slur-visual-location slur)]
-    (add-visual-element visual-tree target-vpd visual-slur)))
+(defn format-slur-visual [piece slur start-vpd position-provider]
+  "Compute visual representation - called lazily when visual hierarchy accessed."
+  (let [points (collect-slur-points piece slur start-vpd position-provider)]
+    (if (seq points)
+      (let [above? true  ; Could derive from slur placement or automatic detection
+            hull (calculate-hull points above?)
+            control-points (calculate-control-points hull above?)
+            curve-points (generate-bezier-curve control-points 100)]
+        {:type :bezier-curve
+         :points curve-points
+         :stroke-width 1.5
+         :fill nil})
+      nil)))  ; No points to render
 
 (defn lazy-slur-formatting [visual-tree piece slurs position-provider]
   "Lazily compute slur visuals only when visual hierarchy is accessed."
-  (reduce (partial update-visual-hierarchy piece position-provider)
+  (reduce (fn [tree [slur start-vpd]]
+            (when-let [visual-slur (format-slur-visual piece slur start-vpd position-provider)]
+              (add-visual-element tree (slur-visual-location slur) visual-slur)))
           visual-tree
-          (filter needs-visual-update? slurs)))
+          (filter #(needs-visual-update? (first %)) slurs)))
 ```
 
-### 4. Stream-Based Point Collection (Musical → Visual Bridge)
-
-```clojure
-(defn within-slur? [result slur]
-  "Check if a timewalker result falls within the slur's temporal span."
-  (let [item-vpd (vpd result)
-        start-pos (vpd->absolute-position (:start-vpd slur))
-        end-pos (vpd->absolute-position (:end-vpd slur))
-        item-pos (vpd->absolute-position item-vpd)]
-    (and (>= item-pos start-pos) (<= item-pos end-pos))))
-
-(defn collect-slur-points [piece slur position-provider]
-  "Bridge musical hierarchy to visual coordinates using temporal stream processing."
-  (let [scope (slur-temporal-scope slur)]
-    (->> (timewalk piece scope)
-         (filter takes-attachment?)  ; Only elements that can have slurs
-         (filter #(within-slur? % slur))
-         (map (fn [result]
-                (pitch->coordinates position-provider 
-                                   (item result) 
-                                   (vpd result)))))))
-```
-
-### 5. Compositional Slur Processing
+### 5. Compositional Slur Processing (Building on Attachment Patterns)
 
 ```clojure
 (defn slur-processing-pipeline [position-provider]
@@ -201,56 +236,71 @@ We will implement slur handling using:
   (map #(bezier-point (/ % steps) control-points) (range (inc steps))))
 ```
 
-### 8. Complete Slur Pipeline (Musical Creation + Visual Formatting)
+### 8. Complete Integration (Attachment System + Visual Formatting)
 
 ```clojure
-(defn render-slur 
-  "Complete slur rendering as composable transformation."
-  ([position-provider] 
-   (fn [slur]
-     (comp (timewalk (slur-temporal-scope piece slur))
-           (filter #(within-slur? % slur))
-           (slur-processing-pipeline position-provider)
-           (map (fn [points]
-                  (let [above? (= (:placement slur) :above)
-                        hull (calculate-hull points above?)
-                        control-points (calculate-control-points hull above?)]
-                    (generate-bezier-curve control-points 100)))))))
+(defn create-and-format-slur 
+  "Complete slur workflow: creation through attachment system + visual formatting."
+  [piece start-vpd end-vpd position-provider]
+  ;; 1. Create slur using existing attachment system
+  (let [updated-piece (add-attachment start-vpd piece "slur" end-vpd)
+        ;; 2. Retrieve the created slur using existing attachment API
+        slur (last (get-attachments (retrieve start-vpd updated-piece)))
+        ;; 3. Use existing endpoint resolution to verify connection
+        endpoint-result (endpoint-item updated-piece slur start-vpd)
+        ;; 4. Generate visual representation if endpoint found
+        visual-slur (when (first endpoint-result)
+                     (format-slur-visual updated-piece slur start-vpd position-provider))]
+    {:piece updated-piece
+     :slur slur
+     :start-vpd start-vpd
+     :endpoint endpoint-result
+     :visual visual-slur}))
 
-(defn format-slur [piece slur position-provider]
-  "Format single slur with full rendering pipeline."
-  (let [points (collect-slur-points piece slur position-provider)
-        above? (= (:placement slur) :above)
-        hull (calculate-hull points above?)
-        control-points (calculate-control-points hull above?)]
-    {:slur slur
-     :points points
-     :hull hull  
-     :control-points control-points
-     :curve-points (generate-bezier-curve control-points 100)}))
+(defn batch-slur-formatting [piece slur-definitions position-provider]
+  "Process multiple slurs efficiently using existing attachment patterns."
+  (reduce (fn [acc-piece [start-vpd end-vpd]]
+            (let [result (create-and-format-slur acc-piece start-vpd end-vpd position-provider)]
+              (:piece result)))
+          piece
+          slur-definitions))
 
-(defn format-all-slurs [piece slurs position-provider]
-  "Process multiple slurs efficiently using stream composition."
-  (sequence (comp (map #(format-slur piece % position-provider))
-                  (filter #(not-empty (:points %))))
-            slurs))
+;; Integration with existing attachment resolver system
+(defn intuitive-slur-creation [piece]
+  "Demonstrate string-based slur creation using attachment resolver."
+  (-> piece
+      ;; These all create slurs using the existing "slur" string resolution
+      (add-attachment [:m 0 0 0 0 0 :items 0] "slur" [:m 0 0 0 0 0 :items 3])  ; Phrase slur
+      (add-attachment [:m 0 0 0 0 1 :items 0] "slur" [:m 0 0 0 0 1 :items 1])  ; Short slur
+      (add-attachment [:m 0 0 0 0 2 :items 0] "slur" [:m 0 0 0 0 4 :items 2]))) ; Cross-measure slur
+
+;; Visual formatting happens lazily when visual hierarchy is accessed
+(defn render-page-slurs [visual-tree piece page-boundary position-provider]
+  "Render only slurs visible on current page - leverages lazy computation."
+  (let [page-slurs (find-slurs-in-boundary piece page-boundary)]
+    (reduce (fn [tree [slur start-vpd]]
+              (if-let [visual-slur (format-slur-visual piece slur start-vpd position-provider)]
+                (add-visual-element tree (slur-visual-location slur start-vpd) visual-slur)
+                tree))
+            visual-tree
+            page-slurs)))
 ```
 
 ## Rationale
 
-### Paradigm Shift: From Manual Traversal to Stream Processing
+### Building on Established Architecture
 
-1. **Architectural Separation**: Musical relationships (slur creation) remain in the pure musical hierarchy, whilst visual computation (formatting) occurs lazily in the separate visual hierarchy.
+1. **Existing Attachment System**: Slur creation leverages the proven `add-attachment` API and attachment resolver system, requiring no new musical hierarchy patterns.
 
-2. **Temporal Coordination**: The timewalker's natural temporal ordering eliminates complex search strategies. Musical time becomes the organizing principle for bridging musical and visual representations.
+2. **Proven Endpoint Resolution**: The `endpoint-item` multimethod already uses timewalker with identical temporal stream patterns for finding attachment endpoints.
 
-3. **Trait-Based Filtering**: `(filter takes-attachment?)` replaces manual type checking across nested structures like chords, tuplets, and tremolandos.
+3. **Consistent API Patterns**: String-based attachment creation (`"slur"`) follows established attachment resolver conventions used throughout the system.
 
-4. **VPD-Based Scope**: Slur boundaries map naturally to VPD scope control, eliminating bespoke traversal logic.
+4. **Architectural Separation**: Musical relationships (attachment system) remain completely separate from visual computation (lazy visual hierarchy), following existing design principles.
 
-5. **Lazy Visual Computation**: Visual hierarchy elements (Bézier curves, glyphs) are computed only when needed, keeping musical data separate from presentation.
+5. **Temporal Stream Processing**: Visual point collection uses the same timewalker patterns as endpoint resolution, ensuring consistency across the codebase.
 
-6. **Compositional Processing**: Slur rendering becomes a reusable transformation that bridges musical structure to visual output.
+6. **Lazy Visual Computation**: Visual hierarchy elements (Bézier curves) are computed only when needed, consistent with existing visual formatting approaches.
 
 ### Technical Benefits
 
@@ -263,66 +313,69 @@ We will implement slur handling using:
 7. **Memory Efficiency**: Lazy evaluation processes only what's needed
 8. **Visual Independence**: Musical changes don't immediately trigger visual recomputation
 
-### What Disappears
+### What This Approach Avoids
 
-- Complex `adaptive-search` implementation
-- Manual `extract-pitches` recursion across nested structures  
-- Bespoke ID resolution mechanisms
-- Edge case handling for structure traversal
-- Complex transducer composition for basic operations
+- **New Attachment Patterns**: No need to create slur-specific attachment handling
+- **Duplicate Endpoint Logic**: Visual point collection reuses existing endpoint resolution patterns
+- **Custom Search Strategies**: Timewalker provides all necessary traversal capabilities
+- **API Inconsistency**: Slur creation follows established attachment resolver conventions
+- **Architectural Fragmentation**: Visual formatting builds on proven lazy computation patterns
 
-### What Emerges
+### What This Approach Provides
 
-- **Musical Intent as Code**: Slur processing reads like musical thinking
-- **Compositional Reusability**: Same transformation works across different contexts
-- **Natural Performance**: Stream processing scales automatically
-- **Robust Error Handling**: Trait-based filtering is inherently safe
+- **Seamless Integration**: Slurs work like any other attachment with existing APIs
+- **Proven Reliability**: Endpoint resolution inherits battle-tested timewalker patterns
+- **Intuitive Creation**: `(add-attachment start-vpd piece "slur" end-vpd)` follows established conventions
+- **Efficient Rendering**: Visual computation leverages existing lazy evaluation architecture
+- **Pattern Consistency**: Same temporal stream processing across all attachment types
 
 ## Consequences
 
 ### Positive
 
-- **Clean Architectural Separation**: Musical and visual concerns completely decoupled
-- **Lazy Visual Efficiency**: Visual computations occur only when rendering is needed
-- **Dramatic Simplification**: Eliminates entire categories of traversal complexity
-- **Musical Clarity**: Code directly expresses musical relationships  
-- **Performance by Design**: Lazy evaluation and temporal coordination provide optimal processing
-- **Compositional Power**: Slur rendering becomes part of larger formatting pipelines
-- **Robust Processing**: Trait-based filtering handles edge cases automatically
-- **Reusable Abstractions**: Same patterns apply to ties, hairpins, and other spanning elements
-- **Memory Efficiency**: Visual hierarchy grows only as needed, not with musical complexity
+- **Zero Architectural Risk**: Builds entirely on proven attachment system patterns
+- **Immediate API Consistency**: Slurs work with existing attachment APIs without modification
+- **Proven Reliability**: Endpoint resolution inherits battle-tested timewalker temporal coordination
+- **Intuitive User Experience**: String-based creation (`"slur"`) follows established attachment resolver conventions
+- **Performance by Design**: Lazy visual computation leverages existing visual hierarchy patterns
+- **Pattern Reuse**: Same temporal stream processing works for all attachment types (ties, hairpins, glissandos)
+- **Robust Error Handling**: Trait-based filtering provides existing safety guarantees
+- **Memory Efficiency**: Visual curves computed only when rendering, following established lazy evaluation
+- **Development Velocity**: No new patterns to learn - leverages existing knowledge
 
 ### Negative
 
-- **Paradigm Learning Curve**: Developers must understand stream-based musical thinking
-- **Temporal Reasoning**: Requires understanding of VPD-based temporal boundaries
+- **None Identified**: This approach builds entirely on existing, proven architecture without introducing new complexity or risk
 
 ### Neutral
 
-- **Hull Calculation Unchanged**: Geometric algorithms remain optimal as designed
-- **Position Provider**: Coordinate calculation abstraction still required
-- **Bézier Generation**: Curve mathematics unchanged from original design
+- **Hull Calculation Unchanged**: Geometric algorithms remain optimal as originally designed
+- **Position Provider Required**: Coordinate calculation abstraction still needed for visual formatting
+- **Bézier Generation Unchanged**: Curve mathematics remain optimal from original design
+- **Learning Curve**: Developers already familiar with attachment system can immediately work with slurs
 
 ## Implementation Notes
 
-1. **Leverage Timewalker Patterns**: Use established temporal coordination for all spanning elements
-2. **Trait-Based Design**: Extend `takes-attachment?` trait for new musical elements  
-3. **VPD Scope Optimization**: Cache common scope calculations for performance
-4. **Stream Composition**: Build reusable transformation libraries for musical formatting
-5. **Early Termination**: Use `take` and filtering for efficient processing of large scores
-6. **Memory Management**: Rely on timewalker's lazy evaluation for memory efficiency
+1. **Leverage Existing Patterns**: No new attachment architecture required - slurs integrate seamlessly with existing `add-attachment` and `endpoint-item` APIs
+2. **Reuse Timewalker Patterns**: Visual point collection follows identical temporal stream patterns as existing endpoint resolution
+3. **Attachment Resolver Integration**: Slur string resolution (`"slur"`) already implemented in existing attachment resolver system
+4. **Visual Hierarchy Integration**: Lazy computation follows existing visual formatting patterns without modification
+5. **Performance Optimization**: Inherit all existing timewalker performance characteristics (early termination, boundary scoping, etc.)
+6. **Testing Strategy**: Build on existing attachment system test patterns - no new testing paradigms required
 
 ## Future Considerations
 
-1. **Universal Spanning Elements**: Extend pattern to ties, hairpins, glissandos, ottavas
-2. **Parallel Processing**: Leverage stream processing for concurrent slur rendering  
-3. **Visual Debugging**: Stream processing enables elegant debugging pipelines
-4. **Machine Learning Integration**: Stream transformations could feed ML curve optimization
-5. **Real-Time Formatting**: Temporal streams enable incremental slur updates
-6. **Cross-Staff Optimization**: Timewalker's temporal coordination naturally handles complex spans
+1. **Universal Attachment Patterns**: All spanning elements (ties, hairpins, glissandos, ottavas) follow identical patterns established by slur implementation
+2. **Enhanced Visual Debugging**: Existing attachment system debugging tools automatically work with slur endpoint resolution
+3. **Performance Optimization**: Leverage existing timewalker optimizations without slur-specific modifications
+4. **Parallel Processing**: Existing attachment processing patterns enable concurrent slur rendering without additional complexity
+5. **Machine Learning Integration**: Temporal stream patterns provide natural data feeds for ML curve optimization
+6. **Cross-Platform Consistency**: Attachment system abstractions ensure consistent slur behavior across all deployment scenarios
 
 ## Meta-Insight
 
-This revision demonstrates the paradigm shift from **imperative object manipulation** to **functional stream processing** in musical software. Slurs become temporal-spatial filters operating on musical event streams rather than complex graph traversals.
+This implementation demonstrates that **architectural maturity** enables **effortless feature integration**. Rather than building new systems, slurs emerge naturally from existing attachment architecture patterns.
 
-The timewalker transforms slur rendering from a **traversal problem** into a **stream transformation problem**, making musical intent explicit in the computational model.
+The timewalker's temporal stream processing, combined with the proven attachment system, creates a **composable musical computing platform** where complex features like slur rendering become simple applications of established patterns.
+
+This validates the original architectural decisions: **musical relationships** (attachment system) and **visual computation** (lazy hierarchy) separate cleanly, while **temporal coordination** (timewalker) bridges them seamlessly. Slurs don't require new architecture - they demonstrate the power of existing architecture applied consistently.
