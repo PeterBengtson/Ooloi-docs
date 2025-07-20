@@ -51,10 +51,12 @@ This transforms musical software development:
 **Ooloi Approach** (temporal stream processing):
 ```clojure
 ;; Define transformations, compose operations
-(->> (timewalk piece {:boundary-vpd []})
-     (filter #(violin-instrument? (item %)))
-     (filter pitch?)
-     (map #(transpose-pitch (item %) 4)))
+(into []
+      (comp (timewalk {:boundary-vpd []})
+            (filter #(violin-instrument? (item %)))
+            (filter pitch?)
+            (map #(transpose-pitch (item %) 4)))
+      [piece])
 ```
 
 The temporal approach eliminates impedance mismatch—musical thinking and computational thinking become isomorphic.
@@ -149,18 +151,23 @@ The same transducer works with different collection types and processing context
 
 **2. Recursive Tree Walking with Higher-Order Functions**
 ```clojure
-;; Rejected approach
-(defn walk-tree [node processor filter-fn]
-  (when (filter-fn node)
-    (processor node))
-  (doseq [child (get-children node)]
-    (walk-tree child processor filter-fn)))
+;; Rejected approach - demonstrates temporal coordination problem
+(defn walk-tree [piece filter-fn transform-fn]
+  (for [musician (get-musicians piece)      ; Process ALL of musician 0
+        instrument (get-instruments musician) ; then ALL of musician 1, etc.
+        staff (get-staves instrument)
+        voice (get-voices staff)
+        measure (get-measures voice)        ; Gets ALL measures of voice 0
+        item (get-items measure)            ; before ANY measures of voice 1
+        :when (filter-fn item)]
+    (transform-fn item)))
 ```
 **Why Rejected:**
+- **Breaks temporal coordination** - processes all measures of voice 1 before any of voice 2
 - Difficult to compose multiple operations
 - No built-in early termination
-- Temporal coordination requires complex state management
 - Hard to unit test individual transformation steps
+- Returns results in voice-by-voice order rather than temporal order
 
 **3. Visitor Pattern Implementation**
 ```clojure
@@ -214,9 +221,9 @@ Rather than creating separate traversal systems for MIDI generation, visual layo
 Every application automatically inherits the same temporal coordination guarantee:
 ```clojure
 ;; MIDI, layout, and attachment resolution all use the same temporal ordering
-(timewalk piece boundary-vpd midi-transducer)    ; Temporal order preserved
-(timewalk piece boundary-vpd layout-transducer)  ; Same temporal order
-(timewalk piece boundary-vpd attach-transducer)  ; Same temporal order
+(sequence (comp (timewalk boundary-vpd) midi-transducer) [piece])    ; Temporal order preserved
+(sequence (comp (timewalk boundary-vpd) layout-transducer) [piece])  ; Same temporal order
+(sequence (comp (timewalk boundary-vpd) attach-transducer) [piece])  ; Same temporal order
 ```
 
 **2. Reduced Complexity and Maintenance**
@@ -229,10 +236,11 @@ Every application automatically inherits the same temporal coordination guarante
 Applications can combine concerns within a single traversal:
 ```clojure
 ;; Generate MIDI while calculating layout metrics
-(->> (timewalk piece nil)
-     (map (juxt item->midi-event calculate-width))
-     (filter first)  ; Only items that generate MIDI
-     (map (fn [[midi width]] {:midi midi :width width})))
+(sequence (comp (timewalk {:boundary-vpd nil})
+                (map (juxt item->midi-event calculate-width))
+                (filter first)  ; Only items that generate MIDI
+                (map (fn [[midi width]] {:midi midi :width width})))
+          [piece])
 ```
 
 **4. Guaranteed Behavioral Consistency**
@@ -255,36 +263,41 @@ Alternative approaches with domain-specific traversals would create:
 **1. Temporal Coordination Preservation**
 Transducers maintain the temporal ordering guarantee while allowing arbitrary transformations:
 ```clojure
-(->> (timewalk piece {:boundary-vpd [:musicians 0]})
-     (filter chord?)
-     (map extract-harmony))
+(sequence (comp (timewalk {:boundary-vpd [:musicians 0]})
+                (filter chord?)
+                (map extract-harmony))
+          [piece])
 ;; Still processes measure 1 chords before measure 2 chords
 ```
 
 **2. MIDI Streaming Compatibility**
 Transducers naturally support real-time MIDI generation:
 ```clojure
-(->> (timewalk piece nil)
-     (map item->midi-event)
-     (remove nil?)
-     (take-while #(< (:time %) playback-end)))
+(sequence (comp (timewalk {:boundary-vpd nil})
+                (map item->midi-event)
+                (remove nil?)
+                (take-while #(< (:time %) playback-end)))
+          [piece])
 ```
 
 **3. Layout Calculation Optimization**
 Visual layout can terminate early when page capacity is reached:
 ```clojure
-(->> (timewalk piece nil)
-     (map calculate-item-width)
-     (scan +)  ; Running width total
-     (take-while #(< % page-width)))
+(sequence (comp (timewalk {:boundary-vpd nil})
+                (map calculate-item-width)
+                (scan +)  ; Running width total
+                (take-while #(< % page-width)))
+          [piece])
 ```
 
 **4. Attachment Resolution Efficiency**
 Find attachment endpoints without processing entire piece:
 ```clojure
-(->> (timewalk piece {:boundary-vpd attachment-scope})
-     (filter #(= (:end-id %) target-id))
-     (take 1))  ; Stop after finding endpoint
+(first
+  (sequence (comp (timewalk {:boundary-vpd attachment-scope})
+                  (filter #(= (:end-id %) target-id))
+                  (take 1))  ; Stop after finding endpoint
+            [piece]))
 ```
 
 ## Detailed Design
@@ -333,23 +346,26 @@ Boundary-VPDs provide precise control over traversal scope while maintaining the
 
 ```clojure
 ;; MIDI generation with early termination
-(->> (timewalk piece {:boundary-vpd [:musicians 0]})
-     (filter rhythmic-item?)
-     (map item->midi-event)
-     (remove nil?)
-     (take-while #(< (:time %) end-time)))
+(sequence (comp (timewalk {:boundary-vpd [:musicians 0]})
+                (filter rhythmic-item?)
+                (map item->midi-event)
+                (remove nil?)
+                (take-while #(< (:time %) end-time)))
+          [piece])
 
 ;; Harmonic analysis with filtering
-(->> (timewalk piece {:boundary-vpd nil})
-     (filter chord?)
-     (map extract-harmony)
-     (distinct))
+(into #{}
+      (comp (timewalk {:boundary-vpd nil})
+            (filter chord?)
+            (map extract-harmony))
+      [piece])
 
 ;; Layout calculation with running totals
-(->> (timewalk piece {:boundary-vpd [:musicians 0 :instruments 0]})
-     (map calculate-width)
-     (scan +)
-     (take-while #(< % page-width)))
+(sequence (comp (timewalk {:boundary-vpd [:musicians 0 :instruments 0]})
+                (map calculate-width)
+                (scan +)
+                (take-while #(< % page-width)))
+          [piece])
 ```
 
 ### 4. Deep Traversal Support
@@ -370,19 +386,19 @@ The timewalk demonstrates that diverse musical operations share identical comput
 
 ```clojure
 ;; Attachment endpoints: temporal stream → filter by ID → first match
-(->> (timewalk piece scope) (filter has-endpoint-id?) (take 1))
+(first (sequence (comp (timewalk scope) (filter has-endpoint-id?) (take 1)) [piece]))
 
 ;; Visual formatting: temporal stream → filter by span → map coordinates  
-(->> (timewalk piece scope) (filter within-slur?) (map pitch->coordinates))
+(sequence (comp (timewalk scope) (filter within-slur?) (map pitch->coordinates)) [piece])
 
 ;; MIDI generation: temporal stream → map to events → maintain time order
-(->> (timewalk piece scope) (map item->midi-event) (remove nil?))
+(sequence (comp (timewalk scope) (map item->midi-event) (remove nil?)) [piece])
 
 ;; Harmonic analysis: temporal stream → group by simultaneity → analyze
-(->> (timewalk piece scope) (group-by measure-position) (map analyze-harmony))
+(sequence (comp (timewalk scope) (group-by measure-position) (map analyze-harmony)) [piece])
 
 ;; Layout calculation: temporal stream → map to widths → accumulate
-(->> (timewalk piece scope) (map calculate-width) (scan +))
+(sequence (comp (timewalk scope) (map calculate-width) (scan +)) [piece])
 ```
 
 This pattern unification proves that **musical time is the correct organizing principle** for musical computation. Complex musical operations reduce to temporal stream operations with different predicates and transformations.
