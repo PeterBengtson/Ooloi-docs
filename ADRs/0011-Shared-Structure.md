@@ -233,30 +233,30 @@ These images illustrate the wide range of scenarios our solution needs to handle
 
 ### Image 1
 
-![Tie and Slur](../docs/slur-1.png)
+![Tie and Slur](../img/slur-1.png)
 
 *Simple illustration of a tie and a slur. The tie connects two identical pitches, while the slur connects different pitches.*
 
 ### Image 2
 
-![Local Slurs](../docs/slur-2.jpeg)
+![Local Slurs](../img/slur-2.jpeg)
 
 *Slurs local to a measure.*
 
 ### Image 3
 
-![Multi-Measure Tie and Dynamic Hairpins](../docs/hairpin-1.png)
+![Multi-Measure Tie and Dynamic Hairpins](../img/hairpin-1.png)
 
 *A tie spanning multiple measures and dynamic hairpins (crescendo and diminuendo) extending across measure boundaries, demonstrating the need for efficient handling of measure boundaries in processing various connecting elements.*
 
 ### Image 4
 
-![Complex Slurs](../docs/slur-3.png)
+![Complex Slurs](../img/slur-3.png)
 
 *Complex use of slurs in a piano score, showing how slurs can span across multiple staves and interact with other musical elements.*
 
 ### Image 5
 
-![Extreme Slur](../docs/slur-4.png)
+![Extreme Slur](../img/slur-4.png)
 
 *An extreme example of a slur from Sorabji's "Opus Clavicembalisticum IX", spanning an entire system and encompassing multiple complex musical phrases.*
