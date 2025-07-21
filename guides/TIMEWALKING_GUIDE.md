@@ -1289,6 +1289,9 @@ Elements come in temporal order with proper layout data:
 - **Performance**: See [Performance Comparison](#performance-comparison-threading-vs-transducers) for timing benchmarks  
 - **Temporal coordination**: See [Why Temporal Order Matters](#why-temporal-order-matters-what-goes-wrong-without-it) for musical analysis foundations
 - **🔴 Advanced concurrency**: See [Advanced Concurrency Patterns](ADVANCED_CONCURRENCY_PATTERNS.md) for parallel processing with STM coordination
+- **VPD addressing**: See [VPDs Guide](VPDs.md) for understanding the Vector Path Descriptors returned in timewalking tuples
+- **Type predicates**: See [Polymorphic API Guide](POLYMORPHIC_API_GUIDE.md) for the type predicates and helper functions used in filtering
+- **Architecture**: See [ADR-0014: Timewalk](../ADRs/0014-Timewalk.md) for the architectural decisions behind timewalking
 
 ## Further Reading
 

@@ -112,6 +112,12 @@ Internally, Ooloi uses the Specter library to resolve VPDs and perform operation
 
 5. Always provide the piece or piece ID when using API functions with VPDs.
 
+## Related Guides
+
+- **[Timewalking Guide](TIMEWALKING_GUIDE.md)** - Timewalking operations return VPD tuples for precise location tracking
+- **[Piece Manager Guide](PIECE_MANAGER_GUIDE.md)** - VPD operations in piece lifecycle management  
+- **[Specter Guide](SPECTER.md)** - Specter provides the underlying implementation for VPD operations
+
 ## Conclusion
 
 Vector Path Descriptors are a core feature of Ooloi, providing a powerful and flexible way to work with complex musical structures. By understanding and utilizing VPDs effectively, developers can create efficient and maintainable code that leverages the full power of the Ooloi system.

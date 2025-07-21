@@ -582,9 +582,17 @@ Every VPD operation uses the piece manager internally:
 
 ## Cross-References
 
+### **Core Concepts**
+- **VPD operations**: See [Polymorphic API Guide](POLYMORPHIC_API_GUIDE.md#-api-convenience-why-use-vpd-operations) for VPD-based operations used in piece management
+- **VPD addressing**: See [VPDs Guide](VPDs.md) for understanding the addressing system used throughout piece operations
 - **Basic piece operations**: See [Timewalking Guide](TIMEWALKING_GUIDE.md) for traversal patterns
-- **Advanced concurrency**: See [Advanced Concurrency Patterns](ADVANCED_CONCURRENCY_PATTERNS.md) for complex coordination
-- **VPD fundamentals**: See timewalking guide for VPD addressing concepts
+
+### **Advanced Patterns**
+- **STM coordination**: See [Advanced Concurrency Patterns](ADVANCED_CONCURRENCY_PATTERNS.md) for complex piece ref coordination and parallel processing
+- **Piece persistence**: See [Piece Persistence Guide](PIECE_PERSISTENCE_GUIDE.md) for complementary piece lifecycle management
+
+### **Architecture**
+- **STM fundamentals**: See [ADR-0004: STM for Concurrency](../ADRs/0004-STM-for-concurrency.md) for the architectural foundation of piece ref management
 
 ## Next Steps
 

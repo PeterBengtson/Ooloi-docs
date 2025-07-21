@@ -82,6 +82,14 @@ We will use Clojure as the primary programming language for developing Ooloi, bo
 5. Use cljfx or a similar library for creating the JavaFX-based GUI in Clojure.
 6. Develop a comprehensive test suite using Clojure testing libraries.
 7. Implement the plugin system to allow for Clojure-based plugins, with potential for other JVM language support.
+
+## Related Decisions
+
+- [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Establishes how Clojure is used to implement separate frontend and backend components
+- [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Details how Clojure's Software Transactional Memory enables thread-safe concurrent operations
+
+## Additional Implementation Notes
+
 8. Utilize Clojure's Java interop capabilities where necessary for performance-critical operations or integration with existing Java libraries.
 9. Develop coding standards and best practices specific to Clojure for the Ooloi project.
 10. Create documentation and examples to help onboard new developers to the Clojure codebase.

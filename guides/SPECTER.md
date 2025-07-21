@@ -179,3 +179,8 @@ https://github.com/redplanetlabs/specter/wiki/Using-Specter-Recursively
 
 Additional navigators:
 https://github.com/latacora/eidolon
+
+## Related Guides
+
+- **[VPDs Guide](VPDs.md)** - Specter provides the underlying implementation for VPD operations
+- **[Timewalking Guide](TIMEWALKING_GUIDE.md)** - Both guides deal with data traversal and transformation patterns

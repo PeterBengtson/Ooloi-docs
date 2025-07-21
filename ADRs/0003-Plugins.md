@@ -156,3 +156,8 @@ We will implement a robust plugin system as a central architectural component of
 - Regularly assess the balance between core features and plugin-provided functionality to ensure the base application remains robust and useful.
 - Provide comprehensive documentation and examples for plugin development in each supported language.
 - Consider hosting workshops or webinars to encourage plugin development in various JVM languages.
+
+## Related Decisions
+
+- [ADR-0000: Clojure](0000-Clojure.md) - Language choice providing JVM compatibility for multi-language plugin support
+- [ADR-0006: SMuFL](0006-SMuFL.md) - Musical notation standard that plugins might extend with specialized symbols

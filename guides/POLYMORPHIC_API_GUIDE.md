@@ -1532,11 +1532,20 @@ Understanding when to use each dispatch mechanism:
 
 ## Cross-References
 
+### **Implementation Details**
 - **Type system implementation**: See [hierarchy.clj:hierarchy.clj:1-92] for complete type definitions
 - **Multimethod architecture**: See [core.clj:core.clj:1-200] for polymorphic operation definitions  
+
+### **Related Guides**
 - **VPD integration**: See [VPDs Guide](VPDs.md) for path-based operation patterns
 - **Piece management**: See [Piece Manager Guide](PIECE_MANAGER_GUIDE.md) for `get-piece-ref` usage patterns
 - **Musical traversal**: See [Timewalking Guide](TIMEWALKING_GUIDE.md) for type-aware traversal examples
+
+### **Architectural Foundations**
+- **Tree structure**: See [ADR-0010: Pure Trees](../ADRs/0010-Pure-Trees.md) for the hierarchical structure that VPD navigation operates on
+- **VPD system**: See [ADR-0008: VPDs](../ADRs/0008-VPDs.md) for the architectural decision behind Vector Path Descriptors used throughout the polymorphic API
+- **gRPC compatibility**: See [ADR-0002: gRPC](../ADRs/0002-gRPC.md) for why VPD serialization enables frontend-backend communication
+- **Language foundations**: See [ADR-0000: Clojure](../ADRs/0000-Clojure.md) for the language choice enabling multimethod polymorphism
 
 ## Next Steps
 

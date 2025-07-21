@@ -182,3 +182,9 @@ The Ooloi architecture is designed to be extensible, allowing for:
 ## Note on Structure Terminology
 
 The structure described in this document is a pure tree, with cross-references implemented using integer IDs. This approach maintains the benefits of a tree structure (such as easy serialization and traversal) while allowing for the representation of complex musical relationships through ID references.
+
+## Related Decisions
+
+- [ADR-0008: VPDs](0008-VPDs.md) - Vector Path Descriptor system for navigating the tree structure
+- [ADR-0011: Shared Structure](0011-Shared-Structure.md) - Shared structure concepts building on the pure tree foundation
+- [ADR-0012: Persisting Pieces](0012-Persisting-Pieces.md) - Persistence model based on the tree structure and ID references

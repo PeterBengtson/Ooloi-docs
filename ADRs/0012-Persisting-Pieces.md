@@ -72,6 +72,12 @@ Elements that can be referenced implement the TakesAttachment trait:
 - Requires careful management of integer IDs to maintain consistency.
 - Special handling is needed when copying or deleting measures to maintain ID integrity.
 
+## Related Decisions
+
+- [ADR-0010: Pure Trees](0010-Pure-Trees.md) - Tree structure foundation that this persistence model builds upon
+- [ADR-0007: Nippy](0007-Nippy.md) - Serialization technology chosen for persistence implementation
+- [ADR-0008: VPDs](0008-VPDs.md) - VPD addressing system that gets persisted as part of the structure
+
 ### Neutral
 
 - Developers need to be aware of the ID reference system when modifying the system.

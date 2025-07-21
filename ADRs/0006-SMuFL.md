@@ -88,6 +88,11 @@ We will adopt the Standard Music Font Layout (SMuFL) as the primary system for m
 3. Multiple Font Standards Support:
    - Considered but deemed unnecessarily complex and potentially inconsistent.
 
+## Related Decisions
+
+- [ADR-0005: JavaFX and Skija](0005-JavaFX-and-Skija.md) - Frontend rendering framework that will display SMuFL symbols
+- [ADR-0003: Plugins](0003-Plugins.md) - Plugin system that may extend SMuFL-based notation with specialized symbols
+
 ## Notes
 
 - Regularly review and update to the latest SMuFL specification as it evolves.

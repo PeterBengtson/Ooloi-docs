@@ -442,6 +442,8 @@ This guide demonstrates how to leverage Ooloi's sophisticated concurrency archit
 ## Cross-References
 
 - **Prerequisites**: [Timewalking Guide](TIMEWALKING_GUIDE.md) - Complete this first
+- **Piece management**: [Piece Manager Guide](PIECE_MANAGER_GUIDE.md) - STM coordination with piece refs and lifecycle management
+- **Architecture**: [ADR-0004: STM for Concurrency](../ADRs/0004-STM-for-concurrency.md) - Architectural foundation for STM approach
 - **STM fundamentals**: Clojure documentation on Software Transactional Memory
 - **Performance considerations**: See Ooloi backend performance benchmarks
 

@@ -854,7 +854,7 @@ The system uses **function builders** that create I/O operations:
 - **Piece lifecycle management**: See [Piece Manager Guide](PIECE_MANAGER_GUIDE.md) for in-memory operations
 - **Musical structure concepts**: See [Timewalking Guide](TIMEWALKING_GUIDE.md) for piece traversal patterns  
 - **Advanced concurrency**: See [Advanced Concurrency Patterns](ADVANCED_CONCURRENCY_PATTERNS.md) for STM integration
-- **Architecture decisions**: See ADR-0007 (Nippy), ADR-0010 (Pure Tree), ADR-0012 (Persisting Pieces)
+- **Architecture decisions**: See [ADR-0007: Nippy](../ADRs/0007-Nippy.md) and [ADR-0012: Persisting Pieces](../ADRs/0012-Persisting-Pieces.md) for serialization and persistence foundations
 
 ## Common Gotchas
 

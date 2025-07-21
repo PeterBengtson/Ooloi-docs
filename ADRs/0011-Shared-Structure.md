@@ -4,7 +4,10 @@
 
 ## Related ADRs
 
-This ADR builds on the pure tree structure described in [ADR-0010 Pure Tree Structure](/ADRs/0010-Pure-Trees.md).
+This ADR builds on the pure tree structure described in [ADR-0010 Pure Tree Structure](0010-Pure-Trees.md).
+
+- [ADR-0014: Timewalk](0014-Timewalk.md) - Timewalking provides the traversal mechanism for shared structure processing
+- [ADR-0008: VPDs](0008-VPDs.md) - VPD addressing system used for navigation in shared structure algorithms
 
 ## Context
 

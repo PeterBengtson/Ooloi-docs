@@ -66,3 +66,9 @@ Future Considerations:
 - Develop a comprehensive testing suite for serialization/deserialization, especially for complex structures and shared structure.
 - Monitor performance and optimize as necessary, potentially implementing lazy loading for large scores.
 - Consider implementing a caching mechanism for frequently accessed pieces or sections.
+
+## Related Decisions
+
+- [ADR-0010: Pure Trees](0010-Pure-Trees.md) - Tree data structure that Nippy will serialize
+- [ADR-0008: VPDs](0008-VPDs.md) - VPD addressing system that gets serialized as part of the structure
+- [ADR-0012: Persisting Pieces](0012-Persisting-Pieces.md) - Persistence architecture that uses Nippy for serialization

@@ -327,6 +327,16 @@ Based on analysis of professional scores, the algorithm must handle:
    - Complex multi-slur passages should handle overlaps like Image 3
 4. **Optimize coordinate calculation**: Ensure `(obtain-xy layout)` performs efficiently in timewalker pipelines  
 5. **Validate curve smoothness**: Adjust Bézier control point algorithm for optimal visual results
+
+## Related Decisions
+
+- [ADR-0014: Timewalk](0014-Timewalk.md) - Timewalking provides the point collection algorithm for slur formatting
+- [ADR-0011: Shared Structure](0011-Shared-Structure.md) - Establishes the shared structure concepts that slur formatting builds upon
+- [ADR-0008: VPDs](0008-VPDs.md) - VPD addressing system used for navigation in the slur algorithm
+- [ADR-0010: Pure Trees](0010-Pure-Trees.md) - Tree structure that the slur formatting algorithm traverses
+
+## Implementation Timeline
+
 6. **Performance benchmarking**: Measure algorithm performance with large musical spans
 7. **Multi-staff preparation**: Design allows future extension to cross-staff slurs
 8. **Typography compatibility**: Ensure slur thickness works well with different staff sizes and music fonts

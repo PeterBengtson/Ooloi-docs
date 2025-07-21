@@ -511,6 +511,8 @@ This represents **architecture as compression** - reducing the complexity of an 
 - **ADR-0010 Pure Trees**: Provides the foundational tree structure that timewalk traverses
 - **ADR-0008 VPDs**: Defines the Vector Path Descriptor system used for boundary specification
 - **ADR-0012 Persisting Pieces**: Establishes the ID reference system that timewalk respects during traversal
+- **ADR-0011 Shared Structure**: Shared structure algorithms use timewalk for element collection and processing
+- **ADR-0013 Slur Formatting**: Slur formatting demonstrates timewalk application for point collection
 
 ## Documentation
 

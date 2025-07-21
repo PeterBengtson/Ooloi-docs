@@ -116,3 +116,10 @@ We will implement real-time collaboration as a core feature of Ooloi, leveraging
 - Explore options for audio/video chat integration to enhance remote collaboration.
 - Regularly gather user feedback on the collaboration experience and iterate on the implementation.
 - Stay informed about advancements in distributed systems and real-time collaboration technologies.
+
+## Related Decisions
+
+- [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural foundation enabling distributed collaboration
+- [ADR-0002: gRPC Communication](0002-gRPC.md) - Real-time streaming protocol supporting collaborative features
+- [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model enabling automatic conflict resolution in collaborative editing
+- [ADR-0008: VPDs](0008-VPDs.md) - Addressing system used to communicate precise change locations between collaborators

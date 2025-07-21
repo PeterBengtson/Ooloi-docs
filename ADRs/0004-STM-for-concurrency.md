@@ -35,3 +35,8 @@ Consequences:
 - Cons: 
   - Potential performance overhead for simple operations compared to atoms.
   - Learning curve for developers not familiar with STM concepts.
+
+## Related Decisions
+
+- [ADR-0000: Clojure](0000-Clojure.md) - Language choice providing STM as a core concurrency primitive
+- [ADR-0009: Collaboration](0009-Collaboration.md) - Collaborative editing features enabled by STM's automatic conflict resolution

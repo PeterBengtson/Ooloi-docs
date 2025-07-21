@@ -106,6 +106,12 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
    - Rejected due to performance concerns for complex score rendering and limitations in controlling print output precisely.
    - May be considered for future web-based versions, but not suitable for the core application where print quality is crucial.
 
+## Related Decisions
+
+- [ADR-0000: Clojure](0000-Clojure.md) - Language choice enabling JavaFX integration through excellent Java interop
+- [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural decision requiring frontend GUI framework choice
+- [ADR-0006: SMuFL](0006-SMuFL.md) - Musical symbol standard that will be rendered through JavaFX/Skija
+
 ## Notes
 
 - Regular performance benchmarking should be conducted, especially for large score rendering and printing.
