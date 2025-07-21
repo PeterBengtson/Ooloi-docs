@@ -1,381 +1,340 @@
-# ADR: Slur Formatting with Temporal Stream Processing
+# ADR: Slur Formatting with Convex Hull and Bézier Curves
 
-## Status: Accepted (Revised 20 July 2025)
+## Status: Accepted (Revised 21 July 2025)
 
 ## Context
 
-Ooloi needs to efficiently handle the creation, formatting, and rendering of slurs in musical notation. This builds upon Ooloi's existing attachment architecture, which already uses temporal stream processing for endpoint resolution.
+Ooloi needs to render slurs as smooth curves with variable thickness connecting musical elements across temporal spans. This requires solving the specific algorithmic challenge of converting a collection of discrete musical element positions into natural-looking slur curves that follow musical engraving conventions.
 
-The system involves three distinct architectural layers:
+The core challenges are:
 
-**Musical Hierarchy (Creation)**: Slurs are created as `ExtendsForward` attachments using the existing attachment system
-**Endpoint Resolution**: The `endpoint-item` multimethod already uses timewalker to locate attachment endpoints through temporal stream processing  
-**Visual Hierarchy (Formatting)**: Computing visual representations (Bézier curves) in the separate visual tree, lazily recomputed as needed
+1. **Point Collection**: Gathering x,y coordinates for all musical elements under a slur's span using temporal coordination
+2. **Shape Determination**: Converting scattered coordinate points into a natural slur shape that preserves note ordering
+3. **Variable Thickness Rendering**: Creating slur shapes that are thin at the endpoints and thick in the middle, requiring dual curves and fill
+4. **Visual Integration**: Storing the resulting curves in the appropriate MeasureView visual hierarchy structures
 
-This separation ensures:
-1. Musical relationships remain independent of visual representation
-2. Endpoint resolution leverages proven temporal stream patterns
-3. Visual formatting can be recomputed efficiently without affecting musical data
-4. The attachment resolver system provides intuitive string-based slur creation
-5. Lazy evaluation minimises computational overhead for large scores
+## Musical Slur Characteristics (Based on Traditional Engraving)
 
-The timewalker's temporal coordination transforms slur processing from complex manual traversal into elegant stream operations, building on established patterns for attachment endpoint resolution.
+Analysis of professional musical scores reveals these key slur formatting principles:
 
-Key architectural insights:
-- Slurs represent temporal-spatial relationships that map naturally to stream filtering
-- The timewalker's boundary control eliminates the need for bespoke search strategies
-- Trait-based filtering replaces manual type checking and nested structure handling
-- Temporal coordination ensures proper musical ordering for complex slur spans
+### Visual Examples
+
+![Basic slur and tie examples](../img/slur-1.png)
+
+*Figure 1: Basic slur vs. tie comparison showing thickness and curvature differences*
+
+![Slur placement examples](../img/slur-2.jpeg)  
+
+*Figure 2: Professional slur placement examples showing proper curvature and positioning*
+
+![Complex multi-slur passage](../img/slur-3.png)
+
+*Figure 3: Overlapping slurs in professional piano score showing nested curves and collision avoidance*
 
 ## Decision
 
-We will implement slur handling building upon Ooloi's existing attachment architecture:
-1. Slur creation using the established `ExtendsForward` attachment system
-2. Endpoint resolution leveraging existing timewalker-based `endpoint-item` multimethod
-3. Attachment resolver integration for intuitive string-based slur creation (`"slur"`)
-4. Visual formatting using temporal stream processing for point collection
-5. Position provider abstraction for accurate coordinate calculation
-6. Convex hull calculation for natural slur shape determination
-7. Bézier curve generation for smooth visual rendering
+We will implement slur formatting through:
+
+1. **General extent point collection** using `collect-extent-items` function that works for any spanning attachment
+2. **Convex half-hull calculation** to determine natural slur shape from collected points
+3. **Dual Bézier curve generation** using hull-derived control points to create variable thickness
+4. **Layout-aware coordinate retrieval** using composable transducers for x,y position calculation
+5. **MeasureView integration** storing top and bottom edge curves in the visual hierarchy
 
 ## Detailed Design
 
-### 1. Slur Creation Using Existing Attachment System
+### 1. General Extent Point Collection
 
 ```clojure
-(ns ooloi.slur-integration
-  (:require [ooloi.backend.models.core :refer :all]))
-
-;; Slur creation leverages existing attachment resolver and add-attachment API
-(defn create-slur-attachment [piece start-vpd end-vpd]
-  "Create slur using established attachment system - builds on existing patterns."
-  (add-attachment start-vpd piece "slur" end-vpd))
-
-;; Alternative: Direct attachment creation for programmatic use
-(defn create-slur-programmatic [piece start-vpd end-vpd]
-  "Create slur using direct attachment creation."
-  (let [slur (create-slur)]  ; Uses existing slur constructor
-    (add-attachment start-vpd piece slur end-vpd)))
-
-;; The attachment system automatically:
-;; 1. Resolves "slur" string to Slur instance via attachment-resolver
-;; 2. Generates endpoint-id for the end-vpd TakesAttachment item
-;; 3. Sets the endpoint-id on the slur attachment
-;; 4. Adds the slur to the start item's attachment vector
-;; 5. Marks visual hierarchy as needing recomputation
-```
-
-### 2. Endpoint Resolution (Already Implemented)
-
-```clojure
-;; The endpoint-item multimethod already uses timewalker for slur endpoint resolution
-;; This is the EXISTING implementation from ooloi.backend.models.traits.attachment
-
-(m/defmethod endpoint-item ::h/ExtendsForward
-  [piece attachment start-vpd]
-  "Existing implementation - slurs use this pattern for endpoint resolution."
-  (let [target-endpoint-id (:endpoint-id attachment)]
-    (if target-endpoint-id
-      (let [canonical-start-vpd (vpd/canonicalize start-vpd)
-            instrument-boundary-vpd (vec (take 4 canonical-start-vpd))
-            current-measure (or (get canonical-start-vpd 9) 0)
-            end-measure (+ current-measure MAX_LOOKAHEAD_MEASURES -1)
-            ;; Temporal stream processing - the pattern we use everywhere
-            result (first (sequence (comp 
-                                     (timewalk {:boundary-vpd instrument-boundary-vpd 
-                                               :start-measure current-measure
-                                               :end-measure end-measure})
-                                     (filter p/takes-attachment?)
-                                     (filter #(= target-endpoint-id (ta/get-endpoint-id (item %))))
-                                     (take 1))
-                                   [piece]))]
-        (or result [nil nil nil]))
-      [nil nil nil])))
-
-;; Usage: Find the endpoint of any slur
-(defn get-slur-endpoint [piece slur start-vpd]
-  "Get slur endpoint using existing endpoint-item multimethod."
-  (endpoint-item piece slur start-vpd))
-```
-
-### 3. Position Provider for Visual Coordinates
-
-```clojure
-(defprotocol PositionProvider
-  (pitch->coordinates [this pitch vpd] "Convert pitch to x,y coordinates"))
-
-(defrecord ScorePositionProvider [layout-context]
-  PositionProvider
-  (pitch->coordinates [this pitch vpd]
-    {:x (calculate-x-position pitch vpd layout-context)
-     :y (calculate-y-position pitch vpd layout-context)
-     :pitch pitch
-     :vpd vpd}))
-```
-
-### 4. Visual Hierarchy Formatting (Building on Attachment Patterns)
-
-```clojure
-(defn collect-slur-points [piece slur start-vpd position-provider]
-  "Collect points for slur rendering using same temporal pattern as endpoint resolution."
+(defn collect-extent-items
+  "Collect all musical items under any spanning attachment using timewalker.
+   Works for any attachment satisfying extends-forward? or extends-forward-to-next?"
+  [piece attachment start-vpd layout]
   (let [canonical-start-vpd (vpd/canonicalize start-vpd)
         instrument-boundary-vpd (vec (take 4 canonical-start-vpd))
         current-measure (or (get canonical-start-vpd 9) 0)
-        ;; Find the endpoint first using existing endpoint resolution
-        [end-item end-vpd end-position] (endpoint-item piece slur start-vpd)
+        ;; Find endpoint using existing attachment resolution
+        [end-item end-vpd end-position] (endpoint-item piece attachment start-vpd)
         end-measure (if end-vpd (or (get end-vpd 9) current-measure) 
                                 (+ current-measure MAX_LOOKAHEAD_MEASURES -1))]
     (if end-item
-      ;; Use temporal stream processing to collect all points between start and end
       (sequence (comp 
                  (timewalk {:boundary-vpd instrument-boundary-vpd 
                            :start-measure current-measure
                            :end-measure end-measure})
-                 (filter takes-attachment?)
-                 (filter #(temporal-between? % start-vpd end-vpd))  ; Within slur span
-                 (map (fn [result]
-                        (pitch->coordinates position-provider 
-                                           (item result) 
-                                           (vpd result)))))
+                 (filter takes-attachment?)  ; Only items that can have attachments
+                 (obtain-xy layout))  ; Transform to x,y coordinates
                 [piece])
-      [])))  ; No endpoint found, empty point collection
-
-(defn format-slur-visual [piece slur start-vpd position-provider]
-  "Compute visual representation - called lazily when visual hierarchy accessed."
-  (let [points (collect-slur-points piece slur start-vpd position-provider)]
-    (if (seq points)
-      (let [above? true  ; Could derive from slur placement or automatic detection
-            hull (calculate-hull points above?)
-            control-points (calculate-control-points hull above?)
-            curve-points (generate-bezier-curve control-points 100)]
-        {:type :bezier-curve
-         :points curve-points
-         :stroke-width 1.5
-         :fill nil})
-      nil)))  ; No points to render
-
-(defn lazy-slur-formatting [visual-tree piece slurs position-provider]
-  "Lazily compute slur visuals only when visual hierarchy is accessed."
-  (reduce (fn [tree [slur start-vpd]]
-            (when-let [visual-slur (format-slur-visual piece slur start-vpd position-provider)]
-              (add-visual-element tree (slur-visual-location slur) visual-slur)))
-          visual-tree
-          (filter #(needs-visual-update? (first %)) slurs)))
+      [])))
 ```
 
-### 5. Compositional Slur Processing (Building on Attachment Patterns)
+**Key Features**:
+- **General purpose**: Works for slurs, hairpins, ottavas, pedal markings - any `extends-forward?` attachment
+- **Temporal coordination**: Uses timewalker to ensure proper musical time ordering
+- **Layout awareness**: Uses `(obtain-xy layout)` transducer to get coordinates from specific layout
+- **Boundary scoping**: Limits search to relevant instrument for performance
+
+### 2. Layout Coordinate Transformation
 
 ```clojure
-(defn slur-processing-pipeline [position-provider]
-  "Reusable transducer for slur point processing."
-  (comp (filter takes-attachment?)
-        (map (fn [result]
-               (pitch->coordinates position-provider 
-                                  (item result) 
-                                  (vpd result))))))
-
-(defn process-slur-in-context [piece slur position-provider context]
-  "Process slur with specific temporal context (e.g., system, page)."
-  (let [scope (merge (slur-temporal-scope piece slur) context)]
-    (sequence (comp (timewalk scope)
-                    (filter #(within-slur? % slur))
-                    (slur-processing-pipeline position-provider))
-              [piece])))
+(defn obtain-xy 
+  "Composable transducer that transforms timewalker results to x,y coordinates.
+   Takes a layout and returns a transducer for use in timewalker pipelines."
+  [layout]
+  (map (fn [result]
+         (let [item (item result)
+               vpd (vpd result)
+               position (position result)]
+           {:x (calculate-x-coordinate item vpd layout)
+            :y (calculate-y-coordinate item vpd layout)
+            :item item
+            :vpd vpd
+            :position position}))))
 ```
 
-### 6. Hull Calculation (Unchanged - Still Optimal)
+**Design Principles**:
+- **Composable transducer**: Integrates seamlessly with timewalker pipelines
+- **Layout-specific**: Each layout may have different x,y positions due to transposition, spacing, etc.
+- **Complete information**: Preserves original timewalker result data alongside coordinates
+
+### 3. Slur-Specific Hull Calculation
 
 ```clojure
-(defn cross-product [[x1 y1] [x2 y2] [x3 y3]]
-  (- (* (- x2 x1) (- y3 y1))
-     (* (- y2 y1) (- x3 x1))))
-
-(defn calculate-hull [points above?]
-  "Calculate upper or lower convex hull preserving left-to-right order."
+(defn calculate-slur-hull [points above?]
+  "Calculate upper or lower convex hull for slur shape, preserving left-to-right order.
+   Points are already in temporal order from timewalker - no sorting required."
   (let [comparator (if above? <= >=)]
     (reduce (fn [hull point]
-              (loop [h hull]
-                (if (and (>= (count h) 2)
-                         (comparator (cross-product (peek (pop h)) (peek h) point) 0))
-                  (recur (pop h))
-                  (conj h point))))
+              (loop [hull hull]
+                (if (and (>= (count hull) 2)
+                         (comparator (cross-product (peek (pop hull)) (peek hull) point) 0))
+                  (recur (pop hull))
+                  (conj hull point))))
             [] points)))
+
+(defn cross-product [p1 p2 p3]
+  "Calculate cross product for hull computation."
+  (- (* (- (:x p2) (:x p1)) (- (:y p3) (:y p1)))
+     (* (- (:y p2) (:y p1)) (- (:x p3) (:x p1)))))
 ```
 
-### 7. Bézier Curve Generation (Unchanged - Still Optimal)
+**Why Convex Hull for Slurs**:
+- **Preserves note order**: Timewalker provides temporal order, maintaining left-to-right musical sequence without sorting
+- **Natural shape**: Upper/lower hull matches traditional slur placement
+- **Collision avoidance**: Hull naturally avoids note heads and stems
+- **Mathematical stability**: O(n) algorithm, numerically stable
+
+### 4. Bézier Curve Generation with Variable Thickness
+
+#### Traditional Engraving Standards
+
+Based on analysis of professional musical scores, these parameters guide the implementation:
+
+**Slur Height Guidelines:**
+- **Short slurs** (2-4 notes): 1.5-2 staff spaces above note heads
+- **Medium slurs** (5-8 notes): 2-3 staff spaces above note heads  
+- **Long slurs** (9+ notes or cross-barline): 3-4 staff spaces above note heads
+- **Clearance**: Minimum 0.5 staff space between slur and note heads/stems
+
+**Thickness Standards:**
+- **Endpoint thickness**: 0.08-0.1 staff spaces (very fine)
+- **Midpoint thickness**: 0.12-0.15 staff spaces (subtly thicker)
+- **Ratio**: Midpoint should be 1.2-1.5× thicker than endpoints
+
+**Curvature Characteristics:**
+- **Control point placement**: 30% and 70% along horizontal span
+- **Natural arc**: Follows mathematical curves, not manual sketching
+- **Consistency**: Similar spans should produce similar curvature
+- **Cross-barline**: Maintains smooth arc across measure boundaries
+
+**Placement Rules:**
+- **Single-voice passages**: Slurs always go on the side where the noteheads are, not the stems
+- **Multi-voice contexts**: Different voices use opposite slur directions when possible
+- **Collision avoidance**: Must clear note heads, stems, beams, and accidentals
+- **Voice separation**: Upper voice slurs typically above, lower voice slurs below
+
+#### Implementation Note: User-Configurable Parameters
+
+All formatting parameters (thickness values, height scaling, clearance distances, control point ratios) will be user-accessible through Ooloi's settings system. The code examples below use representative values for clarity, but the production implementation will reference configurable settings rather than hardcoded constants. This enables users to match different publishing houses' style guidelines or personal preferences.
 
 ```clojure
-(defn calculate-control-points [hull above?]
-  "Generate control points for smooth Bézier curve from hull."
+(defn generate-slur-curves [hull above?]
+  "Generate top and bottom Bézier curves for slur with variable thickness."
   (let [start (first hull)
         end (last hull)
         extreme-point (apply (if above? max-key min-key) :y hull)
-        offset (if above? 10 -10)
-        control1 {:x (+ (:x start) (* 0.25 (- (:x end) (:x start))))
-                  :y (+ (:y extreme-point) offset)}
-        control2 {:x (+ (:x start) (* 0.75 (- (:x end) (:x start))))
-                  :y (+ (:y extreme-point) offset)}]
-    [start control1 control2 end]))
-
-(defn bezier-point [t [p0 p1 p2 p3]]
-  "Calculate point on cubic Bézier curve at parameter t."
-  (let [t1 (- 1 t)
-        t2 (* t t)
-        t3 (* t2 t)]
-    {:x (+ (* t1 t1 t1 (:x p0))
-           (* 3 t1 t1 t (:x p1))
-           (* 3 t1 t2 (:x p2))
-           (* t3 (:x p3)))
-     :y (+ (* t1 t1 t1 (:y p0))
-           (* 3 t1 t1 t (:y p1))
-           (* 3 t1 t2 (:y p2))
-           (* t3 (:y p3)))}))
-
-(defn generate-bezier-curve [control-points steps]
-  "Generate points along Bézier curve for rendering."
-  (map #(bezier-point (/ % steps) control-points) (range (inc steps))))
+        slur-span (- (:x end) (:x start))
+        ;; Height scales with span: 1.5 staff spaces for short slurs, up to 4 for very long spans
+        base-height (+ 1.5 (* 0.1 (min 25 (/ slur-span 4))))
+        curve-height (if above? base-height (- base-height))
+        ;; Variable thickness in staff space units (typical: 0.1-0.15 staff spaces)
+        thickness-start 0.08  ; Very thin at endpoints 
+        thickness-middle 0.12  ; Slightly thicker in middle
+        ;; Clearance above/below notes (0.5 staff spaces minimum)
+        note-clearance (if above? 0.5 -0.5)
+        
+        ;; Control points for natural slur curvature
+        ;; Horizontal position: 30% and 70% along the span (creates pleasing curve)
+        ;; Vertical position: based on extreme point plus curve height plus clearance
+        top-control1 {:x (+ (:x start) (* 0.3 slur-span))
+                      :y (+ (:y extreme-point) curve-height note-clearance)}
+        top-control2 {:x (+ (:x start) (* 0.7 slur-span))
+                      :y (+ (:y extreme-point) curve-height note-clearance)}
+        
+        ;; Bottom curve control points (offset for thickness)
+        bottom-start {:x (:x start) 
+                      :y (+ (:y start) (if above? (- thickness-start) thickness-start))}
+        bottom-end {:x (:x end)
+                    :y (+ (:y end) (if above? (- thickness-start) thickness-start))}
+        bottom-control1 {:x (:x top-control1)
+                         :y (+ (:y top-control1) (if above? (- thickness-middle) thickness-middle))}
+        bottom-control2 {:x (:x top-control2)
+                         :y (+ (:y top-control2) (if above? (- thickness-middle) thickness-middle))}]
+    
+    {:top-curve {:start start
+                 :control1 top-control1
+                 :control2 top-control2
+                 :end end}
+     :bottom-curve {:start bottom-start
+                    :control1 bottom-control1
+                    :control2 bottom-control2
+                    :end bottom-end}}))
 ```
 
-### 8. Complete Integration (Attachment System + Visual Formatting)
+**Variable Thickness Design**:
+- **Two curves**: Top edge and bottom edge of the slur shape
+- **Thin at ends**: Minimal thickness at start/end points (0.08 staff spaces)
+- **Thick in middle**: Maximum thickness at control points (0.12 staff spaces) 
+- **Adaptive height**: Scales from 1.5 staff spaces (short slurs) to ~4 staff spaces (long spans)
+- **Note clearance**: Maintains 0.5 staff space minimum clearance from note heads
+- **Fill between**: Graphics system fills the area between the two curves
+
+### 5. Complete Slur Formatting Pipeline
 
 ```clojure
-(defn create-and-format-slur 
-  "Complete slur workflow: creation through attachment system + visual formatting."
-  [piece start-vpd end-vpd position-provider]
-  ;; 1. Create slur using existing attachment system
-  (let [updated-piece (add-attachment start-vpd piece "slur" end-vpd)
-        ;; 2. Retrieve the created slur using existing attachment API
-        slur (last (get-attachments (retrieve start-vpd updated-piece)))
-        ;; 3. Use existing endpoint resolution to verify connection
-        endpoint-result (endpoint-item updated-piece slur start-vpd)
-        ;; 4. Generate visual representation if endpoint found
-        visual-slur (when (first endpoint-result)
-                     (format-slur-visual updated-piece slur start-vpd position-provider))]
-    {:piece updated-piece
-     :slur slur
-     :start-vpd start-vpd
-     :endpoint endpoint-result
-     :visual visual-slur}))
+(defn format-slur [piece slur start-vpd layout above?]
+  "Complete slur formatting: point collection → hull calculation → dual Bézier generation."
+  (let [points (collect-extent-items piece slur start-vpd layout)]
+    (if (>= (count points) 2)  ; Need at least start and end points
+      (let [hull (calculate-slur-hull points above?)
+            curves (generate-slur-curves hull above?)]
+        {:type :slur
+         :points points
+         :hull hull
+         :top-curve (:top-curve curves)      ; Top edge Bézier curve
+         :bottom-curve (:bottom-curve curves) ; Bottom edge Bézier curve
+         :above? above?})
+      nil)))  ; Not enough points to form a slur
 
-(defn batch-slur-formatting [piece slur-definitions position-provider]
-  "Process multiple slurs efficiently using existing attachment patterns."
-  (reduce (fn [acc-piece [start-vpd end-vpd]]
-            (let [result (create-and-format-slur acc-piece start-vpd end-vpd position-provider)]
-              (:piece result)))
-          piece
-          slur-definitions))
+(defn add-slur-to-measure-view [measure-view slur-data]
+  "Add formatted slur curves to MeasureView curves vector."
+  (-> measure-view
+      (add-curve (:top-curve slur-data))
+      (add-curve (:bottom-curve slur-data))))
 
-;; Integration with existing attachment resolver system
-(defn intuitive-slur-creation [piece]
-  "Demonstrate string-based slur creation using attachment resolver."
-  (-> piece
-      ;; These all create slurs using the existing "slur" string resolution
-      (add-attachment [:m 0 0 0 0 0 :items 0] "slur" [:m 0 0 0 0 0 :items 3])  ; Phrase slur
-      (add-attachment [:m 0 0 0 0 1 :items 0] "slur" [:m 0 0 0 0 1 :items 1])  ; Short slur
-      (add-attachment [:m 0 0 0 0 2 :items 0] "slur" [:m 0 0 0 0 4 :items 2]))) ; Cross-measure slur
-
-;; Visual formatting happens lazily when visual hierarchy is accessed
-(defn render-page-slurs [visual-tree piece page-boundary position-provider]
-  "Render only slurs visible on current page - leverages lazy computation."
-  (let [page-slurs (find-slurs-in-boundary piece page-boundary)]
-    (reduce (fn [tree [slur start-vpd]]
-              (if-let [visual-slur (format-slur-visual piece slur start-vpd position-provider)]
-                (add-visual-element tree (slur-visual-location slur start-vpd) visual-slur)
-                tree))
-            visual-tree
-            page-slurs)))
+;; Usage example
+(defn render-slur-in-layout [piece slur start-vpd layout measure-view]
+  "Render slur using layout-specific coordinates and add to MeasureView."
+  (when-let [slur-data (format-slur piece slur start-vpd layout true)]
+    (add-slur-to-measure-view measure-view slur-data)))
 ```
+
+**Visual Hierarchy Integration**:
+- **Destination**: Slur curves are added to the `curves` vector in `MeasureView` records
+- **Two curves per slur**: Top edge and bottom edge curves enable variable thickness rendering
+- **Fill rendering**: Graphics system fills the area between the two curves to create the slur shape
+
+### Edge Cases and Special Handling
+
+Based on analysis of professional scores, the algorithm must handle:
+
+1. **Overlapping slurs**: Multiple simultaneous slurs on same staff (see Image 3)
+   - Inner slurs should have slightly less curvature
+   - Outer slurs should arc higher to avoid collision
+   - Maintain consistent thickness regardless of nesting
+
+2. **Very short slurs**: Two-note slurs require special treatment
+   - Minimum arc height of 1.5 staff spaces even for adjacent notes
+   - Avoid overly flat curves that look like ties
+
+3. **Cross-system slurs**: Slurs spanning line breaks
+   - Break into two curves: end-of-line and start-of-next-line
+   - Maintain visual continuation across the break
+   - Consistent styling between segments
+
+4. **Stem direction conflicts**: Slurs interacting with beam groups
+   - Above-staff slurs when stems point down
+   - Below-staff slurs when stems point up  
+   - Dynamic adjustment based on beam height
+
+5. **Accidental collisions**: Sharps, flats, naturals affecting slur placement
+   - Additional clearance for accidentals (0.25 staff spaces)
+   - Slur may need to arc higher to clear tall accidentals
 
 ## Rationale
 
-### Building on Established Architecture
+### Algorithm Choices
 
-1. **Existing Attachment System**: Slur creation leverages the proven `add-attachment` API and attachment resolver system, requiring no new musical hierarchy patterns.
+1. **General extent collection**: `collect-extent-items` works for any spanning attachment, enabling code reuse across slurs, hairpins, ottavas, etc.
 
-2. **Proven Endpoint Resolution**: The `endpoint-item` multimethod already uses timewalker with identical temporal stream patterns for finding attachment endpoints.
+2. **Timewalker integration**: Ensures proper temporal coordination and handles nested musical structures automatically.
 
-3. **Consistent API Patterns**: String-based attachment creation (`"slur"`) follows established attachment resolver conventions used throughout the system.
+3. **Layout abstraction**: `(obtain-xy layout)` transducer allows same algorithm to work with different layout contexts (transposed parts, different spacing, etc.).
 
-4. **Architectural Separation**: Musical relationships (attachment system) remain completely separate from visual computation (lazy visual hierarchy), following existing design principles.
+4. **Convex hull approach**: Superior to polynomial fitting or manual control points for musical applications - preserves note ordering and avoids collisions naturally.
 
-5. **Temporal Stream Processing**: Visual point collection uses the same timewalker patterns as endpoint resolution, ensuring consistency across the codebase.
+5. **Dual Bézier curves**: Creates filled slur shape with variable thickness (thin at ends, thick in middle) using two edge curves stored in MeasureView.
 
-6. **Lazy Visual Computation**: Visual hierarchy elements (Bézier curves) are computed only when needed, consistent with existing visual formatting approaches.
+6. **Single-staff focus**: Simplifies implementation while covering the majority of slur cases. Multi-staff spanning can be addressed in future iterations.
 
-### Technical Benefits
+### Performance Characteristics
 
-1. **Clean Architectural Separation**: Musical hierarchy remains pure whilst visual hierarchy contains only rendering elements
-2. **Lazy Visual Computation**: Bézier curves computed only when visual hierarchy is accessed  
-3. **No Adaptive Search Required**: Timewalker provides optimal traversal by design
-4. **Natural Boundary Handling**: VPD scope control handles complex slur spans automatically  
-5. **Trait System Integration**: Robust element identification without manual type checking
-6. **Temporal Guarantees**: Items arrive in proper musical time order
-7. **Memory Efficiency**: Lazy evaluation processes only what's needed
-8. **Visual Independence**: Musical changes don't immediately trigger visual recomputation
-
-### What This Approach Avoids
-
-- **New Attachment Patterns**: No need to create slur-specific attachment handling
-- **Duplicate Endpoint Logic**: Visual point collection reuses existing endpoint resolution patterns
-- **Custom Search Strategies**: Timewalker provides all necessary traversal capabilities
-- **API Inconsistency**: Slur creation follows established attachment resolver conventions
-- **Architectural Fragmentation**: Visual formatting builds on proven lazy computation patterns
-
-### What This Approach Provides
-
-- **Seamless Integration**: Slurs work like any other attachment with existing APIs
-- **Proven Reliability**: Endpoint resolution inherits battle-tested timewalker patterns
-- **Intuitive Creation**: `(add-attachment start-vpd piece "slur" end-vpd)` follows established conventions
-- **Efficient Rendering**: Visual computation leverages existing lazy evaluation architecture
-- **Pattern Consistency**: Same temporal stream processing across all attachment types
+- **Time Complexity**: O(n) for hull calculation where n = points under slur. Dual Bézier curve generation is O(1).
+- **Memory**: Linear in number of points under slur, plus constant storage for 8 control points (2 curves × 4 points each)
+- **Scalability**: Boundary scoping limits processing to single instrument
+- **Composability**: All operations use transducers for efficient pipeline composition
 
 ## Consequences
 
 ### Positive
 
-- **Zero Architectural Risk**: Builds entirely on proven attachment system patterns
-- **Immediate API Consistency**: Slurs work with existing attachment APIs without modification
-- **Proven Reliability**: Endpoint resolution inherits battle-tested timewalker temporal coordination
-- **Intuitive User Experience**: String-based creation (`"slur"`) follows established attachment resolver conventions
-- **Performance by Design**: Lazy visual computation leverages existing visual hierarchy patterns
-- **Pattern Reuse**: Same temporal stream processing works for all attachment types (ties, hairpins, glissandos)
-- **Robust Error Handling**: Trait-based filtering provides existing safety guarantees
-- **Memory Efficiency**: Visual curves computed only when rendering, following established lazy evaluation
-- **Development Velocity**: No new patterns to learn - leverages existing knowledge
+- **Natural slur shapes**: Hull algorithm produces curves matching traditional engraving
+- **Code reuse**: `collect-extent-items` works for all spanning attachments
+- **Layout flexibility**: Same algorithm works with different layout contexts
+- **Mathematical stability**: Convex hull and Bézier algorithms are numerically robust
+- **Performance**: Efficient algorithms suitable for interactive editing
+- **Rendering compatibility**: Dual Bézier curves with variable thickness integrate with MeasureView visual hierarchy
+- **Professional appearance**: Variable thickness (thin at ends, thick in middle) matches traditional music engraving
 
 ### Negative
 
-- **None Identified**: This approach builds entirely on existing, proven architecture without introducing new complexity or risk
+- **Complexity**: More sophisticated than simple straight-line connections
+- **Single-staff limitation**: Multi-staff slurs require additional complexity
+- **Hull limitations**: May not handle all complex slur shape requirements
 
 ### Neutral
 
-- **Hull Calculation Unchanged**: Geometric algorithms remain optimal as originally designed
-- **Position Provider Required**: Coordinate calculation abstraction still needed for visual formatting
-- **Bézier Generation Unchanged**: Curve mathematics remain optimal from original design
-- **Learning Curve**: Developers already familiar with attachment system can immediately work with slurs
+- **Domain-specific**: Optimized for musical applications rather than general curve fitting
+- **Layout dependency**: Requires coordinate calculation from layout system
 
 ## Implementation Notes
 
-1. **Leverage Existing Patterns**: No new attachment architecture required - slurs integrate seamlessly with existing `add-attachment` and `endpoint-item` APIs
-2. **Reuse Timewalker Patterns**: Visual point collection follows identical temporal stream patterns as existing endpoint resolution
-3. **Attachment Resolver Integration**: Slur string resolution (`"slur"`) already implemented in existing attachment resolver system
-4. **Visual Hierarchy Integration**: Lazy computation follows existing visual formatting patterns without modification
-5. **Performance Optimization**: Inherit all existing timewalker performance characteristics (early termination, boundary scoping, etc.)
-6. **Testing Strategy**: Build on existing attachment system test patterns - no new testing paradigms required
+1. **Test with real musical examples**: Validate hull algorithm produces acceptable slur shapes
+2. **Coordinate system calibration**: Ensure staff space unit = 1.0 corresponds to actual staff line spacing
+3. **Visual validation targets**:
+   - Simple 2-4 note slurs should match Image 1 characteristics
+   - Cross-barline slurs should maintain smooth arcs like Image 2
+   - Complex multi-slur passages should handle overlaps like Image 3
+4. **Optimize coordinate calculation**: Ensure `(obtain-xy layout)` performs efficiently in timewalker pipelines  
+5. **Validate curve smoothness**: Adjust Bézier control point algorithm for optimal visual results
+6. **Performance benchmarking**: Measure algorithm performance with large musical spans
+7. **Multi-staff preparation**: Design allows future extension to cross-staff slurs
+8. **Typography compatibility**: Ensure slur thickness works well with different staff sizes and music fonts
 
 ## Future Considerations
 
-1. **Universal Attachment Patterns**: All spanning elements (ties, hairpins, glissandos, ottavas) follow identical patterns established by slur implementation
-2. **Enhanced Visual Debugging**: Existing attachment system debugging tools automatically work with slur endpoint resolution
-3. **Performance Optimization**: Leverage existing timewalker optimizations without slur-specific modifications
-4. **Parallel Processing**: Existing attachment processing patterns enable concurrent slur rendering without additional complexity
-5. **Machine Learning Integration**: Temporal stream patterns provide natural data feeds for ML curve optimization
-6. **Cross-Platform Consistency**: Attachment system abstractions ensure consistent slur behavior across all deployment scenarios
-
-## Meta-Insight
-
-This implementation demonstrates that **architectural maturity** enables **effortless feature integration**. Rather than building new systems, slurs emerge naturally from existing attachment architecture patterns.
-
-The timewalker's temporal stream processing, combined with the proven attachment system, creates a **composable musical computing platform** where complex features like slur rendering become simple applications of established patterns.
-
-This validates the original architectural decisions: **musical relationships** (attachment system) and **visual computation** (lazy hierarchy) separate cleanly, while **temporal coordination** (timewalker) bridges them seamlessly. Slurs don't require new architecture - they demonstrate the power of existing architecture applied consistently.
+1. **Multi-staff slurs**: Extend hull algorithm to handle slurs spanning multiple staves
+2. **Adaptive control points**: Adjust Bézier curves based on musical context
+3. **Collision detection**: Enhance hull to explicitly avoid other musical elements
+4. **Alternative curves**: Investigate other curve types for special musical contexts
+5. **Interactive editing**: Users should be able to manually adjust slurs and ties onscreen through direct manipulation - dragging control points, adding control points, modifying thickness. When dragging control points, the system will move the upper and lower arc control points together as a unified pair rather than separately.
