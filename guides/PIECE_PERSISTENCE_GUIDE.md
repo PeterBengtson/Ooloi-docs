@@ -57,8 +57,8 @@ Ooloi's persistence system provides sophisticated asynchronous save and load ope
 
 **Architecture Foundation:**
 - **Agent-based concurrency**: Two dedicated agents for save and load operations
-- **Pure tree structure**: Leverages Ooloi's immutable musical hierarchy (ADR-0010, ADR-0012)
-- **Nippy serialization**: Binary format with built-in compression and encryption support (ADR-0007)
+- **Pure tree structure**: Leverages Ooloi's immutable musical hierarchy ([ADR-0010: Pure Trees](../ADRs/0010-Pure-Trees.md), [ADR-0012: Persisting Pieces](../ADRs/0012-Persisting-Pieces.md))
+- **Nippy serialization**: Binary format with built-in compression and encryption support ([ADR-0007: Nippy](../ADRs/0007-Nippy.md))
 - **Integration layer**: Seamless integration with piece manager for complete lifecycle management
 
 ## Prerequisites

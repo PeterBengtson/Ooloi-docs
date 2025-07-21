@@ -85,7 +85,7 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 ## Implementation Approach
 
 ### 1. Communication Architecture
-- **gRPC with Java interop** for frontend-backend communication (see ADR-0002)
+- **gRPC with Java interop** for frontend-backend communication (see [ADR-0002: gRPC](0002-gRPC.md))
 - **Protocol Buffers** for efficient serialization of musical data structures
 - **Bi-directional streaming** for real-time score updates and collaboration
 

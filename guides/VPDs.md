@@ -4,7 +4,7 @@
 
 Vector Path Descriptors (VPDs) are a powerful feature in Ooloi that allow for efficient and flexible navigation and manipulation of the musical piece structure. They provide a consistent way to reference and modify nested elements within a piece, streamlining operations across the entire codebase.
 
-For background on why VPDs were chosen as the primary addressing mechanism in Ooloi, see the [VPDs ADR](/ADRs/0008-VPDs.md).
+For background on why VPDs were chosen as the primary addressing mechanism in Ooloi, see the [VPDs ADR](../ADRs/0008-VPDs.md).
 
 ## What are VPDs?
 
