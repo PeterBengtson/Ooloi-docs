@@ -304,7 +304,7 @@ Ooloi uses a carefully structured namespace organization to eliminate circular d
 
 This gives you access to:
 - **All constructors**: `create-pitch`, `create-chord`, `create-measure`, etc.
-- **All predicates**: `pitch?`, `chord?`, `measure?`, etc.
+- **All predicates**: `pitch?`, `chord?`, `measure?` (raw items), plus `pitch??`, `chord??`, `measure??` (timewalk tuples), etc.
 - **All multimethods**: `get-duration`, `add-item`, `set-name`, etc.
 
 **Why this works**: The `core` namespace is the unified entry point that re-exports everything you need from the entire Ooloi system.
@@ -318,10 +318,10 @@ This gives you access to:
 - **How to import**: `[ooloi.backend.models.core :refer :all]`
 
 #### 2. `ooloi.backend.models.predicates` - **FOR ARCHITECTURE-CONSTRAINED FILES**
-- **What it is**: Type checking functions (pitch?, chord?, measure?, etc.)
-- **What it contains**: Only type predicates
+- **What it is**: Type checking functions (pitch?, chord?, measure?, etc. for raw items, plus pitch??, chord??, measure??, etc. for timewalk tuples)
+- **What it contains**: Both `?` predicates (raw items) and `??` predicates (timewalk tuples) 
 - **When to use**: In model files, trait files, or when you can't import core
-- **How to import**: `[ooloi.backend.models.predicates :refer [pitch? chord?]]` (selective)
+- **How to import**: `[ooloi.backend.models.predicates :refer [pitch? pitch?? chord?]]` (selective)
 
 #### 3. `ooloi.backend.models.interfaces` - **FOR ARCHITECTURE-CONSTRAINED FILES**
 - **What it is**: Multimethod definitions (method signatures only)
@@ -413,7 +413,8 @@ Use the core namespace with `:refer :all` for clean, readable code:
 
 ;; All functions available unqualified:
 (create-pitch :note :C4 :duration 1/4)  ; Constructor
-(pitch? some-item)                       ; Predicate
+(pitch? some-item)                       ; Predicate for raw items
+(pitch?? some-tuple)                     ; Predicate for timewalk tuples
 (get-duration some-item)                 ; Multimethod
 ```
 
@@ -440,8 +441,9 @@ These files CANNOT import core (would create circular dependencies). Use selecti
             [ooloi.backend.models.predicates :refer [pitch? rhythmic-item?]]))
 
 ;; Clean, unqualified predicates
-(pitch? item)
-(rhythmic-item? item)
+(pitch? item)                ; For raw items
+(pitch?? tuple)              ; For timewalk tuples (if needed)
+(rhythmic-item? item)        ; Behavioral predicate
 ;; Qualified multimethods
 (i/get-duration item)
 ```

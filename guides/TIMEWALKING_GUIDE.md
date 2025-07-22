@@ -63,34 +63,42 @@ With this information, you can:
 - **Know its location**: Navigate to related elements using the VPD
 - **Know its timing**: Place it correctly in time for MIDI or formatting
 
-### Essential Helper Functions for Tuple Destructuring
+### Essential Tuple Helpers and Predicates
 
-Since the `timewalk` function returns `[item vpd position]` tuples, these helper functions extract the components and provide type predicates:
+Since the `timewalk` function returns `[item vpd position]` tuples, Ooloi provides both helper functions for tuple destructuring and specialized `??` predicates for filtering. These `??` predicates are counterparts to the normal `?` predicates, designed specifically for timewalk tuples and require a 3-element vector as input:
 
 ```clojure
-;; Core destructuring helpers
-(defn item [result] (first result))           ; Extract the musical object
-(defn vpd [result] (second result))           ; Extract the location path  
-(defn position [result] (nth result 2))       ; Extract the rhythmic position
+;; Core destructuring helpers (from timewalk.clj)
+(item result)      ; Extract the musical object (first element)
+(vpd result)       ; Extract the location path (second element)  
+(position result)  ; Extract the rhythmic position (third element)
 
-;; Type predicate helpers (one example shown, others follow same pattern)
-(defn pitch? [result] (isa? (type (item result)) ::h/Pitch))
-;; Similarly: chord?, measure?, rest?, tuplet?, tremolando?, voice?, staff?, etc.
-
-;; Trait-based helpers for behavioral filtering  
-(defn rhythmic-item? [result] (isa? (type (item result)) ::h/RhythmicItem))
-(defn takes-attachment? [result] (isa? (type (item result)) ::h/TakesAttachment))
-(defn has-items? [result] (isa? (type (item result)) ::h/HasItems))
-;; Plus attachment types: slur?, tie?, hairpin?, dynamic?, articulation?, etc.
+;; Specialized ?? predicates - counterparts to normal ? predicates for timewalk tuples
+;; The ?? symbolizes "descending into tuple" to check the item type
+;; These REQUIRE a 3-element tuple [item vpd position] or will signal an error
+(pitch?? result)          ; Counterpart to pitch? - checks if tuple contains a pitch
+(chord?? result)          ; Counterpart to chord? - checks if tuple contains a chord  
+(measure?? result)        ; Counterpart to measure? - checks if tuple contains a measure
+(rhythmic-item?? result)  ; Counterpart to rhythmic-item? - checks behavioral trait
+(takes-attachment?? result) ; Counterpart to takes-attachment? - checks behavioral trait
+;; All normal ? predicates have ?? counterparts for timewalk contexts
 ```
 
-**Why these helpers matter:**
+**Why ?? predicates exist - timewalking is central to Ooloi:**
 ```clojure
-;; Without helpers - repetitive and error-prone
-(filter (fn [[item _ _]] (isa? (type item) ::h/Pitch)) results)
+;; Manual tuple destructuring - repetitive and error-prone
+(filter (fn [[item _ _]] (isa? (type item) ::h/Pitch)) timewalk-results)
 
-;; With helpers - focuses on musical intent
-(filter pitch? results)
+;; With ?? predicates - clean and focused on musical intent
+(filter pitch?? timewalk-results)
+
+;; Clear separation: ? for raw items, ?? for timewalk tuples
+(pitch? raw-item)      ; ✓ Normal predicate for raw musical item
+(pitch?? tuple-result)  ; ✓ Counterpart predicate for timewalk tuple [item vpd position]
+
+;; Error prevention - ?? predicates validate their input
+(pitch?? raw-item)      ; ✗ IllegalArgumentException - expects 3-element tuple
+(pitch?? [item vpd pos]) ; ✓ Correct usage with tuple
 ```
 
 These helpers transform the timewalker from a low-level traversal tool into a readable musical analysis API.
@@ -102,12 +110,12 @@ Before diving into examples, you need to understand `->>` (pronounced "thread-la
 ```clojure
 ;; Instead of nesting functions like this (hard to read):
 (take 10 (map #(:note (item %)) 
-              (filter pitch? 
+              (filter pitch?? 
                       (timewalk piece {:boundary-vpd voice-vpd}))))
 
 ;; We use ->> to thread the result through each step:
 (->> (timewalk piece {:boundary-vpd voice-vpd})  ; Start with this
-     (filter pitch?)                                 ; Pass result to filter
+     (filter pitch??)                                ; Pass result to filter (note: ??)
      (map #(:note (item %)))                         ; Pass result to map  
      (take 10))                                      ; Pass result to take
 ```
@@ -131,7 +139,7 @@ Before diving into examples, you need to understand `->>` (pronounced "thread-la
 ```clojure
 ;; This looks like it creates intermediate collections, but it doesn't
 (->> (timewalk piece {:boundary-vpd voice-vpd})  ; Lazy sequence
-     (filter pitch?)                                 ; Still lazy
+     (filter pitch??)                                ; Still lazy (note: ??)
      (map #(:note (item %)))                         ; Still lazy  
      (take 10))                                      ; Still lazy, only realizes 10 items
 ```
@@ -145,7 +153,7 @@ There's also `->` (thread-first) which inserts as the **first argument**:
 ```clojure
 ;; ->> (thread-last) - for collections and data transformations
 (->> (timewalk piece {:boundary-vpd voice-vpd})
-     (filter pitch?)
+     (filter pitch??)
      (map #(:note (item %))))
 
 ;; -> (thread-first) - for objects and method calls  
@@ -176,7 +184,7 @@ Let's start with practical examples that show the power of this approach.
 (def voice-vpd [:musicians 0 :instruments 0 :staves 0 :voices 0])
 
 (->> (timewalk piece {:boundary-vpd voice-vpd})
-     (filter pitch?)
+     (filter pitch??)
      (map item))  ; Extract just the pitch objects
 ;; => [#Pitch{:note "C4"} #Pitch{:note "E4"} #Pitch{:note "G4"} ...]
 ```
@@ -1208,18 +1216,18 @@ Elements come in temporal order with proper layout data:
 ```clojure
 ;; GOOD: Efficient filtering early in chain with early termination
 (comp (timewalk {:boundary-vpd voice-vpd})
-      (filter pitch?)
+      (filter pitch??)
       (take 10)           ; Early termination - stops after 10 pitches
       (map analyze-harmony))
 
 ;; LESS EFFICIENT: Expensive operations before filtering
 (comp (timewalk {:boundary-vpd voice-vpd})
       (map expensive-analysis)
-      (filter pitch?))
+      (filter pitch??))
 
 ;; EXCELLENT: Combine filtering with take for maximum efficiency
 (->> (timewalk piece {:boundary-vpd voice-vpd})
-     (filter pitch?)
+     (filter pitch??)
      (take 5)  ; Stop after first 5 pitches
      (map item))  ; Extract just the pitch objects
 ```
@@ -1270,7 +1278,7 @@ Elements come in temporal order with proper layout data:
 (filter (fn [[item _ _]] (isa? (type item) ::h/Pitch)) results)
 
 ;; Clear and maintainable  
-(filter pitch? results)
+(filter pitch?? results)
 ```
 
 ### ❌ Ignoring Temporal Coordination Benefits
