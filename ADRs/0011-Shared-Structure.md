@@ -24,10 +24,10 @@ Key considerations:
 7. **Composability**: Processing operations should compose efficiently without intermediate collections.
 
 Additional context:
-- Connecting elements can vary greatly in length and complexity, from simple [ties and short slurs](#image-1) to [longer slurs inside measures](#image-2).
-- In complex musical pieces, slurs can span [across multiple staves and voices](#image-3).
-- Dynamic hairpins and ties can [span across multiple measures](#image-5), requiring efficient handling of measure boundaries.
-- Extreme cases exist where slurs can span [entire systems or pages](#image-4), as seen in Sorabji's "Opus Clavicembalisticum IX".
+- Connecting elements can vary greatly in length and complexity, from simple ties and short slurs (see [slur-1.png](../img/slur-1.png)) to longer slurs within and across measures (see [slur-2.jpeg](../img/slur-2.jpeg)).
+- In complex musical pieces, slurs can span across multiple staves and voices (see [slur-3.png](../img/slur-3.png)).
+- Dynamic hairpins and ties can span across multiple measures (see [hairpin-1.png](../img/hairpin-1.png)), requiring efficient handling of measure boundaries.
+- Extreme cases exist where slurs can span entire systems or pages (see [slur-4.png](../img/slur-4.png)), as seen in Sorabji's "Opus Clavicembalisticum IX".
 - Ties always connect to the next identical pitch, making them a special case for optimization.
 - Formatting slurs and dynamic hairpins requires special consideration: When these elements are encountered, all relevant musical elements under them must be collected to calculate the required presentation data.
 - The timewalker system provides temporal coordination guarantees essential for musical processing.
@@ -241,10 +241,10 @@ This approach provides:
 
 The shared structure system handles a wide range of spanning musical elements:
 
-- **Simple connections**: Ties between identical pitches, basic slurs over a few notes
-- **Cross-measure elements**: Dynamic hairpins (crescendo/diminuendo) spanning multiple measures
+- **Simple connections**: Ties between identical pitches, basic slurs over a few notes within measures
+- **Cross-measure elements**: Slurs and dynamic hairpins (crescendo/diminuendo) spanning multiple measures and voices
 - **Multi-staff elements**: Slurs connecting notes across different staves in piano music
-- **System-wide elements**: Long slurs spanning entire musical systems in complex works
+- **System-wide elements**: Long slurs spanning entire musical systems in complex orchestral works
 - **Other spanning attachments**: Glissandos, ottava markings, pedal markings, and other elements that extend across musical time
 
 For a detailed implementation example, see [ADR-0013: Slur Formatting](0013-Slur-Formatting.md), which demonstrates how the shared structure system is applied to slur rendering using convex hull algorithms and dual Bézier curves.
