@@ -84,93 +84,30 @@ Key features:
 - **Early Termination**: Stops processing when criteria are met
 - **Memory Efficiency**: Uses transducers to avoid intermediate collections
 
-### 4. General Extent Collection
+### 4. Unified Element Collection
 
-The `collect-extent-items` function provides unified point collection for any spanning attachment:
+The shared structure system provides a unified approach to collecting musical elements for any spanning attachment:
 
-```clojure
-(defn collect-extent-items
-  "Collect all musical items under any spanning attachment using timewalker.
-   Works for any attachment satisfying extends-forward? or extends-forward-to-next?"
-  [piece attachment start-vpd layout]
-  (let [canonical-start-vpd (vpd/canonicalize start-vpd)
-        instrument-boundary-vpd (vec (take 4 canonical-start-vpd))
-        current-measure (or (get canonical-start-vpd 9) 0)
-        ;; Find endpoint using existing attachment resolution
-        [end-item end-vpd end-position] (endpoint-item piece attachment start-vpd)
-        end-measure (if end-vpd (or (get end-vpd 9) current-measure) 
-                                (+ current-measure MAX_LOOKAHEAD_MEASURES -1))]
-    (if end-item
-      (sequence (comp 
-                 (timewalk {:boundary-vpd instrument-boundary-vpd 
-                           :start-measure current-measure
-                           :end-measure end-measure})
-                 (filter takes-attachment?)  ; Only items that can have attachments
-                 (obtain-xy layout))  ; Transform to x,y coordinates
-                [piece])
-      [])))
-```
+Architectural principles:
+- **Single collection mechanism**: One system works for all spanning attachments (slurs, hairpins, ottavas, pedal markings)
+- **Temporal coordination**: Leverages timewalker to ensure proper musical time ordering
+- **Layout abstraction**: Coordinate transformation separated from collection logic
+- **Boundary efficiency**: Processing limited to relevant instrument sections only
+- **Early termination**: Stops processing when endpoints are found
 
-Key features:
-- **General Purpose**: Works for slurs, hairpins, ottavas, pedal markings - any spanning attachment
-- **Temporal Coordination**: Uses timewalker to ensure proper musical time ordering
-- **Layout Awareness**: Uses `(obtain-xy layout)` transducer to get coordinates from specific layout
-- **Boundary Scoping**: Limits search to relevant instrument for performance
+### 5. Processing Pattern Unification
 
-### 5. Layout Coordinate Transformation
+All spanning attachments follow the same high-level processing pattern:
+1. **Endpoint resolution** - Find the attachment's target element using temporal traversal
+2. **Element collection** - Gather all musical items within the attachment's span
+3. **Coordinate transformation** - Convert to layout-specific positioning
+4. **Specialized rendering** - Apply attachment-specific algorithms (curves, lines, etc.)
 
-The `obtain-xy` transducer transforms timewalker results to layout-specific coordinates:
-
-```clojure
-(defn obtain-xy 
-  "Composable transducer that transforms timewalker results to x,y coordinates.
-   Takes a layout and returns a transducer for use in timewalker pipelines."
-  [layout]
-  (map (fn [result]
-         (let [item (item result)
-               vpd (vpd result)
-               position (position result)]
-           {:x (calculate-x-coordinate item vpd layout)
-            :y (calculate-y-coordinate item vpd layout)
-            :item item
-            :vpd vpd
-            :position position}))))
-```
-
-Design principles:
-- **Composable transducer**: Integrates seamlessly with timewalker pipelines
-- **Layout-specific**: Each layout may have different x,y positions due to transposition, spacing, etc.
-- **Complete information**: Preserves original timewalker result data alongside coordinates
-
-### 6. Specialized Processing Using Timewalker
-
-Specialized processing functions leverage the timewalker for specific musical elements:
-
-```clojure
-;; Endpoint resolution using timewalker with early termination
-(defn find-attachment-endpoint [piece attachment-id boundary-vpd]
-  "Find attachment endpoint using efficient timewalker traversal."
-  (first
-    (sequence (comp (timewalk {:boundary-vpd boundary-vpd})
-                    (filter takes-attachment?)
-                    (filter #(= attachment-id (get-endpoint-id (item %))))
-                    (take 1))  ; Early termination
-              [piece])))
-
-;; General attachment processing pattern
-(defn process-spanning-attachment [piece attachment start-vpd layout]
-  "Generic pattern for processing any spanning attachment."
-  (let [points (collect-extent-items piece attachment start-vpd layout)]
-    ;; Process points according to attachment-specific algorithm
-    ;; (slur curves, hairpin crescendos, glissando lines, etc.)
-    ))
-```
-
-This approach provides:
-- **Code reuse**: `collect-extent-items` works for all spanning attachments  
-- **Efficiency**: Timewalker's early termination and boundary scoping
-- **Temporal correctness**: Proper musical time ordering maintained
-- **Specialized implementations**: See ADR-0013 for detailed slur formatting example
+This unified pattern enables:
+- **Code reuse** across all attachment types
+- **Consistent temporal behavior** 
+- **Efficient processing** through early termination and boundary scoping
+- **Specialized implementations** - see ADR-0013 for slur formatting details
 
 ## Rationale
 
