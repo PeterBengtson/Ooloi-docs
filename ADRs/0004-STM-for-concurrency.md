@@ -40,3 +40,4 @@ Consequences:
 
 - [ADR-0000: Clojure](0000-Clojure.md) - Language choice providing STM as a core concurrency primitive
 - [ADR-0009: Collaboration](0009-Collaboration.md) - Collaborative editing features enabled by STM's automatic conflict resolution
+- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture leveraging STM for coordinated piece modifications

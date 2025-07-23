@@ -123,3 +123,4 @@ We will implement real-time collaboration as a core feature of Ooloi, leveraging
 - [ADR-0002: gRPC Communication](0002-gRPC.md) - Real-time streaming protocol supporting collaborative features
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model enabling automatic conflict resolution in collaborative editing
 - [ADR-0008: VPDs](0008-VPDs.md) - Addressing system used to communicate precise change locations between collaborators
+- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture for collaborative editing scenarios

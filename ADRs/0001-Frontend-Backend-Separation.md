@@ -178,6 +178,7 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 - [ADR-0002: gRPC Communication](0002-gRPC.md) - Details of the communication protocol implementation
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model supporting responsive UI and efficient backend processing
 - [ADR-0005: JavaFX and Skija](0005-JavaFX-and-Skija.md) - Frontend GUI framework choice for the separated frontend component
+- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture leveraging frontend-backend separation boundaries
 
 ## Notes
 
