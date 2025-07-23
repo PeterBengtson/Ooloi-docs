@@ -20,38 +20,50 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 
 ## Rationale
 
-1. **Separation of Concerns**: 
-   - The frontend focuses on user interface and interaction.
-   - The backend handles core musical logic, data processing, and persistence.
+1. **Clear Separation of Concerns**: 
+   - **Frontend**: User interface, local preferences, client-specific state, visual interactions
+   - **Backend**: Musical content, collaborative coordination, business logic, piece data integrity
+   - **Boundary Analysis**: [ADR-0015](0015-Undo-and-Redo.md) undo/redo analysis confirmed no legitimate backend application settings exist
 
 2. **Technology Optimization**:
-   - Frontend can leverage JavaFX and Skija for high-performance GUI rendering.
-   - Backend can focus on efficient data processing without GUI overhead.
+   - Frontend can leverage JavaFX and Skija for high-performance GUI rendering
+   - Backend can focus on efficient musical data processing without GUI overhead
+   - STM concurrency model optimized for collaborative musical content coordination
 
 3. **Deployment Flexibility**:
-   - Backend can be scaled independently of the frontend.
-   - Supports both distributed client-server and standalone deployments.
-   - Allows for future cloud-based deployments or desktop-only usage.
+   - Backend can be scaled independently for collaborative editing scenarios
+   - Supports both distributed client-server and standalone deployments
+   - Allows for future cloud-based deployments or desktop-only usage
+   - Backend-only deployments for API servers or headless processing
 
 4. **Development Workflow**:
-   - Frontend and backend components can be developed independently.
-   - Easier to test and debug each component in isolation.
-   - Shared project provides common code and interface definitions.
+   - Frontend and backend components can be developed independently
+   - Easier to test and debug each component in isolation
+   - Shared project provides common code and interface definitions
+   - Clear architectural boundaries prevent mixing of concerns
 
-5. **Performance**:
-   - Reduced memory footprint for specialized deployments.
-   - Ability to optimize each component for its specific tasks.
+5. **Configuration and State Management**:
+   - **User Preferences**: Stored entirely in frontend clients (themes, layouts, workflow settings)
+   - **Server Configuration**: Environment variables and deployment config files (not application state)
+   - **Piece Settings**: Part of musical content, stored with piece data in backend
+   - **No Backend Application Settings**: Analysis shows no legitimate use cases for backend user-configurable settings
 
-6. **Flexibility**:
-   - Potential for multiple frontend clients (desktop, web, mobile) in the future.
-   - Easier to replace or upgrade either component independently.
-   - Backend-only deployments for API servers or headless processing.
+6. **Performance and Scalability**:
+   - Reduced memory footprint for specialized deployments
+   - STM-based backend optimized for high-throughput collaborative scenarios (100,000+ operations/second)
+   - Frontend optimized for responsive UI without blocking on musical computations
 
-7. **Concurrency**:
-   - Backend can handle complex, long-running tasks without affecting UI responsiveness.
+7. **Collaboration Architecture**:
+   - Backend coordinates all musical content changes using STM transactions
+   - Frontend clients receive real-time updates via gRPC streaming
+   - Clear separation enables multiple clients editing same piece simultaneously
+   - UI state remains local while musical changes are coordinated
 
-8. **Cross-platform Compatibility**:
-   - Easier to manage platform-specific issues (e.g., GUI on different OS) in the frontend while keeping the backend consistent.
+8. **Future Extensibility**:
+   - Architecture supports multiple frontend types (desktop, web, mobile)
+   - Backend API can serve different client types without modification
+   - Clear boundaries enable independent evolution of each component
+   - Plugin architecture can extend both components independently
 
 ## Project Structure
 
@@ -126,10 +138,26 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 - Headless server for API access or integration
 - Built from `backend/` project
 
-### 5. State Management
-- **Backend**: Authoritative state using STM for concurrency
-- **Frontend**: Client-side state synchronized via gRPC calls
+### 5. State Management and Responsibility Boundaries
+
+**Backend Responsibilities**:
+- **Musical Content**: Authoritative piece data, musical structures, attachments, time signatures
+- **Coordination**: STM-based coordination for collaborative editing and conflict resolution
+- **Business Logic**: Musical algorithms, formatting, validation, and processing
 - **Real-time Updates**: Streaming gRPC for live collaboration features
+- **Piece Settings**: Configuration attributes that travel with piece data (as part of musical content)
+
+**Frontend Responsibilities**:
+- **UI State**: Client-side state synchronized via gRPC calls from backend musical content
+- **User Preferences**: Themes, panel layouts, zoom levels, workflow preferences
+- **Local Interactions**: Selection state, editing modes, temporary visual indicators
+- **Client Configuration**: Application settings specific to individual user installations
+
+**Explicit Boundary Clarifications** (from [ADR-0015](0015-Undo-and-Redo.md) analysis):
+- **Server Deployment Configuration**: Environment variables and config files (NOT backend application state)
+- **User Session Preferences**: Frontend client storage (NOT backend responsibility)
+- **Musical Algorithm Parameters**: Code constants and piece-embedded settings (NOT user-configurable backend settings)
+- **Application Settings Component**: NOT implemented in backend - no legitimate use cases identified
 
 ### 6. Error Handling and Recovery
 - **gRPC Status Codes**: Structured error communication
@@ -179,6 +207,7 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model supporting responsive UI and efficient backend processing
 - [ADR-0005: JavaFX and Skija](0005-JavaFX-and-Skija.md) - Frontend GUI framework choice for the separated frontend component
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture leveraging frontend-backend separation boundaries
+- [ADR-0016: Settings](0016-Settings.md) - Settings architecture maintaining frontend-backend separation principles
 
 ## Notes
 

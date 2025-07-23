@@ -276,6 +276,7 @@ message PieceUpdate {
 - [ADR-0002: gRPC Communication](0002-gRPC.md) - Communication protocol for coordinating undo/redo across clients
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model enabling collaborative undo/redo
 - [ADR-0009: Collaboration](0009-Collaboration.md) - Collaborative editing context requiring coordinated undo/redo
+- [ADR-0016: Settings](0016-Settings.md) - Settings architecture implementing piece-specific configuration identified in this analysis
 
 ### Technical Considerations
 - STM performance characteristics (100,000+ transactions/second on modest hardware)
@@ -286,6 +287,8 @@ message PieceUpdate {
 ## Notes
 
 This architecture decision removes the "Application Settings" component from the backend development queue in DEV_PLAN.md. The analysis demonstrates that no legitimate backend application settings exist that would require the complexity of a dedicated component.
+
+However, the analysis identified that **piece-specific settings** (configuration attributes that travel with piece data) do have legitimate use cases. The implementation of this piece-specific settings architecture is detailed in [ADR-0016: Settings](0016-Settings.md), which provides a comprehensive solution for configuration attributes across all musical and visual entities within pieces.
 
 The three-tier approach provides clean separation while maintaining the user experience expectation of unified undo/redo. The STM-based backend tier leverages Clojure's proven concurrency model, while the frontend tier handles local concerns without artificial coordination complexity.
 
