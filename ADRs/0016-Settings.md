@@ -183,19 +183,18 @@ New `defsetting` macro in `models.core` generates functions that look identical 
 
 **4. VPD Dispatch Macros**:
 ```clojure
-(defmacro ^:private apply-vector-dispatch-to-get-setting []
+(defmacro ^:private apply-vector-dispatch-to-settings-getters []
   (let [setting-getters (methods-with-category :settings-get)]
     `(do
        ~@(for [getter-name setting-getters
-               :let [getter-sym (symbol getter-name)
-                     setting-kw (keyword (subs getter-name 4))]]
+               :let [getter-sym (symbol getter-name)]]
            `(do
               (m/defmethod ~getter-sym clojure.lang.PersistentVector [vpd# piece-or-id-or-ref# & args#]
                 (let [piece# (deref (pm/get-piece-ref piece-or-id-or-ref#))
                       resolved-item# (vpd/retrieve vpd# piece#)]
                   (~getter-sym resolved-item#))))))))
 
-(defmacro ^:private apply-vector-dispatch-to-set-setting []
+(defmacro ^:private apply-vector-dispatch-to-settings-setters []
   (let [setting-setters (methods-with-category :settings-set)]
     `(do
        ~@(for [setter-name setting-setters
@@ -209,9 +208,9 @@ New `defsetting` macro in `models.core` generates functions that look identical 
                              (vpd/mutate vpd# piece# 
                                        (fn [item#] (~setter-sym item# new-value#)))))))))))))
 
-;; Apply the new VPD dispatch
-(apply-vector-dispatch-to-get-setting)
-(apply-vector-dispatch-to-set-setting)
+;; Apply the new VPD dispatch for both settings categories
+(apply-vector-dispatch-to-settings-getters)
+(apply-vector-dispatch-to-settings-setters)
 ```
 
 **5. API Export in `api.clj`**:
