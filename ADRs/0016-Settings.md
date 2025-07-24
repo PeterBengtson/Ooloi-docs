@@ -257,21 +257,35 @@ Users experience identical interfaces regardless of underlying storage:
 (set-beam-thickness staff 0.6) ; Map update with cleanup logic
 ```
 
-### Default Value Management (To Be Determined)
+### Default Value Management
 
-The location and organization of default values requires further architectural analysis:
+**Defaults Registry Architecture**: 
 
-**Options Under Consideration**:
-- Per-model constant maps
-- Trait-based inheritance systems  
-- Registry-based lookup mechanisms
-- Hybrid approaches combining model-specific and trait-based defaults
+A central, dynamically-populated registry provides default value storage and discoverability:
 
-**Decision Criteria**:
-- Code organization and maintainability
-- Performance characteristics for default lookups
-- Extensibility for plugin-defined settings
-- Consistency with existing Ooloi patterns
+```clojure
+;; Central registry - populated at compile-time by defsetting macro
+(defonce defaults-registry (atom {}))
+;; Structure: {Staff {:beam-thickness 0.5 :staff-spacing 10.0}
+;;            Measure {:beam-thickness 0.8 :width 100.0}}
+```
+
+**Implementation Strategy**:
+- **Compile-time population**: `defsetting` macro automatically populates registry when expanding
+- **Dynamic creation**: Registry created on-demand, no pre-population required
+- **Type-based organization**: Settings organized by dispatch type (Staff, Measure, Piece, etc.)
+- **Single source of truth**: `defsetting` both defines functions AND stores defaults
+
+**Registry Benefits**:
+- **Zero maintenance**: No need to pre-declare entity types
+- **Automatic discoverability**: Query "what settings does Staff support?" via `(keys (Staff @defaults-registry))`  
+- **Eliminates redundancy**: Settings defined once in `defsetting` call, not duplicated in separate maps
+- **Storage efficiency**: Only types with actual settings appear in registry
+
+**Concurrency Safety**:
+- **Atom-based**: Uses atom for compile-time updates (no STM collision)
+- **Compile-time only**: Registry populated during namespace loading, not runtime operations
+- **Read-heavy**: Runtime access is primarily read-only for default lookups
 
 ## Rationale
 
