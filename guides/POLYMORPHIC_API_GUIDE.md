@@ -292,7 +292,8 @@ Ooloi uses Clojure's hierarchical type system to create hierarchical relationshi
 ;; Rests have different capabilities
 (derive ::Rest ::Musical)
 (derive ::Rest ::RhythmicItem)
-;; Note: Rests are NOT Transposable or TakesAttachment
+(derive ::Rest ::TakesAttachment)
+;; Note: Rests are NOT Transposable but DO implement TakesAttachment
 ```
 
 **Location**: `/Users/pjotr/ProjectCode/Ooloi/backend/src/main/clojure/ooloi/backend/models/hierarchy.clj`
@@ -315,7 +316,7 @@ The `isa?` function enables hierarchical type checking:
 
 ;; Type exclusions are meaningful
 (isa? Rest ::Transposable)       ; => false (rests can't be transposed)
-(isa? Rest ::TakesAttachment)    ; => false (rests don't take slurs/dynamics)
+(isa? Rest ::TakesAttachment)    ; => true (rests can take attachments)
 ```
 
 ### Real-World Type Hierarchy Example
@@ -326,29 +327,26 @@ The `isa?` function enables hierarchical type checking:
 ;;                    Musical  Rhythmic  Transposable  TakesAttachment  HasItems
 ;; Pitch              ✓        ✓         ✓             ✓                ✗
 ;; Chord              ✓        ✓         ✓             ✓                ✗  
-;; Rest               ✓        ✓         ✗             ✗                ✗
+;; Rest               ✓        ✓         ✗             ✓                ✗
 ;; Tuplet             ✓        ✓         ✓             ✗                ✓
 ;; Tremolando         ✓        ✓         ✓             ✗                ✓
 
 ;; This matrix enables hierarchical filtering and operations:
-(filter #(isa? (type %) ::RhythmicItem) musical-elements)    ; All have duration
-(filter #(isa? (type %) ::Transposable) musical-elements)    ; Can transpose
-(filter #(isa? (type %) ::TakesAttachment) musical-elements) ; Can have slurs
+(filter rhythmic-item? musical-elements)                   ; All have duration
+(filter transposable? musical-elements)                     ; Can transpose
+(filter takes-attachment? musical-elements)               ; Can have slurs
 ```
 
 ### Type System in Practice
 
 ```clojure
-;; Helper function using type hierarchy
-(defn can-transpose? [musical-element]
-  "Check if element can be transposed."
-  (isa? (type musical-element) ::h/Transposable))
+;; Use standard predicate from core
 
 ;; Usage in musical operations
 (defn transpose-elements [elements semitones]
   "Transpose only elements that support transposition."
   (->> elements
-       (filter can-transpose?)                    ; Only transposable elements
+       (filter transposable?)                     ; Only transposable elements
        (map #(transpose-element % semitones))))   ; Apply transposition
 
 ;; Practical application
@@ -459,13 +457,13 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 ;; Attachments work only with elements that support them:
 (api/add-attachment pitch-object slur)      ; ✓ Works (Pitch implements TakesAttachment)
 (api/add-attachment chord-object dynamic)   ; ✓ Works (Chord implements TakesAttachment)
-(api/add-attachment rest-object slur)       ; ✗ Runtime error (Rest doesn't implement TakesAttachment)
+(api/add-attachment rest-object slur)       ; ✓ Works (Rest implements TakesAttachment)
 
 ;; Type-safe filtering before operations
 (defn add-slur-to-compatible [elements slur]
   "Add slur only to elements that can take attachments."
   (->> elements
-       (filter #(isa? (type %) ::h/TakesAttachment))  ; Type-safe filtering
+       (filter takes-attachment?)                     ; Type-safe filtering
        (map #(api/add-attachment % slur))))           ; Safe operation
 
 ;; Usage with mixed elements
@@ -484,11 +482,9 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 (api/get-items measure-object)       ; Returns vector of musical elements
 (api/add-item measure-object chord)  ; Adds chord to measure
 
-;; Type checking for collection operations
-(defn can-contain-items? [musical-element]
-  (isa? (type musical-element) ::h/HasItems))
+;; Use standard predicate from core
 
-(filter can-contain-items? [pitch1 tuplet1 measure1])  ; => [tuplet1 measure1]
+(filter has-items? [pitch1 tuplet1 measure1])          ; => [tuplet1 measure1]
 ```
 
 ## 🟡 Multimethod Architecture
@@ -692,10 +688,15 @@ This dispatch system enables Ooloi to achieve comprehensive operation instrument
     0
     (apply max (map get-rationalized-duration (:pitches chord)))))
 
+;; Specialized method for tuplets (calculates based on denominator and den-unit)
+(m/defmethod get-rationalized-duration Tuplet [tuplet]
+  (* (:denominator tuplet) (rhythm/rationalize-duration (:den-unit tuplet))))
+
 ;; Dispatch resolution:
 (get-rationalized-duration pitch)  ; Uses ::h/RhythmicItem method
 (get-rationalized-duration chord)  ; Uses specialized Chord method
 (get-rationalized-duration rest)   ; Uses ::h/RhythmicItem method
+(get-rationalized-duration tuplet) ; Uses specialized Tuplet method
 ```
 
 ### The Multimethod Performance Model
@@ -877,7 +878,7 @@ A key aspect is how **every operation** gets VPD capability automatically:
 ;; Trait-based operations work immediately
 (defn transpose-all-transposable [elements semitones]
   (->> elements
-       (filter #(isa? (type %) ::h/Transposable))  ; Includes new Ornament type!
+       (filter transposable?)                      ; Includes new Ornament type!
        (map #(transpose-element % semitones))))
 
 (transpose-all-transposable [pitch chord ornament] 4)  ; Ornament gets transposed too!
@@ -926,10 +927,10 @@ A key aspect is how **every operation** gets VPD capability automatically:
 ;; Tremolando         Musical, RhythmicItem, Transposable, HasItems
 
 ;; Each capability enables specific operations:
-(filter #(isa? (type %) ::h/RhythmicItem) elements)     ; All have duration
-(filter #(isa? (type %) ::h/Transposable) elements)     ; Can be transposed
-(filter #(isa? (type %) ::h/TakesAttachment) elements)  ; Can have slurs/dynamics
-(filter #(isa? (type %) ::h/HasItems) elements)         ; Can contain other elements
+(filter rhythmic-item? elements)                        ; All have duration
+(filter transposable? elements)                          ; Can be transposed
+(filter takes-attachment? elements)                     ; Can have slurs/dynamics
+(filter has-items? elements)                             ; Can contain other elements
 ```
 
 ### Trait-Based Operation Implementation
@@ -961,8 +962,8 @@ A key aspect is how **every operation** gets VPD capability automatically:
 (defn find-transposable-containers [elements]
   "Find elements that can be transposed AND contain items."
   (->> elements
-       (filter #(and (isa? (type %) ::h/Transposable)
-                     (isa? (type %) ::h/HasItems)))))
+       (filter #(and (transposable? %)
+                     (has-items? %))))
 
 ;; Practical usage
 (def mixed-elements [pitch chord rest tuplet tremolando])
@@ -1429,13 +1430,13 @@ Understanding when to use each dispatch mechanism:
 (defn transpose-compatible-elements [elements semitones]
   "Transpose only elements that support transposition."
   (->> elements
-       (filter #(isa? (type %) ::h/Transposable))
+       (filter transposable?)
        (map #(api/transpose-element % semitones))))
 
 (defn attach-to-compatible-elements [elements attachment]  
   "Attach to only elements that support attachments."
   (->> elements
-       (filter #(isa? (type %) ::h/TakesAttachment))
+       (filter takes-attachment?)
        (map #(api/add-attachment % attachment))))
 ```
 

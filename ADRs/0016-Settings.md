@@ -173,9 +173,9 @@ New `defsetting` macro in `models.core` generates functions that look identical 
           (ns-publics 'ooloi.backend.models.interfaces)))
 
 (defn- methods-with-category [category]
-  (sort (map #(name (key %))
-             (filter #(= category (-> @(val %) meta :vpd-category))
-                     all-methods))))
+  (map #(name (key %))
+       (filter #(= category (-> @(val %) meta :vpd-category))
+               all-methods)))
 
 ;; Settings will be filtered directly: 
 ;; (methods-with-category :settings-get) and (methods-with-category :settings-set)
