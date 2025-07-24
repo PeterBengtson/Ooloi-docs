@@ -2,11 +2,11 @@
 
 ## Status
 
-Proposed
+Accepted - July 24, 2025
 
 ## Context
 
-Ooloi's musical notation system requires extensive configuration capabilities for visual rendering, layout preferences, and performance characteristics. However, the current architecture presents challenges for managing these configuration attributes across the complex hierarchical structure of musical entities.
+Ooloi's musical notation system requires extensive configuration capabilities for visual rendering, layout preferences, and performance characteristics. The system needs a systematic approach for managing these configuration attributes across the hierarchical structure of musical entities.
 
 ### Current Architecture Analysis
 
@@ -30,19 +30,40 @@ Each entity type currently uses defrecord slots that fall into two categories:
 - Frontend manages local UI state and preferences
 - Clear boundary maintained between musical content and application preferences
 
-### The Configuration Problem
+### Configuration Requirements
 
-Current configuration attributes are scattered across the entity hierarchy with inconsistent patterns:
-- Some are direct defrecord slots (`:name`, `:default-clef`, `:num-lines`)
-- Others are stored in special data structures (ChangeSets for time signatures)
-- No systematic approach for adding new configuration attributes
-- No mechanism for default values or storage optimization
+The system needs to support configuration attributes across the entity hierarchy:
+- Some attributes are currently direct defrecord slots (`:name`, `:default-clef`, `:num-lines`)
+- Others use specialized storage (ChangeSets for time signatures)
+- Future needs require a systematic approach for adding new configuration attributes
+- Storage efficiency requires a mechanism for default values and optimization
 
 Future configuration needs include:
 - **Visual rendering**: beam thickness, staff spacing, note head sizes, line weights
 - **Layout preferences**: margins, system breaks, page settings
 - **Performance attributes**: invisible items, playback velocities, swing ratios
 - **User customizations**: custom symbols, color schemes, accessibility options
+
+### Current Architecture Foundation
+
+**Metadata-Based Method Categorization**:
+The backend uses a clean metadata-driven architecture for method dispatch:
+
+- **Direct metadata queries**: All VPD macros use `methods-with-category` for real-time filtering by `:vpd-category` metadata
+- **Pure functional approach**: On-demand filtering with `(-> @method-var meta :vpd-category)` queries
+- **Nine category system**: `:getters`, `:set-item`, `:set-seq`, `:set-attribute`, `:change-set-item-set`, `:change-set-seq`, `:change-set-item-remove`, `:settings-get`, `:settings-set`
+
+**VPD Dispatch Architecture**:
+Each category maps directly to a VPD macro through metadata filtering:
+```clojure
+(let [getters (methods-with-category :getters)]
+(let [setters (methods-with-category :change-set-seq)]
+(let [removers (methods-with-category :change-set-item-remove)]
+(let [settings-getters (methods-with-category :settings-get)]
+(let [settings-setters (methods-with-category :settings-set)]
+```
+
+This architecture provides the foundation for Universal Entity Settings through two additional metadata categories (`:settings-get`, `:settings-set`) with complete VPD dispatch support.
 
 ### The Uniform API Requirement
 
@@ -109,19 +130,19 @@ New `defsetting` macro in `models.core` generates functions that look identical 
 
 #### Complete Implementation Architecture
 
-**1. Multimethod Definitions in `interfaces.clj`**:
+**1. Multimethod Definitions in `interfaces.clj`** with Pure Metadata Categorization:
 ```clojure
-;; Add multimethod definitions for each setting
-(m/defmulti get-beam-thickness
+;; Add multimethod definitions with new :settings-get and :settings-set category metadata
+(m/defmulti ^{:vpd-category :settings-get} get-beam-thickness
   "Gets the beam thickness setting."
   dispatch-on-first-arg-type)
 
-(m/defmulti set-beam-thickness
+(m/defmulti ^{:vpd-category :settings-set} set-beam-thickness
   "Sets the beam thickness setting."
   dispatch-on-first-arg-type)
 ```
 
-**2. Settings Implementation with Metadata**:
+**2. Settings Implementation**:
 ```clojure
 (defmacro defsetting
   "Defines standard getter and setter methods for a settings-backed attribute.
@@ -135,64 +156,50 @@ New `defsetting` macro in `models.core` generates functions that look identical 
         getter-name (symbol "ooloi.backend.models.interfaces" (str "get-" setting-name))
         setter-name (symbol "ooloi.backend.models.interfaces" (str "set-" setting-name))]
     `(do
-       ;; Create implementations with :setting metadata for categorization
+       ;; Create implementations that integrate with the existing metadata system
        (m/defmethod ~getter-name ~dispatch-on
-         {:setting true :default-value ~default-value}
          [this#]
          (get-setting this# ~setting-kw ~default-value))
 
        (m/defmethod ~setter-name ~dispatch-on
-         {:setting true :default-value ~default-value}
          [this# value#]
          (set-setting this# ~setting-kw value# ~default-value)))))
 ```
 
-**3. Enhanced Categorization System in `models.core`**:
+**3. Metadata Filtering in `models.core`**:
 ```clojure
-;; Modified categorization to check metadata
-(defn ^:private categoriser [all-methods change-set-names]
-  (fn [acc method]
-    (let [method-meta (meta (resolve (symbol "ooloi.backend.models.interfaces" method)))]
-      (if-let [[_ operation base-name] (re-matches #"^(get|set)-(.+)$" method)]
-        (case operation
-          "get" (if (:setting method-meta)
-                  (update acc :setting-getters conj method)
-                  (update acc :getters conj method))
-          "set" (cond
-                  (:setting method-meta)
-                  (update acc :setting-setters conj method)
-                  
-                  (contains? change-set-names base-name)
-                  (update acc :change-sets conj method)
-                  
-                  ;; ... existing categorization logic
-                  ))
-        (update acc :unknown conj method)))))
+(def ^:private all-methods 
+  (filter #(instance? methodical.impl.standard.StandardMultiFn @(val %))
+          (ns-publics 'ooloi.backend.models.interfaces)))
+
+(defn- methods-with-category [category]
+  (sort (map #(name (key %))
+             (filter #(= category (-> @(val %) meta :vpd-category))
+                     all-methods))))
+
+;; Settings will be filtered directly: 
+;; (methods-with-category :settings-get) and (methods-with-category :settings-set)
 ```
 
-**4. New VPD Dispatch Macros**:
+**4. VPD Dispatch Macros**:
 ```clojure
 (defmacro ^:private apply-vector-dispatch-to-get-setting []
-  (let [setting-getters (:setting-getters categorized-methods)]
+  (let [setting-getters (methods-with-category :settings-get)]
     `(do
        ~@(for [getter-name setting-getters
                :let [getter-sym (symbol getter-name)
-                     method-meta (meta (resolve (symbol "ooloi.backend.models.interfaces" getter-name)))
-                     default-value (:default-value method-meta)]]
+                     setting-kw (keyword (subs getter-name 4))]]
            `(do
               (m/defmethod ~getter-sym clojure.lang.PersistentVector [vpd# piece-or-id-or-ref# & args#]
                 (let [piece# (deref (pm/get-piece-ref piece-or-id-or-ref#))
                       resolved-item# (vpd/retrieve vpd# piece#)]
-                  (get-setting resolved-item# ~(keyword (subs getter-name 4)) ~default-value))))))))
+                  (~getter-sym resolved-item#))))))))
 
 (defmacro ^:private apply-vector-dispatch-to-set-setting []
-  (let [setting-setters (:setting-setters categorized-methods)]
+  (let [setting-setters (methods-with-category :settings-set)]
     `(do
        ~@(for [setter-name setting-setters
-               :let [setter-sym (symbol setter-name)
-                     method-meta (meta (resolve (symbol "ooloi.backend.models.interfaces" setter-name)))
-                     default-value (:default-value method-meta)
-                     setting-kw (keyword (subs setter-name 4))]]
+               :let [setter-sym (symbol setter-name)]]
            `(do
               (m/defmethod ~setter-sym clojure.lang.PersistentVector [vpd# piece-or-id-or-ref# new-value#]
                 (let [piece-ref# (pm/get-piece-ref piece-or-id-or-ref#)]
@@ -200,7 +207,7 @@ New `defsetting` macro in `models.core` generates functions that look identical 
                     (alter piece-ref#
                            (fn [piece#]
                              (vpd/mutate vpd# piece# 
-                                       (fn [item#] (set-setting item# ~setting-kw new-value# ~default-value)))))))))))))
+                                       (fn [item#] (~setter-sym item# new-value#)))))))))))))
 
 ;; Apply the new VPD dispatch
 (apply-vector-dispatch-to-get-setting)
