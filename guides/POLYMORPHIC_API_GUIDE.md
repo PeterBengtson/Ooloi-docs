@@ -1,8 +1,29 @@
 # Polymorphic API Guide: Type-Driven Elegance in Musical Software
 
+## Why This Guide Matters
+
+Most musical software requires musicians to adapt to developer abstractions. Ooloi takes a different approach: polymorphic dispatch allows musical thinking to drive the programming model.
+
+This reference examines how Clojure's type system and multimethods create APIs where:
+- Musical concepts map directly to code operations
+- Operations work consistently at any hierarchy level through VPDs  
+- Network serialisation occurs automatically via type system design
+- Performance scales appropriately for real-time musical applications
+
+Topics covered:
+- Dual-mode polymorphism: VPD vs object dispatch patterns for local and network operations
+- Musical type hierarchies: Using `derive`/`isa?` to model musical relationships functionally
+- Advanced multimethods: Methodical library for aspect-oriented musical operations
+- Extension patterns: Adding new types that integrate with existing operations
+
+This guide combines API documentation with functional architecture principles demonstrated through musical examples.
+
+---
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Why This Guide Matters](#why-this-guide-matters)
 - [Overview](#overview)
 - [Prerequisites](#prerequisites)
 - [Understanding Polymorphism in Ooloi](#understanding-polymorphism-in-ooloi)
@@ -53,11 +74,11 @@
 ;; This enables gRPC compatibility: VPDs serialize, object pointers don't!
 ```
 
-**That's the essence!** Read on to understand the type system architecture that makes this possible.
+The following sections explain the type system architecture that enables this behaviour.
 
 ## Overview
 
-Ooloi's polymorphic API represents a type-driven software architecture approach in a dynamic language. More importantly, **it's designed to be a musical API** - one that reflects how musicians think about and work with music, not how programmers think about data structures.
+Ooloi's polymorphic API represents a type-driven software architecture approach in a dynamic language. The API reflects how musicians think about and work with music, rather than forcing musical concepts into programming abstractions.
 
 **The API achieves musical abstraction by eliminating the gap between musical concepts and computational operations:**
 
@@ -84,7 +105,7 @@ Ooloi's polymorphic API represents a type-driven software architecture approach 
      (map #(transpose-element (item %) 4)))         ; "Transpose melody up major third"
 ```
 
-**Key insight:** The API doesn't force musical concepts into programming abstractions - it makes musical concepts **be** the programming abstractions.
+The API allows musical concepts to serve as the programming abstractions directly.
 
 Through careful design of hierarchical types, trait-based dispatch, and polymorphic operations, it achieves flexibility while maintaining type safety and performance.
 
@@ -130,6 +151,9 @@ Through careful design of hierarchical types, trait-based dispatch, and polymorp
 The **VPD vs object dispatch** solves fundamental problems in musical software architecture while providing **cognitive alignment** with musical thinking:
 
 #### **Universal Hierarchy Access**
+
+> 💡 **Key Architectural Insight**: Traditional APIs require different functions for each hierarchy level, forcing developers to think about implementation structure. Ooloi's polymorphic dispatch enables **one operation at any level**.
+
 ```clojure
 ;; Traditional approach: Different functions for different levels (cognitive burden)
 (add-musician-to-piece piece musician)
@@ -147,6 +171,9 @@ The **VPD vs object dispatch** solves fundamental problems in musical software a
 ```
 
 #### **gRPC Serialization Compatibility**  
+
+> ⚠️ **Critical Design Decision**: Object pointers don't serialize over networks. VPD-first design ensures **identical API locally and remotely**.
+
 ```clojure
 ;; VPD operations serialize perfectly over gRPC
 {:operation :add-musician
@@ -200,11 +227,13 @@ The **VPD vs object dispatch** solves fundamental problems in musical software a
 
 **Before diving into the type system, understand why Ooloi's VPD API makes development so much easier:**
 
-**You CAN use `alter`, `ref`, and low-level STM operations, but why make life difficult for yourself?**
+Direct use of `alter`, `ref`, and low-level STM operations remains available, but the VPD API provides a higher-level abstraction.
 
-The VPD API provides a convenient abstraction that handles STM complexity automatically, giving you all the benefits of Ooloi's concurrent, distributed, and gRPC-compatible design with much simpler code.
+The VPD API handles STM complexity automatically, providing the benefits of Ooloi's concurrent, distributed, and gRPC-compatible design with simpler code.
 
 ### Compare the Approaches
+
+> 💡 **Platform Design Principle**: Hide implementation complexity, expose domain capability. Notice how the VPD approach shifts cognitive focus from technical concerns to musical intent.
 
 ```clojure
 ;; Low-level approach: Manual STM management (implementation focus)
@@ -239,11 +268,11 @@ The VPD API provides a convenient abstraction that handles STM complexity automa
 ;; You get atomic composition without the STM complexity!
 ```
 
-**Bottom line:** Use `dosync` when you need atomic composition, let VPD operations handle the rest.
+Use `dosync` for atomic composition; VPD operations handle individual transactions automatically.
 
 ### Platform Abstraction: What the API Brings vs. How It Does It
 
-Ooloi's API succeeds as a platform by **hiding implementation complexity while exposing musical capability**:
+Ooloi's API operates as a platform by hiding implementation complexity while exposing musical capability:
 
 **What the API Brings (Musical Focus):**
 - Operations that mirror musical thinking: `add-musician`, `transpose-element`, `set-tempo`
@@ -268,7 +297,7 @@ Ooloi's API succeeds as a platform by **hiding implementation complexity while e
 ;; attachment lifecycle, piece modification, change propagation, network sync
 ```
 
-This demonstrates platform design principles: **domain expertise translates directly to programming capability** without impedance mismatch.
+This demonstrates how domain expertise can translate directly to programming capability.
 
 **For more advanced patterns, see [Advanced Concurrency Patterns](ADVANCED_CONCURRENCY_PATTERNS.md#-critical-development-principle-never-use-alter).**
 
@@ -323,6 +352,8 @@ The `isa?` function enables hierarchical type checking:
 
 ### Real-World Type Hierarchy Example
 
+> **Musical Type Capability Matrix**: Understanding which operations work with which types is crucial for polymorphic programming.
+
 ```clojure
 ;; Complete capability matrix for common musical elements:
 
@@ -359,6 +390,14 @@ The `isa?` function enables hierarchical type checking:
 ## 🟢 The Canonical Example: VPD vs Object Dispatch
 
 ### The First Argument Pattern
+
+> **Dispatch Resolution Decision Tree**:
+> ```
+> First Argument Type?
+> ├── Vector (VPD) → VPD dispatch → Automatic transaction + path navigation
+> ├── Piece/Musical Object → Object dispatch → Direct operation
+> └── Other → Type-specific dispatch → Method lookup via type hierarchy
+> ```
 
 The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architecture:
 
@@ -520,6 +559,8 @@ Ooloi uses the **Methodical library** instead of standard Clojure multimethods f
 
 ### Why Methodical: Aspect-Oriented Programming of Traits
 
+> 🚀 **Advanced Architecture**: Standard Clojure multimethods can't intercept behavior. Methodical's `:around` methods enable **aspect-oriented programming** - essential for complex musical systems requiring validation, logging, and performance monitoring.
+
 Ooloi uses the **Methodical library** specifically for its **`:around` method capability**, which enables **aspect-oriented programming of traits**:
 
 ```clojure
@@ -562,17 +603,15 @@ Ooloi uses the **Methodical library** specifically for its **`:around` method ca
       (throw e))))
 ```
 
-**Why this architecture is crucial for musical software:**
+This architecture addresses common requirements in musical software:
 
 1. **Trait-based aspects**: Cross-cutting concerns apply to entire trait hierarchies
-2. **Composable behavior**: Multiple `:around` methods stack automatically
-3. **Non-invasive instrumentation**: Add logging, validation, profiling without touching core logic
+2. **Composable behaviour**: Multiple `:around` methods stack automatically
+3. **Non-invasive instrumentation**: Add logging, validation, profiling without modifying core logic
 
-**Architectural justification:**
+Musical software requires cross-cutting concerns for validation, logging, and performance monitoring. The `:around` method approach provides a way to handle these concerns cleanly. The Methodical choice reflects the need for CLOS-level expressiveness in complex musical systems, where standard multimethods prove insufficient.
 
-This isn't OOP creep - this is aspect-oriented design done right. Musical software needs cross-cutting concerns for validation, logging, and performance monitoring, and `:around` methods provide the clean way to handle that. The Methodical choice represents recognition that CLOS-level expressiveness is needed in Clojure for complex musical systems - core multimethods simply aren't sufficient.
-
-Musical elements require polymorphic dispatch capabilities. The trait system with aspect-oriented capabilities represents musical software architecture principles expressed through modern functional programming.
+The trait system with aspect-oriented capabilities expresses musical software architecture principles through functional programming techniques.
 
 ### CLOS Connection and Musical Software Heritage
 
@@ -973,7 +1012,7 @@ Once defined, your operations automatically get:
 (api/set-transposition [] piece-ref 2) ; VPD + API both work
 ```
 
-**Key insight:** Clojure's multimethod system enables **uniform extensibility** - define once, works everywhere (direct objects, VPD navigation, API access, STM coordination) automatically.
+Clojure's multimethod system enables uniform extensibility: define once, works everywhere (direct objects, VPD navigation, API access, STM coordination).
 
 ### Custom Trait Definition
 
@@ -1260,6 +1299,8 @@ Understanding when to use each dispatch mechanism:
 ```
 
 ### Performance Guidelines
+
+> ⚡ **Performance Decision Matrix**: Choose the right dispatch mechanism based on your constraints. Protocols = speed, Multimethods = flexibility.
 
 ```clojure
 ;; PERFORMANCE DECISION MATRIX:
@@ -1579,6 +1620,9 @@ Understanding when to use each dispatch mechanism:
 ### Common Issues
 
 **1. Method Not Found Errors**
+
+> ⚠️ **Common Trap**: Adding new types without implementing required methods or establishing hierarchy relationships.
+
 ```clojure
 ;; Problem: No method implementation for new type
 (api/get-duration custom-element)  ; => No method error
@@ -1694,6 +1738,8 @@ Understanding when to use each dispatch mechanism:
 
 ## Summary
 
+> 🎯 **Architectural Achievement**: Ooloi demonstrates how functional programming enables domain expertise to become the programming model - not the other way around.
+
 Ooloi's polymorphic API represents type-driven architecture that achieves flexibility while maintaining safety and performance:
 
 **Key insights:**
@@ -1718,7 +1764,7 @@ This demonstrates what functional programming can enable - not just porting obje
 
 ### Why Core Developers Prefer VPD Operations
 
-**The VPD pattern is convenient, so core developers often choose it over direct object operations**, even for internal code:
+The VPD pattern proves convenient, so core developers often choose it over direct object operations, even for internal code:
 
 ```clojure
 ;; Core developers could write this (direct object operations):
@@ -1741,25 +1787,24 @@ This demonstrates what functional programming can enable - not just porting obje
 4. **Consistency**: All operations follow identical polymorphic patterns
 5. **Validation**: Automatic type checking and VPD path validation
 
-**Real-world impact**: Core Ooloi code predominantly uses VPD operations because the architectural benefits (uniformity, automatic transactions, network compatibility) outweigh the slight performance overhead of dispatch and path resolution.
+Core Ooloi code predominantly uses VPD operations because the architectural benefits (uniformity, automatic transactions, network compatibility) outweigh the slight performance overhead of dispatch and path resolution.
 
-**Key insights:**
+Key insights:
 
-1. **Data as data**: Musical structures are immutable values, not objects with behavior
-2. **Separation of concerns**: Identity/state (STM) vs. values (immutable pieces) vs. behavior (polymorphic operations) 
-3. **Domain-driven abstractions**: VPDs, temporal coordination, and trait hierarchies reflect how musicians actually think about music
-4. **Simple made easy**: Complex musical operations become one-line transducer compositions
+1. **Data as data**: Musical structures are immutable values, not objects with behaviour
+2. **Separation of concerns**: Identity/state (STM) vs. values (immutable pieces) vs. behaviour (polymorphic operations) 
+3. **Domain-driven abstractions**: VPDs, temporal coordination, and trait hierarchies reflect how musicians think about music
+4. **Simplified complexity**: Complex musical operations become concise transducer compositions
 
 ```clojure
-;; This is how "simple made easy" looks in practice:
+;; Complex operations expressed concisely:
 (->> (timewalk piece {:boundary-vpd voice-vpd})
      (filter takes-attachment??)
      (transduce (comp (filter #(= (:endpoint-id (item %)) target-id))
                       (take 1))
                 conj []))
-;; One pipeline to search across temporal musical structure with type safety,
-;; scope limiting, and early termination. That's clean simplicity.
+;; Single pipeline: temporal musical search with type safety, scope limiting, early termination
 ```
 
 
-The type system is not just a technical implementation detail - it's the architectural foundation that makes musical software possible through principled, extensible design.
+The type system serves as the architectural foundation for musical software through principled, extensible design.
