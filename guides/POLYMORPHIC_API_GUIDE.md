@@ -12,6 +12,8 @@
 - [🟡 Multimethod Architecture](#-multimethod-architecture)
 - [🟡 VPD Integration with Type System](#-vpd-integration-with-type-system)
 - [🟡 Extension Mechanisms](#-extension-mechanisms)
+  - [Adding New Musical Types](#adding-new-musical-types)  
+  - [Adding New Operations](#adding-new-operations)
 - [🟡 Trait-Based Dispatch Patterns](#-trait-based-dispatch-patterns)
 - [🔴 Advanced Dispatch Patterns](#-advanced-dispatch-patterns)
 - [🔴 Performance Optimization](#-performance-optimization)
@@ -883,6 +885,95 @@ A key aspect is how **every operation** gets VPD capability automatically:
 
 (transpose-all-transposable [pitch chord ornament] 4)  ; Ornament gets transposed too!
 ```
+
+### Adding New Operations
+
+Ooloi's architecture enables you to add new polymorphic operations that work seamlessly across all musical types. Here's the complete process:
+
+#### Step 1: Define Multimethods in `interfaces.clj`
+
+```clojure
+;; Example: Adding a "transpose" operation
+(m/defmulti ^{:vpd-category :getters} get-transposition
+  "Gets the current transposition of a musical element."
+  dispatch-on-first-arg-type)
+
+(m/defmulti ^{:vpd-category :set-attribute} set-transposition
+  "Sets the transposition of a musical element."
+  dispatch-on-first-arg-type)
+```
+
+**Required metadata categories:**
+- `:getters` - get-* methods  
+- `:set-item` - add/remove/move operations on vector items
+- `:set-seq` - set operations on entire sequences
+- `:set-attribute` - simple attribute setters
+- `:settings-get` / `:settings-set` - configuration settings
+
+#### Step 2: Export Through Core and API
+
+**In `core.clj`** - Add to `import-vars` block in alphabetical order:
+```clojure
+(import-vars
+  [ooloi.backend.models.interfaces
+   ;; ... existing functions ...
+   get-transposition
+   ;; ... existing functions ...
+   set-transposition
+   ;; ... existing functions ...
+   ])
+```
+
+**In `api.clj`** - Add to `import-vars` block in alphabetical order:
+```clojure
+(import-vars
+  [ooloi.backend.models.core
+   ;; ... existing functions ...
+   get-transposition
+   ;; ... existing functions ...
+   set-transposition
+   ;; ... existing functions ...
+   ])
+```
+
+#### Step 3: Implement for Musical Types
+
+```clojure
+;; In the appropriate model files (e.g., pitch.clj, chord.clj)
+(m/defmethod get-transposition Pitch [pitch]
+  (:transposition pitch 0))  ; Default to 0 if not set
+
+(m/defmethod set-transposition Pitch [pitch semitones]
+  (assoc pitch :transposition semitones))
+
+(m/defmethod get-transposition Chord [chord]
+  (:transposition chord 0))
+
+(m/defmethod set-transposition Chord [chord semitones]
+  (-> chord
+      (assoc :transposition semitones)
+      (update :pitches #(mapv (fn [p] (set-transposition p semitones)) %))))
+```
+
+#### Automatic Integration Benefits
+
+Once defined, your operations automatically get:
+
+```clojure
+;; Direct object operations
+(get-transposition pitch-object)      ; Uses Pitch implementation
+(set-transposition chord-object 4)    ; Uses Chord implementation
+
+;; VPD operations work immediately  
+(get-transposition [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2] piece-ref)
+(set-transposition [:staves 0] piece-ref 7)  ; Automatic STM transactions
+
+;; API access works immediately
+(api/get-transposition pitch)         ; Exported through api.clj
+(api/set-transposition [] piece-ref 2) ; VPD + API both work
+```
+
+**Key insight:** Clojure's multimethod system enables **uniform extensibility** - define once, works everywhere (direct objects, VPD navigation, API access, STM coordination) automatically.
 
 ### Custom Trait Definition
 
