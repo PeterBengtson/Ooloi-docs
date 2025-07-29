@@ -29,15 +29,21 @@
 ;; Save a piece to file
 (def piece-id "my-symphony")  ; Assuming piece exists in piece manager
 (persist/save-piece-async piece-id (persist/file-writer "/Users/composer/symphony.ooloi"))
-(await persist/save-agent)  ; Wait for completion
+
+;; Wait for save to complete
+(while (not (persist/save-complete? piece-id))
+  (Thread/sleep 100))
 
 ;; Load a piece from file  
 (persist/load-piece-async (persist/file-reader "/Users/composer/symphony.ooloi"))
-(await persist/load-agent)  ; Wait for completion
+
+;; Wait for load to complete
+(while (not (persist/load-complete?))
+  (Thread/sleep 100))
 ;; Piece is now available: (pm/get-piece "piece-id")
 
 ;; Check if everything worked
-(if-let [error (:error @persist/save-agent)]
+(if-let [error (persist/save-error piece-id)]
   (println "Save failed:" error)
   (println "Save succeeded"))
 ```
@@ -92,11 +98,9 @@ Ooloi uses **two complementary concurrency models** for different purposes:
 **Used by**: Persistence system, file operations, network communications
 
 ```clojure
-;; Agents handle I/O without blocking other operations
-(send save-agent
-      (fn [state] 
-        (save-piece-to-file piece)
-        (assoc state piece-id :saved)))
+;; Async operations handle I/O without blocking other operations
+(persist/save-piece-async piece-id (persist/file-writer "/path/to/piece.ooloi"))
+;; Returns immediately while save happens in background
 ```
 
 **Characteristics:**
@@ -117,8 +121,7 @@ Ooloi uses **two complementary concurrency models** for different purposes:
 (dosync                                    ; STM transaction
   (api/add-measure piece-ref [:musicians 0 :instruments 0 :staves 0 :voices 0] new-measure))
 
-(send save-agent                           ; Asynchronous save
-      #(persist/save-piece-async "piece-id" (persist/file-writer "/path/to/piece.ooloi")))
+(persist/save-piece-async "piece-id" (persist/file-writer "/path/to/piece.ooloi"))
 ;; User interface remains responsive while save happens in background
 ```
 
@@ -133,24 +136,30 @@ This architectural choice enables Ooloi to provide **consistent musical operatio
 
 ### Core Architecture
 
-The persistence system operates through **two dedicated agents** that handle all I/O operations asynchronously:
+The persistence system operates through **asynchronous I/O operations** that handle all piece storage and retrieval without blocking:
 
 ```clojure
-;; Global agents for persistence operations
-(def save-agent (agent {}))
-(def load-agent (agent {}))
+;; Core async operations
+(persist/save-piece-async piece-id writer-fn)  ; Non-blocking save
+(persist/load-piece-async reader-fn)           ; Non-blocking load
 ```
 
-### The Agent State Model
+**Internal Implementation**: The system uses two dedicated Clojure agents (`save-agent` and `load-agent`) to manage I/O operations asynchronously. This agent-based architecture ensures that disk operations never block the main application thread, keeping the user interface responsive while large musical pieces are saved or loaded in the background.
 
-Each agent maintains a state map tracking operations:
+### Status Tracking
+
+The system provides clean status checking functions:
 
 ```clojure
-;; Save agent state examples
-@save-agent ; => {"piece-id-1" :saved, "piece-id-2" :saved, :error "Some error message"}
+;; Check save status
+(persist/save-status "piece-id")    ; => :pending | :completed | :error
+(persist/save-complete? "piece-id") ; => true/false  
+(persist/save-error "piece-id")     ; => error-message or nil
 
-;; Load agent state examples  
-@load-agent ; => {"piece-id-1" piece-object, "piece-id-2" piece-object, :error "Load failed"}
+;; Check load status
+(persist/load-status)               ; => :pending | :completed | :error
+(persist/load-complete?)            ; => true/false
+(persist/load-error)                ; => error-message or nil
 ```
 
 ### I/O Function Architecture
@@ -220,11 +229,11 @@ The system uses **function builders** that create I/O operations:
 
 ```clojure
 ;; The save process happens asynchronously:
-;; 1. save-piece-async sends operation to save-agent
-;; 2. Agent resolves piece (if ID provided) using piece manager
+;; 1. save-piece-async initiates asynchronous save operation
+;; 2. Internal save agent resolves piece (if ID provided) using piece manager
 ;; 3. Agent calls output function with piece object  
 ;; 4. Output function serializes piece using Nippy
-;; 5. Agent updates its state with result
+;; 5. Agent updates its internal state with result (accessible via status functions)
 ;; 6. Operation completes, can be checked with await/deref
 ```
 
@@ -710,8 +719,7 @@ The system uses **function builders** that create I/O operations:
 ;; Clear agent history periodically for long-running systems
 (defn clear-persistence-history []
   "Clear old operations from agent state."
-  (send persist/save-agent (constantly {}))
-  (send persist/load-agent (constantly {})))
+  ;; Status is automatically cleared when new operations start
 ```
 
 ## Best Practices

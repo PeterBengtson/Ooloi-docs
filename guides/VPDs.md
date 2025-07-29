@@ -52,20 +52,15 @@ VPDs can be extended to access the contents of measures, which may have an ad-ho
 [:m 0 1 0 0 3 :items <item-selector>]
 ```
 
-Where `<item-selector>` can be one of the following:
-
-1. An index: `[:m 0 1 0 0 3 :items 2]` (get the 3rd item in the measure)
-2. A type selector: `[:m 0 1 0 0 3 :items :pitch]` (get all pitches in the measure)
-3. A predicate function: `[:m 0 1 0 0 3 :items #(instance? Chord %)]` (get all chords in the measure)
-4. A complex selector: `[:m 0 1 0 0 3 :items [:pitch :chord]]` (get all pitches and chords in the measure)
+VPDs support simple path navigation with numeric indices. For example, `[:m 0 1 0 0 3 :items 2]` gets the 3rd item in the measure.
 
 For nested structures like tuplets, the VPD can be further extended:
 
 ```clojure
-[:m 0 1 0 0 3 :items :tuplet 0 :items 1]
+[:m 0 1 0 0 3 :items 0 :items 1]
 ```
 
-This selects the second item in the first tuplet of the specified measure.
+This selects the second item in the first tuplet (assuming the first item in the measure is a tuplet) of the specified measure.
 
 ## Using VPDs in the API
 
@@ -83,7 +78,7 @@ Here are examples of using VPDs with API functions:
 
 ```clojure
 (add-attachment [:m 0 1 0 0 3] piece-or-id :staccato)
-(get-items [:m 0 1 0 0 3 :items :pitch] piece-or-id)
+(get-items [:m 0 1 0 0 3] piece-or-id)
 (get-measure [:m 0 1 0 0 3] piece-or-id)
 (set-time-signature [:m 0 1 0 0 3] piece-or-id [4 4])
 (get-key-signature [:m 0 1 0 0 3] piece-or-id)

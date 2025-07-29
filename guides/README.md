@@ -10,9 +10,8 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 2. **[VPDs.md](VPDs.md)** - Path-based navigation
 3. **[PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** - Basic storage operations
 4. **[TIMEWALKING_GUIDE.md](TIMEWALKING_GUIDE.md)** - Musical traversal patterns
-5. **[SPECTER.md](SPECTER.md)** - Advanced data transformation
-6. **[PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** - Asynchronous I/O
-7. **[ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** 🔴 - Performance optimization
+5. **[PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** - Asynchronous I/O
+6. **[ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** 🔴 - Performance optimization
 
 ## What Each Guide Teaches
 
@@ -24,7 +23,6 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 | **[PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** | Save/load workflows, I/O backends | Agents, asynchronous operations, error handling patterns |
 | **[ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** 🔴 | Parallel processing, performance optimization | STM coordination, parallel algorithms, performance tuning |
 | **[VPDs.md](VPDs.md)** | Path-based navigation, addressing | Vector operations, `get-in`/`update-in` patterns |
-| **[SPECTER.md](SPECTER.md)** | Musical data transformation | Specter library, efficient navigation, complex transformations |
 
 ## Available Guides
 
@@ -37,7 +35,6 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 
 ### Reference Documentation
 - **[VPDs.md](VPDs.md)** - Vector Path Descriptors reference
-- **[SPECTER.md](SPECTER.md)** - Specter library patterns for musical data
 
 ## Related Documentation
 

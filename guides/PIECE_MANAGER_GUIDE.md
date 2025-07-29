@@ -520,8 +520,8 @@ Every VPD operation uses the piece manager internally:
 (api/get-piece "nonexistent")  ; Returns nil
 
 ;; Solution: Always check existence
-(when (api/piece-exists? piece-id)
-  (process-piece (api/get-piece piece-id)))
+(when-let [piece (api/get-piece piece-id)]
+  (process-piece piece))
 ```
 
 **2. Memory leaks with temporary refs**
