@@ -59,7 +59,7 @@ This guide combines API documentation with functional architecture principles de
 (api/get-measure [:musicians 0 :instruments 0 :staves 0 :voices 0] piece-id 5)  ; VPD navigation
 
 ;; Direct object operations  
-(api/add-musician musician-object new-musician)          ; Direct object operation
+(api/add-musician piece-object new-musician)             ; Direct object operation
 (api/get-measure voice-object 5)                         ; Direct object access
 
 ;; Same operation name, different call signatures based on first argument!
@@ -100,9 +100,10 @@ Ooloi's polymorphic API represents a type-driven software architecture approach 
 (api/get-measure [:m 0 0 0 0] piece-id 5)          ; "Get measure 5 from first voice"
 
 ;; Complex operations through simple composition
-(->> (timewalk piece {:boundary-vpd melody-voice})
-     (filter pitch??)
-     (map #(transpose-element (item %) 4)))         ; "Transpose melody up major third"
+(sequence (comp (timewalk {:boundary-vpd melody-voice})
+                (filter pitch??)
+                (map #(transpose-element (item %) 4)))
+          [piece])                                  ; "Transpose melody up major third"
 ```
 
 The API allows musical concepts to serve as the programming abstractions directly.
@@ -141,7 +142,7 @@ Through careful design of hierarchical types, trait-based dispatch, and polymorp
 (api/add-musician [] piece-reference musician)       ; VPD path → piece reference required
 
 ;; Direct object operation (traditional approach)  
-(api/add-musician musician-object musician)          ; Object → direct operation
+(api/add-musician piece-object musician)             ; Object → direct operation
 
 ;; Same function name, completely different dispatch based on first argument type!
 ```
@@ -198,7 +199,7 @@ The **VPD vs object dispatch** solves fundamental problems in musical software a
 
 ;; Object first argument → direct operation (manual transaction management)  
 (dosync                                          ; Manual transaction required
-  (api/add-musician musician-object musician))  ; Direct object operation
+  (api/add-musician piece-object musician))     ; Direct object operation
 
 ;; VPD pattern provides convenience AND composability
 (dosync
@@ -1127,10 +1128,11 @@ Clojure's multimethod system enables uniform extensibility: define once, works e
   (isa? (type element) ::h/HasItems))
 
 ;; Usage in timewalker operations
-(->> (timewalk piece {:boundary-vpd voice-vpd})
-     (filter rhythmic-item??)      ; Only elements with duration
-     (filter transposable??)       ; Only transposable elements
-     (map #(transpose-element (item %) 4)))   ; Transpose up major third
+(sequence (comp (timewalk {:boundary-vpd voice-vpd})
+                (filter rhythmic-item??)      ; Only elements with duration
+                (filter transposable??)       ; Only transposable elements
+                (map #(transpose-element (item %) 4)))   ; Transpose up major third
+          [piece])
 ```
 
 ## 🔴 Advanced Dispatch Patterns
@@ -1424,11 +1426,12 @@ Understanding when to use each dispatch mechanism:
 ;; Integration with timewalker
 (defn generate-midi-sequence [piece voice-vpd]
   "Generate MIDI sequence using polymorphic dispatch."
-  (->> (timewalk piece {:boundary-vpd voice-vpd})
-       (filter rhythmic-item??)
-       (mapcat (fn [result]
-                 (element->midi-events (item result) (position result))))
-       (sort-by :time)))
+  (sort-by :time 
+           (sequence (comp (timewalk {:boundary-vpd voice-vpd})
+                           (filter rhythmic-item??)
+                           (mapcat (fn [result]
+                                     (element->midi-events (item result) (position result)))))
+                     [piece])))
 ```
 
 ### Layout Engine with Type-Driven Rendering
@@ -1577,18 +1580,19 @@ Understanding when to use each dispatch mechanism:
 ```clojure
 (defn process-musical-content [piece vpd]
   "Process musical content with type-aware operations."
-  (->> (timewalk piece {:boundary-vpd vpd})
-       (map (fn [result]
-              (let [element (item result)]
-                (cond
-                  (rhythmic-item?? result) 
-                  (normalize-duration element)
-                  
-                  (takes-attachment?? result)
-                  (validate-attachments element)
-                  
-                  :else element))))
-       (remove nil?)))
+  (sequence (comp (timewalk {:boundary-vpd vpd})
+                  (map (fn [result]
+                         (let [element (item result)]
+                           (cond
+                             (rhythmic-item?? result) 
+                             (normalize-duration element)
+                             
+                             (takes-attachment?? result)
+                             (validate-attachments element)
+                             
+                             :else element))))
+                  (remove nil?))
+            [piece]))
 ```
 
 ### Pattern 3: Extension-Ready Architecture
@@ -1798,11 +1802,11 @@ Key insights:
 
 ```clojure
 ;; Complex operations expressed concisely:
-(->> (timewalk piece {:boundary-vpd voice-vpd})
-     (filter takes-attachment??)
-     (transduce (comp (filter #(= (:endpoint-id (item %)) target-id))
-                      (take 1))
-                conj []))
+(transduce (comp (timewalk {:boundary-vpd voice-vpd})
+                 (filter takes-attachment??)
+                 (filter #(= (:endpoint-id (item %)) target-id))
+                 (take 1))
+           conj [] [piece])
 ;; Single pipeline: temporal musical search with type safety, scope limiting, early termination
 ```
 
