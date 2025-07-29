@@ -102,10 +102,11 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 - **Bi-directional streaming** for real-time score updates and collaboration
 
 ### 2. Component Management
-- **Integrant** for lifecycle management in all projects
-- **Backend**: gRPC server as Integrant component
+- **Integrant** for lifecycle management in all projects (see [ADR-0017: System Architecture](0017-System-Architecture.md))
+- **Backend**: gRPC server as Integrant component with comprehensive lifecycle management
 - **Frontend**: gRPC client connections as Integrant components
 - **Shared**: Component definitions used by combined deployments
+- **Production Ready**: Exit codes, health monitoring, and graceful shutdown capabilities
 
 ### 3. Build Configuration
 ```clojure
@@ -208,6 +209,7 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 - [ADR-0005: JavaFX and Skija](0005-JavaFX-and-Skija.md) - Frontend GUI framework choice for the separated frontend component
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture leveraging frontend-backend separation boundaries
 - [ADR-0016: Settings](0016-Settings.md) - Settings architecture maintaining frontend-backend separation principles
+- [ADR-0017: System Architecture](0017-System-Architecture.md) - Component lifecycle management and production-ready operational capabilities
 
 ## Notes
 

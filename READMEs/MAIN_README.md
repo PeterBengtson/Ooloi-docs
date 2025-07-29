@@ -179,8 +179,90 @@ Ooloi/
 └── README.md             ; Project-wide README
 ```
 
-## Installation
+## Installation and Running
 
-To get started with Ooloi, you need to set up both the backend and frontend environments.
+### Quick Start
 
-Currently, development focuses on the backend only. There is no point in installing the frontend yet.
+1. **Install Prerequisites**:
+   - Java Development Kit (JDK) 22 or later
+   - Leiningen build tool
+
+2. **Build and Run Backend**:
+   ```bash
+   cd backend
+   lein deps
+   lein run
+   ```
+
+3. **The application will start with**:
+   ```
+   Starting Ooloi backend server...
+   ✅ All components started successfully
+   🎵 Ooloi backend ready for musical collaboration
+   ```
+
+### Command-Line Options
+
+Ooloi supports flexible configuration through command-line arguments and environment variables:
+
+#### Command-Line Arguments
+```bash
+# Start with custom port
+lein run -- --port 8080
+
+# Set deployment mode
+lein run -- --deployment-mode combined
+
+# Multiple options
+lein run -- --port 8080 --deployment-mode backend --timeout-ms 3000
+```
+
+#### Environment Variables
+```bash
+# Alternative to command-line arguments
+export OOLOI_PORT=8080
+export OOLOI_DEPLOYMENT_MODE=combined
+export OOLOI_TIMEOUT_MS=3000
+lein run
+```
+
+**Note**: Command-line arguments take precedence over environment variables.
+
+#### Available Options
+
+| Option | CLI Flag | Environment Variable | Default | Description |
+|--------|----------|---------------------|---------|-------------|
+| Port | `--port 8080` | `OOLOI_PORT` | 10700 | gRPC server port |
+| Deployment Mode | `--deployment-mode combined` | `OOLOI_DEPLOYMENT_MODE` | backend | System deployment mode |
+| Timeout | `--timeout-ms 3000` | `OOLOI_TIMEOUT_MS` | 5000 | Network timeout in milliseconds |
+
+#### Deployment Modes
+
+- **`backend`** (default): Piece manager + gRPC server (typical server deployment)
+- **`combined`**: All components including UI (single-process deployment) 
+- **`dev-engine-only`**: Just piece manager (development/testing)
+
+#### Error Handling
+
+Ooloi provides user-friendly error messages with actionable guidance:
+
+```bash
+❌ Failed to start Ooloi backend:
+Error: gRPC server failed to start on port 10700
+💡 Suggestion: Is another instance already running? Try a different port or stop the conflicting service.
+```
+
+**Exit Codes** (for operational tooling):
+- **0**: Successful startup
+- **10**: Component initialization failure
+- **11**: Port binding failure
+- **12**: Configuration error
+- **13**: Missing dependency
+- **14**: Resource exhaustion
+- **1**: Generic failure
+
+### Development Notes
+
+Currently, development focuses on the backend only. The frontend is not yet ready for installation.
+
+For detailed backend development instructions, see the [backend README](/backend/README.md).
