@@ -19,5 +19,33 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0012-Persisting-Pieces](0012-Persisting-Pieces.md)**: Piece persistence strategy
 - **[0013-Slur-Formatting](0013-Slur-Formatting.md)**: Slur rendering approach
 - **[0014-Timewalk](0014-Timewalk.md)**: Temporal coordination system for musical traversal
+- **[0015-Undo-and-Redo](0015-Undo-and-Redo.md)**: Undo/redo implementation approach
+- **[0016-Settings](0016-Settings.md)**: Settings architecture and persistence strategy
+- **[0017-System-Architecture](0017-System-Architecture.md)**: Component lifecycle management and system startup
+- **[0018-API-gRPC-Interface-Generation](0018-API-gRPC-Interface-Generation.md)**: Automated API-gRPC generation and bidirectional communication architecture
 
-These decisions form the foundation of Ooloi's music notation system.
+## Architecture Overview
+
+These decisions establish Ooloi as a **collaborative music notation system** with:
+
+### **Core Technologies**
+- **Clojure** for functional programming and immutable data structures
+- **Integrant** for component lifecycle and dependency management
+- **gRPC** for efficient frontend-backend communication
+- **JavaFX + Skija** for high-performance UI rendering
+- **STM** for thread-safe concurrent operations
+
+### **Key Architectural Patterns**
+- **Pure tree structures** with ID-based cross-references for data integrity
+- **Vector Path Descriptors (VPDs)** for hierarchical addressing throughout the system
+- **Timewalk coordination** for proper temporal ordering of musical elements
+- **Configuration-driven deployment** supporting multiple operational modes
+- **Component-based architecture** with proper resource management
+
+### **Production Readiness**
+- **Multi-deployment support**: backend-only, frontend-only, combined, and dev-engine modes
+- **Operational integration**: structured error handling, health monitoring, graceful shutdown
+- **Resource safety**: comprehensive cleanup handling for partial initialization failures
+- **Collaboration features**: real-time multi-user editing with conflict resolution
+
+These architectural decisions form the foundation for a **professional-grade music notation system** capable of supporting both individual composers and collaborative musical workflows.
