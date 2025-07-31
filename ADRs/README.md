@@ -23,6 +23,7 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0016-Settings](0016-Settings.md)**: Settings architecture and persistence strategy
 - **[0017-System-Architecture](0017-System-Architecture.md)**: Component lifecycle management and system startup
 - **[0018-API-gRPC-Interface-Generation](0018-API-gRPC-Interface-Generation.md)**: Automated API-gRPC generation and bidirectional communication architecture
+- **[0019-In-Process-gRPC-Transport-Optimization](0019-In-Process-gRPC-Transport-Optimization.md)**: Performance optimization for combined deployments
 
 ## Architecture Overview
 
