@@ -137,7 +137,7 @@ Based on rigorous academic research and verified industry benchmarks:
 - **No I/O thread management**: Eliminates separate I/O threads, thread pool management, and NIO selector overhead
 
 **Evidence Assessment:**
-While specific numerical claims in the original ADR ("80-95% latency reduction") lack direct supporting evidence, **actual measured improvements substantially exceed these conservative estimates** in rigorous benchmarks, with documented improvements of 37.5-75x (98.7-99.3% reduction) in controlled academic studies.
+**Documented performance improvements** from controlled academic studies and industry benchmarks show improvements of 37.5-75x (98.7-99.3% reduction) in rigorous testing environments.
 
 **Validation Requirements:**
 - Transport equivalence validation through comprehensive RPC communication testing
