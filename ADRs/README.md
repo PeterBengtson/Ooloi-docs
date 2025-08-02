@@ -24,6 +24,8 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0017-System-Architecture](0017-System-Architecture.md)**: Component lifecycle management and system startup
 - **[0018-API-gRPC-Interface-Generation](0018-API-gRPC-Interface-Generation.md)**: Automated API-gRPC generation and bidirectional communication architecture
 - **[0019-In-Process-gRPC-Transport-Optimization](0019-In-Process-gRPC-Transport-Optimization.md)**: Performance optimization for combined deployments
+- **[0020-TLS-Infrastructure-and-Deployment-Architecture](0020-TLS-Infrastructure-and-Deployment-Architecture.md)**: TLS security infrastructure and certificate management
+- **[0021-Authentication](0021-Authentication.md)**: Pluggable authentication architecture with JWT-based security
 
 ## Architecture Overview
 
@@ -45,6 +47,7 @@ These decisions establish Ooloi as a **collaborative music notation system** wit
 
 ### **Production Readiness**
 - **Multi-deployment support**: backend-only, frontend-only, combined, and dev-engine modes
+- **Security architecture**: TLS infrastructure with auto-generated certificates and pluggable authentication
 - **Operational integration**: structured error handling, health monitoring, graceful shutdown
 - **Resource safety**: comprehensive cleanup handling for partial initialization failures
 - **Collaboration features**: real-time multi-user editing with conflict resolution
