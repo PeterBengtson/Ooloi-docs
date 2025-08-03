@@ -145,6 +145,7 @@ service OoloiService {
 - **Protocol Buffer Generation**: Create message definitions from function parameters and return types
 - **Service Definition Generation**: Generate gRPC service methods with 1:1 API correspondence
 - **Implementation Generation**: Create server code with thin delegation pattern
+- **Data Conversion**: Protocol-based extensible conversion system for bidirectional Clojure ↔ Protocol Buffer transformation
 
 ### 2. Bidirectional Communication Infrastructure
 
