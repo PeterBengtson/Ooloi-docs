@@ -27,36 +27,28 @@ We will implement TLS support through **two distinct phases**, each with specifi
 **Deliverables:**
 - Complete environment variable and CLI switch support for all TLS configuration
 - TLS disabled by default for immediate developer productivity
-- `OOLOI_TLS=true` or `--tls true` enables TLS with auto-generated certificates when no custom certs provided
+- `OOLOI_TLS=true` or `--tls true` enables TLS with intelligent certificate management
 - TLS-specific CLI overrides: `--tls true/false`, `--cert-path`, `--key-path`
 - Auto-generated self-signed certificates for development and testing
 - Custom certificate support for production and enterprise deployments
-- Certificate storage in `~/.ooloi/certs/` with automatic directory creation
+- Certificate creation at specified paths or platform-appropriate defaults
 - TLS validation test in `system_integration_test.clj`
 - Client TLS support for distributed deployments
 - Works transparently across all deployment scenarios
 
 **Test Certificate Infrastructure:**
-Ooloi includes predefined test certificates for development and testing:
-- **Location**: `backend/resources/test-certs/`
-- **Certificates**: `server.crt` and `server.key` (20-year validity)
-- **Generation script**: `generate-test-certs.sh` for regeneration
-- **Subject**: `CN=ooloi-test-server`
-- **SANs**: `localhost`, `127.0.0.1`, `::1`, `*.local`, `ooloi-test-server`
-- **Usage**: Development, testing, local networks, AWS scenarios
-
-**Certificate Regeneration:**
-```bash
-# Regenerate test certificates (20-year validity)
-cd backend/resources/test-certs/
-./generate-test-certs.sh
-```
+Ooloi automatically generates certificates for development and testing:
+- **Generation**: Pure Java implementation using Bouncy Castle
+- **Properties**: RSA 2048-bit, 20-year validity, self-signed
+- **Subject**: `CN=localhost` with organizational unit `Ooloi`
+- **SANs**: `localhost`, `127.0.0.1`, `::1` for comprehensive local coverage
+- **Usage**: Automatic generation during TLS-enabled startup, no manual intervention required
 
 **Production Certificate Auto-generation:**
 - **Implementation**: Pure Java using Bouncy Castle cryptography (cross-platform, no external dependencies)
-- **Generation**: Automatic when `OOLOI_TLS=true` and no certificates exist
-- **Certificate properties**: RSA 2048-bit, 20-year validity, X.509 with Subject Alternative Names
-- **Storage**: Test certificates in temporary directories, production certificates in `~/.ooloi/certs/`
+- **Generation**: Automatic when `OOLOI_TLS=true` and certificates don't exist at target locations
+- **Certificate properties**: RSA 2048-bit, 20-year validity, X.509 with Subject Alternative Names  
+- **Storage**: Certificates created at cert-path/key-path if specified, otherwise platform-appropriate defaults
 
 **Implementation:**
 ```clojure
@@ -89,10 +81,20 @@ OOLOI_TLS=true ./ooloi-combined
 
 **Certificate Characteristics**:
 - **Generation**: Automatic on first TLS-enabled startup
-- **Storage**: `~/.ooloi/certs/` (cross-platform: Windows `%APPDATA%\Ooloi\certs\`)
+- **Storage**: Via configuration (cert-path and key-path parameters)
 - **SANs**: `localhost`, `127.0.0.1`, `::1`, `*.local`
 - **Validity**: 20 years for long-term development
 - **Trust**: Self-signed, requires manual trust or verification disable
+
+**Certificate Management Behavior**:
+1. **Explicit paths provided**: `--cert-path /path/cert.crt --key-path /path/key.key`
+   - If certificates exist at those paths: Use existing certificates
+   - If certificates don't exist: Create certificates at those paths
+2. **No paths provided**: TLS enabled without certificate paths
+   - Create certificates in platform-appropriate directory:
+     - Unix/macOS: `~/.ooloi/certs/server.{crt,key}`
+     - Windows: `%APPDATA%\Ooloi\certs\server.{crt,key}`
+3. **Idempotent operation**: Safe to restart server multiple times, existing certificates reused
 
 ### Collaboration Development (Distributed)
 **Architecture**: Multiple client machines connecting to shared development server  
@@ -301,7 +303,7 @@ prod-server:
 - ✅ Works transparently across development, testing, production, enterprise, and cloud scenarios
 - ⏳ TLS validation test passes in `system_integration_test.clj` (final task for production readiness)
 - ✅ Certificate generation uses pure Java cryptography (cross-platform, no external dependencies)
-- ✅ All 56 gRPC server tests passing with comprehensive certificate generation coverage
+- ✅ All 70 gRPC server tests passing with comprehensive certificate management coverage including reuse behavior
 
 ### Phase 2 Success Criteria
 - ✅ Build tooling (`make dev-certs`, `make debug-server`, `make prod-server`) functions correctly
