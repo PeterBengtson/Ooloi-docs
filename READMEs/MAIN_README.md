@@ -4,25 +4,23 @@ Ooloi is a modern, open-source music notation software designed to handle comple
 
 It leverages Clojure for both the backend and frontend, JavaFX with Skia for high-quality rendering, and gRPC for efficient server-client communication.
 
-For more information, check out our website and blog on [https://ooloi.org](https://ooloi.org), and also [our wiki](https://github.com/PeterBengtson/Ooloi/wiki). You might also find the [backend README](/backend/src/main/clojure/ooloi/backend/README.md) of interest.
+For more information, check out our website and blog on [https://ooloi.org](https://ooloi.org), and also [our wiki](https://github.com/PeterBengtson/Ooloi/wiki).
 
 ## Table of Contents
 
 1. [Background and Name](#background-and-name)
     - [Nature and Evolution](#nature-and-evolution)
     - [Name and Symbolism](#name-and-symbolism)
-2. [License](#license)
+2. [Performance & Architecture Advantages](#performance--architecture-advantages)
+3. [License](#license)
     - [Core](#core)
     - [Plugins](#plugins)
-3. [Plugins](#Plugins)
-4. [Contributions](#Contributions)
+4. [Contributions](#contributions)
 5. [Code of Conduct](#code-of-conduct)
 6. [Architecture](#architecture)
-6. [Directory Structure](#directory-structure)
-7. [Installation](#installation)
-8.   - [Backend](#backend)
-9.   - [Frontend](#frontend)
-10.  - [Shared](#shared)
+7. [Core Concepts Quick Reference](#core-concepts-quick-reference)
+8. [Directory Structure](#directory-structure)
+9. [Getting Started](#getting-started)
 
 ## Background and Name
 
@@ -179,90 +177,31 @@ Ooloi/
 └── README.md             ; Project-wide README
 ```
 
-## Installation and Running
+## Getting Started
 
-### Quick Start
+Ooloi is organized into three main components:
 
-1. **Install Prerequisites**:
-   - Java Development Kit (JDK) 22 or later
-   - Leiningen build tool
+### 📁 **[Backend](/backend/)** - Music Notation Engine
+The core server that handles musical data, calculations, and business logic.
+- **Status**: ✅ Active development - ready for installation and use
+- **Installation**: See [backend/README.md](/backend/README.md) for detailed setup instructions
+- **Quick start**: `cd backend && lein deps && lein run`
 
-2. **Build and Run Backend**:
-   ```bash
-   cd backend
-   lein deps
-   lein run
-   ```
+### 📁 **[Frontend](/frontend/)** - User Interface  
+The client application providing the graphical interface for music notation.
+- **Status**: 🚧 Under development - not yet ready for installation
+- **Documentation**: See [frontend/README.md](/frontend/README.md)
 
-3. **The application will start with**:
-   ```
-   Starting Ooloi backend server...
-   ✅ All components started successfully
-   🎵 Ooloi backend ready for musical collaboration
-   ```
+### 📁 **[Shared](/shared/)** - Combined Application Builder
+Packages both backend and frontend into standalone applications with gRPC infrastructure.
+- **Status**: ✅ Infrastructure complete - supports both distributed and combined deployments
+- **Documentation**: See [shared/README.md](/shared/README.md) for gRPC architecture details
 
-### Command-Line Options
+### Development Focus
 
-Ooloi supports flexible configuration through command-line arguments and environment variables:
+**Current Priority**: Backend development and gRPC infrastructure
+**Next Phase**: Frontend user interface implementation
 
-#### Command-Line Arguments
-```bash
-# Start with custom port
-lein run -- --port 8080
-
-# Set deployment mode
-lein run -- --deployment-mode combined
-
-# Multiple options
-lein run -- --port 8080 --deployment-mode backend --timeout-ms 3000
-```
-
-#### Environment Variables
-```bash
-# Alternative to command-line arguments
-export OOLOI_PORT=8080
-export OOLOI_DEPLOYMENT_MODE=combined
-export OOLOI_TIMEOUT_MS=3000
-lein run
-```
-
-**Note**: Command-line arguments take precedence over environment variables.
-
-#### Available Options
-
-| Option | CLI Flag | Environment Variable | Default | Description |
-|--------|----------|---------------------|---------|-------------|
-| Port | `--port 8080` | `OOLOI_PORT` | 10700 | gRPC server port |
-| Deployment Mode | `--deployment-mode combined` | `OOLOI_DEPLOYMENT_MODE` | backend | System deployment mode |
-| Timeout | `--timeout-ms 3000` | `OOLOI_TIMEOUT_MS` | 5000 | Network timeout in milliseconds |
-
-#### Deployment Modes
-
-- **`backend`** (default): Piece manager + gRPC server (typical server deployment)
-- **`combined`**: All components including UI (single-process deployment) 
-- **`dev-engine-only`**: Just piece manager (development/testing)
-
-#### Error Handling
-
-Ooloi provides user-friendly error messages with actionable guidance:
-
-```bash
-❌ Failed to start Ooloi backend:
-Error: gRPC server failed to start on port 10700
-💡 Suggestion: Is another instance already running? Try a different port or stop the conflicting service.
-```
-
-**Exit Codes** (for operational tooling):
-- **0**: Successful startup
-- **10**: Component initialization failure
-- **11**: Port binding failure
-- **12**: Configuration error
-- **13**: Missing dependency
-- **14**: Resource exhaustion
-- **1**: Generic failure
-
-### Development Notes
-
-Currently, development focuses on the backend only. The frontend is not yet ready for installation.
-
-For detailed backend development instructions, see the [backend README](/backend/README.md).
+For technical architecture details and development roadmap, see:
+- [Development Plan](/DEV_PLAN.md) - Complete project roadmap and milestones  
+- [gRPC Deep Dive](/DEV_PLAN_GRPC_DEEPDIVE.md) - Technical architecture for distributed music notation

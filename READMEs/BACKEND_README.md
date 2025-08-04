@@ -1,501 +1,443 @@
-# Ooloi Backend Source Directory
+# Ooloi Backend
 
-This directory contains the source code for the backend of Ooloi.
+This directory contains the backend server code for Ooloi, a high-performance music notation software.
 
-
-## Table of Contents
-
-- [Directory Structure](#directory-structure)
-- [Data Model](#data-model)
-- [Class-specific Operations](#class-specific-operations)
-- [Programming Paradigm](#programming-paradigm)
-  - [Key Concepts](#key-concepts)
-- [Constructors, Accessors and Mutators](#constructors-accessors-and-mutators)
-  - [Constructors](#constructors)
-  - [Accessors and Mutators](#accessors-and-mutators)
-- [Core and API Polymorphism](#core-and-api-polymorphism)
-- [Parallelism and Thread-Safety](#parallelism-and-thread-safety)
-- [Principles and Requirements](#principles-and-requirements)
-- [Namespace Organization and Import Guidelines](#namespace-organization-and-import-guidelines)
-- [Coding Conventions](#coding-conventions)
-
-
-## Directory Structure
+## Directory structure
 
 ```
 backend/
-└── src/
-    └── main/
-        └── clojure/
-            └── ooloi/
-                └── backend/
-                  ├── api.clj
-                  ├── core.clj
-                  ├── ops/
-                  │   ├── attachment_resolver.clj
-                  │   ├── changes.clj
-                  │   ├── persistence.clj
-                  │   ├── piece_manager.clj
-                  │   ├── pitches.clj
-                  │   ├── rhythm.clj
-                  │   ├── text.clj
-                  │   ├── vectors_and_attributes.clj
-                  │   ├── vpd.clj
-                  │   └── walk.clj
-                  └── models/
-                      ├── core.clj
-                      ├── hierarchy.clj
-                      ├── musical/
-                      │   ├── attachments/
-                      │   │   ├── articulation.clj
-                      │   │   ├── dynamic.clj
-                      │   │   ├── glissando.clj
-                      │   │   ├── hairpin.clj
-                      │   │   ├── ottava.clj
-                      │   │   ├── slur.clj
-                      │   │   └── tie.clj
-                      │   ├── chord.clj
-                      │   ├── instrument.clj
-                      │   ├── measure.clj
-                      │   ├── musician.clj
-                      │   ├── piece.clj
-                      │   ├── pitch.clj
-                      │   ├── rest.clj
-                      │   ├── staff.clj
-                      │   ├── tremolando.clj
-                      │   ├── trill.clj
-                      │   ├── tuplet.clj
-                      │   └── voice.clj
-                      ├── traits/
-                      │   ├── attachment.clj
-                      │   ├── has_items.clj
-                      │   ├── rhythmic_item.clj
-                      │   ├── takes_attachment.clj
-                      │   └── transposable.clj
-                      └── visual/
-                          ├── layout.clj
-                          ├── measure_view.clj
-                          ├── page_view.clj
-                          ├── staff_view.clj
-                          └── system_view.clj
-```     
-The above diagram doesn't include all models.
-
-## Data Model
-
-Ooloi uses the following tree structure for its main musical elements:
-
-```
-Piece
-├── musicians
-│   └── instruments
-│       └── staves
-│           └── voices
-│               └── measures
-│                   └── items (Pitch, Chord, Rest, Tuplet, Tremolando, etc.)
-└── layouts
-    └── page-views
-        └── system-views
-            └── staff-views
-                └── measure-views
-                    ├── glyphs
-                    └── curves
+├── docs/              ; The HTML documentation for the backend, created by Codox
+├── resources/         ; Resources for the application, notably icons
+├── src/               ; The source code hierarchy for the backend
+├── test/              ; The backend Midje tests
+└── CHANGELOG.md       ; The CHANGELOG (as of yet unused)
+└── README.md          ; This README
+└── project.clj        ; The Leiningen project file for the backend
 ```
 
-The entire structure is always a pure tree, which makes serialisation and deserialisation straightforward. Cross-references are implemented as ID references, not pointers. IDs are lazily assigned to objects as needed.
+## Prerequisites
 
+### System Requirements
 
-## Class-specific Operations
+- **Java Development Kit (JDK) 22 or later** - Required for running Clojure and building the application
+- **Leiningen 2.9.0 or later** - Clojure build tool for dependency management and project operations
+- **Git** - For version control and accessing the repository
+- **Minimum 4GB RAM** - Recommended for development and large musical scores
+- **Network access** - For downloading dependencies during initial setup
 
-Each file also contains the most basic operations for the model, such as adding and deleting nested items, e.g. to add a Layout to a Piece. However, the idea here is brevity and understandability.
+### Platform-Specific Installation
 
-More complex or abstract operations, such as formatting a MeasureView for display, are placed in the `ops` directory in order to keep model files succinct and understandable.
+#### macOS
+```bash
+# Install Java using Homebrew
+brew install openjdk@22
 
+# Install Leiningen
+brew install leiningen
 
-## Programming Paradigm
-
-Ooloi uses a dynamic, functional programming approach to handle complex music notation requirements. At its core, it leverages Clojure's functional programming paradigms, enhanced with the Methodical library, to provide a powerful and flexible system for music notation and manipulation.
-
-### Key Concepts
-
-1. **Functional Programming:** Ooloi uses Clojure, a functional programming language, to ensure immutability, ease of reasoning about code, and leveraging powerful data structures.
-2. **Multimethods:** Multimethods provide polymorphic dispatch based on types and other attributes, allowing different behaviors for different types.
-3. **Methodical Library:** Methodical extends Clojure's multimethods, providing advanced features such as next-method calls, auxiliary methods (`:before`, `:after`, `:around`), and more.
-4. **Clojure Hierarchies:** Hierarchies are used, rather than inheritance, for composability and multiple inheritance reminiscent of CLOS.
-5. **Specter Library:** Uses Specter for efficient and expressive updates of arbitrarily nested data structures.
-
-
-## Constructors, Accessors and Mutators
-
-### Constructors
-
-Constructors are functions that create instances of records with default or specified values. They ensure consistency and encapsulate the creation logic for records. Each model in Ooloi has an associated constructor function.
-
-For the `Pitch` model, the constructor function is `create-pitch`. To create a `Pitch` instance:
-
-```clojure
-(create-pitch :note "C4" :duration 1/4)
+# Set environment variables (add to ~/.zshrc or ~/.bash_profile)
+export JAVA_HOME="/usr/local/opt/openjdk@22"
+export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
-Similar `create-xxxxx` functions are available for all API models.
+#### Linux (Ubuntu/Debian)
+```bash
+# Install Java
+sudo apt update
+sudo apt install openjdk-22-jdk
 
-### Accessors and Mutators
+# Install Leiningen
+curl https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein > ~/bin/lein
+chmod +x ~/bin/lein
+lein --version  # This will download and install Leiningen
 
-Automatically defined accessors and mutators retrieve and modify attributes of defrecords. For attributes that contain vectors or ChangeSets, standardised accessors and mutators are also available to manipulate their elements. Just as for constructors, there's a consistent naming scheme for accessors and mutators:
-
-Simple attributes have the following two methods defined. For an attribute named `start-measure-number`:
-- `get-start-measure-number`
-- `set-start-measure-number`
-
-Vector attributes have the following methods defined. For an attribute named `staff`:
-- `add-staff`
-- `get-staff`
-- `get-staves`
-- `move-staff-down`
-- `move-staff-up`
-- `remove-staff`
-- `set-staff`
-- `set-staves`
-
-There are also so-called ChangeSets, used to implement things that start at one point and go on until they are changed.
-Examples are key and time signatures and tempo changes, but also instrument changes for a musician. An attribute called
-`tempos` using a ChangeSet has the following methods:
-- `get-tempo`
-- `get-tempos`
-- `remove-tempo`
-- `set-tempo`
-- `set-tempos`
-
-All accessors and mutators are exposed in the `api` namespace. There may of course be other operations specific
-to each model, but most operations follow the above pattern. The documentation describes all such operations and their arguments.
-
-
-## Core and API Polymorphism
-
-The above conventions result in clear, succinct, and understandable backend code like the following:
-
-```clojure
-(let [measure1 (-> (create-measure)
-                   (add-item (create-pitch :note "C4" :duration 1/4))   ; Twink-
-                   (add-item (create-pitch :note "C4" :duration 1/4))   ; -le,
-                   (add-item (create-pitch :note "G4" :duration 1/4))   ; twink-
-                   (add-item (create-pitch :note "G4" :duration 1/4)))  ; -le
-
-      measure2 (-> (create-measure)
-                    (add-item (create-pitch :note "A4" :duration 1/4))  ; litt-
-                    (add-item (create-pitch :note "A4" :duration 1/4))  ; -le
-                    (add-item (create-pitch :note "G4" :duration 1/2))) ; star
-
-      voice (-> (create-voice :start-measure-number 0)
-                (add-measure measure1)
-                (add-measure measure2))
-
-      staff (-> (create-staff)
-                (add-voice voice))
-
-      instrument (-> (create-instrument :name "Oboe")
-                     (add-staff staff))
-
-      musician (-> (create-musician :name "Oboe 1")
-                   (add-instrument instrument))
-
-      piece (-> (create-piece)
-                (add-musician musician)
-                (set-time-signature 0 [4 4])
-                (set-key-signature 0 [:c :major]))]
-
-    ...
-)
+# Set environment variables (add to ~/.bashrc)
+export JAVA_HOME="/usr/lib/jvm/java-22-openjdk-amd64"
+export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
-Here, we are freely passing instances of Piece, Pitch, Instrument and other models around, as you do in the backend. We have direct access to all objects; they can be directly referenced and manipulated. The polymorphic dispatch will use the type of the first argument to dispatch to the right method. A method that adds something to something else will return a new version of the updated object, just as you would expect.
+#### Windows
+1. **Install Java**:
+   - Download OpenJDK 22 from [Adoptium](https://adoptium.net/)
+   - Run installer and follow prompts
+   - Set `JAVA_HOME` environment variable to installation directory
 
-However, this also means that the above usage pattern operates only locally on the data. If you change something deep inside a piece, only that object will change. But in an immutable data structure such as Piece, updating a nested object requires replacing all its ancestors all the way up to the piece, or the piece won't see the change. 
+2. **Install Leiningen**:
+   - Download `lein.bat` from [Leiningen website](https://leiningen.org/)
+   - Place in a directory on your PATH
+   - Run `lein self-install` from command prompt
 
-Moreover, the above code does not establish any transactions for its operations, so it's not inherently threadsafe.
+### Verification
 
-Now, this is all intentional. This way of working is specifically designed for working with backend core code; it's fully expected that the developer writing such code will wrap piece-mutating code in a `dosync` with a `ref` on the piece. The ancestor chain up to the piece may be modified using any methodology the developer sees fit, mostly using Specter or things like `update-in`. Moreover, the Piece Manager offers assistance with reffing and updating pieces.
+Verify your installation:
+```bash
+# Check Java version
+java -version
+# Should show: openjdk version "22.x.x" or later
 
-Thus we can regard code as the above to be an internal and direct form of data manipulation, designed to run exclusively in the Ooloi backend.
+# Check Leiningen
+lein version
+# Should show: Leiningen 2.9.0 or later on Java 22.x.x
 
-However, Ooloi is designed as a server/client architecture. This means that there is a frontend application that knows nothing of the internals of the backend and which doesn't have direct access to any of its data structures. The frontend and backend talk to each other using gRPC. We thus must have some other way of referring to the data structures of a piece which doesn't involve pointers.
-
-Enter VPDs, Vector Path Descriptors. They are vectors describing the _path_ to data relative to a piece. VPDs are essentially Specter navigators or the paths we see in `get-in` and `update-in`.
-
-All API methods that dispatch on the type of their first argument - which is all of them except the constructors - can also take a VPD as their first argument. Thus:
-
-```clojure
-(remove-item measure 2)
+# Check environment
+echo $JAVA_HOME
+# Should show path to Java installation
 ```
 
-where `measure`is, say, the measure2 of the example above, and which would remove the third item of that measure ("star") can also be invoked:
+### Icon Files Setup
 
-```clojure
-(remove-item [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 1] "PieceID2418" 2)
+Ensure you have the appropriate icon files in the `backend/resources/icons/` directory:
+
+- **macOS**: `icon.icns`
+- **Windows**: `icon.ico` 
+- **Linux**: `icon.png`
+
+These can be found in the root `icons/` directory and should be symlinked:
+```bash
+cd backend/resources/
+ln -s ../../icons/ready/macos/icon.icns icons/
+ln -s ../../icons/ready/windows/icon.ico icons/
+ln -s ../../icons/ready/linux/icon.png icons/
 ```
 
-The VPD replaces the direct object `measure` with a _description_ of where that object is in `piece`, which also must be supplied in all VPD call signatures: the direct object is replaced by the VPD _and_ a piece reference. The piece reference can be a direct piece object, a ref (for backend use), or as in the example above, a string Piece ID. If a string is given, the Piece Manager will be used to retrieve the piece. 
+## Installation
 
-Thus, this method of calling the backend API can be used by the frontend. There's nothing to prevent the backend from using this method, either: fact is, it's often the most practical way of working.
+  ```bash
+  cd backend
+  lein deps
+  ```
 
-Also, which is important, when using VPDs as the first parameter the operation is wrapped in an STM transaction and Specter will be used to update the piece. Thus, consumers of the API in the backend have a choice between two different methods of data manipulation, and consumers of the API in the frontend have the same expressivity with the added bonus of automatic management of the underlying data structures, in a fully transactional, threadsafe way.
+## Building the Backend
 
-VPDs also have a more compact form. The above can also be written:
+1. Navigate to the backend directory:
+   ```bash
+   cd backend
+   ```
 
-```clojure
-(remove-item [:m 0 0 0 0 1] "PieceID2418" 2)
+2. Run tests:
+   ```bash
+   lein midje
+   ```
+
+3. Build the application:
+   ```bash
+   lein build
+   ```
+
+   This command will perform the following steps:
+   - Clean the project
+   - Create an uberjar
+   - Run the build function to package the application
+
+   You will see colored output indicating the progress of each step.
+
+4. The packaged backend application will be in the `backend/target` directory.
+
+## Build Process Details
+
+The build process uses the following tools and steps:
+
+1. **Cleaning**: Removes previous build artifacts.
+2. **Uberjar Creation**: Compiles the code and creates a standalone jar file.
+3. **Jpackage**: Packages the application for distribution, creating platform-specific installers or application images.
+
+The build process handles both SNAPSHOT (development) versions and release versions:
+
+- For SNAPSHOT versions, it creates an app image.
+- For release versions, it creates platform-specific installers (DMG for macOS, DEB for Linux, MSI for Windows).
+
+## Version Handling
+
+The build process automatically adjusts version numbers for compatibility with different platforms:
+
+- SNAPSHOT suffixes are removed for the final package version.
+- If the version starts with "0", it's changed to "1.0.0" for macOS compatibility.
+- The original version (including SNAPSHOT if applicable) is included in the application name.
+
+## Development
+
+### Running the Backend
+
+#### Quick Start
+```bash
+lein run
 ```
 
-The frontend window manager translates clicks on the screen to VPDs suitable for passing to the backend. The fact that the frontend always will pass a string piece reference with every call allows the backend to serve multiple pieces simultaneously; there is no backend "current piece".
-
-This means that setting a slur from the first note to the last one in the example above from the frontend simply becomes:
-
-```clojure
-(add-attachment [:m 0 0 0 0 0 :items 0] "PieceID2418" "slur" [:m 0 0 0 0 1 :items 1])
+The application will display startup messages:
+```
+Starting Ooloi backend server...
+✅ All components started successfully
+🎵 Ooloi backend ready for musical collaboration
 ```
 
-There's additional magic going on in this particular case (using an :around Methodical method), but that complexity is all abstracted away for the API user.
+#### Configuration Options
 
-The end result is a powerful, expressive API that is the same for the backend and the frontend. Moreover, the API is used throughout the entire application:; it's not just something tacked on for the frontend to use.
+The backend supports flexible configuration through command-line arguments and environment variables:
 
+**Command-Line Arguments** (recommended for development):
+```bash
+# Custom port
+lein run -- --port 8080
 
-## Parallelism and Thread-Safety
+# Deployment mode
+lein run -- --deployment-mode combined
 
-Ooloi utilizes Clojure's Software Transactional Memory (STM) with refs to provide a powerful, thread-safe framework for accessing and mutating complex musical structures. This system forms the foundation of all data operations in Ooloi.
+# TLS configuration (ADR-0020)
+lein run -- --tls true
+lein run -- --tls true --cert-path ./custom.crt --key-path ./custom.key
 
-Key aspects:
-1. All piece data is stored in refs, allowing for ACID transactions.
-2. Updates to the piece are wrapped in dosync blocks, ensuring atomicity and consistency.
-3. Automatic retries are handled by the STM when conflicts occur in concurrent modifications.
+# gRPC transport optimization (ADR-0019)
+lein run -- --grpc-transport in-process --health-port 10701
 
-The system provides:
-- Functions for safely updating data within the transactional system.
-- Functions to mark measures for later visual recomputation.
-
-Performance metrics (on a 2017 MacBook Pro 2,2 GHz 6-Core Intel Core i7):
-- Transactional mode: 100,000+ updates per second (1000 updates in 10 ms).
-These results demonstrate the system's ability to handle a high volume of concurrent updates efficiently, both with and without explicit transaction management.
-
-
-## Principles and Requirements
-
-Overall Principles and Requirements:
-  - Maintain polymorphism across all models.
-  - Keep model-specific definitions close to their respective model files.
-  - Follow Clojure best practices and idiomatic patterns.
-  - Prioritize simplicity and avoid unnecessary complexity.
-  - Design for extensibility and ease of use.
-  - Maintain separation between musical and visual models.
-  - Use docstrings everywhere. The documentation tool (Codox) uses them. They are crucial in a collaborative environment.
-  - Use STM for managing concurrency, ensuring thread-safe operations and data integrity.
-
-## Namespace Organization and Import Guidelines
-
-Ooloi uses a carefully structured namespace organization to eliminate circular dependencies while providing a clean, unified API. Understanding when to use which namespace is crucial for maintainable code.
-
-### Quick Start: What to Import
-
-**For 90% of your code, you only need this:**
-
-```clojure
-(ns my-namespace
-  (:require [ooloi.backend.models.core :refer :all]))
+# Multiple options
+lein run -- --port 8080 --deployment-mode backend --timeout-ms 3000 --grpc-transport network --tls true
 ```
 
-This gives you access to:
-- **All constructors**: `create-pitch`, `create-chord`, `create-measure`, etc.
-- **All predicates**: `pitch?`, `chord?`, `measure?` (raw items), plus `pitch??`, `chord??`, `measure??` (timewalk tuples), etc.
-- **All multimethods**: `get-duration`, `add-item`, `set-name`, etc.
-
-**Why this works**: The `core` namespace is the unified entry point that re-exports everything you need from the entire Ooloi system.
-
-### Most Important Namespaces
-
-#### 1. `ooloi.backend.models.core` - **YOUR PRIMARY NAMESPACE**
-- **What it is**: The main entry point for all Ooloi functionality
-- **What it contains**: All constructors, predicates, and multimethods
-- **When to use**: For application code, tests, examples, and most development
-- **How to import**: `[ooloi.backend.models.core :refer :all]`
-
-#### 2. `ooloi.backend.models.predicates` - **FOR ARCHITECTURE-CONSTRAINED FILES**
-- **What it is**: Type checking functions (pitch?, chord?, measure?, etc. for raw items, plus pitch??, chord??, measure??, etc. for timewalk tuples)
-- **What it contains**: Both `?` predicates (raw items) and `??` predicates (timewalk tuples) 
-- **When to use**: In model files, trait files, or when you can't import core
-- **How to import**: `[ooloi.backend.models.predicates :refer [pitch? pitch?? chord?]]` (selective)
-
-#### 3. `ooloi.backend.models.interfaces` - **FOR ARCHITECTURE-CONSTRAINED FILES**
-- **What it is**: Multimethod definitions (method signatures only)
-- **What it contains**: get-duration, add-item, set-name, etc.
-- **When to use**: In model files, trait files, or when you can't import core
-- **How to import**: `[ooloi.backend.models.interfaces :as i]`
-
-#### 4. `ooloi.backend.api` - **EXTERNAL CONSUMER INTERFACE**
-- **What it is**: Public API namespace for external consumers (gRPC, external services)
-- **What it contains**: Same as core, but designed for external access
-- **When to use**: For external service integration, gRPC endpoints, or explicit API testing
-- **How to import**: `[ooloi.backend.api :as api]`
-
-### When You Can't Use Core
-
-Some files cannot import `core` because it would create circular dependencies:
-
-**Architecture-constrained files:**
-- Model implementation files (`models/musical/*.clj`, `models/visual/*.clj`)
-- Trait files (`models/traits/*.clj`)
-- Some ops files (`ops/timewalk.clj`, `ops/attachment-resolver.clj`)
-
-**In these files, use selective imports:**
-
-```clojure
-(ns ooloi.backend.models.musical.pitch
-  (:require [ooloi.backend.models.interfaces :as i]
-            [ooloi.backend.models.predicates :refer [pitch? rhythmic-item?]]))
-
-;; Use predicates unqualified (clean and readable)
-(pitch? item)
-(rhythmic-item? item)
-
-;; Use multimethods qualified
-(i/get-duration item)
-(i/set-duration item new-duration)
+**Environment Variables** (recommended for production):
+```bash
+export OOLOI_PORT=8080
+export OOLOI_DEPLOYMENT_MODE=combined  
+export OOLOI_TIMEOUT_MS=3000
+export OOLOI_GRPC_TRANSPORT=in-process
+export OOLOI_HEALTH_PORT=10701
+# TLS configuration
+export OOLOI_TLS=true
+export OOLOI_CERT_PATH=/etc/ssl/ooloi.crt
+export OOLOI_KEY_PATH=/etc/ssl/ooloi.key
+lein run
 ```
 
-### Summary: What Most Developers Need to Know
+#### Available Configuration
 
-1. **Start with core**: `[ooloi.backend.models.core :refer :all]` for 90% of your code
-2. **Use selective imports**: Only in architecture-constrained files
-3. **Use api for external consumers**: Core is preferred for internal code, api for external services
-4. **When in doubt**: Use core with `:refer :all`
+| Parameter | CLI Flag | Environment Variable | Default | Description |
+|-----------|----------|---------------------|---------|-------------|
+| **Port** | `--port 8080` | `OOLOI_PORT` | 10700 | gRPC server port for frontend communication |
+| **Deployment Mode** | `--deployment-mode MODE` | `OOLOI_DEPLOYMENT_MODE` | backend | System deployment configuration |
+| **Timeout** | `--timeout-ms 3000` | `OOLOI_TIMEOUT_MS` | 5000 | Network timeout in milliseconds |
+| **TLS Enabled** | `--tls true/false` | `OOLOI_TLS` | false | Enable/disable TLS encryption |
+| **TLS Certificate** | `--cert-path PATH` | `OOLOI_CERT_PATH` | platform default | Path to TLS certificate file (created if missing) |
+| **TLS Private Key** | `--key-path PATH` | `OOLOI_KEY_PATH` | platform default | Path to TLS private key file (created if missing) |
+| **gRPC Transport** | `--grpc-transport TYPE` | `OOLOI_GRPC_TRANSPORT` | auto | Transport optimization: `network` or `in-process` |
+| **Health Port** | `--health-port 10701` | `OOLOI_HEALTH_PORT` | 10701 | HTTP health endpoint port for monitoring |
 
-### Core Namespace Architecture
+**Deployment Modes**:
+- **`backend`** (default): Piece manager + gRPC server - typical server deployment
+- **`combined`**: All components including UI support - single-process deployment  
+- **`dev-engine-only`**: Only piece manager - minimal development/testing mode
 
-The namespace architecture follows a clean dependency flow:
+**gRPC Transport Optimization** (ADR-0019):
+- **`auto`** (default): Automatic selection - `in-process` for combined mode, `network` for backend mode
+- **`in-process`**: Ultra-high-performance direct communication (37.5-75x faster, 98.7-99.3% latency reduction, for combined deployments)
+- **`network`**: Standard TCP communication (for debugging or separate process deployment)
 
-```
-predicates.clj → interfaces.clj → models/*.clj → core.clj → api.clj
-```
+**Health Monitoring**:
+- **Health Port**: HTTP endpoint for external monitoring tools (load balancers, ops dashboards)
+- **gRPC Health**: Built-in gRPC health service for component coordination
 
-### Namespace Descriptions
+**Configuration Precedence**: Command-line arguments override environment variables, which override defaults.
 
-#### `ooloi.backend.models.predicates`
-- **Purpose**: Contains all type predicates (pitch?, chord?, measure?, etc.)
-- **Dependencies**: Only imports hierarchy (no circular dependencies)
-- **Usage**: For type checking and validation
+#### TLS Configuration and Test Certificates
 
-#### `ooloi.backend.models.interfaces`
-- **Purpose**: Contains all multimethod definitions (method signatures only)
-- **Dependencies**: Imports predicates and hierarchy
-- **Usage**: For defining polymorphic operations
+**TLS Overview** (ADR-0020: TLS Infrastructure and Deployment Architecture):
+- **Default**: TLS disabled for immediate developer productivity
+- **Development**: Enable with `--tls true` or `OOLOI_TLS=true` - certificates auto-generated
+- **Certificate Management**: Intelligent creation at specified paths or platform defaults
+- **Production**: Full control via `--cert-path` and `--key-path` parameters
 
-#### `ooloi.backend.models.core`
-- **Purpose**: Unified namespace re-exporting multimethods, predicates, AND constructors
-- **Dependencies**: Imports and re-exports from interfaces, predicates, and all model files
-- **Usage**: Primary namespace for application code
+**Certificate Auto-Generation**:
+Ooloi automatically generates TLS certificates when needed:
+- **Implementation**: Pure Java with Bouncy Castle (cross-platform, no external dependencies)
+- **Default Locations**: 
+  - Unix/macOS: `~/.ooloi/certs/server.{crt,key}`
+  - Windows: `%APPDATA%\Ooloi\certs\server.{crt,key}`
+- **Properties**: RSA 2048-bit, 20-year validity, covers `localhost`, `127.0.0.1`, `::1`
+- **Behavior**: Certificates created on first TLS startup, reused on subsequent starts
 
-#### `ooloi.backend.api`
-- **Purpose**: Public API namespace for external consumers (gRPC, external services)
-- **Dependencies**: Re-exports from core
-- **Usage**: Designed for external service integration and gRPC endpoints
+**TLS Configuration Examples**:
+```bash
+# Development: TLS disabled (default)
+lein run
 
-#### Model Files (`models/musical/*.clj`, `models/visual/*.clj`)
-- **Purpose**: Implement multimethods and define constructors
-- **Dependencies**: Import interfaces and predicates (NOT core)
-- **Usage**: Internal implementation files
+# Development: TLS with auto-generated certificates (platform defaults)
+lein run -- --tls true
+OOLOI_TLS=true lein run
 
-### Import Guidelines by File Type
+# Development: TLS with certificates at custom locations
+lein run -- --tls true --cert-path ./my.crt --key-path ./my.key
 
-#### **Most Application Code, Tests, and Examples**
-Use the core namespace with `:refer :all` for clean, readable code:
+# Production: Environment variables with custom certificates
+export OOLOI_TLS=true
+export OOLOI_CERT_PATH=/etc/ssl/ooloi.crt
+export OOLOI_KEY_PATH=/etc/ssl/ooloi.key
+lein run
 
-```clojure
-(ns my-application
-  (:require [ooloi.backend.models.core :refer :all]))
-
-;; All functions available unqualified:
-(create-pitch :note :C4 :duration 1/4)  ; Constructor
-(pitch? some-item)                       ; Predicate for raw items
-(pitch?? some-tuple)                     ; Predicate for timewalk tuples
-(get-duration some-item)                 ; Multimethod
-```
-
-#### **API Tests (testing the API explicitly)**
-Use qualified API imports to ensure you're testing the API namespace:
-
-```clojure
-(ns api-test
-  (:require [ooloi.backend.api :as api]
-            [ooloi.backend.models.core :refer [get-musicians get-name]]))
-
-;; Constructors explicitly qualified
-(api/create-pitch :note :C4 :duration 1/4)
-;; Multimethods from core (selective import)
-(get-musicians piece)
-```
-
-#### **Files with Architecture Constraints (Model Files, Traits, Some Ops)**
-These files CANNOT import core (would create circular dependencies). Use selective imports:
-
-```clojure
-(ns ooloi.backend.models.musical.pitch
-  (:require [ooloi.backend.models.interfaces :as i]
-            [ooloi.backend.models.predicates :refer [pitch? rhythmic-item?]]))
-
-;; Clean, unqualified predicates
-(pitch? item)                ; For raw items
-(pitch?? tuple)              ; For timewalk tuples (if needed)
-(rhythmic-item? item)        ; Behavioral predicate
-;; Qualified multimethods
-(i/get-duration item)
+# Production: HTTPS port with TLS
+export OOLOI_TLS=true
+export OOLOI_PORT=443
+export OOLOI_CERT_PATH=/etc/ssl/ooloi.crt  
+export OOLOI_KEY_PATH=/etc/ssl/ooloi.key
+java -jar target/ooloi-backend-*-standalone.jar
 ```
 
-#### **Predicate Test Files**
-Test predicates explicitly using qualified imports:
+**Certificate Management**:
+- **Automatic**: Certificates are generated automatically when TLS is enabled
+- **Persistent**: Once created, certificates are reused across server restarts
+- **Configurable**: Use `--cert-path` and `--key-path` to control certificate locations
+- **Cross-platform**: Works seamlessly on Unix, macOS, and Windows
 
-```clojure
-(ns predicates-test
-  (:require [ooloi.backend.models.core :refer :all]  ; For constructors
-            [ooloi.backend.models.predicates :as p])) ; For predicates
+#### Production Deployment
 
-;; Constructors unqualified
-(create-pitch :note :C4 :duration 1/4)
-;; Predicates explicitly qualified
-(p/pitch? item)
+For production deployment, use environment variables and proper process management:
+
+```bash
+# Set environment variables
+export OOLOI_PORT=10700
+export OOLOI_DEPLOYMENT_MODE=backend
+export OOLOI_TIMEOUT_MS=5000
+
+# Run with process management (e.g., systemd, supervisor, docker)
+java -jar target/ooloi-backend-*-standalone.jar
 ```
 
-### Decision Tree: Which Namespace to Use?
+#### Error Handling and Troubleshooting
 
-1. **Are you writing application code, tests, or examples?**
-   → Use `[ooloi.backend.models.core :refer :all]`
+The backend provides comprehensive error handling with actionable guidance:
 
-2. **Are you explicitly testing the API namespace?**
-   → Use `[ooloi.backend.api :as api]` with selective core imports
+**Port Conflicts**:
+```bash
+❌ Failed to start Ooloi backend:
+Error: gRPC server failed to start on port 10700
+💡 Suggestion: Is another instance already running? Try a different port or stop the conflicting service.
+```
 
-3. **Are you in a model file, trait file, or constrained ops file?**
-   → Use selective imports from `interfaces` and `predicates`
+**Configuration Issues**:
+```bash
+❌ Failed to start Ooloi backend:
+Error: Missing required configuration: piece-manager dependency
+💡 Suggestion: Check your configuration files and environment variables.
+```
 
-4. **Are you testing predicates explicitly?**
-   → Use `[ooloi.backend.models.predicates :as p]`
+**Exit Codes for Operational Monitoring**:
+- **0**: Successful startup and operation
+- **10**: Component initialization failure (check logs and dependencies)
+- **11**: Port binding failure (port already in use)
+- **12**: Configuration error (invalid or missing configuration)
+- **13**: Missing dependency (required services unavailable)
+- **14**: Resource exhaustion (insufficient system resources)
+- **1**: Generic failure (check application logs)
 
-### Key Benefits of This Architecture
+#### Development vs Production
 
-- **No Circular Dependencies**: Clean unidirectional dependency flow
-- **Unified API**: Core namespace provides access to all functions
-- **Selective Imports**: Architecture-constrained files can import only what they need
-- **Readable Code**: Unqualified function calls in application code
-- **Explicit Testing**: API and predicate tests are explicit about what they're testing
-- **Maintainability**: Clear separation of concerns and dependencies
+**Development Mode**:
+- Use `lein run` with command-line arguments
+- Automatic code reloading available
+- Debug logging enabled by default
 
-### Common Mistakes to Avoid
+**Production Mode**:
+- Use standalone JAR with environment variables
+- Optimized performance settings
+- Structured logging for monitoring
 
-- **Never import core in model files**: This creates circular dependencies
-- **Don't use `:refer :all` for predicates in predicate tests**: Be explicit about what you're testing
-- **Don't mix qualified and unqualified calls**: Pick one style per namespace
-- **Use api namespace for external integration**: Core is preferred for internal code, api for external consumers like gRPC
+#### Health Monitoring
 
-## Coding Conventions
+The backend includes built-in health monitoring accessible via gRPC:
+- Component status tracking
+- Resource usage monitoring  
+- Automatic failure detection and isolation
+- Graceful shutdown with proper cleanup
 
-  - Use Methodical (`m/defmulti` and `m/defmethod`) for defining and implementing multimethods.
-  - Using Specter is highly encouraged. There is a separate [Specter guide](../../guides/SPECTER.md) to give you some tips.
-  - Define shared behaviors in `models/core.clj`.
-  - Implement model-specific behaviors in individual model files (e.g., `dynamic.clj`, `slur.clj`).
-  - Expose public functions through `api.clj` using `import-vars`.
+## Development Commands
+
+### Running Tests
+
+The backend uses Midje for comprehensive testing:
+
+```bash
+# Run all tests
+lein midje
+
+# Run specific test namespace
+lein midje ooloi.backend.ops.timewalk-test
+
+# Run tests with coverage report
+lein coverage
+```
+
+**Important**: Use `lein midje` instead of `lein test`. The project is configured for Midje testing framework.
+
+### Protocol Buffer Generation
+
+The backend includes gRPC infrastructure with automatic Protocol Buffer compilation:
+
+```bash
+# Compile Protocol Buffers and generate Java classes
+lein compile
+
+# Clean and recompile (recommended when .proto files change)  
+lein clean && lein compile
+
+# Verify generated classes
+ls target/generated-sources/protobuf/
+```
+
+#### Protocol Buffer Configuration
+
+The backend automatically generates Java classes from shared Protocol Buffer definitions:
+
+- **Proto source**: `../shared/src/main/proto/` (shared with frontend)
+- **Generated output**: `target/generated-sources/protobuf/`
+- **Compiler version**: protoc 3.25.3 (automatically downloaded)
+- **Generated files**: 
+  - `ooloi_domain.proto` → Domain model Java classes
+  - `ooloi_service.proto` → gRPC service stubs
+  - `vpd.proto` → VPD utility classes
+
+#### Manual Protocol Buffer Commands
+
+```bash
+# Force Protocol Buffer regeneration
+lein clean
+lein protoc
+
+# View generated Java classes
+find target/generated-sources/protobuf -name "*.java" | head -10
+```
+
+### Building and Packaging
+
+```bash
+# Full build process (clean, compile, test, package)
+lein build
+
+# Create standalone JAR only
+lein uberjar
+
+# Clean build artifacts
+lein clean
+```
+
+### Documentation Generation
+
+```bash
+# Generate API documentation
+lein codox
+```
+The documentation will be generated in the `docs` directory.
+
+### Development Workflow
+
+Recommended development sequence:
+
+1. **Setup**: `lein deps` (install dependencies)
+2. **Compile**: `lein compile` (generate Protocol Buffers + compile Clojure)
+3. **Test**: `lein midje` (run test suite)
+4. **Run**: `lein run` (start backend server)
+5. **Iterate**: Make changes and repeat steps 2-4
+
+## Notes
+
+- Ensure all tests pass before creating the final package.
+- The packaged application is platform-specific and ready for distribution.
+- JavaFX is included in the project dependencies, ensuring GUI capabilities.
+
+Remember to run tests (`lein midje`) before packaging to ensure everything is working correctly.
