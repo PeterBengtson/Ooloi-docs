@@ -6,6 +6,7 @@ This directory contains the source code for the backend of Ooloi.
 ## Table of Contents
 
 - [Directory Structure](#directory-structure)
+  - [Key Directories](#key-directories)
 - [Data Model](#data-model)
 - [Class-specific Operations](#class-specific-operations)
 - [Programming Paradigm](#programming-paradigm)
@@ -17,6 +18,16 @@ This directory contains the source code for the backend of Ooloi.
 - [Parallelism and Thread-Safety](#parallelism-and-thread-safety)
 - [Principles and Requirements](#principles-and-requirements)
 - [Namespace Organization and Import Guidelines](#namespace-organization-and-import-guidelines)
+  - [Quick Start: What to Import](#quick-start-what-to-import)
+  - [Most Important Namespaces](#most-important-namespaces)
+  - [When You Can't Use Core](#when-you-cant-use-core)
+  - [Summary: What Most Developers Need to Know](#summary-what-most-developers-need-to-know)
+  - [Core Namespace Architecture](#core-namespace-architecture)
+  - [Namespace Descriptions](#namespace-descriptions)
+  - [Import Guidelines by File Type](#import-guidelines-by-file-type)
+  - [Decision Tree: Which Namespace to Use?](#decision-tree-which-namespace-to-use)
+  - [Key Benefits of This Architecture](#key-benefits-of-this-architecture)
+  - [Common Mistakes to Avoid](#common-mistakes-to-avoid)
 - [Coding Conventions](#coding-conventions)
 
 
@@ -31,6 +42,15 @@ backend/
                 └── backend/
                   ├── api.clj
                   ├── core.clj
+                  ├── system.clj
+                  ├── components/
+                  │   ├── grpc_server.clj
+                  │   └── piece_manager.clj
+                  ├── grpc/
+                  │   └── generation.clj
+                  ├── mon/
+                  │   ├── core.clj
+                  │   └── piece.clj
                   ├── ops/
                   │   ├── attachment_resolver.clj
                   │   ├── changes.clj
@@ -39,12 +59,14 @@ backend/
                   │   ├── pitches.clj
                   │   ├── rhythm.clj
                   │   ├── text.clj
+                  │   ├── timewalk.clj
                   │   ├── vectors_and_attributes.clj
-                  │   ├── vpd.clj
-                  │   └── walk.clj
+                  │   └── vpd.clj
                   └── models/
                       ├── core.clj
                       ├── hierarchy.clj
+                      ├── interfaces.clj
+                      ├── predicates.clj
                       ├── musical/
                       │   ├── attachments/
                       │   │   ├── articulation.clj
@@ -63,7 +85,6 @@ backend/
                       │   ├── rest.clj
                       │   ├── staff.clj
                       │   ├── tremolando.clj
-                      │   ├── trill.clj
                       │   ├── tuplet.clj
                       │   └── voice.clj
                       ├── traits/
@@ -78,7 +99,45 @@ backend/
                           ├── page_view.clj
                           ├── staff_view.clj
                           └── system_view.clj
-```     
+```
+
+### Key Directories
+
+**Core Application Files:**
+- `api.clj` - Public API namespace for external consumers
+- `core.clj` - Main application entry point 
+- `system.clj` - System configuration and lifecycle management
+
+**Component System:**
+- `components/` - Integrant-based system components
+  - `grpc_server.clj` - gRPC server component for client-server communication
+  - `piece_manager.clj` - Piece storage and lifecycle management component  
+
+**gRPC Integration:**
+- `grpc/` - gRPC protocol implementation
+  - `generation.clj` - Protocol buffer generation and gRPC service definitions
+
+**Monitoring and Observability:**
+- `mon/` - Application monitoring and telemetry
+  - `core.clj` - Core monitoring infrastructure
+  - `piece.clj` - Piece-specific monitoring and metrics
+
+**Operations:**  
+- `ops/` - Complex operations and algorithms
+  - `timewalk.clj` - Temporal coordination system for musical traversal
+  - `attachment_resolver.clj` - Cross-reference resolution for musical attachments
+  - `piece_manager.clj` - High-level piece management operations
+  - Other utility operations for musical data processing
+
+**Data Models:**
+- `models/` - Core data structures and polymorphic operations
+  - `predicates.clj` - Type checking functions for all models
+  - `interfaces.clj` - Multimethod definitions (method signatures)
+  - `core.clj` - Unified namespace re-exporting all functionality
+  - `musical/` - Musical data structures (pieces, measures, notes, etc.)
+  - `visual/` - Visual layout structures (pages, systems, staff views, etc.)
+  - `traits/` - Shared behaviors across multiple model types
+
 The above diagram doesn't include all models.
 
 ## Data Model
@@ -374,6 +433,8 @@ The namespace architecture follows a clean dependency flow:
 ```
 predicates.clj → interfaces.clj → models/*.clj → core.clj → api.clj
 ```
+
+This dependency chain ensures no circular imports while providing a unified API through the core namespace.
 
 ### Namespace Descriptions
 
