@@ -140,11 +140,13 @@ service OoloiService {
 
 ### 1. Code Generation Pipeline
 
-**Build-time Generation**:
-- **API Introspection**: Analyze `api.clj` namespace for VPD-based function signatures
+**Build-time Generation Following Established models.core Pattern**:
+- **API Introspection**: Analyze `api.clj` namespace for VPD-based function signatures using methodical metadata
+- **Macro-based Generation**: Follow proven models.core pattern of helper functions + compile-time generation
 - **Protocol Buffer Generation**: Create message definitions from function parameters and return types
 - **Service Definition Generation**: Generate gRPC service methods with 1:1 API correspondence
-- **Implementation Generation**: Create server code with thin delegation pattern
+- **Implementation Generation**: Create server code with thin delegation pattern using helper function abstraction
+- **Service Proxy Generation**: Dynamic method binding using VPD metadata categories (not heuristic name matching)
 - **Data Conversion**: Protocol-based extensible conversion system for bidirectional Clojure ↔ Protocol Buffer transformation
 
 ### 2. Bidirectional Communication Infrastructure
