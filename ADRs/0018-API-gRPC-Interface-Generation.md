@@ -149,14 +149,57 @@ service OoloiService {
 
 ### 2. Bidirectional Communication Infrastructure
 
+**Streaming Implementation Details:**
+
+The generated gRPC service implements the complete streaming architecture detailed in [ADR-0002: gRPC Streaming Architecture](0002-gRPC.md#grpc-streaming-architecture):
+
+**Server Streaming for Real-Time Collaboration**:
+```protobuf
+// Generated service method for piece event streaming
+rpc SubscribeToPieceEvents(PieceSubscriptionRequest) returns (stream PieceEvent);
+```
+- **Event classification**: Musical changes, graphics updates, collaboration events, user presence
+- **Piece-based subscriptions**: Clients subscribe to specific pieces or global events
+- **Event filtering**: Intelligent filtering to prevent overwhelming clients with irrelevant updates
+- **Connection recovery**: Automatic reconnection with event replay for missed updates
+
+**Client Streaming for Batch Operations**:
+```protobuf
+// Generated service method for efficient batch processing
+rpc ExecuteBatchOperations(stream BatchOperationRequest) returns (BatchOperationResponse);
+```
+- **Atomic batch processing**: Multiple VPD-based operations processed as single transaction
+- **Undo/redo optimization**: Streaming operation chains for efficient state management
+- **Import processing**: Large MusicXML/MIDI files streamed in manageable chunks
+- **Performance optimization**: Reduced network roundtrips for bulk operations
+
+**Bidirectional Streaming for Interactive Collaboration**:
+```protobuf
+// Generated service method for real-time interactive editing
+rpc CollaborateOnPiece(stream CollaborationInput) returns (stream CollaborationOutput);
+```
+- **Real-time coordination**: Multiple users editing simultaneously with immediate feedback
+- **Conflict resolution**: Server-side coordination of simultaneous edits to same elements
+- **Interactive feedback**: Immediate visual responses to collaborative actions
+- **Session management**: User join/leave events, presence indicators, collaborative cursors
+
+**Streaming Performance Characteristics**:
+- **Connection persistence**: Single connection handles both API calls and streaming events
+- **Mixed operation support**: Unary API calls and streaming operations over same connection
+- **Flow control**: Built-in backpressure prevents overwhelming slow clients during heavy collaboration
+- **Resource efficiency**: Shared connection state reduces memory overhead for multiple concurrent operations
+
 **Event Streaming Architecture**:
-- **Piece-based subscriptions**: Clients subscribe to events for specific pieces
-- **Event classification**: Graphics updates, musical changes, collaboration events
-- **Client state synchronization**: Event replay and connection recovery
+- **Event sourcing**: All piece changes captured as events for replay and synchronization
+- **Client state synchronization**: Event replay ensures clients stay synchronized after disconnection
+- **Selective subscription**: Clients subscribe only to relevant events (specific pieces, event types)
+- **Event ordering**: Guaranteed ordering within piece context prevents race conditions
 
 **Parallel Command Processing**:
-- **Async command interface**: Non-blocking operations with progress tracking
-- **Client-side coordination**: MIDI playback, local rendering, background saves
+- **Non-blocking operations**: Long-running operations (MIDI generation, complex layouts) don't block UI
+- **Progress streaming**: Real-time progress updates for long-running operations
+- **Client-side coordination**: MIDI playback, local rendering, background saves run parallel to editing
+- **Resource coordination**: Intelligent scheduling prevents resource conflicts during parallel operations
 
 ### 3. Integration with Component Architecture
 
