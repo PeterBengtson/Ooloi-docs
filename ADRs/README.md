@@ -27,6 +27,10 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0020-TLS-Infrastructure-and-Deployment-Architecture](0020-TLS-Infrastructure-and-Deployment-Architecture.md)**: TLS security infrastructure and certificate management
 - **[0021-Authentication](0021-Authentication.md)**: Pluggable authentication architecture with JWT-based security
 
+## Proposed Decisions
+
+- **[0022-Frontend-Event-Driven-Data-Synchronization](0022-Frontend-Event-Driven-Data-Synchronization.md)**: *(Proposed)* Frontend event-driven data synchronization architecture with comprehensive JavaFX windowing and Skija integration
+
 ## Architecture Overview
 
 These decisions establish Ooloi as a **collaborative music notation system** with:
