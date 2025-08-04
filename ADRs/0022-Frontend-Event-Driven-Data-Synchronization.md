@@ -109,10 +109,16 @@ User Interaction → Immediate UI Feedback → gRPC Call → Backend Processing 
 
 **Hit-Testing to Backend Mapping**:
 ```clojure
-(defn resolve-click-to-backend [click-point viewport]
-  (->> (find-glyphs-at-point click-point viewport)
-       (map #(select-keys % [:vpd :item-id]))
-       (first))) ; Frontend resolves geometry, backend handles musical logic
+(defn resolve-click-to-backend [click-point viewport piece]
+  ;; Use timewalk to search layout hierarchy efficiently with transducer syntax
+  (sequence (comp (timewalk {:boundary-vpd (:visible-region viewport)})
+                  (filter #(glyph? (first %)))
+                  (filter #(point-in-bounds? click-point (get-bounds (first %))))
+                  (map #(let [[item vpd position] %]
+                          {:vpd vpd :item-id (get-item-id item)}))
+                  (take 1))
+            [piece])
+  ; Frontend resolves geometry using timewalk, backend handles musical logic
 ```
 
 **Drawing Instruction Caching**:
@@ -130,7 +136,9 @@ User Interaction → Immediate UI Feedback → gRPC Call → Backend Processing 
 
 **Identification Principles**:
 - **VPD + item-id** uniquely identifies any musical element for backend operations
-- **Hit-testing** resolves user clicks to backend identifiers
+- **Timewalk traversal** efficiently searches layout hierarchy using transducer composition
+- **VPD backlinks** can use search instead of direct addressing for flexibility
+- **Hit-testing** resolves user clicks to backend identifiers using timewalk filtering
 - **No musical interpretation** in frontend - pure geometric-to-logical mapping
 - **Version tracking** prevents stale data operations
 - **Backend-computed drawing instructions** are cached until backend signals invalidation
@@ -668,13 +676,22 @@ Using DockFX library for comprehensive docking capabilities:
 
 **Collaborative Update Optimization:**
 ```clojure
-;; Direct JavaFX collaborative update handling
-(defn handle-backend-event [event page-cache]
+;; Direct JavaFX collaborative update handling with timewalk
+(defn find-affected-pages [measure-vpd piece]
+  ;; Use timewalk to find which pages contain the affected measure
+  (sequence (comp (timewalk {:boundary-vpd []})
+                  (filter page-view?)
+                  (filter #(contains-measure? (first %) measure-vpd))
+                  (map #(get-page-number (first %))))
+            [piece]))
+
+(defn handle-backend-event [event page-cache piece]
   (case (:scope event)
     :measure-updated
-    (let [affected-page (find-page-containing-measure (:measure-vpd event))]
-      ((:invalidate-page page-cache) affected-page)
-      (mark-page-for-redraw affected-page))
+    (let [affected-pages (find-affected-pages (:measure-vpd event) piece)]
+      (doseq [page affected-pages]
+        ((:invalidate-page page-cache) page)
+        (mark-page-for-redraw page)))
     
     :page-layout-changed
     (doseq [page (:affected-pages event)]
@@ -686,11 +703,11 @@ Using DockFX library for comprehensive docking capabilities:
       (clear-all-page-cache page-cache)
       (trigger-full-redraw))))
 
-(defn setup-collaborative-updates [grpc-client page-cache]
+(defn setup-collaborative-updates [grpc-client page-cache piece]
   (let [event-stream (grpc/subscribe-to-layout-events grpc-client)]
     (go-loop []
       (when-let [event (<! event-stream)]
-        (handle-backend-event event page-cache)
+        (handle-backend-event event page-cache piece)
         (recur)))))
 ```
 
@@ -706,15 +723,54 @@ Using DockFX library for comprehensive docking capabilities:
   render-scheduler  ; Batch update timing coordination
   glyph-registry   ; Hit-testing lookup tables
 ])
+
+;; Example: Search for all notes in visible region using timewalk
+(defn find-visible-notes [piece viewport]
+  (sequence (comp (timewalk {:boundary-vpd (:visible-region viewport)})
+                  (filter note?)
+                  (map #(let [[item vpd position] %]
+                          {:item item :vpd vpd :position position})))
+            [piece]))
+
+;; Example: VPD backlink resolution using search instead of direct addressing
+(defn resolve-staff-reference [staff-id piece]
+  ;; Instead of constructing VPD directly, search for the staff
+  (sequence (comp (timewalk {:boundary-vpd []})
+                  (filter staff?)
+                  (filter #(= staff-id (get-staff-id (first %))))
+                  (map second) ; Extract VPD
+                  (take 1))
+            [piece]))
 ```
 
 **Event Processing Pipeline**:
 ```clojure
-(defn start-event-processing [layout-manager grpc-client]
+(defn start-event-processing [layout-manager grpc-client piece]
   (go-loop []
     (when-let [event (<! (grpc/subscribe-to-layout-events grpc-client))]
-      (process-layout-event layout-manager event)
+      (process-layout-event layout-manager event piece)
       (recur))))
+
+;; Example: Process selection events using timewalk for element discovery
+(defn process-selection-event [event piece]
+  (case (:type event)
+    :select-measures
+    ;; Use timewalk to find all measures in the selection range
+    (let [selected-measures (sequence (comp (timewalk {:boundary-vpd (:staff-vpd event)})
+                                           (filter measure?)
+                                           (filter #(in-range? (:position event) (get-position (first %))))
+                                           (take (:count event)))
+                                     [piece])]
+      (apply-selection-animation selected-measures))
+    
+    :select-chord
+    ;; Search for all notes at the same rhythmic position
+    (let [chord-notes (sequence (comp (timewalk {:boundary-vpd (:measure-vpd event)})
+                                     (filter note?)
+                                     (filter #(= (:position event) (get-position (first %))))
+                                     (map first))
+                               [piece])]
+      (apply-organic-selection chord-notes))))
 ```
 
 ### Event Streaming Setup
