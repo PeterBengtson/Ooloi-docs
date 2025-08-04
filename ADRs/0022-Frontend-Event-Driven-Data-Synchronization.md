@@ -38,7 +38,7 @@ Ooloi's frontend-backend separation ([ADR-0001](0001-Frontend-Backend-Separation
 
 ## Decision
 
-We will implement an **event-driven data synchronization architecture** with four key components:
+We will implement an **event-driven data synchronization architecture using direct JavaFX** with five key components:
 
 ### 1. Frontend Layout Object Hierarchy
 
@@ -244,6 +244,149 @@ User Interaction → Immediate UI Feedback → gRPC Call → Backend Processing 
 - **Performance monitoring**: Built-in metrics for event processing and UI update performance
 - **Testing infrastructure**: Event simulation and async testing patterns
 
+### 5. Organic Pulsating Selection Animation
+
+**Innovative UI Paradigm**: Ooloi introduces organic pulsating selection animation that brings a new dimension to music notation UI, reflecting the living, breathing nature of music itself.
+
+**Animation Implementation Pattern**:
+```clojure
+;; Organic pulsating selection with varied, asynchronous rhythms
+(defn create-organic-pulse-animation [element element-index]
+  (let [timeline (Timeline.)
+        ;; Each element gets unique timing and intensity variations
+        base-duration (+ 1800 (rand-int 800))     ; 1.8-2.6 second base cycles
+        phase-offset (* element-index 0.3)        ; Stagger start times
+        intensity-factor (+ 0.8 (* 0.4 (rand)))  ; 80-120% intensity variation
+        pulse-scale-factor (* 1.12 intensity-factor) ; Varied scale (90-135%)
+        opacity-variation (* 0.25 intensity-factor)  ; Varied opacity (20-30%)
+        
+        scale-x (.getScaleX element)
+        scale-y (.getScaleY element)
+        base-opacity (.getOpacity element)]
+    
+    ;; Create unique organic breathing pattern for this element
+    (.addAll (.getKeyFrames timeline)
+             [(KeyFrame. (Duration/millis (* phase-offset 1000))
+                        (KeyValue. (.scaleXProperty element) scale-x Interpolator/EASE_BOTH)
+                        (KeyValue. (.scaleYProperty element) scale-y Interpolator/EASE_BOTH)
+                        (KeyValue. (.opacityProperty element) base-opacity Interpolator/EASE_BOTH))
+              (KeyFrame. (Duration/millis (+ (* phase-offset 1000) (/ base-duration 2)))
+                        (KeyValue. (.scaleXProperty element) (* scale-x pulse-scale-factor) Interpolator/EASE_BOTH)
+                        (KeyValue. (.scaleYProperty element) (* scale-y pulse-scale-factor) Interpolator/EASE_BOTH) 
+                        (KeyValue. (.opacityProperty element) (+ base-opacity opacity-variation) Interpolator/EASE_BOTH))
+              (KeyFrame. (Duration/millis (+ (* phase-offset 1000) base-duration))
+                        (KeyValue. (.scaleXProperty element) scale-x Interpolator/EASE_BOTH)
+                        (KeyValue. (.scaleYProperty element) scale-y Interpolator/EASE_BOTH)
+                        (KeyValue. (.opacityProperty element) base-opacity Interpolator/EASE_BOTH))])
+    
+    ;; Configure infinite organic cycling with element-specific rate
+    (.setCycleCount timeline Timeline/INDEFINITE)
+    (.setAutoReverse timeline false)
+    timeline))
+
+(defn apply-organic-selection [elements]
+  ;; Create individual animations for each element with unique characteristics
+  (let [animations (vec (map-indexed 
+                          (fn [idx element] 
+                            (let [timeline (create-organic-pulse-animation element idx)]
+                              (.play timeline)
+                              timeline))
+                          elements))]
+    {:stop (fn [] (doseq [animation animations] (.stop animation)))
+     :pause (fn [] (doseq [animation animations] (.pause animation)))
+     :resume (fn [] (doseq [animation animations] (.play animation)))}))
+```
+
+**Skija Integration for Organic Effects**:
+```clojure
+;; Enhanced rendering with varied organic glow effects per element
+(defn render-selected-element-with-glow [skija-canvas element element-id timestamp]
+  (let [;; Each element gets unique animation characteristics based on its ID
+        element-seed (hash element-id)
+        base-frequency (+ 0.8 (* 0.6 (mod element-seed 100) 0.01))  ; 0.8-1.4 Hz variation
+        phase-offset (* 2 Math/PI (mod element-seed 1000) 0.001)     ; Unique phase offset
+        current-phase (+ phase-offset (* base-frequency timestamp 0.001))
+        
+        ;; Organic glow characteristics that vary per element
+        glow-intensity (+ 0.6 (* 0.4 (Math/sin current-phase)))     ; Breathing intensity
+        glow-radius (* 12 glow-intensity (+ 0.8 (* 0.3 (Math/sin (* current-phase 1.3))))) ; Varied radius
+        
+        ;; Color variations that shimmer and shift per element
+        hue-shift (* 30 (Math/sin (* current-phase 0.7)))           ; ±30° hue variation
+        base-hue (+ 220 hue-shift)                                   ; Blue with shimmer
+        saturation (+ 0.6 (* 0.3 (Math/sin (* current-phase 1.1)))) ; Breathing saturation
+        brightness (+ 0.8 (* 0.2 glow-intensity))                   ; Synchronized brightness
+        
+        glow-color (Color/getHSBColor (/ base-hue 360) saturation brightness)]
+    
+    ;; Draw organic glow effect with element-specific characteristics
+    (with-paint [glow-paint (.setColor (Paint.) glow-color)
+                             (.setMaskFilter (MaskFilter/makeBlur FilterBlurMode/NORMAL glow-radius))]
+      (render-element-outline skija-canvas element glow-paint))
+    
+    ;; Draw main element with subtle breathing effect
+    (render-element skija-canvas element)))
+
+(defn update-organic-animation-system [selected-elements timestamp]
+  ;; Update each element's unique organic animation state
+  (doseq [[element element-id] (map vector selected-elements (range))]
+    (let [element-seed (hash element-id)
+          base-frequency (+ 0.9 (* 0.4 (mod element-seed 100) 0.01)))  ; Unique frequency
+      ;; Update element-specific animation states for rendering
+      (update-element-organic-state element element-id timestamp base-frequency))))
+```
+
+**Selection State Management**:
+```clojure
+(defn create-organic-selection-manager []
+  (let [selected-elements (atom {})  ; Map of element -> {:id, :animation, :start-time}
+        element-counter (atom 0)]
+    {:select-element
+     (fn [element]
+       (let [element-id (swap! element-counter inc)
+             start-time (System/currentTimeMillis)
+             animation (create-organic-pulse-animation element element-id)]
+         (.play animation)
+         (swap! selected-elements assoc element 
+                {:id element-id 
+                 :animation animation 
+                 :start-time start-time})))
+     
+     :select-multiple-elements
+     (fn [elements]
+       ;; Add multiple elements with staggered timing for organic effect
+       (doseq [[idx element] (map-indexed vector elements)]
+         (Thread/sleep (* idx 50))  ; 50ms stagger between additions
+         ((:select-element this) element)))
+     
+     :deselect-element
+     (fn [element]
+       (when-let [element-data (@selected-elements element)]
+         (.stop (:animation element-data))
+         (swap! selected-elements dissoc element)))
+     
+     :clear-selection
+     (fn []
+       (doseq [[element element-data] @selected-elements]
+         (.stop (:animation element-data)))
+       (reset! selected-elements {}))
+     
+     :get-living-selection
+     (fn []
+       ;; Return elements with their organic animation metadata
+       @selected-elements)}))
+```
+
+**Organic Animation Principles**:
+- **Asynchronous rhythms**: Each element pulses at unique rates (1.8-2.6 second cycles) preventing synchronization
+- **Varied intensities**: Scale changes range from 90-135% with per-element randomization  
+- **Staggered phase offsets**: Elements start pulsing at different times creating wave-like effects
+- **Individual glow characteristics**: Each element has unique color shimmer, radius variation, and frequency
+- **Living color system**: Hue shifts ±30° with breathing saturation and brightness per element
+- **Organic frequency spread**: 0.8-1.4 Hz base frequencies ensure natural variation without chaos
+- **Staggered selection**: Multiple elements added with 50ms delays for organic appearance
+- **Performance optimization**: Animation only applied to visible selected elements with element-specific timelines
+
 ## JavaFX and Skija Technical Implementation Foundation
 
 ### JavaFX Windowing and UI Capabilities
@@ -263,21 +406,21 @@ JavaFX provides comprehensive Stage management for professional applications wit
 **JavaFX Canvas Limitations and Solutions:**
 JavaFX Canvas does not provide automatic hit testing for custom-drawn content, requiring manual object tracking and geometric calculations. The recommended approach combines JavaFX for UI framework with custom hit testing implementation:
 
-```java
-public class MusicNotationHitTester {
-    private List<RenderableElement> elements = new ArrayList<>();
-    
-    public Optional<MusicalElement> hitTest(double x, double y) {
-        // Reverse iteration for top-to-bottom hit testing
-        for (int i = elements.size() - 1; i >= 0; i--) {
-            RenderableElement element = elements.get(i);
-            if (element.getBounds().contains(x, y)) {
-                return Optional.of(element.getMusicalElement());
-            }
-        }
-        return Optional.empty();
-    }
-}
+```clojure
+;; Direct JavaFX hit testing implementation using Clojure
+(defn create-hit-tester []
+  (let [elements (atom [])]
+    {:add-element (fn [element] (swap! elements conj element))
+     :hit-test (fn [x y]
+                 ;; Reverse iteration for top-to-bottom hit testing
+                 (->> @elements
+                      reverse
+                      (some #(when (.contains (.getBounds %) x y)
+                               (.getMusicalElement %)))))}))
+
+(defn handle-canvas-click [canvas x y hit-tester]
+  (when-let [element ((:hit-test hit-tester) x y)]
+    (handle-element-selection element)))
 ```
 
 **Performance Optimization Strategies:**
@@ -295,15 +438,17 @@ With pagination as a central feature and viewport-based rendering, JavaFX perfor
 - **Typical page content**: 4-8 systems × 4-8 measures = 16-64 measures maximum visible
 
 **Memory Efficiency with Page-Based Architecture:**
-```java
-public class PageCache {
-    private int maxCachedPages = 3; // Current + adjacent pages
-    private Map<Integer, PageData> cache = new LRU<>();
-    
-    public PageData getPage(int pageNumber) {
-        return cache.computeIfAbsent(pageNumber, this::loadPage);
-    }
-}
+```clojure
+;; Direct JavaFX page cache implementation
+(defn create-page-cache [max-cached-pages]
+  (let [cache (atom (into {} (map vector) (repeat nil) (range max-cached-pages)))]
+    {:get-page (fn [page-number]
+                 (or (@cache page-number)
+                     (let [page-data (load-page page-number)]
+                       (swap! cache assoc page-number page-data)
+                       page-data)))
+     :invalidate-page (fn [page-number]
+                        (swap! cache dissoc page-number))}))
 ```
 
 ### Skija Integration for High-Quality Graphics
@@ -316,141 +461,237 @@ Skija provides Java bindings for Skia graphics library used by Google Chrome, An
 - **Cross-platform consistency** with automatic memory management
 
 **JavaFX-Skija Integration Pattern:**
-```java
-// JavaFX Canvas + Skija rendering
-Canvas javaFxCanvas = new Canvas(800, 600);
-GraphicsContext gc = javaFxCanvas.getGraphicsContext2D();
+```clojure
+;; Direct JavaFX Canvas + Skija rendering using Clojure
+(defn create-skija-canvas [width height]
+  (let [canvas (Canvas. width height)
+        graphics-context (.getGraphicsContext2D canvas)]
+    {:canvas canvas
+     :render (fn [skija-drawing-fn]
+               ;; Create Skija surface
+               (let [skija-surface (.makeRasterN32Premul Surface width height)]
+                 ;; Execute Skija drawing operations
+                 (skija-drawing-fn (.getCanvas skija-surface))
+                 ;; Convert and draw to JavaFX
+                 (let [javafx-image (convert-skija-to-javafx-image skija-surface)]
+                   (.drawImage graphics-context javafx-image 0 0))))}))
 
-// Render Skija content to JavaFX
-Surface skijaCanvas = Surface.makeRasterN32Premul(width, height);
-// ... Skija drawing operations ...
-Image skijaImage = convertSkijaToJavaFXImage(skijaCanvas);
-gc.drawImage(skijaImage, 0, 0);
+(defn render-musical-notation [canvas-info notation-data]
+  ((:render canvas-info)
+   (fn [skija-canvas]
+     ;; Use backend-provided drawing instructions
+     (doseq [instruction (:drawing-instructions notation-data)]
+       (execute-skija-instruction skija-canvas instruction)))))
 ```
 
 ### Professional UI Component Architecture
 
 **Docking System Integration:**
 Using DockFX library for comprehensive docking capabilities:
-```java
-public class OoloiDockingSystem {
-    private DockPane dockPane;
-    
-    public void setupDocking() {
-        // Main score area (center)
-        DockNode scoreNode = new DockNode(scoreCanvas, "Score");
-        scoreNode.dock(dockPane, DockPos.CENTER);
-        
-        // Dockable palettes
-        DockNode instrumentNode = new DockNode(instrumentPalette, "Instruments");
-        instrumentNode.dock(dockPane, DockPos.LEFT);
-        instrumentNode.setFloatable(true);
-    }
-}
+```clojure
+;; Direct JavaFX docking system setup
+(defn create-docking-system []
+  (let [dock-pane (DockPane.)]
+    {:dock-pane dock-pane
+     :setup-docking (fn [score-canvas instrument-palette]
+                      ;; Main score area (center)
+                      (let [score-node (DockNode. score-canvas "Score")]
+                        (.dock score-node dock-pane DockPos/CENTER))
+                      ;; Dockable palettes
+                      (let [instrument-node (DockNode. instrument-palette "Instruments")]
+                        (.dock instrument-node dock-pane DockPos/LEFT)
+                        (.setFloatable instrument-node true)))
+     :add-palette (fn [palette-content palette-name position floatable?]
+                    (let [palette-node (DockNode. palette-content palette-name)]
+                      (.dock palette-node dock-pane position)
+                      (.setFloatable palette-node floatable?)))}))
 ```
 
 **Window State Management:**
-```java
-public class WindowStateManager {
-    public void saveWindowState() {
-        Preferences prefs = Preferences.userNodeForPackage(OoloiApp.class);
-        // Save main window bounds and state
-        prefs.putDouble("main.x", primaryStage.getX());
-        // Save palette visibility and positions
-        palettes.forEach((name, stage) -> {
-            prefs.putBoolean(name + ".visible", stage.isShowing());
-        });
-    }
-}
+```clojure
+;; Direct JavaFX window state management using Java Preferences API
+(defn create-window-state-manager [app-class]
+  (let [prefs (.userNodeForPackage Preferences app-class)]
+    {:save-window-state 
+     (fn [primary-stage palettes]
+       ;; Save main window bounds and state
+       (.putDouble prefs "main.x" (.getX primary-stage))
+       (.putDouble prefs "main.y" (.getY primary-stage))
+       (.putDouble prefs "main.width" (.getWidth primary-stage))
+       (.putDouble prefs "main.height" (.getHeight primary-stage))
+       ;; Save palette visibility and positions
+       (doseq [[name stage] palettes]
+         (.putBoolean prefs (str name ".visible") (.isShowing stage))
+         (when (.isShowing stage)
+           (.putDouble prefs (str name ".x") (.getX stage))
+           (.putDouble prefs (str name ".y") (.getY stage)))))
+     :restore-window-state
+     (fn [primary-stage palettes]
+       ;; Restore main window
+       (.setX primary-stage (.getDouble prefs "main.x" 100.0))
+       (.setY primary-stage (.getDouble prefs "main.y" 100.0))
+       ;; Restore palettes
+       (doseq [[name stage] palettes]
+         (when (.getBoolean prefs (str name ".visible") false)
+           (.show stage)
+           (.setX stage (.getDouble prefs (str name ".x") 200.0))
+           (.setY stage (.getDouble prefs (str name ".y") 200.0)))))}))
 ```
 
 **Dynamic Toolbar and Menu System:**
-```java
-public class OoloiToolbarManager {
-    private Map<String, ToolBar> toolbars = new HashMap<>();
-    
-    public void showFloatingToolbar(String name) {
-        ToolBar toolbar = toolbars.get(name);
-        Stage floatingWindow = new Stage();
-        floatingWindow.initStyle(StageStyle.UTILITY);
-        floatingWindow.setScene(new Scene(new VBox(toolbar)));
-        floatingWindow.show();
-    }
-}
+```clojure
+;; Direct JavaFX toolbar management
+(defn create-toolbar-manager []
+  (let [toolbars (atom {})]
+    {:register-toolbar (fn [name toolbar] (swap! toolbars assoc name toolbar))
+     :show-floating-toolbar 
+     (fn [name]
+       (when-let [toolbar (@toolbars name)]
+         (let [floating-window (Stage.)
+               scene (Scene. (VBox. (into-array Node [toolbar])))]
+           (.initStyle floating-window StageStyle/UTILITY)
+           (.setScene floating-window scene)
+           (.show floating-window))))
+     :create-context-menu
+     (fn [items]
+       (let [context-menu (ContextMenu.)]
+         (doseq [{:keys [text action]} items]
+           (let [menu-item (MenuItem. text)]
+             (.setOnAction menu-item (event-handler action))
+             (.add (.getItems context-menu) menu-item)))
+         context-menu))}))
 ```
 
 ### Advanced UI Patterns and Capabilities
 
 **Modal Dialog Management:**
-```java
-public Stage createModalDialog(String title) {
-    Stage dialog = new Stage();
-    dialog.initStyle(StageStyle.DECORATED);
-    dialog.initOwner(primaryStage);
-    dialog.initModality(Modality.APPLICATION_MODAL); // Blocks all windows
-    return dialog;
-}
+```clojure
+;; Direct JavaFX modal dialog creation
+(defn create-modal-dialog [primary-stage title content-fn]
+  (let [dialog (Stage.)]
+    (.initStyle dialog StageStyle/DECORATED)
+    (.initOwner dialog primary-stage)
+    (.initModality dialog Modality/APPLICATION_MODAL) ; Blocks all windows
+    (.setTitle dialog title)
+    (.setScene dialog (Scene. (content-fn)))
+    {:show (fn [] (.show dialog))
+     :show-and-wait (fn [] (.showAndWait dialog))
+     :close (fn [] (.close dialog))
+     :stage dialog}))
+
+(defn create-preferences-dialog [primary-stage preferences-data]
+  (create-modal-dialog 
+    primary-stage 
+    "Preferences"
+    (fn [] 
+      ;; Create preferences UI using direct JavaFX
+      (let [tabs (TabPane.)]
+        (doseq [{:keys [tab-name content]} preferences-data]
+          (let [tab (Tab. tab-name content)]
+            (.add (.getTabs tabs) tab)))
+        tabs))))
 ```
 
 **Context-Sensitive UI Elements:**
-```java
-public class ScoreContextMenu extends ContextMenu {
-    public ScoreContextMenu(MusicalElement element) {
-        MenuItem addArticulation = new MenuItem("Add Articulation");
-        addArticulation.setOnAction(e -> showArticulationPalette());
-        getItems().add(addArticulation);
-    }
-}
+```clojure
+;; Direct JavaFX context menu creation based on musical element
+(defn create-score-context-menu [musical-element]
+  (let [context-menu (ContextMenu.)]
+    ;; Add context-sensitive menu items based on element type
+    (when (note? musical-element)
+      (let [add-articulation (MenuItem. "Add Articulation")]
+        (.setOnAction add-articulation 
+                      (event-handler #(show-articulation-palette musical-element)))
+        (.add (.getItems context-menu) add-articulation)))
+    (when (measure? musical-element)
+      (let [change-time-sig (MenuItem. "Change Time Signature")]
+        (.setOnAction change-time-sig
+                      (event-handler #(show-time-signature-dialog musical-element)))
+        (.add (.getItems context-menu) change-time-sig)))
+    context-menu))
+
+(defn show-context-menu [canvas x y musical-element]
+  (let [context-menu (create-score-context-menu musical-element)]
+    (.show context-menu canvas x y)))
 ```
 
 **Rich Tooltip System:**
-```java
-public class SmartTooltip extends Tooltip {
-    public SmartTooltip(MusicalElement element) {
-        VBox content = new VBox();
-        content.getChildren().addAll(
-            new Label("Element: " + element.getType()),
-            new Label("Duration: " + element.getDuration())
-        );
-        setGraphic(content);
-    }
-}
+```clojure
+;; Direct JavaFX rich tooltip creation
+(defn create-smart-tooltip [musical-element]
+  (let [tooltip (Tooltip.)
+        content (VBox.)
+        element-label (Label. (str "Element: " (type musical-element)))
+        duration-label (Label. (str "Duration: " (get-duration musical-element)))
+        position-label (Label. (str "Position: " (get-position musical-element)))]
+    ;; Add styling for rich content
+    (.setStyle element-label "-fx-font-weight: bold;")
+    (.addAll (.getChildren content) [element-label duration-label position-label])
+    (.setGraphic tooltip content)
+    (.setShowDelay tooltip (Duration/millis 500))
+    tooltip))
+
+(defn install-tooltip [node musical-element]
+  (let [tooltip (create-smart-tooltip musical-element)]
+    (.install Tooltip node tooltip)))
 ```
 
 ### Performance and Scalability Framework
 
 **Virtual Scrolling with Pagination:**
-```java
-public class MusicScrollPane {
-    private int visiblePageStart;
-    private int visiblePageEnd;
-    
-    public void updateScrollPosition(double scrollY) {
-        // Calculate which pages are visible
-        visiblePageStart = (int) (scrollY / pageHeight);
-        visiblePageEnd = (int) ((scrollY + viewportHeight) / pageHeight) + 1;
-        
-        // Load/unload pages as needed
-        for (int page = visiblePageStart; page <= visiblePageEnd; page++) {
-            ensurePageLoaded(page);
-        }
-    }
-}
+```clojure
+;; Direct JavaFX virtual scrolling implementation
+(defn create-music-scroll-pane [page-height viewport-height]
+  (let [visible-page-start (atom 0)
+        visible-page-end (atom 0)
+        loaded-pages (atom #{})]
+    {:update-scroll-position
+     (fn [scroll-y]
+       (let [start-page (int (/ scroll-y page-height))
+             end-page (inc (int (/ (+ scroll-y viewport-height) page-height)))]
+         (reset! visible-page-start start-page)
+         (reset! visible-page-end end-page)
+         ;; Load/unload pages as needed
+         (doseq [page (range start-page (inc end-page))]
+           (when-not (@loaded-pages page)
+             (ensure-page-loaded page)
+             (swap! loaded-pages conj page)))
+         ;; Unload pages outside visible range + buffer
+         (let [buffer 2
+               pages-to-keep (set (range (- start-page buffer) (+ end-page buffer 1)))]
+           (doseq [page @loaded-pages]
+             (when-not (pages-to-keep page)
+               (unload-page page)
+               (swap! loaded-pages disj page))))))
+     :get-visible-pages (fn [] (range @visible-page-start (inc @visible-page-end)))}))
 ```
 
 **Collaborative Update Optimization:**
-```java
-public void handleBackendEvent(LayoutUpdateEvent event) {
-    switch (event.getScope()) {
-        case MEASURE_UPDATED:
-            int affectedPage = findPageContainingMeasure(event.getMeasureVPD());
-            invalidatePage(affectedPage);
-            break;
-        case PAGE_LAYOUT_CHANGED:
-            event.getAffectedPages().forEach(this::invalidatePage);
-            break;
-    }
-}
+```clojure
+;; Direct JavaFX collaborative update handling
+(defn handle-backend-event [event page-cache]
+  (case (:scope event)
+    :measure-updated
+    (let [affected-page (find-page-containing-measure (:measure-vpd event))]
+      ((:invalidate-page page-cache) affected-page)
+      (mark-page-for-redraw affected-page))
+    
+    :page-layout-changed
+    (doseq [page (:affected-pages event)]
+      ((:invalidate-page page-cache) page)
+      (mark-page-for-redraw page))
+    
+    :full-layout-refresh
+    (do
+      (clear-all-page-cache page-cache)
+      (trigger-full-redraw))))
+
+(defn setup-collaborative-updates [grpc-client page-cache]
+  (let [event-stream (grpc/subscribe-to-layout-events grpc-client)]
+    (go-loop []
+      (when-let [event (<! event-stream)]
+        (handle-backend-event event page-cache)
+        (recur)))))
 ```
 
 ## Implementation Approach
