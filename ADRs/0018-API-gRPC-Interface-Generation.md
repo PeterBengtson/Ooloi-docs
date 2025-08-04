@@ -163,15 +163,39 @@ rpc SubscribeToPieceEvents(PieceSubscriptionRequest) returns (stream PieceEvent)
 - **Event filtering**: Intelligent filtering to prevent overwhelming clients with irrelevant updates
 - **Connection recovery**: Automatic reconnection with event replay for missed updates
 
-**Client Streaming for Batch Operations**:
+**Client Streaming for STM-Composable Batch Operations**:
 ```protobuf
-// Generated service method for efficient batch processing
+// Generated service method for STM-composable distributed transactions
 rpc ExecuteBatchOperations(stream BatchOperationRequest) returns (BatchOperationResponse);
 ```
-- **Atomic batch processing**: Multiple VPD-based operations processed as single transaction
-- **Undo/redo optimization**: Streaming operation chains for efficient state management
-- **Import processing**: Large MusicXML/MIDI files streamed in manageable chunks
-- **Performance optimization**: Reduced network roundtrips for bulk operations
+
+**🎯 Unique Architectural Innovation: STM-gRPC Batch Transaction Composability**
+
+Ooloi's batch processing represents a **unique architectural achievement** in distributed music notation systems - **STM transaction boundaries naturally align with gRPC batch boundaries**, enabling true **distributed transactions for collaborative editing**.
+
+**STM-gRPC Integration Pattern**:
+```clojure
+;; Client streams operations → Server accumulates → Single dosync wraps all → Atomic result
+(defn handle-batch-operations [operation-stream response-observer]
+  (let [operations (collect-streamed-operations operation-stream)]
+    (try
+      (dosync  ; ← STM transaction boundary = gRPC batch boundary
+        (doseq [op operations]
+          (apply-vpd-operation op)))  ; Multiple VPD operations compose atomically
+      (send-success-response response-observer)
+      (catch Exception e
+        (send-failure-response response-observer e)))))
+```
+
+**Collaborative Editing Advantages**:
+- **Atomic batch processing**: Multiple VPD-based operations processed as single distributed transaction
+- **ACID compliance across network**: Either all operations succeed or all fail, maintaining data consistency
+- **Collaborative conflict resolution**: Multiple users' edits can be batched and coordinated atomically
+- **Undo/redo optimization**: Streaming operation chains create natural transaction boundaries for state management
+- **Import processing**: Large MusicXML/MIDI files streamed and applied atomically in manageable transaction chunks
+- **Performance optimization**: Reduced network roundtrips combined with transactional integrity
+
+**Industry Differentiation**: This STM-gRPC batch architecture is **unique among music notation systems** - traditional notation software cannot provide distributed transactional guarantees for collaborative editing operations.
 
 **Bidirectional Streaming for Interactive Collaboration**:
 ```protobuf
