@@ -271,6 +271,43 @@ The VPD API handles STM complexity automatically, providing the benefits of Oolo
 
 Use `dosync` for atomic composition; VPD operations handle individual transactions automatically.
 
+### Distributed Atomic Operations: `api/atomic`
+
+For distributed applications or when you need ACID guarantees across network boundaries, use `api/atomic`:
+
+```clojure
+;; Execute multiple operations atomically, even across network boundaries
+(api/atomic [{:method-name :set-name 
+              :vpd [:musicians 0]
+              :piece-id "symphony-1" 
+              :parameters ["Violin I"]}
+             {:method-name :set-key-signature
+              :vpd [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 0]
+              :piece-id "symphony-1"
+              :parameters ["G major"]}])
+```
+
+**When to use `api/atomic`:**
+- **Distributed transactions**: Operations need ACID guarantees across network boundaries
+- **Batch imports**: MusicXML/MIDI import operations that must succeed or fail atomically  
+- **Collaborative editing**: Multiple user operations that must be coordinated atomically
+- **Undo/redo chains**: Complex operation sequences that form logical units
+
+**Operation format:**
+Each operation in the collection requires:
+- `:method-name` (keyword) - The VPD API method to call (e.g., `:set-name`, `:add-measure`)
+- `:vpd` (vector) - Vector Path Descriptor targeting the musical element
+- `:piece-id` (string) - Identifier of the piece to modify  
+- `:parameters` (vector) - Arguments to pass to the method
+
+**ACID behavior:**
+- **Atomicity**: All operations succeed together or all fail together
+- **Consistency**: Piece remains in valid state throughout
+- **Isolation**: Concurrent operations don't see partial state
+- **Durability**: Changes are persisted once transaction completes
+
+This function integrates with Ooloi's STM-gRPC system to provide distributed transaction capabilities for musical notation operations.
+
 ### Platform Abstraction: What the API Brings vs. How It Does It
 
 Ooloi's API operates as a platform by hiding implementation complexity while exposing musical capability:

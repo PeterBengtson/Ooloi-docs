@@ -392,6 +392,38 @@ The backend automatically generates Java classes from shared Protocol Buffer def
   - `ooloi_service.proto` → gRPC service stubs
   - `vpd.proto` → VPD utility classes
 
+#### When to Regenerate Protocol Buffers
+
+**⚠️ Important**: Protocol Buffers must be regenerated whenever you modify the API:
+
+**Always regenerate after:**
+- Adding new multimethod definitions to `models/interfaces.clj` 
+- Adding new VPD-dispatching methods to `models/core.clj`
+- Modifying function signatures in `api.clj`
+- Adding new message types to `shared/src/main/proto/*.proto`
+- Updating service definitions in `ooloi_service.proto`
+
+**Workflow for API changes:**
+```bash
+# 1. Make your API changes (add methods, etc.)
+# 2. Regenerate protocol buffers
+lein clean
+lein protoc
+
+# 3. Verify generation worked
+ls target/generated-sources/protobuf/ooloi/
+
+# 4. Compile and test
+lein compile
+lein midje
+```
+
+**Signs you need to regenerate:**
+- `NoSuchMethodError` when testing gRPC methods
+- Missing gRPC service methods in generated stubs
+- Protocol buffer compilation errors
+- New API methods not accessible via gRPC
+
 #### Manual Protocol Buffer Commands
 
 ```bash

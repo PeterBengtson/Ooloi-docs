@@ -322,20 +322,39 @@ The shared project defines the complete gRPC protocol:
 - **`src/main/proto/vpd.proto`** - VPD addressing structures
   - Vector Path Descriptor message definitions for navigation
 
-#### Regenerating Protocol Buffers
+#### When to Regenerate Protocol Buffers
 
-When modifying .proto files, regenerate across all projects:
+**⚠️ Critical**: Protocol Buffers must be regenerated after API changes:
+
+**Always regenerate after adding:**
+- New multimethod definitions in `backend/src/main/clojure/ooloi/backend/models/interfaces.clj`
+- New VPD-dispatching methods in `backend/src/main/clojure/ooloi/backend/models/core.clj`
+- New functions exported via `backend/src/main/clojure/ooloi/backend/api.clj`
+- New message types or service methods in `.proto` files
+
+**Regeneration workflow** (must be done in correct order):
 
 ```bash
-# In shared/ directory - regenerate source definitions
+# 1. In shared/ directory - regenerate source definitions
 lein clean && lein compile
 
-# In backend/ directory - regenerate server stubs  
+# 2. In backend/ directory - regenerate server stubs  
 cd ../backend && lein clean && lein compile
 
-# In frontend/ directory - regenerate client stubs
+# 3. In frontend/ directory - regenerate client stubs
 cd ../frontend && lein clean && lein compile
+
+# 4. Verify all projects compile
+cd ../backend && lein midje  # Test backend
+cd ../frontend && lein midje # Test frontend  
+cd ../shared && lein midje   # Test shared
 ```
+
+**Signs you forgot to regenerate:**
+- `NoSuchMethodError` in gRPC tests
+- Missing service methods in generated stubs
+- New API methods not accessible via gRPC
+- Protocol buffer compilation errors
 
 ### Building and Packaging
 

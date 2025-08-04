@@ -233,6 +233,37 @@ The frontend automatically generates Java client classes from shared Protocol Bu
   - `ooloi_service.proto` → gRPC client stubs
   - `vpd.proto` → VPD utility classes
 
+#### When to Regenerate Protocol Buffers
+
+**⚠️ Important**: Protocol Buffers must be regenerated after backend API changes:
+
+**Regenerate when backend adds:**
+- New API methods to `backend/models/interfaces.clj`, `models/core.clj`, or `api.clj`
+- New gRPC service methods or message types
+- Changes to existing API method signatures
+
+**Frontend regeneration workflow:**
+```bash
+# 1. First ensure shared/ and backend/ are regenerated
+cd ../shared && lein clean && lein compile
+cd ../backend && lein clean && lein compile
+
+# 2. Then regenerate frontend client stubs
+cd ../frontend
+lein clean
+lein protoc
+
+# 3. Verify client compilation
+lein compile
+lein midje
+```
+
+**Signs you need to regenerate:**
+- Missing gRPC client methods for new backend API functions
+- `NoSuchMethodError` when calling gRPC methods
+- Protocol buffer compilation errors
+- New backend methods not accessible from frontend
+
 #### Manual Protocol Buffer Commands
 
 ```bash
