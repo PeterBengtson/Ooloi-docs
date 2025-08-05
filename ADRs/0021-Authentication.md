@@ -210,13 +210,39 @@ We will implement a **pluggable authentication architecture** based on **JWT sta
   "ooloi:instruments": ["violin", "viola"],
   "ooloi:roles": ["editor", "collaborator"],
   "ooloi:permissions": {
-    "pieces": ["read", "write"],
     "administration": ["read"]
   },
   "exp": 1672531200,
   "iat": 1672444800
 }
 ```
+
+### Google Docs-Style Piece Authorization
+
+**Email-Based Identity and Piece-Scoped Permissions**:
+
+Authentication (this ADR) handles **who the user is**, while piece-scoped authorization handles **what they can do with each piece**. This follows the Google Docs model where:
+
+- **User Identity**: Email address from JWT token (`"email": "musician@conservatory.edu"`)
+- **Piece Permissions**: Stored within each piece's collaboration metadata
+- **Invitation-Based Sharing**: Users invite others by email address
+- **Role-Based Access**: admin/write/read/comment permissions per piece
+
+```clojure
+;; Piece authorization metadata (stored within each piece)
+{:piece-id "symphony-1"
+ :musical-data {...}
+ :collaboration {:owner "user@example.com"
+                :permissions {"user@example.com"     {:role :admin :granted-by :owner}
+                             "violinist@music.edu"  {:role :write :granted-by "user@example.com"}
+                             "conductor@orchestra"   {:role :read  :granted-by "user@example.com"}}
+                :active-sessions {"client-123" {:user "violinist@music.edu" :connected-at timestamp}}}}
+```
+
+**Authorization Integration with Authentication**:
+- **gRPC Method Interception**: Extract email from JWT token, check piece permissions before VPD operations
+- **STM Transaction Boundaries**: Authorization checks within transaction scope for consistency
+- **Event Streaming**: Only broadcast events to users with appropriate piece permissions
 
 ### Security Implementation
 
