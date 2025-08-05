@@ -400,23 +400,40 @@ The backend automatically generates Java classes from shared Protocol Buffer def
 - Adding new multimethod definitions to `models/interfaces.clj` 
 - Adding new VPD-dispatching methods to `models/core.clj`
 - Modifying function signatures in `api.clj`
+- Adding new constructor functions (`create-*`)
 - Adding new message types to `shared/src/main/proto/*.proto`
 - Updating service definitions in `ooloi_service.proto`
 
 **Workflow for API changes:**
 ```bash
 # 1. Make your API changes (add methods, etc.)
-# 2. Regenerate protocol buffers
-lein clean
+
+# 2. Regenerate .proto files from API introspection
+clojure -M regen.clj
+
+# 3. Navigate to shared/ and build protocol buffers
+cd ../shared
 lein protoc
 
-# 3. Verify generation worked
-ls target/generated-sources/protobuf/ooloi/
+# 4. Navigate to backend/ and compile Java classes  
+cd ../backend
+lein protoc
 
-# 4. Compile and test
+# 5. Navigate to frontend/ and compile
+cd ../frontend
+lein protoc
+
+# 6. Return to backend/ and verify everything works
+cd ../backend
 lein compile
 lein midje
 ```
+
+**⚠️ Critical Distinction**: 
+- **`regen.clj`**: Regenerates `.proto` files from Clojure API introspection (creates new gRPC service definitions)
+- **`lein protoc`**: Compiles existing `.proto` files to Java classes (processes existing definitions)
+
+**Always use `regen.clj` first** when you've added new API methods or constructors.
 
 **Signs you need to regenerate:**
 - `NoSuchMethodError` when testing gRPC methods
