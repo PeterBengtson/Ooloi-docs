@@ -67,34 +67,30 @@ Ooloi automatically generates certificates for development and testing:
 ## Deployment Scenarios and Certificate Management
 
 ### Single Developer (Combined Mode)
-**Architecture**: Frontend and backend in same process  
-**Certificate Strategy**: Auto-generated localhost certificates  
+**Architecture**: Frontend and backend in same process with in-process gRPC communication  
+**Certificate Strategy**: No TLS needed - in-process communication bypasses network layer  
 **Configuration**:
 ```bash
-# TLS disabled by default for immediate productivity
+# Combined mode - in-process transport, no network communication
 ./ooloi-combined
 
-# TLS enabled with auto-generated certificates
-OOLOI_TLS=true ./ooloi-combined
-./ooloi-combined --tls true
+# TLS flags ignored in combined mode (no network transport)
+OOLOI_TLS=true ./ooloi-combined  # TLS setting has no effect
+./ooloi-combined --tls true      # TLS setting has no effect
 ```
 
-**Certificate Characteristics**:
-- **Generation**: Automatic on first TLS-enabled startup
-- **Storage**: Via configuration (cert-path and key-path parameters)
-- **SANs**: `localhost`, `127.0.0.1`, `::1`, `*.local`
-- **Validity**: 20 years for long-term development
-- **Trust**: Self-signed, requires manual trust or verification disable
+**In-Process Transport Characteristics**:
+- **Communication**: Direct Java method calls within same JVM process
+- **Security**: Process isolation provides security boundary
+- **Performance**: No network serialization overhead
+- **TLS**: Not applicable - no network communication occurs
+- **Transport**: Uses gRPC in-process transport (ADR-0019)
 
-**Certificate Management Behavior**:
-1. **Explicit paths provided**: `--cert-path /path/cert.crt --key-path /path/key.key`
-   - If certificates exist at those paths: Use existing certificates
-   - If certificates don't exist: Create certificates at those paths
-2. **No paths provided**: TLS enabled without certificate paths
-   - Create certificates in platform-appropriate directory:
-     - Unix/macOS: `~/.ooloi/certs/server.{crt,key}`
-     - Windows: `%APPDATA%\Ooloi\certs\server.{crt,key}`
-3. **Idempotent operation**: Safe to restart server multiple times, existing certificates reused
+**Development Benefits**:
+- **Zero configuration**: No certificate management needed
+- **Immediate startup**: No TLS handshake or certificate validation delays  
+- **Maximum performance**: Direct in-memory communication
+- **No network dependencies**: Works offline or in restricted network environments
 
 ### Collaboration Development (Distributed)
 **Architecture**: Multiple client machines connecting to shared development server  
@@ -174,24 +170,27 @@ OOLOI_TLS=true OOLOI_CERT_PATH=/secrets/tls.crt OOLOI_KEY_PATH=/secrets/tls.key 
 
 **Configuration Examples Summary**:
 ```bash
-# Development: TLS disabled by default
-./ooloi-server
+# Combined Mode: In-process transport, no TLS needed
+./ooloi-combined  # TLS flags ignored
 
-# Development: TLS with auto-generated certificates
-OOLOI_TLS=true ./ooloi-server
-./ooloi-server --tls true
+# Backend-only: TLS disabled by default
+./ooloi-backend
+
+# Backend-only: TLS with auto-generated certificates
+OOLOI_TLS=true ./ooloi-backend
+./ooloi-backend --tls true
 
 # Collaboration Development: Custom certificates for multi-client scenarios
-./ooloi-server --tls true --cert-path ./dev-server.crt --key-path ./dev-server.key
+./ooloi-backend --tls true --cert-path ./dev-server.crt --key-path ./dev-server.key
 
 # SaaS Production: TLS termination at load balancer
-OOLOI_TLS=false OOLOI_PORT=8080 ./ooloi-server  # Behind AWS ALB
+OOLOI_TLS=false OOLOI_PORT=8080 ./ooloi-backend  # Behind AWS ALB
 
 # Enterprise: Customer-managed certificates
-OOLOI_TLS=true OOLOI_CERT_PATH=/etc/ssl/ooloi.crt OOLOI_KEY_PATH=/etc/ssl/ooloi.key ./ooloi-server
+OOLOI_TLS=true OOLOI_CERT_PATH=/etc/ssl/ooloi.crt OOLOI_KEY_PATH=/etc/ssl/ooloi.key ./ooloi-backend
 
 # Debugging: Explicit TLS disable
-./ooloi-server --tls false
+./ooloi-backend --tls false
 ```
 
 ### Phase 2: Developer & Operations Tooling
@@ -212,16 +211,19 @@ OOLOI_TLS=true OOLOI_CERT_PATH=/etc/ssl/ooloi.crt OOLOI_KEY_PATH=/etc/ssl/ooloi.
 ```makefile
 dev-certs:
 	# No external tools needed - certificates auto-generated using Java cryptography
-	./ooloi-server --tls true --generate-certs
+	./ooloi-backend --tls true --generate-certs
 
 dev-server:
-	./ooloi-server --tls true
+	./ooloi-backend --tls true
 
 debug-server:
-	./ooloi-server
+	./ooloi-backend
+
+combined-app:
+	./ooloi-combined  # In-process transport, no TLS needed
 
 prod-server:
-	./ooloi-server --tls true --port 443
+	./ooloi-backend --tls true --port 443
 ```
 
 **Automated Certificate Management:**
@@ -261,9 +263,9 @@ prod-server:
 
 **Component Integration**: TLS configuration integrates cleanly with existing Integrant lifecycle management
 **Deployment Model Support**: 
-- **Combined mode**: In-process transport (no TLS needed)
-- **Distributed mode**: Network transport with TLS requirement
-- **Backend-only mode**: TLS-enabled server for external clients
+- **Combined mode**: In-process transport (no network communication, TLS not applicable)
+- **Distributed mode**: Network transport with TLS requirement for secure communication
+- **Backend-only mode**: Network server requiring TLS for external client connections
 
 **Configuration Precedence**: Environment variables → config files → defaults
 
