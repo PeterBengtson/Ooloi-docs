@@ -147,10 +147,10 @@ Ooloi Backend (EC2/ECS/EKS)
 
 ```bash
 # Enterprise deployment with internal CA certificates
-OOLOI_TLS=true OOLOI_CERT_PATH=/etc/certs/ooloi.crt OOLOI_KEY_PATH=/etc/certs/ooloi.key ./ooloi-server
+OOLOI_TLS=true OOLOI_CERT_PATH=/etc/certs/ooloi.crt OOLOI_KEY_PATH=/etc/certs/ooloi.key ./ooloi-backend
 
 # Production with commercial CA certificates
-./ooloi-server --tls true --cert-path /etc/ssl/ooloi.crt --key-path /etc/ssl/ooloi.key --port 443
+./ooloi-backend --tls true --cert-path /etc/ssl/ooloi.crt --key-path /etc/ssl/ooloi.key --port 443
 ```
 
 **Enterprise Certificate Characteristics**:
@@ -165,7 +165,7 @@ OOLOI_TLS=true OOLOI_CERT_PATH=/etc/certs/ooloi.crt OOLOI_KEY_PATH=/etc/certs/oo
 
 ```bash
 # Container deployment with mounted certificate secrets
-OOLOI_TLS=true OOLOI_CERT_PATH=/secrets/tls.crt OOLOI_KEY_PATH=/secrets/tls.key OOLOI_PORT=8443 ./ooloi-server
+OOLOI_TLS=true OOLOI_CERT_PATH=/secrets/tls.crt OOLOI_KEY_PATH=/secrets/tls.key OOLOI_PORT=8443 ./ooloi-backend
 ```
 
 **Configuration Examples Summary**:
