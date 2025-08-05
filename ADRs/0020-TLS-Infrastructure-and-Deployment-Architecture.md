@@ -89,7 +89,7 @@ OOLOI_TLS=true ./ooloi-combined  # TLS setting has no effect
 **Development Benefits**:
 - **Zero configuration**: No certificate management needed
 - **Immediate startup**: No TLS handshake or certificate validation delays  
-- **Maximum performance**: Direct in-memory communication
+- **Maximum performance**: Direct in-memory communication with 37.5-75x faster response times (98.7-99.3% latency reduction vs network gRPC, per ADR-0019)
 - **No network dependencies**: Works offline or in restricted network environments
 
 ### Collaboration Development (Distributed)
