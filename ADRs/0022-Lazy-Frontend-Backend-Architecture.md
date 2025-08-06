@@ -75,7 +75,7 @@ Ooloi's frontend-backend separation ([ADR-0001](0001-Frontend-Backend-Separation
 
 ### Architectural Vision and Historical Foundation
 
-This lazy event-driven architecture builds on patterns proven in Igor Engraver (1996), but represents **fundamental architectural evolution** beyond its inspiration. Igor Engraver demonstrated successful viewport-driven computation and invalidation cycles within Common Lisp's MVC environment, but **did not employ systematic lazy evaluation**.
+This lazy event-driven architecture builds on patterns proven in [Igor Engraver](https://en.wikipedia.org/wiki/Igor_Engraver) (1996), but represents **fundamental architectural evolution** beyond its inspiration. Igor Engraver demonstrated successful viewport-driven computation and invalidation cycles within Common Lisp's MVC environment, but **did not employ systematic lazy evaluation**.
 
 **The Translation Challenge**: Igor Engraver benefited from Common Lisp's mature MVC environment on Mac, where viewport management, invalidation cycles, and rendering coordination were provided "for free" by the desktop framework. Ooloi operates in a fundamentally different context—distributed systems with unknown frontend technologies where **nothing can be assumed** about viewport handling, event management, or rendering capabilities.
 
@@ -85,7 +85,7 @@ This lazy event-driven architecture builds on patterns proven in Igor Engraver (
 
 **Multi-Client as Architectural Default**: This architecture assumes **collaborative multi-user is the default** and single-user combined applications are just transport-optimized special cases (N=1 client with in-process gRPC). The lazy communication patterns, raster synchronization, and cache management are designed for the general case of multiple simultaneous users, making single-user scenarios automatically benefit from the collaborative optimization work.
 
-Previous Ooloi ADRs—STM for concurrency (ADR-0004), VPDs for hierarchical addressing (ADR-0008), Timewalk for efficient traversal (ADR-0014)—were chosen specifically to enable this architectural vision in a modern, collaborative context. This represents **architectural necessity driven by collaborative scale**, not just modernization of proven patterns.
+Previous Ooloi ADRs—STM for concurrency ([ADR-0004](0004-STM-for-concurrency.md)), VPDs for hierarchical addressing ([ADR-0008](0008-VPDs.md)), Timewalk for efficient traversal ([ADR-0014](0014-Timewalk.md))—were chosen specifically to enable this architectural vision in a modern, collaborative context. This represents **architectural necessity driven by collaborative scale**, not just modernization of proven patterns.
 
 ### Performance and Collaboration Requirements
 
@@ -786,7 +786,7 @@ Proper presentation (loading indicators, progressive rendering) makes these dela
 
 ### Architectural Evolution from Desktop to Collaborative Systems
 
-This architecture represents the purposeful evolution of proven desktop patterns for collaborative distributed systems, not accidental architectural emergence. The sophisticated foundational decisions in previous ADRs—STM concurrency (ADR-0004), hierarchical VPDs (ADR-0008), efficient Timewalk traversal (ADR-0014)—were chosen specifically to enable this lazy event-driven architecture in a collaborative context.
+This architecture represents the purposeful evolution of proven desktop patterns for collaborative distributed systems, not accidental architectural emergence. The sophisticated foundational decisions in previous ADRs—STM concurrency ([ADR-0004](0004-STM-for-concurrency.md)), hierarchical VPDs ([ADR-0008](0008-VPDs.md)), efficient Timewalk traversal ([ADR-0014](0014-Timewalk.md))—were chosen specifically to enable this lazy event-driven architecture in a collaborative context.
 
 **Deliberate Vision Realization**: Where Igor Engraver succeeded with eager computation in single-user desktop scenarios, Ooloi's collaborative distributed context requires comprehensive lazy evaluation at every architectural layer to achieve practical scaling characteristics. This represents systematic advancement rather than incremental improvement.
 
