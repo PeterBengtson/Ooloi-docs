@@ -354,7 +354,7 @@ Backend uses a **configurable raster** (e.g., 10 FPS / 100ms) for **invalidation
 
 **Deduplication Through Raster Synchronization:**
 
-**The Complete Deduplication Process:**
+#### The Complete Deduplication Process
 
 1. **Stale Detection**: Frontend detects measure is stale, requests updated drawing instructions from backend
 2. **Backend Status Check**: 
