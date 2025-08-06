@@ -25,6 +25,7 @@ Accepted 2025-08-06
   - [Collaborative Scale Example](#collaborative-scale-example)
   - [Layout Opening Examples](#layout-opening-examples)
   - [Performance Optimization: Raster Deduplication](#performance-optimization-raster-deduplication)
+    - [The Complete Deduplication Process](#the-complete-deduplication-process)
 - [Implementation Architecture](#implementation-architecture)
   - [1. Frontend Layout Object Hierarchy](#1-frontend-layout-object-hierarchy)
   - [2. Two-Phase Communication Implementation](#2-two-phase-communication-implementation)
@@ -347,6 +348,19 @@ This creates the performance breakthrough: most user interactions (scrolling, na
 Backend uses a **configurable raster** (e.g., 10 FPS / 100ms) for **invalidation notifications** and **dirty data computation requests**. Normal API requests (musical mutations, clean data retrieval) process immediately without raster delays. This creates natural deduplication windows for computation-heavy operations while keeping normal operations responsive.
 
 **Deduplication Through Raster Synchronization:**
+
+**The Complete Deduplication Process:**
+
+1. **Stale Detection**: Frontend detects measure is stale, requests updated drawing instructions from backend
+2. **Backend Status Check**: 
+   - **If MeasureView is clean**: Drawing data returned immediately to all requesters (Path A)
+   - **If MeasureView is dirty**: Request queued, no immediate computation (Path B)
+3. **Request Queuing**: Multiple identical requests (same layout-id, measure-num) accumulate in queue
+4. **Raster Computation**: At next raster timepoint, MeasureView computed **once** regardless of number of requesters
+5. **Asynchronous Distribution**: Same computed drawing instructions sent to **all** queued requesters
+6. **Frontend Updates**: Each client stores instructions, marks measure valid, renders music
+
+**Result**: Complete elimination of duplicate formatting processes - N requesters = 1 computation + N deliveries
 
 ```clojure
 ;; Requests queue until next raster pulse
