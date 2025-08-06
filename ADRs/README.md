@@ -27,9 +27,9 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0020-TLS-Infrastructure-and-Deployment-Architecture](0020-TLS-Infrastructure-and-Deployment-Architecture.md)**: TLS security infrastructure and certificate management
 - **[0021-Authentication](0021-Authentication.md)**: Pluggable authentication architecture with JWT-based security
 
-## Proposed Decisions
+## Accepted Decisions (Continued)
 
-- **[0022-Frontend-Event-Driven-Data-Synchronization](0022-Frontend-Event-Driven-Data-Synchronization.md)**: *(Proposed)* Frontend event-driven data synchronization architecture with comprehensive JavaFX windowing and Skija integration
+- **[0022-Lazy-Frontend-Backend-Architecture](0022-Lazy-Frontend-Backend-Architecture.md)**: Lazy frontend-backend architecture with systematic lazy evaluation for collaborative scale
 
 ## Architecture Overview
 
