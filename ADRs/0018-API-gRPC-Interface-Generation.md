@@ -30,13 +30,13 @@ Remote developers need a **single, consistent mental model** based on VPDs, whil
 
 ## Decision
 
-We will implement **universal Clojure-aware gRPC architecture with comprehensive bidirectional asynchronous communication** using the following approach:
+We will implement **simplified Clojure-aware gRPC architecture with comprehensive bidirectional asynchronous communication** using the following approach:
 
-### 1. Universal Protobuf Schema (Updated 2025)
+### 1. Single Protobuf Schema (Updated 2025)
 
-**Paradigm Shift**: Replace complex API introspection with a **universal Clojure-aware protobuf schema**:
+**Paradigm Shift**: Replace complex API introspection with a **single Clojure-aware protobuf schema**:
 - **Single OoloiValue message** handles all Clojure data types (ratios, keywords, maps, vectors, sets)
-- **Universal OoloiRequest/OoloiResponse** with method name + parameters pattern
+- **Single OoloiRequest/OoloiResponse** with method name + parameters pattern
 - **Simple ExecuteMethod service** replaces hundreds of generated method definitions
 - **Perfect type fidelity** preserving Clojure semantics across network boundaries
 
@@ -76,8 +76,8 @@ service OoloiService {
 
 ### Scale and Maintenance
 
-**Why Universal Schema vs. Generated Schema:**
-- **Scale simplicity**: Single universal schema handles hundreds of methods without generation
+**Why Single Schema vs. Generated Schema:**
+- **Scale simplicity**: Single schema handles hundreds of methods without generation
 - **Plugin compatibility**: New plugin data types work immediately without schema changes
 - **Zero maintenance overhead**: No code generation pipeline to maintain or debug
 - **Hot deployment**: New API methods available instantly without build steps
@@ -126,7 +126,7 @@ service OoloiService {
 
 ### Negative
 
-- **Type safety trade-off**: Universal schema reduces compile-time type checking compared to generated specific messages
+- **Type safety trade-off**: Single schema reduces compile-time type checking compared to generated specific messages
 - **Debugging challenges**: Dynamic method resolution and async event flows can be harder to trace
 - **Connection management**: Client reconnection, event replay, and subscription management complexity  
 - **Performance overhead**: Recursive conversion for complex nested structures
@@ -141,10 +141,10 @@ service OoloiService {
 
 ## Implementation Approach
 
-### 1. Universal Conversion System (Replaces Code Generation)
+### 1. Single Conversion System (Replaces Code Generation)
 
-**Simple Universal Approach Replacing Complex Generation**:
-- **Static protobuf schema**: Universal OoloiValue message handles all data types
+**Simple Approach Replacing Complex Generation**:
+- **Static protobuf schema**: Single OoloiValue message handles all data types
 - **Simple conversion functions**: Deterministic Clojure ↔ Protocol Buffer conversion
 - **No code generation**: Eliminates build-time complexity and fragile introspection
 - **Runtime method resolution**: Dynamic API method discovery and invocation
