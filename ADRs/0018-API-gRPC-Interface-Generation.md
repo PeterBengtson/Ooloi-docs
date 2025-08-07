@@ -30,22 +30,23 @@ Remote developers need a **single, consistent mental model** based on VPDs, whil
 
 ## Decision
 
-We will implement **automated API-gRPC generation with comprehensive bidirectional asynchronous communication** using the following architectural approach:
+We will implement **universal Clojure-aware gRPC architecture with comprehensive bidirectional asynchronous communication** using the following approach:
 
-### 1. Full Namespace Introspection for API Generation
+### 1. Universal Protobuf Schema (Updated 2025)
 
-**Systematic Automation**: Use namespace introspection to automatically generate gRPC interface from all VPD-based `api.clj` function signatures:
-- **Protocol Buffer definitions** generated from function signatures and return types
-- **gRPC server implementations** with thin delegation pattern (data conversion → direct `api.clj` calls)
-- **Complete coverage** ensuring 1:1 correspondence between VPD-capable API methods and gRPC methods
+**Paradigm Shift**: Replace complex API introspection with a **universal Clojure-aware protobuf schema**:
+- **Single ClojureValue message** handles all Clojure data types (ratios, keywords, maps, vectors, sets)
+- **Universal OoloiRequest/OoloiResponse** with method name + parameters pattern
+- **Simple ExecuteMethod service** replaces hundreds of generated method definitions
+- **Perfect type fidelity** preserving Clojure semantics across network boundaries
 
-### 2. VPD-Only gRPC Interface
+### 2. Dynamic API Method Resolution
 
-**Selective Signature Exposure**: Only VPD-based function signatures are exposed via gRPC:
-- VPD + piece-id based methods → gRPC methods
-- Direct object-based methods → remain local-only
-- Maintains cognitive simplicity for remote developers
-- Leverages VPD universality across network boundaries
+**Runtime Flexibility**: All API methods accessible through single universal endpoint:
+- **Dynamic function resolution**: `(ns-resolve 'ooloi.backend.api (symbol method-name))`
+- **VPD + piece-id patterns** work identically to local API usage
+- **Zero code generation overhead** - new API methods immediately available
+- **Plugin compatibility** - new plugin methods work automatically
 
 ### 3. Bidirectional Asynchronous Architecture
 
@@ -75,11 +76,11 @@ service OoloiService {
 
 ### Scale and Maintenance
 
-**Why Full Automation vs. Manual Implementation:**
-- **Scale impossibility**: Hundreds of methods make manual implementation architecturally impossible
-- **Perfect consistency**: Namespace introspection eliminates human error and missed methods
-- **Zero maintenance overhead**: New `api.clj` functions automatically become available via gRPC
-- **Future-proof**: Architecture scales seamlessly as API grows
+**Why Universal Schema vs. Generated Schema:**
+- **Scale simplicity**: Single universal schema handles hundreds of methods without generation
+- **Plugin compatibility**: New plugin data types work immediately without schema changes
+- **Zero maintenance overhead**: No code generation pipeline to maintain or debug
+- **Hot deployment**: New API methods available instantly without build steps
 
 **Why VPD-Only vs. Full Polymorphic Exposure:**
 - **Cognitive load reduction**: Remote developers learn one pattern (VPD-based) instead of multiple
@@ -114,40 +115,52 @@ service OoloiService {
 ### Positive
 
 - **Perfect API coverage**: Every `api.clj` function automatically available remotely with zero maintenance
-- **Architectural consistency**: Single universal addressing system (VPDs) across local and remote interfaces
+- **Architectural consistency**: Single universal addressing system (VPDs) across local and remote interfaces  
 - **Real-time collaboration**: Event streaming enables multiple users editing shared pieces simultaneously
 - **Responsive user experience**: Parallel operations prevent UI blocking during backend processing
 - **Cognitive load reduction**: Remote developers learn one simple, consistent pattern
 - **Future scalability**: Architecture handles hundreds of methods and scales to more complex collaboration scenarios
 - **Development efficiency**: New API functions immediately available via gRPC without additional work
+- **Hot plugin installation**: Zero-downtime plugin deployment with automatic data type support
+- **Eliminated complexity**: No code generation, API introspection, or build-time dependencies
 
 ### Negative
 
-- **Build system complexity**: Code generation pipeline adds build-time dependencies and complexity
-- **Debugging challenges**: Generated code and async event flows can be harder to trace and debug
-- **Connection management**: Client reconnection, event replay, and subscription management complexity
-- **Development tooling**: IDE support and debugging tools may be less effective with generated code
+- **Type safety trade-off**: Universal schema reduces compile-time type checking compared to generated specific messages
+- **Debugging challenges**: Dynamic method resolution and async event flows can be harder to trace
+- **Connection management**: Client reconnection, event replay, and subscription management complexity  
+- **Performance overhead**: Recursive conversion for complex nested structures
 
 ### Mitigations
 
-- **Clear error messages**: Generated code includes comprehensive error handling with actionable messages
-- **Development tooling**: Build-time validation and clear mapping between generated and source code
-- **Comprehensive testing**: Automated tests for code generation pipeline and integration testing for event flows
-- **Documentation generation**: Automated documentation from `api.clj` function docstrings and signatures
-- **Monitoring and observability**: Built-in metrics and tracing for generated services and event streams
+- **Comprehensive testing**: Round-trip conversion tests ensure perfect type fidelity
+- **Clear error messages**: Dynamic method resolution includes actionable error reporting
+- **Performance optimization**: Conversion function optimization and caching for frequently used patterns
+- **Development tooling**: Runtime introspection tools for debugging dynamic method calls
+- **Monitoring and observability**: Built-in metrics for conversion performance and method usage
 
 ## Implementation Approach
 
-### 1. Code Generation Pipeline
+### 1. Universal Conversion System (Replaces Code Generation)
 
-**Build-time Generation Following Established models.core Pattern**:
-- **API Introspection**: Analyze `api.clj` namespace for VPD-based function signatures using methodical metadata
-- **Macro-based Generation**: Follow proven models.core pattern of helper functions + compile-time generation
-- **Protocol Buffer Generation**: Create message definitions from function parameters and return types
-- **Service Definition Generation**: Generate gRPC service methods with 1:1 API correspondence
-- **Implementation Generation**: Create server code with thin delegation pattern using helper function abstraction
-- **Service Proxy Generation**: Dynamic method binding using VPD metadata categories (not heuristic name matching)
-- **Data Conversion**: Protocol-based extensible conversion system for bidirectional Clojure ↔ Protocol Buffer transformation
+**Simple Universal Approach Replacing Complex Generation**:
+- **Static protobuf schema**: Universal ClojureValue message handles all data types
+- **Simple conversion functions**: Deterministic Clojure ↔ Protocol Buffer conversion
+- **No code generation**: Eliminates build-time complexity and fragile introspection
+- **Runtime method resolution**: Dynamic API method discovery and invocation
+- **Perfect round-trip fidelity**: Ratios stay ratios, keywords preserve namespaces
+
+**Core Conversion Implementation**:
+```clojure
+(defn clj->protobuf-value [obj]
+  (cond
+    (ratio? obj) {:ratio-val {:numerator (numerator obj) :denominator (denominator obj)}}
+    (keyword? obj) {:keyword-val {:namespace (namespace obj) :name (name obj)}}
+    (map? obj) {:map-val {:entries (map (fn [[k v]] {:key (clj->protobuf-value k) 
+                                                     :value (clj->protobuf-value v)}) obj)}}
+    ;; ... handles all Clojure types recursively
+    ))
+```
 
 ### 2. Bidirectional Communication Infrastructure
 
