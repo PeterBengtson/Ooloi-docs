@@ -365,15 +365,15 @@ lein coverage
 
 **Important**: Use `lein midje` instead of `lein test`. The project is configured for Midje testing framework.
 
-### Protocol Buffer Generation
+### Protocol Buffer Integration
 
-The backend includes gRPC infrastructure with automatic Protocol Buffer compilation:
+The backend uses gRPC for frontend communication:
 
 ```bash
 # Compile Protocol Buffers and generate Java classes
 lein compile
 
-# Clean and recompile (recommended when .proto files change)  
+# Clean and recompile (when .proto files change)  
 lein clean && lein compile
 
 # Verify generated classes
@@ -382,74 +382,35 @@ ls target/generated-sources/protobuf/
 
 #### Protocol Buffer Configuration
 
-The backend automatically generates Java classes from shared Protocol Buffer definitions:
-
-- **Proto source**: `../shared/src/main/proto/` (shared with frontend)
+- **Proto source**: `../shared/src/main/proto/ooloi_service.proto`
 - **Generated output**: `target/generated-sources/protobuf/`
-- **Compiler version**: protoc 3.25.3 (automatically downloaded)
-- **Generated files**: 
-  - `ooloi_domain.proto` → Domain model Java classes
-  - `ooloi_service.proto` → gRPC service stubs
-  - `vpd.proto` → VPD utility classes
+- **Automatic compilation**: Java classes generated during `lein compile`
 
-#### When to Regenerate Protocol Buffers
+#### When to Recompile Protocol Buffers
 
-**⚠️ Important**: Protocol Buffers must be regenerated whenever you modify the API:
+Recompile when:
+- Modifying `.proto` files in `shared/src/main/proto/`
+- After `git pull` that updates protobuf definitions
+- Build errors related to missing protobuf classes
 
-**Always regenerate after:**
-- Adding new multimethod definitions to `models/interfaces.clj` 
-- Adding new VPD-dispatching methods to `models/core.clj`
-- Modifying function signatures in `api.clj`
-- Adding new constructor functions (`create-*`)
-- Adding new message types to `shared/src/main/proto/*.proto`
-- Updating service definitions in `ooloi_service.proto`
-
-**Workflow for API changes:**
+**Development workflow:**
 ```bash
-# 1. Make your API changes (add methods, etc.)
-
-# 2. Regenerate .proto files from API introspection
-clojure -M regen.clj
-
-# 3. Navigate to shared/ and build protocol buffers
-cd ../shared
-lein protoc
-
-# 4. Navigate to backend/ and compile Java classes  
-cd ../backend
-lein protoc
-
-# 5. Navigate to frontend/ and compile
-cd ../frontend
-lein protoc
-
-# 6. Return to backend/ and verify everything works
-cd ../backend
+# 1. Make your API changes
+# 2. Compile and test:
+cd backend
 lein compile
 lein midje
 ```
 
-**⚠️ Critical Distinction**: 
-- **`regen.clj`**: Regenerates `.proto` files from Clojure API introspection (creates new gRPC service definitions)
-- **`lein protoc`**: Compiles existing `.proto` files to Java classes (processes existing definitions)
-
-**Always use `regen.clj` first** when you've added new API methods or constructors.
-
-**Signs you need to regenerate:**
-- `NoSuchMethodError` when testing gRPC methods
-- Missing gRPC service methods in generated stubs
-- Protocol buffer compilation errors
-- New API methods not accessible via gRPC
-
 #### Manual Protocol Buffer Commands
 
 ```bash
-# Force Protocol Buffer regeneration
+# Force recompilation
 lein clean
-lein protoc
+lein compile
 
-# View generated Java classes
-find target/generated-sources/protobuf -name "*.java" | head -10
+# View generated classes
+find target/generated-sources/protobuf -name "*.java" | head -5
 ```
 
 ### Building and Packaging

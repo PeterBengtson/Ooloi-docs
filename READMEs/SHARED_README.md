@@ -14,9 +14,8 @@ The shared project serves to:
 
 ```
 shared/
-├── src/main/proto/                    ; Protocol Buffer definitions
-│   ├── ooloi_domain.proto            ; Complete Ooloi domain model (Musical + Visual hierarchies)
-│   ├── ooloi_service.proto           ; gRPC service definitions (165 VPD methods)
+├── src/main/proto/                    ; Universal Protocol Buffer definitions
+│   ├── ooloi_service.proto           ; Universal gRPC schema (single OoloiValue message)
 │   └── vpd.proto                     ; VPD addressing structures
 ├── src/main/clojure/ooloi/shared/    ; Shared Clojure utilities
 │   ├── proto_conversion.clj          ; Clojure ↔ Protocol Buffer conversion utilities
@@ -148,41 +147,22 @@ ln -s ../../icons/ready/linux/icon.png icons/
 
 ## gRPC Infrastructure
 
-The shared project contains the complete Protocol Buffer infrastructure for gRPC communication between frontend and backend:
+The shared project contains Protocol Buffer definitions for frontend-backend communication:
 
-### Protocol Buffer Domain Model
+### Protocol Buffer Schema
 
-- **`ooloi_domain.proto`**: Complete domain model covering all Ooloi data structures
-  - Musical hierarchy: Piece → Musicians → Instruments → Staves → Voices → Measures → Items
-  - Visual hierarchy: Layouts → PageViews → SystemViews → StaffViews → MeasureViews  
-  - Attachment system: All 7 attachment types (Articulation, Dynamic, Slur, Tie, etc.)
-  - Polymorphic Entity message with oneof for flexible type handling
-
-- **`ooloi_service.proto`**: gRPC service definitions with 165 VPD-based methods
-  - Generated from backend API namespace introspection
-  - Request/response message pairs for all VPD-capable API methods
-  - Consistent naming: kebab-case API methods → CamelCase protobuf messages
-
-- **`vpd.proto`**: Vector Path Descriptor addressing structures for navigating musical hierarchies
+- **`ooloi_service.proto`**: gRPC service definitions
+- **`vpd.proto`**: Vector Path Descriptor addressing structures
 
 ### Conversion Utilities
 
-- **`proto_conversion.clj`**: Comprehensive Clojure ↔ Protocol Buffer conversion
-  - Context-aware conversion (VPD navigation vs musical data)
-  - Support for all musical data types: ratios, keywords, numbers, strings, collections
-  - Auto-detection of VPD collections based on first element
-  - Protocol-based extensible design for future data types
-
-- **`vpd_utils.clj`**: VPD manipulation and protobuf string conversion
-  - VPD ↔ protobuf string array conversion
-  - Compact/verbose VPD form handling
-  - Empty VPD handling ([] represents whole piece)
+- **`proto_conversion.clj`**: Clojure ↔ Protocol Buffer conversion
+- **`vpd_utils.clj`**: VPD manipulation and protobuf conversion
 
 ### Build Integration
 
-The Protocol Buffer files are automatically compiled during the build process:
-- `lein protoc` generates Java classes in `target/generated-sources/protobuf/`
-- Generated classes are identical across all projects (shared, backend, frontend)
+- `lein compile` generates Java classes in `target/generated-sources/protobuf/`
+- Generated classes are shared across all projects (shared, backend, frontend)
 - Supports both distributed (client-server) and combined (single-JVM) deployment modes
 
 ## Installation
@@ -308,53 +288,37 @@ ls target/generated-sources/protobuf/
 
 #### Protocol Buffer Source Files
 
-The shared project defines the complete gRPC protocol:
-
-- **`src/main/proto/ooloi_domain.proto`** - Complete Ooloi domain model (85+ message types)
-  - Musical hierarchy: Piece→Musicians→Instruments→Staves→Voices→Measures→Items
-  - Visual hierarchy: Layouts→PageViews→SystemViews→StaffViews→MeasureViews
-  - Attachment system: Cross-reference resolution and shared musical elements
-
-- **`src/main/proto/ooloi_service.proto`** - gRPC service definitions (165 VPD method definitions)
-  - All API methods from `ooloi.backend.api` with proper Request/Response pairs
-  - Categorized by operation type: getters, setters, complex operations
+- **`src/main/proto/ooloi_service.proto`** - gRPC service definitions
+  - Service methods: `ExecuteMethod` and `ExecuteBatch` 
+  - Universal data handling via `OoloiValue` message type
 
 - **`src/main/proto/vpd.proto`** - VPD addressing structures
   - Vector Path Descriptor message definitions for navigation
 
-#### When to Regenerate Protocol Buffers
+#### When to Recompile Protocol Buffers
 
-**⚠️ Critical**: Protocol Buffers must be regenerated after API changes:
+Recompile when:
+- Modifying `.proto` files in `src/main/proto/`
+- After `git pull` that updates protobuf definitions
+- Updating protobuf compiler or dependencies
 
-**Always regenerate after adding:**
-- New multimethod definitions in `backend/src/main/clojure/ooloi/backend/models/interfaces.clj`
-- New VPD-dispatching methods in `backend/src/main/clojure/ooloi/backend/models/core.clj`
-- New functions exported via `backend/src/main/clojure/ooloi/backend/api.clj`
-- New message types or service methods in `.proto` files
-
-**Regeneration workflow** (must be done in correct order):
+**Compilation workflow**:
 
 ```bash
-# 1. In shared/ directory - regenerate source definitions
+# 1. In shared/ directory
 lein clean && lein compile
 
-# 2. In backend/ directory - regenerate server stubs  
+# 2. In backend/ directory
 cd ../backend && lein clean && lein compile
 
-# 3. In frontend/ directory - regenerate client stubs
+# 3. In frontend/ directory
 cd ../frontend && lein clean && lein compile
 
-# 4. Verify all projects compile
+# 4. Test all projects
 cd ../backend && lein midje  # Test backend
 cd ../frontend && lein midje # Test frontend  
 cd ../shared && lein midje   # Test shared
 ```
-
-**Signs you forgot to regenerate:**
-- `NoSuchMethodError` in gRPC tests
-- Missing service methods in generated stubs
-- New API methods not accessible via gRPC
-- Protocol buffer compilation errors
 
 ### Building and Packaging
 

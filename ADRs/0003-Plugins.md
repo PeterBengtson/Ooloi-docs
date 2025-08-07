@@ -104,14 +104,14 @@ We will implement a robust plugin system as a central architectural component of
 
 # Universal Architecture Solution
 1. Plugin installs: (defrecord CustomNotation [...])
-2. Universal ClojureValue handles new types immediately
+2. Universal OoloiValue handles new types immediately
 3. API methods discovered dynamically at runtime  
 4. Perfect type fidelity preserved automatically
 # Result: Zero downtime, seamless installation
 ```
 
 **Technical Implementation**:
-- **Dynamic Model Discovery**: Universal `ClojureValue` protobuf message handles any plugin data structure
+- **Dynamic Model Discovery**: Universal `OoloiValue` protobuf message handles any plugin data structure
 - **Runtime API Registration**: New plugin API methods discovered via dynamic function resolution
 - **Type Fidelity Preservation**: Ratios, keywords, custom types maintain semantics across network
 - **No Schema Changes**: Static universal schema never needs regeneration

@@ -35,7 +35,7 @@ We will implement **universal Clojure-aware gRPC architecture with comprehensive
 ### 1. Universal Protobuf Schema (Updated 2025)
 
 **Paradigm Shift**: Replace complex API introspection with a **universal Clojure-aware protobuf schema**:
-- **Single ClojureValue message** handles all Clojure data types (ratios, keywords, maps, vectors, sets)
+- **Single OoloiValue message** handles all Clojure data types (ratios, keywords, maps, vectors, sets)
 - **Universal OoloiRequest/OoloiResponse** with method name + parameters pattern
 - **Simple ExecuteMethod service** replaces hundreds of generated method definitions
 - **Perfect type fidelity** preserving Clojure semantics across network boundaries
@@ -144,7 +144,7 @@ service OoloiService {
 ### 1. Universal Conversion System (Replaces Code Generation)
 
 **Simple Universal Approach Replacing Complex Generation**:
-- **Static protobuf schema**: Universal ClojureValue message handles all data types
+- **Static protobuf schema**: Universal OoloiValue message handles all data types
 - **Simple conversion functions**: Deterministic Clojure ↔ Protocol Buffer conversion
 - **No code generation**: Eliminates build-time complexity and fragile introspection
 - **Runtime method resolution**: Dynamic API method discovery and invocation
