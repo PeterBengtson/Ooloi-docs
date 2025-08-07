@@ -90,9 +90,9 @@ We will implement a robust plugin system as a central architectural component of
 5. Create a standardized way for plugins to integrate with the UI, add menu items, and extend existing functionality.
 6. Implement version checking to ensure compatibility between plugins and the core application.
 
-### Hot Plugin Installation Architecture (Enabled by Simplified gRPC)
+### Hot Plugin Installation Architecture (Enabled by Unified gRPC)
 
-**Zero-Downtime Plugin System**: Ooloi's simplified Clojure-aware gRPC architecture enables hot plugin installation capabilities:
+**Zero-Downtime Plugin System**: Ooloi's unified Clojure-aware gRPC architecture enables hot plugin installation capabilities:
 
 **Plugin Installation Process**:
 ```bash
@@ -102,19 +102,19 @@ We will implement a robust plugin system as a central architectural component of
 3. Schema regeneration → complex build pipeline
 4. All clients must reconnect → user disruption
 
-# Simplified Architecture Solution
+# Unified Architecture Solution
 1. Plugin installs: (defrecord CustomNotation [...])
-2. Single OoloiValue handles new types immediately
+2. Unified OoloiValue handles new types immediately
 3. API methods discovered dynamically at runtime  
 4. Perfect type fidelity preserved automatically
 # Result: Zero downtime, seamless installation
 ```
 
 **Technical Implementation**:
-- **Dynamic Model Discovery**: Single `OoloiValue` protobuf message handles any plugin data structure
+- **Dynamic Model Discovery**: Unified `OoloiValue` protobuf message handles any plugin data structure
 - **Runtime API Registration**: New plugin API methods discovered via dynamic function resolution
 - **Type Fidelity Preservation**: Ratios, keywords, custom types maintain semantics across network
-- **No Schema Changes**: Static schema never needs regeneration
+- **No Schema Changes**: Static unified schema never needs regeneration
 
 **Plugin Use Cases Enabled**:
 - **Streaming Data**: MIDI, audio analysis, real-time collaboration data
