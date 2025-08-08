@@ -235,14 +235,7 @@ The backend implements shared model contracts, establishing clean separation bet
 - **gRPC Integration**: Protocol buffer conversion and service methods
 - **Component Lifecycle**: Integrant system startup/shutdown scenarios
 
-### Migration from Phase 2.5
-
-**Breaking Changes**:
-- `ooloi.backend.ops.vectors-and-attributes` → `ooloi.shared.ops.access` (aliased as `xs`)
-- Generator imports: `ooloi.backend.specs.generators` → `ooloi.shared.specs.generators`
-- Shared models imported from `ooloi.shared.models.*` instead of backend
-
-**Compatibility**: Backend maintains full API compatibility through namespace re-exports.
+**Compatibility**: Backend maintains full API compatibility through namespace re-exports for legacy code.
 
 ## Development
 

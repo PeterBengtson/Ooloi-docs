@@ -116,7 +116,7 @@ ln -s ../../icons/ready/linux/icon.png icons/
   lein deps
   ```
 
-## Building the Backend
+## Building the Frontend
 
 1. Navigate to the frontend directory:
    ```bash

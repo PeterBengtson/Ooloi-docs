@@ -30,7 +30,7 @@ shared/
 │   ├── ooloi_service.proto           ; Universal gRPC schema (single OoloiValue message)
 │   └── vpd.proto                     ; VPD addressing structures
 ├── src/main/clojure/ooloi/shared/    ; Shared contracts and utilities
-│   ├── models/                       ; **Phase 2.6**: Complete shared model contracts
+│   ├── models/                       ; **Complete shared model contracts**
 │   │   ├── musical/                  ; Musical data models (Piece, Musician, Instrument, etc.)  
 │   │   ├── visual/                   ; Visual models (Layout, PageView, StaffView, etc.)
 │   │   └── changes.clj               ; ChangeSet data structure for time sigs, key sigs, tempos
