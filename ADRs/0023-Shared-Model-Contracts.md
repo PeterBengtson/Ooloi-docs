@@ -145,18 +145,28 @@ shared/src/main/clojure/ooloi/shared/
 
 ### Backend Compatibility Layer
 
-The backend provides a compatibility layer that imports shared contracts and re-exports them for unified access:
+The backend provides a compatibility layer that imports shared contracts and re-exports them using Potemkin's `import-vars` for unified access:
 
 ```clojure
 ;; backend/src/main/clojure/ooloi/backend/models/core.clj
 (ns ooloi.backend.models.core
-  (:require [ooloi.shared.models.musical.piece :as shared-piece]
-            [ooloi.shared.interfaces :as shared-interfaces]))
+  (:require [ooloi.shared.interfaces :as interfaces]
+            [ooloi.shared.predicates :as predicates]
+            [potemkin :refer [import-vars]]))
 
-;; Re-export shared contracts for unified backend access
-(def Piece shared-piece/Piece)
-(def create-piece shared-interfaces/create-piece)
+;; Re-export shared contracts preserving metadata and function identity
+(import-vars
+  [ooloi.shared.interfaces
+   get-duration add-item set-name ...]
+  [ooloi.shared.predicates  
+   pitch? chord? measure? ...]
+  [ooloi.shared.models.musical.piece
+   create-piece]
+  [ooloi.shared.models.musical.pitch
+   create-pitch])
 ```
+
+This approach preserves function metadata, docstrings, and identity while providing unified access to all shared functionality.
 
 ## Multi-Language gRPC Support Impact
 
