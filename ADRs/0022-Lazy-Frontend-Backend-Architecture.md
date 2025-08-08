@@ -496,7 +496,7 @@ We will implement this lazy system with five key components (illustrated using t
   last-backend-version   ; Version stamp from backend
 ])
 
-;; Backend MeasureView structure (from ooloi.backend.models.visual.measure-view)
+;; Shared MeasureView structure (from ooloi.shared.models.visual.measure-view)
 ;; (defrecord MeasureView [glyphs curves])
 ;; - glyphs: Vector of platform-agnostic glyph descriptions (structure TBD)
 ;; - curves: Vector of platform-agnostic curve descriptions (structure TBD)

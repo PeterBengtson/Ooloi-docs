@@ -306,7 +306,7 @@ Recommended development sequence:
 4. **Run**: `lein run` (start frontend client)
 5. **Iterate**: Make changes and repeat steps 2-4
 
-**Note**: The frontend is currently under development and not yet ready for production use.
+**Current Status**: Frontend has access to shared model contracts from the backend. Ready for Phase 3 gRPC client integration to enable frontend-backend communication.
 
 ## Notes
 

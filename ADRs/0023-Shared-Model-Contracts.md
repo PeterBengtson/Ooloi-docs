@@ -2,18 +2,18 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
-With the implementation of the unified gRPC architecture, we need to enable frontend clients to work with the same data models as the backend. Currently, all model definitions (`defrecord`), interfaces (multimethods), and predicates are located in the backend project, creating a barrier to proper client-server round-trip type fidelity.
+With the implementation of the unified gRPC architecture, we need to enable frontend clients to work with the same data models as the backend. The previous architecture had all model definitions (`defrecord`), interfaces (multimethods), and predicates located in the backend project, creating a barrier to proper client-server round-trip type fidelity.
 
-### Current Architecture Issues
+### Previous Architecture Limitations
 
-1. **Frontend Data Model Duplication**: Frontend would need to recreate all `defrecord` definitions to achieve type fidelity
-2. **Interface Inconsistency**: Multimethods and predicates unavailable to frontend code
-3. **Plugin Development Complexity**: Plugin authors need to define models twice (frontend + backend)
-4. **Maintenance Burden**: Type definitions scattered and duplicated across projects
+1. **Frontend Data Model Duplication**: Frontend had to recreate all `defrecord` definitions to achieve type fidelity
+2. **Interface Inconsistency**: Multimethods and predicates were unavailable to frontend code
+3. **Plugin Development Complexity**: Plugin authors had to define models twice (frontend + backend)
+4. **Maintenance Burden**: Type definitions were scattered and duplicated across projects
 
 ### gRPC Unified Architecture Enables This
 
@@ -55,22 +55,12 @@ We will create **Shared Model Contracts** by moving pure data model definitions 
 - Complex operations like timewalk remain backend-specific
 - Simple VPD utilities already in shared project
 
-### Migration Strategy
+### Implementation Approach
 
-**Phase 1: Move Core Infrastructure**
-1. Move `hierarchy.clj`, `interfaces.clj`, `predicates.clj` to shared
-2. Update backend imports to use shared versions
-3. Verify all backend tests pass
-
-**Phase 2: Move Data Models**
-1. Move `defrecord` definitions to shared project
-2. Maintain namespace compatibility with aliases
-3. Update backend multimethod implementations
-
-**Phase 3: Frontend Integration**
-1. Frontend imports shared models and interfaces
-2. Frontend can create/validate same data structures
-3. gRPC round-trip achieves perfect type fidelity
+The shared model architecture follows a clear separation:
+1. **Shared contracts**: Data structures, interfaces, predicates, hierarchy moved to shared project
+2. **Backend implementations**: Multimethod implementations remain in backend, importing from shared
+3. **Frontend integration**: Frontend imports shared models for native type fidelity
 
 ## Rationale
 
@@ -96,22 +86,22 @@ We will create **Shared Model Contracts** by moving pure data model definitions 
 - Backend focuses on business logic, not data structure definition
 - Frontend can reason about data models directly
 
-### Risks and Mitigation
+### Trade-offs and Considerations
 
-**1. Namespace Breaking Changes**
-- **Risk**: Moving models changes import paths
-- **Mitigation**: Use namespace aliases during transition period
-- **Mitigation**: Gradual migration with compatibility layer
+**1. Namespace Changes**
+- **Trade-off**: New import paths require developer familiarity with shared model structure
+- **Mitigation**: Backend compatibility layer provides unified access point
+- **Benefit**: Clear separation between contracts and implementations
 
 **2. Dependency Management**
-- **Risk**: Shared project becomes overly complex
-- **Mitigation**: Keep shared project purely declarative (no business logic)
-- **Mitigation**: Clear guidelines on what belongs in shared vs. backend
+- **Trade-off**: Shared project carries more responsibility for system contracts
+- **Architecture**: Shared project remains purely declarative (no business logic)
+- **Guideline**: Clear boundaries between shared contracts and backend implementations
 
-**3. Testing Complexity**
-- **Risk**: Tests need to work across project boundaries
-- **Mitigation**: Test model behavior in shared project independently
-- **Mitigation**: Backend tests focus on multimethod implementations
+**3. Testing Distribution**
+- **Trade-off**: Tests span project boundaries requiring coordination
+- **Architecture**: Model behavior tested independently in shared project
+- **Approach**: Backend tests focus on multimethod implementations
 
 ## Consequences
 
@@ -124,18 +114,18 @@ We will create **Shared Model Contracts** by moving pure data model definitions 
 
 ### Negative
 
-1. **Migration Complexity**: Significant refactoring required
-2. **Project Structure Changes**: Developers need to learn new import patterns
-3. **Shared Project Growth**: More responsibility in shared project
+1. **Learning Curve**: Developers must understand shared vs. backend model boundaries
+2. **Import Path Changes**: New namespace patterns require familiarity with shared structure
+3. **Project Complexity**: Shared project carries critical system contracts
 
 ### Neutral
 
 1. **Build Dependencies**: Frontend now depends on shared models (expected)
 2. **Testing Distribution**: Model tests move to shared project (appropriate)
 
-## Implementation Notes
+## Architecture Details
 
-### Project Structure After Migration
+### Shared Project Structure
 
 ```
 shared/src/main/clojure/ooloi/shared/
@@ -153,9 +143,9 @@ shared/src/main/clojure/ooloi/shared/
     └── attachment.clj         # Trait definitions
 ```
 
-### Compatibility Layer
+### Backend Compatibility Layer
 
-During migration, provide compatibility imports in backend:
+The backend provides a compatibility layer that imports shared contracts and re-exports them for unified access:
 
 ```clojure
 ;; backend/src/main/clojure/ooloi/backend/models/core.clj
@@ -163,7 +153,7 @@ During migration, provide compatibility imports in backend:
   (:require [ooloi.shared.models.musical.piece :as shared-piece]
             [ooloi.shared.interfaces :as shared-interfaces]))
 
-;; Re-export for backward compatibility
+;; Re-export shared contracts for unified backend access
 (def Piece shared-piece/Piece)
 (def create-piece shared-interfaces/create-piece)
 ```

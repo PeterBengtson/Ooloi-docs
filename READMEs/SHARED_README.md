@@ -6,9 +6,9 @@ This directory contains the configuration and build scripts for creating a combi
 
 The shared project serves to:
 
-1. Hold code common to both the backend and the frontend.
-2. Provide Protocol Buffer domain model and conversion utilities for gRPC communication.
-3. Combine the backend and frontend components into a single, distributable application.
+1. **Shared Model Contracts** - Contains all data model definitions (`defrecord` structures), interfaces, predicates, and traits that both frontend and backend use, ensuring perfect type fidelity.
+2. **gRPC Communication Layer** - Provides Protocol Buffer domain model and conversion utilities for frontend-backend communication.
+3. **Combined Application Builder** - Combines the backend and frontend components into a single, distributable application.
 
 ## Directory structure
 
@@ -17,7 +17,17 @@ shared/
 ├── src/main/proto/                    ; Universal Protocol Buffer definitions
 │   ├── ooloi_service.proto           ; Universal gRPC schema (single OoloiValue message)
 │   └── vpd.proto                     ; VPD addressing structures
-├── src/main/clojure/ooloi/shared/    ; Shared Clojure utilities
+├── src/main/clojure/ooloi/shared/    ; Shared contracts and utilities
+│   ├── models/                       ; Shared model contracts (Phase 2.6)
+│   │   ├── musical/                  ; Musical data models (Piece, Musician, etc.)
+│   │   ├── visual/                   ; Visual models (Layout, PageView, etc.)
+│   │   └── changes.clj               ; ChangeSet data structure
+│   ├── traits/                       ; Shared trait definitions
+│   ├── interfaces.clj                ; Shared interface contracts
+│   ├── predicates.clj                ; Shared predicate functions
+│   ├── hierarchy.clj                 ; Shared type hierarchy
+│   ├── ops/                          ; Shared operations
+│   │   └── vpd.clj                   ; VPD operations
 │   ├── proto_conversion.clj          ; Clojure ↔ Protocol Buffer conversion utilities
 │   ├── vpd_utils.clj                 ; VPD manipulation and protobuf conversion
 │   ├── core.clj                      ; Combined application entry point

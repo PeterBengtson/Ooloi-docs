@@ -47,27 +47,29 @@ backend/
                   │   ├── grpc_server.clj
                   │   └── piece_manager.clj
                   ├── grpc/
-                  │   └── generation.clj
+                  │   ├── clojure_conversion.clj
+                  │   ├── protobuf_bridge.clj
+                  │   └── server.clj
                   ├── mon/
                   │   ├── core.clj
                   │   └── piece.clj
                   ├── ops/
                   │   ├── attachment_resolver.clj
                   │   ├── changes.clj
+                  │   ├── identity_map.clj
                   │   ├── persistence.clj
                   │   ├── piece_manager.clj
                   │   ├── pitches.clj
                   │   ├── rhythm.clj
                   │   ├── text.clj
                   │   ├── timewalk.clj
+                  │   ├── timewalk_helpers.clj
                   │   ├── vectors_and_attributes.clj
-                  │   └── vpd.clj
+                  │   ├── walk.clj
+                  │   └── walk_helpers.clj
                   └── models/
-                      ├── core.clj
-                      ├── hierarchy.clj
-                      ├── interfaces.clj
-                      ├── predicates.clj
-                      ├── musical/
+                      ├── core.clj          ; Backend-specific re-exports and compatibility
+                      ├── musical/          ; Backend-specific implementations only
                       │   ├── attachments/
                       │   │   ├── articulation.clj
                       │   │   ├── dynamic.clj
@@ -87,12 +89,6 @@ backend/
                       │   ├── tremolando.clj
                       │   ├── tuplet.clj
                       │   └── voice.clj
-                      ├── traits/
-                      │   ├── attachment.clj
-                      │   ├── has_items.clj
-                      │   ├── rhythmic_item.clj
-                      │   ├── takes_attachment.clj
-                      │   └── transposable.clj
                       └── visual/
                           ├── layout.clj
                           ├── measure_view.clj
@@ -100,6 +96,8 @@ backend/
                           ├── staff_view.clj
                           └── system_view.clj
 ```
+
+**Note**: The core data structures (`defrecord` definitions), interfaces, predicates, hierarchy, and traits are located in the `shared/` project to enable frontend-backend type fidelity. The backend `models/` directory now contains only backend-specific multimethod implementations and import compatibility.
 
 ### Key Directories
 
@@ -130,13 +128,15 @@ backend/
   - Other utility operations for musical data processing
 
 **Data Models:**
-- `models/` - Core data structures and polymorphic operations
-  - `predicates.clj` - Type checking functions for all models
-  - `interfaces.clj` - Multimethod definitions (method signatures)
-  - `core.clj` - Unified namespace re-exporting all functionality
-  - `musical/` - Musical data structures (pieces, measures, notes, etc.)
-  - `visual/` - Visual layout structures (pages, systems, staff views, etc.)
-  - `traits/` - Shared behaviors across multiple model types
+- `models/` - Backend-specific multimethod implementations and compatibility layer
+  - `core.clj` - Backend compatibility layer re-exporting shared models and backend implementations
+  - `musical/` - Backend-specific multimethod implementations for musical models
+  - `visual/` - Backend-specific multimethod implementations for visual models
+  
+**Shared Model Contracts** (located in `shared/` project):
+  - Core data structures (`defrecord` definitions), interfaces, predicates, hierarchy, and traits
+  - Enables perfect type fidelity between frontend and backend
+  - Backend imports and extends these shared contracts
 
 The above diagram doesn't include all models.
 
@@ -354,7 +354,7 @@ Ooloi uses a carefully structured namespace organization to eliminate circular d
 
 ### Quick Start: What to Import
 
-**For 90% of your code, you only need this:**
+**For 90% of your backend code, you only need this:**
 
 ```clojure
 (ns my-namespace
@@ -362,31 +362,33 @@ Ooloi uses a carefully structured namespace organization to eliminate circular d
 ```
 
 This gives you access to:
-- **All constructors**: `create-pitch`, `create-chord`, `create-measure`, etc.
-- **All predicates**: `pitch?`, `chord?`, `measure?` (raw items), plus `pitch??`, `chord??`, `measure??` (timewalk tuples), etc.
-- **All multimethods**: `get-duration`, `add-item`, `set-name`, etc.
+- **All constructors**: `create-pitch`, `create-chord`, `create-measure`, etc. (from shared project)
+- **All predicates**: `pitch?`, `chord?`, `measure?` (raw items), plus `pitch??`, `chord??`, `measure??` (timewalk tuples), etc. (from shared project)
+- **All multimethods**: `get-duration`, `add-item`, `set-name`, etc. (interfaces from shared, implementations from backend)
 
-**Why this works**: The `core` namespace is the unified entry point that re-exports everything you need from the entire Ooloi system.
+**Why this works**: The backend `core` namespace imports shared model contracts and re-exports them alongside backend-specific implementations, providing a unified entry point for backend development.
+
+**Architecture Note**: Core data structures live in the `shared/` project. The backend `core` namespace serves as a compatibility layer that imports shared models and combines them with backend implementations.
 
 ### Most Important Namespaces
 
-#### 1. `ooloi.backend.models.core` - **YOUR PRIMARY NAMESPACE**
-- **What it is**: The main entry point for all Ooloi functionality
-- **What it contains**: All constructors, predicates, and multimethods
-- **When to use**: For application code, tests, examples, and most development
+#### 1. `ooloi.backend.models.core` - **YOUR PRIMARY BACKEND NAMESPACE**
+- **What it is**: Backend compatibility layer importing shared models + backend implementations
+- **What it contains**: All constructors, predicates (from shared), and multimethods (implementations from backend)
+- **When to use**: For backend application code, tests, examples, and most backend development
 - **How to import**: `[ooloi.backend.models.core :refer :all]`
 
-#### 2. `ooloi.backend.models.predicates` - **FOR ARCHITECTURE-CONSTRAINED FILES**
-- **What it is**: Type checking functions (pitch?, chord?, measure?, etc. for raw items, plus pitch??, chord??, measure??, etc. for timewalk tuples)
+#### 2. `ooloi.shared.predicates` - **SHARED PREDICATES**
+- **What it is**: Shared type checking functions (pitch?, chord?, measure?, etc.)
 - **What it contains**: Both `?` predicates (raw items) and `??` predicates (timewalk tuples) 
-- **When to use**: In model files, trait files, or when you can't import core
-- **How to import**: `[ooloi.backend.models.predicates :refer [pitch? pitch?? chord?]]` (selective)
+- **When to use**: In shared code or when you need direct access to shared predicates
+- **How to import**: `[ooloi.shared.predicates :refer [pitch? pitch?? chord?]]` (selective)
 
-#### 3. `ooloi.backend.models.interfaces` - **FOR ARCHITECTURE-CONSTRAINED FILES**
-- **What it is**: Multimethod definitions (method signatures only)
-- **What it contains**: get-duration, add-item, set-name, etc.
-- **When to use**: In model files, trait files, or when you can't import core
-- **How to import**: `[ooloi.backend.models.interfaces :as i]`
+#### 3. `ooloi.shared.interfaces` - **SHARED INTERFACES**
+- **What it is**: Shared multimethod definitions (method signatures only)
+- **What it contains**: get-duration, add-item, set-name, etc. (signatures)
+- **When to use**: In shared code or when implementing backend-specific methods
+- **How to import**: `[ooloi.shared.interfaces :as i]`
 
 #### 4. `ooloi.backend.api` - **EXTERNAL CONSUMER INTERFACE**
 - **What it is**: Public API namespace for external consumers (gRPC, external services)
@@ -399,16 +401,15 @@ This gives you access to:
 Some files cannot import `core` because it would create circular dependencies:
 
 **Architecture-constrained files:**
-- Model implementation files (`models/musical/*.clj`, `models/visual/*.clj`)
-- Trait files (`models/traits/*.clj`)
+- Backend model implementation files (`backend/models/musical/*.clj`, `backend/models/visual/*.clj`)
 - Some ops files (`ops/timewalk.clj`, `ops/attachment-resolver.clj`)
 
-**In these files, use selective imports:**
+**In these files, use selective imports from shared:**
 
 ```clojure
 (ns ooloi.backend.models.musical.pitch
-  (:require [ooloi.backend.models.interfaces :as i]
-            [ooloi.backend.models.predicates :refer [pitch? rhythmic-item?]]))
+  (:require [ooloi.shared.interfaces :as i]
+            [ooloi.shared.predicates :refer [pitch? rhythmic-item?]]))
 
 ;; Use predicates unqualified (clean and readable)
 (pitch? item)
@@ -428,40 +429,43 @@ Some files cannot import `core` because it would create circular dependencies:
 
 ### Core Namespace Architecture
 
-The namespace architecture follows a clean dependency flow:
+The namespace architecture follows a clean dependency flow across shared and backend projects:
 
+**Shared Model Contracts:**
 ```
-predicates.clj → interfaces.clj → models/*.clj → core.clj → api.clj
+shared/predicates.clj → shared/interfaces.clj → shared/models/*.clj
+                                                        ↓
+backend/models/*.clj (implementations) → backend/models/core.clj → backend/api.clj
 ```
 
-This dependency chain ensures no circular imports while providing a unified API through the core namespace.
+This dependency chain ensures no circular imports while providing a unified API through the backend core namespace that combines shared contracts with backend implementations.
 
 ### Namespace Descriptions
 
-#### `ooloi.backend.models.predicates`
-- **Purpose**: Contains all type predicates (pitch?, chord?, measure?, etc.)
-- **Dependencies**: Only imports hierarchy (no circular dependencies)
-- **Usage**: For type checking and validation
+#### `ooloi.shared.predicates`
+- **Purpose**: Contains all shared type predicates (pitch?, chord?, measure?, etc.)
+- **Dependencies**: Only imports shared hierarchy (no circular dependencies)
+- **Usage**: For type checking and validation across frontend and backend
 
-#### `ooloi.backend.models.interfaces`
-- **Purpose**: Contains all multimethod definitions (method signatures only)
-- **Dependencies**: Imports predicates and hierarchy
-- **Usage**: For defining polymorphic operations
+#### `ooloi.shared.interfaces`
+- **Purpose**: Contains all shared multimethod definitions (method signatures only)
+- **Dependencies**: Imports shared predicates and hierarchy
+- **Usage**: For defining polymorphic operations shared between frontend and backend
 
 #### `ooloi.backend.models.core`
-- **Purpose**: Unified namespace re-exporting multimethods, predicates, AND constructors
-- **Dependencies**: Imports and re-exports from interfaces, predicates, and all model files
-- **Usage**: Primary namespace for application code
+- **Purpose**: Backend compatibility layer combining shared models with backend implementations
+- **Dependencies**: Imports and re-exports from shared predicates/interfaces/models + backend implementations
+- **Usage**: Primary namespace for backend application code
 
 #### `ooloi.backend.api`
 - **Purpose**: Public API namespace for external consumers (gRPC, external services)
-- **Dependencies**: Re-exports from core
+- **Dependencies**: Re-exports from backend core
 - **Usage**: Designed for external service integration and gRPC endpoints
 
-#### Model Files (`models/musical/*.clj`, `models/visual/*.clj`)
-- **Purpose**: Implement multimethods and define constructors
-- **Dependencies**: Import interfaces and predicates (NOT core)
-- **Usage**: Internal implementation files
+#### Backend Model Files (`backend/models/musical/*.clj`, `backend/models/visual/*.clj`)
+- **Purpose**: Implement backend-specific multimethods for shared model contracts
+- **Dependencies**: Import shared interfaces and predicates (NOT backend core)
+- **Usage**: Backend-specific implementation files
 
 ### Import Guidelines by File Type
 
@@ -493,19 +497,19 @@ Use qualified API imports to ensure you're testing the API namespace:
 (get-musicians piece)
 ```
 
-#### **Files with Architecture Constraints (Model Files, Traits, Some Ops)**
-These files CANNOT import core (would create circular dependencies). Use selective imports:
+#### **Backend Model Implementation Files (Architecture Constraints)**
+These backend files implement multimethods for shared contracts. Use selective imports:
 
 ```clojure
 (ns ooloi.backend.models.musical.pitch
-  (:require [ooloi.backend.models.interfaces :as i]
-            [ooloi.backend.models.predicates :refer [pitch? rhythmic-item?]]))
+  (:require [ooloi.shared.interfaces :as i]
+            [ooloi.shared.predicates :refer [pitch? rhythmic-item?]]))
 
-;; Clean, unqualified predicates
+;; Clean, unqualified predicates (from shared)
 (pitch? item)                ; For raw items
 (pitch?? tuple)              ; For timewalk tuples (if needed)
 (rhythmic-item? item)        ; Behavioral predicate
-;; Qualified multimethods
+;; Qualified multimethods (shared interfaces, backend implementations)
 (i/get-duration item)
 ```
 
@@ -514,28 +518,31 @@ Test predicates explicitly using qualified imports:
 
 ```clojure
 (ns predicates-test
-  (:require [ooloi.backend.models.core :refer :all]  ; For constructors
-            [ooloi.backend.models.predicates :as p])) ; For predicates
+  (:require [ooloi.backend.models.core :refer :all]  ; For constructors + backend functionality
+            [ooloi.shared.predicates :as p]))         ; For shared predicates
 
-;; Constructors unqualified
+;; Constructors unqualified (via backend core)
 (create-pitch :note :C4 :duration 1/4)
-;; Predicates explicitly qualified
+;; Predicates explicitly qualified (from shared)
 (p/pitch? item)
 ```
 
 ### Decision Tree: Which Namespace to Use?
 
-1. **Are you writing application code, tests, or examples?**
+1. **Are you writing backend application code, tests, or examples?**
    → Use `[ooloi.backend.models.core :refer :all]`
 
 2. **Are you explicitly testing the API namespace?**
    → Use `[ooloi.backend.api :as api]` with selective core imports
 
-3. **Are you in a model file, trait file, or constrained ops file?**
-   → Use selective imports from `interfaces` and `predicates`
+3. **Are you in a backend model implementation file?**
+   → Use selective imports from `ooloi.shared.interfaces` and `ooloi.shared.predicates`
 
-4. **Are you testing predicates explicitly?**
-   → Use `[ooloi.backend.models.predicates :as p]`
+4. **Are you testing shared predicates explicitly?**
+   → Use `[ooloi.shared.predicates :as p]`
+
+5. **Are you writing code that needs to work in both frontend and backend?**
+   → Use shared namespaces: `ooloi.shared.predicates`, `ooloi.shared.interfaces`
 
 ### Key Benefits of This Architecture
 

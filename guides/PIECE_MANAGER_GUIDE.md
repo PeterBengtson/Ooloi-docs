@@ -135,10 +135,10 @@ The piece manager provides five core functions:
 
 ```clojure
 (require '[ooloi.backend.ops.piece-manager :as pm])
-(require '[ooloi.backend.models.musical.piece :as piece])
+(require '[ooloi.backend.models.core :as core])
 
 ;; Create a new piece
-(def piece (piece/create-piece :musicians [musician1 musician2]
+(def piece (core/create-piece :musicians [musician1 musician2]
                               :layouts [layout1]
                               :time-signatures (create-change-set)
                               :key-signatures (create-change-set)

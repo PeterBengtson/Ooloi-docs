@@ -28,14 +28,14 @@
 
 ;; Save a piece to file
 (def piece-id "my-symphony")  ; Assuming piece exists in piece manager
-(persist/save-piece-async piece-id (persist/file-writer "/Users/composer/symphony.ooloi"))
+(persist/save-piece-async piece-id (persist/file-writer "~/Documents/symphony.ooloi"))
 
 ;; Wait for save to complete
 (while (not (persist/save-complete? piece-id))
   (Thread/sleep 100))
 
 ;; Load a piece from file  
-(persist/load-piece-async (persist/file-reader "/Users/composer/symphony.ooloi"))
+(persist/load-piece-async (persist/file-reader "~/Documents/symphony.ooloi"))
 
 ;; Wait for load to complete
 (while (not (persist/load-complete?))
@@ -197,11 +197,11 @@ The system uses **function builders** that create I/O operations:
 
 ;; Save piece object directly to file
 (def piece (create-piece :musicians [musician1 musician2]))
-(persist/save-piece-async piece (persist/file-writer "/Users/composer/my-symphony.ooloi"))
+(persist/save-piece-async piece (persist/file-writer "~/Documents/my-symphony.ooloi"))
 
 ;; Save stored piece by ID
 (pm/store-piece "symphony-uuid" piece)
-(persist/save-piece-async "symphony-uuid" (persist/file-writer "/Users/composer/symphony.ooloi"))
+(persist/save-piece-async "symphony-uuid" (persist/file-writer "~/Documents/symphony.ooloi"))
 
 ;; Check operation status
 (await persist/save-agent)
@@ -221,8 +221,8 @@ The system uses **function builders** that create I/O operations:
       (println "Piece saved successfully to" file-path))))
 
 ;; Usage
-(save-piece-to-file "my-piece-id" "/Users/composer/pieces/sonata.ooloi")
-(save-piece-to-file piece-object "/Users/composer/pieces/direct-save.ooloi")
+(save-piece-to-file "my-piece-id" "~/Documents/pieces/sonata.ooloi")
+(save-piece-to-file piece-object "~/Documents/pieces/direct-save.ooloi")
 ```
 
 ### Understanding the Save Process
@@ -243,7 +243,7 @@ The system uses **function builders** that create I/O operations:
 
 ```clojure
 ;; Load piece from file (automatically registers in piece manager)
-(persist/load-piece-async (persist/file-reader "/Users/composer/symphony.ooloi"))
+(persist/load-piece-async (persist/file-reader "~/Documents/symphony.ooloi"))
 
 ;; Check operation status and result
 (await persist/load-agent)
@@ -258,12 +258,12 @@ The system uses **function builders** that create I/O operations:
 ```clojure
 ;; Load with custom ID function
 (persist/load-piece-async 
-  (persist/file-reader "/Users/composer/legacy-piece.ooloi")
+  (persist/file-reader "~/Documents/legacy-piece.ooloi")
   :id-fn :custom-id)  ; Use :custom-id field instead of :id
 
 ;; Load with computed ID
 (persist/load-piece-async 
-  (persist/file-reader "/Users/composer/untitled.ooloi")
+  (persist/file-reader "~/Documents/untitled.ooloi")
   :id-fn (fn [piece] (str "imported-" (System/currentTimeMillis))))
 ```
 
@@ -283,8 +283,8 @@ The system uses **function builders** that create I/O operations:
         (pm/get-piece piece-id)))))
 
 ;; Usage
-(load-piece-from-file "/Users/composer/symphony.ooloi")
-(load-piece-from-file "/Users/composer/legacy.ooloi" :id-fn :legacy-id)
+(load-piece-from-file "~/Documents/symphony.ooloi")
+(load-piece-from-file "~/Documents/legacy.ooloi" :id-fn :legacy-id)
 ```
 
 ## Multiple I/O Backends
@@ -357,7 +357,7 @@ The system uses **function builders** that create I/O operations:
 
 ;; Usage
 (backup-piece "important-symphony" 
-              ["/Users/composer/pieces/symphony.ooloi"
+              ["~/Documents/pieces/symphony.ooloi"
                "/Volumes/Backup/symphony.ooloi"
                "/cloud/pieces/symphony.ooloi"])
 
@@ -390,7 +390,7 @@ The system uses **function builders** that create I/O operations:
       {:success false :error (.getMessage e)})))
 
 ;; Usage
-(save-current-work "beethoven-symphony-9" "/Users/composer/works/symphony9-draft.ooloi")
+(save-current-work "beethoven-symphony-9" "~/Documents/works/symphony9-draft.ooloi")
 ```
 
 ### Project Backup and Versioning
@@ -700,7 +700,7 @@ The system uses **function builders** that create I/O operations:
 (batch-save-pieces {"symphony-1" symphony1 
                    "sonata-2" sonata2 
                    "quartet-3" quartet3}
-                   "/Users/composer/batch-export")
+                   "~/Documents/batch-export")
 ```
 
 ### Memory Management
@@ -734,11 +734,11 @@ The system uses **function builders** that create I/O operations:
                       (clojure.string/lower-case)
                       (clojure.string/replace #"[^a-z0-9-]" "-")
                       (clojure.string/replace #"-+" "-"))]
-    (str "/Users/composer/pieces/" safe-name ".ooloi")))
+    (str "~/Documents/pieces/" safe-name ".ooloi")))
 
 ;; Usage
 (piece-file-path "Mozart" "Eine kleine Nachtmusik" "K525")
-; => "/Users/composer/pieces/mozart-eine-kleine-nachtmusik-k525.ooloi"
+; => "~/Documents/pieces/mozart-eine-kleine-nachtmusik-k525.ooloi"
 ```
 
 ### Backup Strategies
@@ -756,7 +756,7 @@ The system uses **function builders** that create I/O operations:
 ;; Automatic backup before major operations
 (defn safe-piece-operation [piece-id operation-fn]
   "Perform operation with automatic backup."
-  (let [backup-path (create-timestamped-backup piece-id "/Users/composer/backups")]
+  (let [backup-path (create-timestamped-backup piece-id "~/Documents/backups")]
     (try
       (operation-fn piece-id)
       (println "Operation completed. Backup at:" backup-path)

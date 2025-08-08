@@ -365,7 +365,7 @@ Ooloi uses Clojure's hierarchical type system to create hierarchical relationshi
 ;; Note: Rests are NOT Transposable but DO implement TakesAttachment
 ```
 
-**Location**: `/Users/pjotr/ProjectCode/Ooloi/backend/src/main/clojure/ooloi/backend/models/hierarchy.clj`
+**Location**: `shared/src/main/clojure/ooloi/shared/hierarchy.clj`
 
 ### Understanding `isa?` Relationships
 
@@ -458,7 +458,7 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 ;; Same function name → different implementations based on first argument type!
 ```
 
-**Location**: Generated automatically by macro system in `/Users/pjotr/ProjectCode/Ooloi/backend/src/main/clojure/ooloi/backend/models/core.clj`
+**Location**: VPD operations generated automatically by macro system. Interfaces defined in `shared/interfaces.clj`, backend implementations in `backend/models/core.clj`
 
 ### Why This Pattern is Important
 
@@ -593,7 +593,7 @@ Ooloi uses the **Methodical library** instead of standard Clojure multimethods f
   dispatch-on-first-arg-type)
 ```
 
-**Location**: `/Users/pjotr/ProjectCode/Ooloi/backend/src/main/clojure/ooloi/backend/models/core.clj`
+**Location**: `backend/src/main/clojure/ooloi/backend/models/core.clj`
 
 ### Why Methodical: Aspect-Oriented Programming of Traits
 
@@ -749,7 +749,7 @@ This dispatch system enables Ooloi to achieve comprehensive operation instrument
   (:duration item))  ; Default implementation for anything rhythmic
 ```
 
-**Location**: Various files in `/Users/pjotr/ProjectCode/Ooloi/backend/src/main/clojure/ooloi/backend/models/`
+**Location**: Backend implementation files in `backend/src/main/clojure/ooloi/backend/models/`
 
 ### Dispatch Hierarchy Advantage
 
@@ -822,7 +822,7 @@ While **VPD vs object dispatch** is the star, the `get-piece-ref` utility provid
 (api/add-musician [] piece-object musician)  ; Temporary object
 ```
 
-**Location**: `/Users/pjotr/ProjectCode/Ooloi/backend/src/main/clojure/ooloi/backend/ops/piece_manager.clj`
+**Location**: `backend/src/main/clojure/ooloi/backend/ops/piece_manager.clj`
 
 ### How VPDs Enable Universal Operations
 
@@ -874,7 +874,7 @@ The type system makes VPD operations polymorphic at multiple levels:
 A key aspect is how **every operation** gets VPD capability automatically:
 
 ```clojure
-;; From /Users/pjotr/ProjectCode/Ooloi/backend/src/main/clojure/ooloi/backend/models/core.clj
+;; From backend/src/main/clojure/ooloi/backend/models/core.clj
 
 ;; Automatic VPD dispatch generation for ALL getters:
 (defmacro apply-vector-dispatch-to-getters []
@@ -989,19 +989,27 @@ Ooloi's architecture enables you to add new polymorphic operations that work sea
 
 #### Step 2: Export Through Core and API
 
-**In `core.clj`** - Add to `import-vars` block in alphabetical order:
+**In shared `interfaces.clj`** - Add multimethod definitions:
 ```clojure
-(import-vars
-  [ooloi.backend.models.interfaces
-   ;; ... existing functions ...
-   get-transposition
-   ;; ... existing functions ...
-   set-transposition
-   ;; ... existing functions ...
-   ])
+;; In shared/src/main/clojure/ooloi/shared/interfaces.clj
+(m/defmulti get-transposition
+  "Gets transposition value for musical elements that support transposition."
+  {:arglists '([element] [vpd piece-ref])}
+  first-arg-dispatch)
+
+(m/defmulti set-transposition  
+  "Sets transposition value for musical elements that support transposition."
+  {:arglists '([element transposition] [vpd piece-ref transposition])}
+  first-arg-dispatch)
 ```
 
-**In `api.clj`** - Add to `import-vars` block in alphabetical order:
+**In backend `core.clj`** - Import from shared and re-export:
+```clojure
+;; Backend core imports shared interfaces automatically
+;; Functions are available through backend core namespace
+```
+
+**In backend `api.clj`** - Re-export from backend core:
 ```clojure
 (import-vars
   [ooloi.backend.models.core
@@ -1746,8 +1754,9 @@ Understanding when to use each dispatch mechanism:
 ## Cross-References
 
 ### **Implementation Details**
-- **Type system implementation**: See [hierarchy.clj:hierarchy.clj:1-92] for complete type definitions
-- **Multimethod architecture**: See [core.clj:core.clj:1-200] for polymorphic operation definitions  
+- **Type system implementation**: See `shared/src/main/clojure/ooloi/shared/hierarchy.clj` for complete type definitions
+- **Shared interfaces**: See `shared/src/main/clojure/ooloi/shared/interfaces.clj` for multimethod definitions
+- **Backend implementations**: See `backend/src/main/clojure/ooloi/backend/models/` for backend-specific multimethod implementations  
 
 ### **Related Guides**
 - **VPD integration**: See [VPDs Guide](VPDs.md) for path-based operation patterns

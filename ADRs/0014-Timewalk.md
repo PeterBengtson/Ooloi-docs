@@ -1,6 +1,8 @@
 # ADR-0014: Timewalk Temporal Coordination System
 
-## Status: Implemented (Updated 20 July 2025)
+## Status
+
+Accepted
 
 ## Context
 
