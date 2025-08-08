@@ -165,6 +165,7 @@ The backend implements shared model contracts, establishing clean separation bet
 - **Core Data Models**: All `defrecord` structures (Piece, Musician, Instrument, etc.) defined in shared
 - **Interfaces & Predicates**: Shared multimethod contracts and type checking predicates  
 - **Basic Operations**: Fundamental ops utilities moved to shared (access, pitches, rhythm, text)
+- **All Traits**: Behavioral mixins (attachment, has-items, rhythmic-item, takes-attachment, transposable) in shared
 - **Generator System**: Test data generators accessible from `ooloi.shared.specs.generators`
 
 **Architecture Benefits**:

@@ -12,6 +12,7 @@ Contains all data model definitions (`defrecord` structures), interfaces, predic
 **Key Components**:
 - **Core Data Models**: All musical and visual model `defrecord` definitions
 - **Interface Contracts**: Shared multimethod definitions preventing API drift
+- **All Trait Implementations**: Behavioral mixins used by both frontend and backend
 - **Basic Operations**: Fundamental utilities (access, pitches, rhythm, text)
 - **Generator System**: Comprehensive test data generators for all models
 - **Selective Backend Integration**: Some shared files legitimately import backend functionality
@@ -34,7 +35,7 @@ shared/
 │   │   ├── musical/                  ; Musical data models (Piece, Musician, Instrument, etc.)  
 │   │   ├── visual/                   ; Visual models (Layout, PageView, StaffView, etc.)
 │   │   └── changes.clj               ; ChangeSet data structure for time sigs, key sigs, tempos
-│   ├── traits/                       ; Shared trait definitions (rhythmic-item, takes-attachment)
+│   ├── traits/                       ; **ALL trait implementations** (attachment, has-items, rhythmic-item, takes-attachment, transposable)
 │   ├── specs/                        ; Shared generator system
 │   │   └── generators.clj            ; Test data generators for all models
 │   ├── interfaces.clj                ; Shared multimethod interface contracts  
