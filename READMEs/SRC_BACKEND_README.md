@@ -113,7 +113,9 @@ backend/
 
 **gRPC Integration:**
 - `grpc/` - gRPC protocol implementation
-  - `generation.clj` - Protocol buffer generation and gRPC service definitions
+  - `server.clj` - Unified gRPC server implementation and method handlers
+  - `clojure_conversion.clj` - Clojure ↔ Protocol buffer conversion
+  - `protobuf_bridge.clj` - Protocol buffer bridge utilities
 
 **Monitoring and Observability:**
 - `mon/` - Application monitoring and telemetry
@@ -317,6 +319,50 @@ There's additional magic going on in this particular case (using an :around Meth
 
 The end result is a powerful, expressive API that is the same for the backend and the frontend. Moreover, the API is used throughout the entire application:; it's not just something tacked on for the frontend to use.
 
+
+## gRPC Client-Server Testing
+
+Ooloi implements a unified gRPC interface enabling frontend-backend communication. Understanding the testing architecture is crucial for backend developers working on gRPC functionality.
+
+### Testing Architecture Overview
+
+**🚨 CRITICAL FOR BACKEND DEVELOPERS**: gRPC integration tests belong in the `shared/` project, NOT in backend or frontend projects.
+
+**Why This Matters:**
+- Real client-server communication requires both frontend gRPC client code AND backend server components
+- Adding frontend dependencies to `backend/project.clj` would create circular dependencies
+- Adding backend dependencies to `frontend/project.clj` causes frontend tests to run all 16,700+ backend tests
+
+### Test Distribution by Project
+
+1. **`backend/test/` - Server-Side Testing**
+   - gRPC server implementation (`grpc/server.clj`)
+   - Method resolution and API integration
+   - STM transaction handling in gRPC context
+   - Backend-specific gRPC functionality
+
+2. **`shared/test/` - Integration Testing** ⭐ **MAIN INTEGRATION TESTS**
+   - Real client-server communication testing
+   - Protocol buffer conversion and OoloiValue handling
+   - Transport scenarios (in-process, network, distributed)
+   - End-to-end API method calls through unified gRPC interface
+
+3. **`frontend/test/` - Client-Side Testing**
+   - gRPC client wrapper functions and connection management
+   - UI integration with gRPC responses
+   - Client-side error handling
+
+### Backend Developer Guidelines
+
+**When writing gRPC server code:**
+- Unit tests → `backend/test/clojure/ooloi/backend/grpc/`
+- Integration tests → Create in `shared/test/clojure/ooloi/shared/grpc/`
+
+**When modifying API methods:**
+- Server behavior tests → `backend/test/`
+- Client-server communication tests → `shared/test/`
+
+For complete gRPC testing architecture details, see `CLAUDE.md`.
 
 ## Parallelism and Thread-Safety
 

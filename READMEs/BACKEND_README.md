@@ -2,6 +2,17 @@
 
 This directory contains the backend server code for Ooloi, a high-performance music notation software.
 
+## Project Role
+
+The **Ooloi Backend** serves as the core server component providing:
+
+1. **Musical Data Management**: STM-based concurrent piece storage and manipulation
+2. **Complex Musical Operations**: Timewalk traversal, attachment resolution, and algorithmic processing
+3. **gRPC Server Interface**: Unified API serving ~193 methods to frontend clients via protocol buffers
+4. **Component Architecture**: Integrant-based system with piece manager, gRPC server, and monitoring components
+
+**Key Architectural Responsibility**: Implements backend-specific multimethod behaviors for shared model contracts while providing a unified gRPC interface for frontend communication.
+
 ## Directory structure
 
 ```
@@ -229,12 +240,15 @@ The backend implements shared model contracts, establishing clean separation bet
 (generators/gen-pitch)                ; Pitch generator for property testing
 ```
 
-**Backend Test Coverage**: 16,662 passing tests including:
-- **Shared Model Integration**: Tests for shared model compatibility  
-- **VPD Operations**: Comprehensive VPD addressing and navigation
-- **Attachment System**: All musical attachment types and behaviors
-- **gRPC Integration**: Protocol buffer conversion and service methods
-- **Component Lifecycle**: Integrant system startup/shutdown scenarios
+**Backend Test Coverage**: ~16,700 passing tests including:
+- **Shared Model Integration**: Tests for shared model compatibility and backend-specific implementations
+- **VPD Operations**: Comprehensive VPD addressing, navigation, and timewalk integration
+- **Attachment System**: All musical attachment types, behaviors, and cross-reference resolution
+- **gRPC Server Implementation**: Protocol buffer conversion, service methods, and unified ExecuteMethod interface
+- **Component Lifecycle**: Integrant system startup/shutdown scenarios and piece manager operations
+- **Musical Operations**: Complex algorithmic operations (timewalk, attachment resolution, rhythm processing)
+- **STM Transactions**: Thread-safe concurrent piece modification and batch operations
+- **API Completeness**: All ~193 backend API methods with comprehensive behavior testing
 
 **Compatibility**: Backend maintains full API compatibility through namespace re-exports for legacy code.
 

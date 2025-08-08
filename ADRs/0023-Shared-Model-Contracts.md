@@ -98,10 +98,10 @@ The shared model architecture follows a clear separation:
 - **Architecture**: Shared project remains purely declarative (no business logic)
 - **Guideline**: Clear boundaries between shared contracts and backend implementations
 
-**3. Testing Distribution**
-- **Trade-off**: Tests span project boundaries requiring coordination
-- **Architecture**: Model behavior tested independently in shared project
-- **Approach**: Backend tests focus on multimethod implementations
+**3. Testing Architecture**
+- **Layer-based Testing**: Integration tests requiring both frontend and backend components reside in shared project
+- **Contract Validation**: Shared model behavior tested independently from implementation-specific logic
+- **Implementation Testing**: Backend and frontend test their specific architectural responsibilities
 
 ## Consequences
 
@@ -280,11 +280,12 @@ This architecture ensures that enhancing the Clojure development experience does
 4. **Selective Frontend Integration**: Architecture supports frontend importing backend-free shared modules only
 5. **Compatibility Maintained**: Backend re-exports shared functionality, maintaining API compatibility
 
-### Test Coverage Validation
+### Architecture Validation
 
-- **Shared**: 1,587 tests passing (complete model contract validation)
-- **Backend**: 16,662 tests passing (enhanced VPD operations + shared integration)  
-- **Frontend**: 3 tests passing (framework validation + selective import capability)
+**Layer-based Testing Strategy**: Testing architecture validates the shared model contracts through distributed testing across project layers:
+- **Shared**: Model contract validation and gRPC client-server integration tests
+- **Backend**: Implementation-specific multimethod testing and VPD-enhanced operations
+- **Frontend**: UI integration and selective shared model import validation
 
 ### Architecture Insights Discovered
 
@@ -299,4 +300,4 @@ This architecture ensures that enhancing the Clojure development experience does
 
 ## Summary
 
-This ADR establishes the foundation for a true client-server contract that leverages the unified gRPC architecture's type fidelity capabilities while maintaining clear architectural boundaries and preserving universal multi-language gRPC compatibility. **Implementation successfully delivered this architecture with comprehensive test validation.**
+This ADR establishes the foundation for a true client-server contract that leverages the unified gRPC architecture's type fidelity capabilities while maintaining clear architectural boundaries and preserving universal multi-language gRPC compatibility.

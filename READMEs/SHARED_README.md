@@ -298,8 +298,11 @@ lein coverage
 The test suite includes comprehensive coverage of:
 - **Protocol Buffer conversion utilities** (62 tests) - Clojure ↔ protobuf conversion logic
 - **VPD manipulation functions** (12 tests) - Vector Path Descriptor utilities  
-- **Shared model contracts** (1,587 tests) - All shared model functionality and generator correctness
+- **Shared model contracts** (~1,587 tests) - All shared model functionality and generator correctness
+- **gRPC Integration tests** - Real client-server communication testing (in-process, network, distributed)
 - **Build utilities** - Cross-project packaging and deployment tools
+
+**Total: ~1,587 tests** covering all shared functionality plus integration testing between frontend and backend.
 
 ### Architecture Insights
 

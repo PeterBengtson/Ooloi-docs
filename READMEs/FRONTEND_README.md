@@ -1,6 +1,17 @@
 # Ooloi Frontend
 
-This directory contains the frontend server code for Ooloi, a high-performance music notation software.
+This directory contains the frontend client code for Ooloi, a high-performance music notation software.
+
+## Project Role
+
+The **Ooloi Frontend** serves as the user-facing client component providing:
+
+1. **User Interface**: JavaFX-based graphical interface for music notation editing and visualization
+2. **Score Rendering**: High-performance visual display of musical structures and notation
+3. **gRPC Client Integration**: Communication with backend via protocol buffer-based unified interface
+4. **User Interaction Management**: Click handling, form validation, real-time UI updates, and client-side state management
+
+**Key Architectural Responsibility**: Implements presentation layer functionality and user experience while communicating with backend server through gRPC for all musical data operations.
 
 ## Directory structure
 
@@ -206,6 +217,15 @@ lein coverage
 
 **Important**: Use `lein midje` instead of `lein test`. The project is configured for Midje testing framework.
 
+**Frontend Test Coverage**: 20 passing tests including:
+- **gRPC Client Infrastructure**: Protocol buffer message creation and gRPC client class instantiation
+- **Shared Model Integration**: Tests for frontend-accessible shared functionality with mock backend support
+- **UI Component Testing**: Form validation, user interaction handling, and component state management  
+- **Client-side Functionality**: Connection management, error handling, and client-side data processing
+- **Mock Backend Integration**: Verification that shared traits and interfaces work with stubbed backend dependencies
+
+**Total: 20 tests** focused on frontend presentation layer, user experience, and client-side gRPC communication setup.
+
 ### Protocol Buffer Generation
 
 The frontend includes gRPC client infrastructure with automatic Protocol Buffer compilation:
@@ -344,7 +364,7 @@ The frontend integrates with shared model contracts with important architectural
 frontend/src/main/clojure/ooloi/backend/ops/piece_manager.clj  ; Mock piece-manager functions
 frontend/src/main/clojure/ooloi/backend/ops/timewalk.clj       ; Mock timewalk transducers
 
-;; Test status: 19 passing tests with full shared imports working
+;; Test status: 20 passing tests with full shared imports working
 ```
 
 **Architecture Solution**: Frontend provides stub implementations of backend dependencies that shared traits require. This allows:

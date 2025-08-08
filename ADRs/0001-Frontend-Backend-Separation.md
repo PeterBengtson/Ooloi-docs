@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (Updated July 2025)
+Accepted (Updated August 2025)
 
 ## Context
 
@@ -90,9 +90,19 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 ### Code Sharing Strategy
 
 - **Protocol Definitions**: Located in `shared/src/main/proto/`
-- **Clojure Source Sharing**: Both projects reference `../shared/src/main/clojure`
+- **Shared Model Contracts**: Core data models, interfaces, and traits in `shared/src/main/clojure`
 - **Independent Builds**: Each project maintains its own dependencies and can build independently
 - **Consistent APIs**: All projects generate Java classes from the same `.proto` files
+
+### Testing Architecture
+
+**Layer-based Testing Strategy**: Tests are distributed by architectural layer rather than mixed within projects:
+
+- **`shared/test/`**: Integration tests requiring both frontend and backend components (gRPC client-server communication, protocol buffer conversion, transport scenarios)
+- **`backend/test/`**: Server-side functionality (gRPC server implementation, STM transactions, musical operations)  
+- **`frontend/test/`**: Client-side functionality (UI components, user interactions, gRPC client setup)
+
+**Architectural Constraint**: Frontend tests cannot include backend source paths due to dependency conflicts, ensuring clean layer separation and preventing architectural violations.
 
 ## Implementation Approach
 
