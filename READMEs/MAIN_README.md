@@ -156,11 +156,12 @@ The system's concurrency model, powered by Clojure's STM and enhanced by Specter
 
 | Concept | Description | Key Files | ADR |
 |---------|-------------|-----------|-----|
-| Vector Path Descriptors (VPDs) | Addressing mechanism for navigating the nested piece structure | [`ops/vpd.clj`](/backend/src/main/clojure/ooloi/backend/ops/vpd.clj), [`VPDs.md`](/guides/VPDs.md) | [ADR-0008](/ADRs/0008-VPDs.md) |
-| Pure Tree Structure | Hierarchical representation of musical elements with ID-based references | [`models/musical/piece.clj`](/backend/src/main/clojure/ooloi/backend/models/musical/piece.clj) | [ADR-0010](/ADRs/0010-Pure-Trees.md) |
+| Vector Path Descriptors (VPDs) | Addressing mechanism for navigating the nested piece structure | [`ops/vpd.clj`](/shared/src/main/clojure/ooloi/shared/ops/vpd.clj), [`VPDs.md`](/guides/VPDs.md) | [ADR-0008](/ADRs/0008-VPDs.md) |
+| Pure Tree Structure | Hierarchical representation of musical elements with ID-based references | [`models/musical/piece.clj`](/shared/src/main/clojure/ooloi/shared/models/musical/piece.clj) | [ADR-0010](/ADRs/0010-Pure-Trees.md) |
+| **Shared Model Contracts** | Unified data models and interfaces across frontend/backend | [`shared/models/`](/shared/src/main/clojure/ooloi/shared/models/), [`interfaces.clj`](/shared/src/main/clojure/ooloi/shared/interfaces.clj) | [ADR-0023](/ADRs/0023-Shared-Model-Contracts.md) |
 | Software Transactional Memory | Thread-safe concurrent operations using Clojure's STM | Used throughout with `ref` and `dosync` | [ADR-0004](/ADRs/0004-STM-for-concurrency.md) |
 | Plugin Architecture | Extensible system supporting plugins in any JVM language | Core interfaces in backend | [ADR-0003](/ADRs/0003-Plugins.md) |
-| Shared Structure | Handling elements that span across the musical piece tree | [`ops/attachment_resolver.clj`](/backend/src/main/clojure/ooloi/backend/ops/attachment_resolver.clj) | [ADR-0011](/ADRs/0011-Shared-Structure.md) |
+| Shared Structure | Handling elements that span across the musical piece tree | [`ops/attachment_resolver.clj`](/shared/src/main/clojure/ooloi/shared/ops/attachment-resolver.clj) | [ADR-0011](/ADRs/0011-Shared-Structure.md) |
 | Timewalk/Traversal | Transducer-based traversal of piece structure with temporal coordination | [`ops/timewalk.clj`](/backend/src/main/clojure/ooloi/backend/ops/timewalk.clj) | [ADR-0014](/ADRs/0014-Timewalk.md) |
 | SMuFL Fonts | Standard Music Font Layout for notation rendering | Font files in [`SMuFL-fonts/`](/SMuFL-fonts/) | [ADR-0006](/ADRs/0006-SMuFL.md) |
 
@@ -170,7 +171,7 @@ The system's concurrency model, powered by Clojure's STM and enhanced by Specter
 Ooloi/
 ├── backend/              ; Backend code
 ├── frontend/             ; Frontend code
-├── shared/               ; Used to package a self-contained app containing both backend and frontend
+├── shared/               ; Shared model contracts, gRPC layer, and combined app builder
 ├── skia/                 ; Skia integration code
 ├── .gitignore
 ├── docs/                 ; Documentation for the project as a whole
@@ -183,19 +184,27 @@ Ooloi is organized into three main components:
 
 ### 📁 **[Backend](/backend/)** - Music Notation Engine
 The core server that handles musical data, calculations, and business logic.
-- **Status**: ✅ Active development - ready for installation and use
+- **Status**: ✅ **Ready for installation and use**
+- **Key Features**: VPD-enhanced models, attachment system, timewalk operations  
+- **Test Coverage**: 16,662 passing tests
 - **Installation**: See [backend/README.md](/backend/README.md) for detailed setup instructions
 - **Quick start**: `cd backend && lein deps && lein run`
 
-### 📁 **[Frontend](/frontend/)** - User Interface  
-The client application providing the graphical interface for music notation.
-- **Status**: 🚧 Under development - not yet ready for installation
-- **Documentation**: See [frontend/README.md](/frontend/README.md)
+### 📁 **[Shared](/shared/)** - Model Contracts & gRPC Infrastructure  
+Unified data models, interfaces, and Protocol Buffer layer for frontend-backend communication.
+- **Status**: ✅ **Shared model contracts established**
+- **Key Features**: All core data models, multimethod interfaces, generator system
+- **Test Coverage**: 1,587 passing tests  
+- **Architecture**: Supports selective frontend imports with backend-dependent modules
+- **Documentation**: See [shared/README.md](/shared/README.md) for architecture details
 
-### 📁 **[Shared](/shared/)** - Combined Application Builder
-Packages both backend and frontend into standalone applications with gRPC infrastructure.
-- **Status**: ✅ Infrastructure complete - supports both distributed and combined deployments
-- **Documentation**: See [shared/README.md](/shared/README.md) for gRPC architecture details
+### 📁 **[Frontend](/frontend/)** - User Interface Client
+The client application providing the graphical interface for music notation.
+- **Status**: 🚧 **Foundation Ready** - Test framework validated, selective shared imports working
+- **Key Readiness**: Generator system access, architecture constraints understood
+- **Test Coverage**: 3 passing tests (framework validation)
+- **Next Step**: gRPC client integration for backend communication
+- **Documentation**: See [frontend/README.md](/frontend/README.md)
 
 ### Development Focus
 

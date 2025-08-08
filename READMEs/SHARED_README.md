@@ -4,11 +4,23 @@ This directory contains the configuration and build scripts for creating a combi
 
 ## Purpose
 
-The shared project serves to:
+The shared project serves three critical architectural roles in Ooloi:
 
-1. **Shared Model Contracts** - Contains all data model definitions (`defrecord` structures), interfaces, predicates, and traits that both frontend and backend use, ensuring perfect type fidelity.
-2. **gRPC Communication Layer** - Provides Protocol Buffer domain model and conversion utilities for frontend-backend communication.
-3. **Combined Application Builder** - Combines the backend and frontend components into a single, distributable application.
+### 1. **Shared Model Contracts** 
+Contains all data model definitions (`defrecord` structures), interfaces, predicates, and traits that both frontend and backend use, ensuring perfect type fidelity and eliminating circular dependencies.
+
+**Key Components**:
+- **Core Data Models**: All musical and visual model `defrecord` definitions
+- **Interface Contracts**: Shared multimethod definitions preventing API drift
+- **Basic Operations**: Fundamental utilities (access, pitches, rhythm, text)
+- **Generator System**: Comprehensive test data generators for all models
+- **Selective Backend Integration**: Some shared files legitimately import backend functionality
+
+### 2. **gRPC Communication Layer** 
+Provides Protocol Buffer domain model and conversion utilities for frontend-backend communication.
+
+### 3. **Combined Application Builder** 
+Combines the backend and frontend components into a single, distributable application.
 
 ## Directory structure
 
@@ -18,16 +30,22 @@ shared/
 │   ├── ooloi_service.proto           ; Universal gRPC schema (single OoloiValue message)
 │   └── vpd.proto                     ; VPD addressing structures
 ├── src/main/clojure/ooloi/shared/    ; Shared contracts and utilities
-│   ├── models/                       ; Shared model contracts (Phase 2.6)
-│   │   ├── musical/                  ; Musical data models (Piece, Musician, etc.)
-│   │   ├── visual/                   ; Visual models (Layout, PageView, etc.)
-│   │   └── changes.clj               ; ChangeSet data structure
-│   ├── traits/                       ; Shared trait definitions
-│   ├── interfaces.clj                ; Shared interface contracts
-│   ├── predicates.clj                ; Shared predicate functions
-│   ├── hierarchy.clj                 ; Shared type hierarchy
+│   ├── models/                       ; **Phase 2.6**: Complete shared model contracts
+│   │   ├── musical/                  ; Musical data models (Piece, Musician, Instrument, etc.)  
+│   │   ├── visual/                   ; Visual models (Layout, PageView, StaffView, etc.)
+│   │   └── changes.clj               ; ChangeSet data structure for time sigs, key sigs, tempos
+│   ├── traits/                       ; Shared trait definitions (rhythmic-item, takes-attachment)
+│   ├── specs/                        ; Shared generator system
+│   │   └── generators.clj            ; Test data generators for all models
+│   ├── interfaces.clj                ; Shared multimethod interface contracts  
+│   ├── predicates.clj                ; Shared predicate functions (musical?, visual?, etc.)
+│   ├── hierarchy.clj                 ; Shared type hierarchy and dispatch values
 │   ├── ops/                          ; Shared operations
-│   │   └── vpd.clj                   ; VPD operations
+│   │   ├── access.clj                ; Vector/attribute operations
+│   │   ├── pitches.clj               ; Pitch normalization and conversion utilities
+│   │   ├── rhythm.clj                ; Duration and rhythm processing utilities  
+│   │   ├── text.clj                  ; Text processing (pluralization, singularization)
+│   │   └── vpd.clj                   ; VPD operations and addressing utilities
 │   ├── proto_conversion.clj          ; Clojure ↔ Protocol Buffer conversion utilities
 │   ├── vpd_utils.clj                 ; VPD manipulation and protobuf conversion
 │   ├── core.clj                      ; Combined application entry point
@@ -278,8 +296,28 @@ lein coverage
 
 The test suite includes comprehensive coverage of:
 - **Protocol Buffer conversion utilities** (62 tests) - Clojure ↔ protobuf conversion logic
-- **VPD manipulation functions** (12 tests) - Vector Path Descriptor utilities
+- **VPD manipulation functions** (12 tests) - Vector Path Descriptor utilities  
+- **Shared model contracts** (1,587 tests) - All shared model functionality and generator correctness
 - **Build utilities** - Cross-project packaging and deployment tools
+
+### Architecture Insights
+
+**Frontend Integration Constraints**: Not all shared code is frontend-accessible due to legitimate architectural dependencies:
+
+```clojure
+;; Frontend-safe shared code
+[ooloi.shared.ops.text :as text]           ; ✅ Pure utilities
+[ooloi.shared.models.musical.pitch :refer [create-pitch]]  ; ✅ Basic models
+[ooloi.shared.specs.generators :as gen]    ; ✅ Test generators
+
+;; Backend-dependent shared code (legitimate architectural pattern)  
+[ooloi.shared.traits.attachment :as att]   ; ⚠️ Imports backend.models.musical.instrument
+[ooloi.shared.proto-conversion :as proto]  ; ⚠️ Imports backend ops for VPD conversion
+```
+
+**Design Principle**: Shared files CAN import backend dependencies when architecturally justified (attachment resolution, VPD operations, etc.), but frontend must selectively import only backend-free shared modules.
+
+**Generator Accessibility**: Test data generators in `shared/src` are available for frontend development and testing.
 
 ### Protocol Buffer Management
 

@@ -154,6 +154,96 @@ The build process automatically adjusts version numbers for compatibility with d
 - If the version starts with "0", it's changed to "1.0.0" for macOS compatibility.
 - The original version (including SNAPSHOT if applicable) is included in the application name.
 
+## Shared Model Architecture
+
+The backend implements shared model contracts, establishing clean separation between shared and backend-specific functionality.
+
+### Shared Model Integration
+
+**Shared Dependencies**: The backend now depends on shared model contracts from `../shared/src/main/clojure/`, providing:
+
+- **Core Data Models**: All `defrecord` structures (Piece, Musician, Instrument, etc.) defined in shared
+- **Interfaces & Predicates**: Shared multimethod contracts and type checking predicates  
+- **Basic Operations**: Fundamental ops utilities moved to shared (access, pitches, rhythm, text)
+- **Generator System**: Test data generators accessible from `ooloi.shared.specs.generators`
+
+**Architecture Benefits**:
+- ✅ **Type Fidelity**: Frontend and backend use identical data models
+- ✅ **Interface Consistency**: Shared multimethod contracts prevent API drift  
+- ✅ **Code Reuse**: Common utilities available to both projects
+- ✅ **Test Infrastructure**: Shared generators reduce duplication
+
+### Backend-Specific Enhancements
+
+**VPD-Enhanced Operations**: Backend extends shared models with Vector Path Descriptor capabilities:
+
+```clojure
+;; Shared: Basic functionality
+(ooloi.shared.models.musical.pitch/create-pitch :note "C4" :duration 1/4)
+
+;; Backend: VPD-enhanced with timewalk integration  
+(ooloi.backend.models.core/create-pitch :note "C4" :duration 1/4)
+;; → Includes attachment system, timewalk operations, full VPD addressing
+```
+
+**Enhanced Model Features**: Backend models provide:
+- **Attachment System**: Comprehensive musical attachment support (ties, slurs, dynamics, etc.)
+- **Timewalk Operations**: Efficient traversal of musical structures  
+- **VPD Addressing**: Precise navigation within complex musical hierarchies
+- **Advanced Algorithms**: Music theory, layout, and rendering computations
+
+### Namespace Organization
+
+**Shared Operations** (now in shared project):
+```clojure
+[ooloi.shared.ops.access :as xs]        ; Vector/attribute operations (was vectors-and-attributes)
+[ooloi.shared.ops.pitches :as pitches]  ; Pitch normalization and conversion
+[ooloi.shared.ops.rhythm :as rhythm]    ; Duration and rhythm utilities  
+[ooloi.shared.ops.text :as text]        ; Text processing (pluralization, etc.)
+```
+
+**Backend Re-exports**: For compatibility, backend maintains aliases:
+```clojure
+[ooloi.backend.ops.access :as xs]       ; Re-exports shared functionality
+[ooloi.backend.ops.pitches :as pitches] ; + backend-specific specs
+[ooloi.backend.ops.rhythm :as rhythm]   ; + backend-specific algorithms
+```
+
+**Backend-Only Operations**:
+```clojure
+[ooloi.backend.ops.timewalk :as tw]     ; Musical structure traversal
+[ooloi.backend.ops.changes :as ch]      ; Change-based attributes (time sigs, etc.)  
+[ooloi.backend.components.* :as *]      ; Integrant system components
+```
+
+### Testing Architecture
+
+**Test Data Generation**: Backend uses shared generators:
+```clojure
+[ooloi.shared.specs.generators :as generators]  ; All model generators
+
+;; Available generators
+(generators/create-random-piece)      ; Complete piece with all sub-models
+(generators/create-random-musician)   ; Musician with instruments  
+(generators/gen-pitch)                ; Pitch generator for property testing
+```
+
+**Backend Test Coverage**: 16,662 passing tests including:
+- **Shared Model Integration**: Tests for shared model compatibility  
+- **VPD Operations**: Comprehensive VPD addressing and navigation
+- **Attachment System**: All musical attachment types and behaviors
+- **gRPC Integration**: Protocol buffer conversion and service methods
+- **Component Lifecycle**: Integrant system startup/shutdown scenarios
+
+### Migration from Phase 2.5
+
+**Breaking Changes**:
+- `ooloi.backend.ops.vectors-and-attributes` → `ooloi.shared.ops.access` (aliased as `xs`)
+- Generator imports: `ooloi.backend.specs.generators` → `ooloi.shared.specs.generators`
+- Shared models imported from `ooloi.shared.models.*` instead of backend
+
+**Compatibility**: Backend maintains full API compatibility through namespace re-exports.
+
 ## Development
 
 ### Running the Backend

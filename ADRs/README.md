@@ -27,6 +27,7 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0020-TLS-Infrastructure-and-Deployment-Architecture](0020-TLS-Infrastructure-and-Deployment-Architecture.md)**: TLS security infrastructure and certificate management
 - **[0021-Authentication](0021-Authentication.md)**: Pluggable authentication architecture with JWT-based security
 - **[0022-Lazy-Frontend-Backend-Architecture](0022-Lazy-Frontend-Backend-Architecture.md)**: Lazy frontend-backend architecture with systematic lazy evaluation for collaborative scale
+- **[0023-Shared-Model-Contracts](0023-Shared-Model-Contracts.md)**: Unified data models and interfaces across frontend/backend for type fidelity
 
 ## Architecture Overview
 
