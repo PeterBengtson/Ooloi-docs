@@ -333,28 +333,37 @@ The frontend integrates with shared model contracts with important architectural
 
 ### Testing Architecture
 
-**Test Framework Setup**: Frontend testing verified and working:
-```clojure
-;; Frontend test configuration
-:source-paths ["src/main/clojure"]              ; NO automatic shared path inclusion
-:dependencies [...
-               [inflections "0.14.2"]          ; Required by shared.ops.text
-               [org.clojure/core.memoize "1.1.266"]  ; Required by shared.ops.pitches]
+**Mock Backend Solution**: Frontend uses mock backend namespaces to enable full shared code access:
 
-;; Test status: 3 passing tests (framework validation)
+```clojure
+;; Frontend test configuration  
+:source-paths ["src/main/clojure" "../shared/src/main/clojure"]  ; Full shared access
+:test-paths ["test/clojure"]
+
+;; Mock backend implementations in frontend
+frontend/src/main/clojure/ooloi/backend/ops/piece_manager.clj  ; Mock piece-manager functions
+frontend/src/main/clojure/ooloi/backend/ops/timewalk.clj       ; Mock timewalk transducers
+
+;; Test status: 19 passing tests with full shared imports working
 ```
 
-**Architecture Insight**: Frontend cannot include `../shared/src/main/clojure` on source path automatically because Clojure will attempt to load all shared code, including backend-dependent modules, causing loading failures.
+**Architecture Solution**: Frontend provides stub implementations of backend dependencies that shared traits require. This allows:
 
-**Solution Pattern**: Frontend selectively imports specific shared modules as needed:
+- ✅ **Full shared code access**: Import predicates, interfaces, traits normally
+- ✅ **`lein midje` auto-discovery**: No manual test file specification required  
+- ✅ **Scalable test development**: Hundreds of tests can import shared code
+- ✅ **Normal development workflow**: Test any frontend integration with shared functionality
+
 ```clojure
-;; Frontend development pattern
-(ns my-frontend-namespace
+;; Frontend can now import any shared code
+(ns my-frontend-test
   (:require
-   [ooloi.shared.specs.generators :as gen]     ; ✅ Works - pure generators
-   [ooloi.shared.ops.text :as text]))          ; ✅ Works - pure utilities
-   ;; DON'T import entire shared.models hierarchy - contains backend deps
+   [midje.sweet :refer :all]
+   [ooloi.shared.predicates :as p]         ; ✅ Works - predicates load normally
+   [ooloi.shared.interfaces :as i]))       ; ✅ Works - traits load with mock backend
 ```
+
+**Trade-offs**: Mock backend requires maintenance if backend interfaces change, but enables normal frontend test development without architectural constraints.
 
 ### Generator System Access
 
