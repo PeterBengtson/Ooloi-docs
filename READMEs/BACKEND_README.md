@@ -2,6 +2,42 @@
 
 This directory contains the backend server code for Ooloi, a high-performance music notation software.
 
+## Table of Contents
+
+1. [Project Role](#project-role)
+2. [System Architecture](#system-architecture)
+   - [Core Components](#core-components)
+     - [Piece Manager Component](#piece-manager-component)
+     - [gRPC Server Component](#grpc-server-component)
+     - [Application Core](#application-core)
+3. [Directory Structure](#directory-structure)
+4. [Prerequisites](#prerequisites)
+   - [System Requirements](#system-requirements)
+   - [Platform-Specific Installation](#platform-specific-installation)
+   - [Verification](#verification)
+   - [Icon Files Setup](#icon-files-setup)
+5. [Installation](#installation)
+6. [Building the Backend](#building-the-backend)
+7. [Build Process Details](#build-process-details)
+8. [Version Handling](#version-handling)
+9. [Shared Model Architecture](#shared-model-architecture)
+   - [Shared Model Integration](#shared-model-integration)
+   - [Backend-Specific Enhancements](#backend-specific-enhancements)
+   - [Namespace Organization](#namespace-organization)
+   - [Testing Architecture](#testing-architecture)
+10. [Development](#development)
+    - [Running the Backend](#running-the-backend)
+    - [Monitoring and Health](#monitoring-and-health)
+11. [Development Commands](#development-commands)
+    - [Running Tests](#running-tests)
+    - [Protocol Buffer Integration](#protocol-buffer-integration)
+    - [Building and Packaging](#building-and-packaging)
+    - [Documentation Generation](#documentation-generation)
+    - [Development Workflow](#development-workflow)
+    - [Integration Testing](#integration-testing)
+    - [Production Deployment](#production-deployment)
+12. [Notes](#notes)
+
 ## Project Role
 
 The **Ooloi Backend** serves as the core server component providing:
@@ -12,6 +48,54 @@ The **Ooloi Backend** serves as the core server component providing:
 4. **Component Architecture**: Integrant-based system with piece manager, gRPC server, and monitoring components
 
 **Key Architectural Responsibility**: Implements backend-specific multimethod behaviors for shared model contracts while providing a unified gRPC interface for frontend communication.
+
+## System Architecture
+
+The backend is a sophisticated server application using **Integrant dependency injection** for component lifecycle management:
+
+```
+┌─────────────────┐    ┌──────────────────┐
+│   Application   │    │   Environment    │
+│      Core       │◄──►│   Configuration  │
+└─────────────────┘    └──────────────────┘
+         │
+         ▼
+┌─────────────────┐    ┌──────────────────┐
+│  Piece Manager  │◄──►│   gRPC Server    │
+│   Component     │    │   Component      │
+└─────────────────┘    └──────────────────┘
+         │                       │
+         ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐
+│ STM Transaction │    │ Frontend Client  │
+│ Musical Data    │    │ Communication    │
+└─────────────────┘    └──────────────────┘
+```
+
+**Component Dependencies:**
+- **Application Core** → **Piece Manager** → **gRPC Server**
+- Configuration flows from CLI/environment through all components
+- Clean shutdown ensures proper resource cleanup in reverse dependency order
+
+### Core Components
+
+#### Piece Manager Component
+- **STM-based concurrent piece storage** with ACID transaction support
+- **Musical data management** for complex scores and arrangements
+- **VPD addressing system** for precise musical element navigation
+- **Attachment system** supporting ties, slurs, dynamics, articulations
+
+#### gRPC Server Component  
+- **Unified API** serving ~193 methods via protocol buffers
+- **Transport optimization** with in-process and network modes
+- **TLS support** with automatic certificate generation
+- **Health monitoring** with built-in gRPC health service
+
+#### Application Core
+- **CLI argument parsing** with comprehensive validation
+- **Configuration management** supporting multiple deployment scenarios
+- **Error handling** with specific exit codes for operational tooling
+- **Lifecycle management** with JVM shutdown hooks
 
 ## Directory structure
 
@@ -436,13 +520,33 @@ Error: Missing required configuration: piece-manager dependency
 - Optimized performance settings
 - Structured logging for monitoring
 
-#### Health Monitoring
+### Monitoring and Health
 
-The backend includes built-in health monitoring accessible via gRPC:
-- Component status tracking
-- Resource usage monitoring  
-- Automatic failure detection and isolation
-- Graceful shutdown with proper cleanup
+The backend provides comprehensive monitoring capabilities for production deployment:
+
+**Component Health Status:**
+- Each component reports its health status (healthy/unhealthy)
+- System-wide health aggregates component statuses  
+- Failed components can be isolated or restarted individually
+- Built-in gRPC health service for component coordination
+
+**Application Lifecycle:**
+- **Startup**: Components initialize in dependency order
+- **Runtime**: Health monitoring and error recovery
+- **Shutdown**: Clean resource cleanup via JVM shutdown hooks
+
+**Production Monitoring:**
+- **Health Port**: HTTP endpoint for external monitoring tools (load balancers, ops dashboards)
+- **gRPC Health**: Built-in gRPC health service for component coordination
+- **Component Status**: Real-time health reporting for piece manager and gRPC server
+- **Resource Monitoring**: Automatic failure detection and isolation
+
+**Production Readiness:**
+- Structured error messages with actionable guidance
+- Specific exit codes for operational tooling integration
+- Environment variable configuration for containerized deployments
+- TLS support with automatic certificate generation
+- Multiple deployment modes for different operational scenarios
 
 ## Development Commands
 
@@ -462,6 +566,22 @@ lein coverage
 ```
 
 **Important**: Use `lein midje` instead of `lein test`. The project is configured for Midje testing framework.
+
+**Backend Test Coverage**: ~16,700 passing tests including:
+- **Application Infrastructure**: CLI argument parsing, configuration management, environment variables
+- **Component Lifecycle**: Integrant component initialization, dependency injection, health monitoring
+- **System Integration**: Deployment modes, configuration propagation, error handling
+- **Musical Data Management**: STM transactions, piece storage, concurrent modifications
+- **gRPC Server Implementation**: Protocol buffer conversion, service methods, unified ExecuteMethod interface
+- **VPD Operations**: Comprehensive VPD addressing, navigation, and timewalk integration
+- **Attachment System**: All musical attachment types, behaviors, and cross-reference resolution
+- **Complex Musical Operations**: Timewalk traversal, attachment resolution, algorithmic processing
+- **API Completeness**: All ~193 backend API methods with comprehensive behavior testing
+- **Performance Optimization**: Transport modes, in-process communication, connection management
+- **Security Configuration**: TLS validation, certificate generation, secure client-server communication
+- **Shared Model Integration**: Backend-specific implementations of shared contracts
+
+**Total: ~16,700 tests** covering complete backend functionality including system architecture, musical operations, gRPC communication, and production deployment scenarios.
 
 ### Protocol Buffer Integration
 
@@ -541,6 +661,66 @@ Recommended development sequence:
 3. **Test**: `lein midje` (run test suite)
 4. **Run**: `lein run` (start backend server)
 5. **Iterate**: Make changes and repeat steps 2-4
+
+### Integration Testing
+
+The backend can be started as a separate process for integration testing with frontend clients:
+
+```bash
+# Start backend in development mode for testing
+lein run -- --deployment-mode backend --port 10700 &
+BACKEND_PID=$!
+
+# Run integration tests with frontend client
+# ... test commands ...
+
+# Clean shutdown
+kill $BACKEND_PID
+```
+
+**Multi-Process Architecture:**
+- Backend runs as independent server process
+- Frontend connects via gRPC network transport
+- Enables realistic integration testing scenarios
+- Supports multi-user collaboration and distributed deployment
+
+### Production Deployment
+
+**Standalone JAR Deployment:**
+```bash
+# Build production JAR
+lein uberjar
+
+# Production deployment with environment configuration
+export OOLOI_PORT=10700
+export OOLOI_DEPLOYMENT_MODE=backend
+export OOLOI_TLS=true
+export OOLOI_CERT_PATH=/etc/ssl/ooloi.crt
+export OOLOI_KEY_PATH=/etc/ssl/ooloi.key
+
+# Run production server
+java -jar target/ooloi-backend-*-standalone.jar
+```
+
+**Container Deployment:**
+```dockerfile
+# Example Dockerfile snippet
+FROM openjdk:22-jre-slim
+COPY target/ooloi-backend-*-standalone.jar /app/ooloi-backend.jar
+ENV OOLOI_PORT=10700
+ENV OOLOI_DEPLOYMENT_MODE=backend
+EXPOSE 10700
+CMD ["java", "-jar", "/app/ooloi-backend.jar"]
+```
+
+**Load Balancer Health Checks:**
+```bash
+# Health endpoint for load balancer monitoring
+curl http://localhost:10701/health
+
+# gRPC health check
+grpc_health_probe -addr=localhost:10700
+```
 
 ## Notes
 

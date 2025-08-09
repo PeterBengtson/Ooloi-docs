@@ -1,10 +1,118 @@
 # Ooloi Shared
 
-This directory contains the configuration and build scripts for creating a combined package of Ooloi, including both the backend server and frontend client.
+The shared project has a unique **dual nature** serving both as a common code library and as the integration testing/combined application platform. This dual architecture enables both code reuse and sophisticated deployment scenarios.
 
-## Purpose
+## Table of Contents
 
-The shared project serves three critical architectural roles in Ooloi:
+1. [Dual Nature Architecture](#dual-nature-architecture)
+   - [Role 1: Common Code Library](#role-1-common-code-library)
+   - [Role 2: Integration Platform & Combined Application Builder](#role-2-integration-platform--combined-application-builder)
+2. [System Architecture](#system-architecture)
+   - [Current Architecture (Code Library Mode)](#current-architecture-code-library-mode)
+   - [Future Architecture (Combined Application Mode)](#future-architecture-combined-application-mode)
+3. [Three Critical Architectural Roles](#three-critical-architectural-roles)
+   - [Shared Model Contracts](#1-shared-model-contracts)
+   - [gRPC Communication Layer](#2-grpc-communication-layer)
+   - [Combined Application Builder](#3-combined-application-builder)
+4. [Directory Structure](#directory-structure)
+5. [Prerequisites](#prerequisites)
+   - [System Requirements](#system-requirements)
+   - [Platform-Specific Installation](#platform-specific-installation)
+   - [Combined Application Requirements](#combined-application-requirements)
+   - [Build Dependencies](#build-dependencies)
+   - [Verification](#verification)
+   - [Icon Files Setup](#icon-files-setup)
+6. [gRPC Infrastructure](#grpc-infrastructure)
+   - [Protocol Buffer Schema](#protocol-buffer-schema)
+   - [Conversion Utilities](#conversion-utilities)
+   - [Build Integration](#build-integration)
+7. [Installation](#installation)
+8. [Building the Combined Application](#building-the-combined-application)
+9. [Build Process Details](#build-process-details)
+10. [Version Handling](#version-handling)
+11. [Development](#development)
+    - [Running the Combined Application](#running-the-combined-application)
+12. [Future Configuration and Deployment](#future-configuration-and-deployment)
+    - [Projected Command-Line Arguments](#projected-command-line-arguments)
+    - [Projected Environment Variables](#projected-environment-variables)
+    - [Projected Deployment Modes](#projected-deployment-modes)
+    - [Future Component Architecture](#future-component-architecture)
+    - [Integration Testing Architecture](#integration-testing-architecture)
+    - [REPL](#repl)
+    - [Monitoring and Health (Future)](#monitoring-and-health-future)
+13. [Development Commands](#development-commands)
+    - [Running Tests](#running-tests)
+    - [Architecture Insights](#architecture-insights)
+    - [Dual Nature Development Implications](#dual-nature-development-implications)
+    - [Development Workflow Coordination](#development-workflow-coordination)
+    - [Protocol Buffer Management](#protocol-buffer-management)
+    - [Building and Packaging](#building-and-packaging)
+    - [Documentation Generation](#documentation-generation)
+    - [Development Workflow](#development-workflow)
+14. [Notes](#notes)
+
+## Dual Nature Architecture
+
+The shared project serves **two distinct but complementary roles**:
+
+### 🧩 **Role 1: Common Code Library**
+Provides shared model contracts, interfaces, and utilities that both frontend and backend depend on, ensuring perfect type fidelity and eliminating circular dependencies.
+
+### 🏗️ **Role 2: Integration Platform & Combined Application Builder**
+Packages and orchestrates both frontend and backend components into a unified application, enabling integration testing and single-process deployment scenarios.
+
+## System Architecture
+
+The shared project enables multiple deployment architectures through its dual nature:
+
+### Current Architecture (Code Library Mode)
+```
+┌─────────────────┐    ┌─────────────────┐
+│    Frontend     │    │     Backend     │
+│   Components    │    │   Components    │
+└─────────────────┘    └─────────────────┘
+         │                       │
+         └───────────┬───────────┘
+                     ▼
+         ┌─────────────────────────┐
+         │      Shared Code        │
+         │   (Models, Traits,      │
+         │  Interfaces, Utils)     │
+         └─────────────────────────┘
+```
+
+### Future Architecture (Combined Application Mode)
+When the shared project gets its own system components:
+```
+┌─────────────────────────────────────────────────────────┐
+│                Shared System Manager                    │
+│            (Future Application Core)                    │
+└─────────────────┬───────────────────────────────────────┘
+                  │
+    ┌─────────────▼─────────────┐
+    │    Integration Orchestrator    │
+    │        Component         │
+    └─────────────┬─────────────┘
+                  │
+        ┌─────────┴─────────┐
+        ▼                   ▼
+┌─────────────────┐  ┌─────────────────┐
+│   Frontend      │  │    Backend      │
+│   Components    │  │   Components    │
+│                 │  │                 │
+│ • gRPC Client   │  │ • Piece Manager │
+│ • UI Manager    │  │ • gRPC Server   │
+└─────────────────┘  └─────────────────┘
+        │                       │
+        └───────────┬───────────┘
+                    ▼
+        ┌─────────────────────────┐
+        │     Shared Code         │
+        │ (Models, Traits, Utils) │
+        └─────────────────────────┘
+```
+
+## Three Critical Architectural Roles
 
 ### 1. **Shared Model Contracts** 
 Contains all data model definitions (`defrecord` structures), interfaces, predicates, and traits that both frontend and backend use, ensuring perfect type fidelity and eliminating circular dependencies.
@@ -266,7 +374,153 @@ To run the application for development:
 lein run
 ```
 
-This will start the Ooloi application.
+This will start the Ooloi combined application.
+
+## Future Configuration and Deployment
+
+When the shared project evolves to have its own system components and CLI, it will likely support comprehensive configuration for orchestrating both frontend and backend components:
+
+### Projected Command-Line Arguments
+
+Based on the dual nature and integration requirements, the shared project will likely support:
+
+```bash
+# Basic combined application
+lein run
+
+# Integration testing mode
+lein run -- --mode integration-test --frontend-port 10800 --backend-port 10700
+
+# Single-process combined deployment
+lein run -- --mode combined --ui-mode graphical --transport in-process
+
+# Distributed coordination mode  
+lein run -- --mode distributed --frontend-host remote-frontend --backend-host remote-backend
+
+# Development orchestration
+lein run -- --mode dev-orchestrator --auto-restart true --log-level debug
+```
+
+#### Anticipated CLI Arguments
+
+| **Argument** | **Values** | **Default** | **Description** |
+|--------------|------------|-------------|-----------------|
+| `--mode MODE` | integration-test, combined, distributed, dev-orchestrator | combined | Deployment orchestration mode |
+| `--frontend-host HOST` | hostname/IP | localhost | Frontend component hostname |
+| `--frontend-port PORT` | 1-65535 | 10800 | Frontend component port |
+| `--backend-host HOST` | hostname/IP | localhost | Backend component hostname |
+| `--backend-port PORT` | 1-65535 | 10700 | Backend component port |
+| `--transport MODE` | network, in-process, auto | auto | Inter-component transport |
+| `--ui-mode MODE` | graphical, headless, auto | auto | UI display mode for combined deployment |
+| `--integration-timeout MS` | milliseconds | 30000 | Integration test timeout |
+| `--auto-restart BOOL` | true, false | false | Auto-restart components on failure |
+| `--log-level LEVEL` | debug, info, warn, error | info | Application logging level |
+| `--health-port PORT` | 1-65535 | 10801 | Combined application health endpoint |
+| `--tls BOOL` | true, false | false | Enable TLS for all communications |
+
+### Projected Environment Variables
+
+All CLI arguments would have corresponding environment variable alternatives:
+
+| **Environment Variable** | **CLI Equivalent** | **Description** |
+|-------------------------|-------------------|-----------------|
+| `OOLOI_SHARED_MODE` | --mode | Deployment orchestration mode |
+| `OOLOI_SHARED_FRONTEND_HOST` | --frontend-host | Frontend component hostname |
+| `OOLOI_SHARED_FRONTEND_PORT` | --frontend-port | Frontend component port |
+| `OOLOI_SHARED_BACKEND_HOST` | --backend-host | Backend component hostname |
+| `OOLOI_SHARED_BACKEND_PORT` | --backend-port | Backend component port |
+| `OOLOI_SHARED_TRANSPORT` | --transport | Inter-component transport mode |
+| `OOLOI_SHARED_UI_MODE` | --ui-mode | UI display mode |
+| `OOLOI_SHARED_INTEGRATION_TIMEOUT` | --integration-timeout | Integration test timeout |
+| `OOLOI_SHARED_AUTO_RESTART` | --auto-restart | Auto-restart on component failure |
+| `OOLOI_SHARED_LOG_LEVEL` | --log-level | Application logging level |
+| `OOLOI_SHARED_HEALTH_PORT` | --health-port | Health monitoring port |
+| `OOLOI_SHARED_TLS` | --tls | Enable TLS communications |
+
+### Projected Deployment Modes
+
+#### integration-test
+**Components:** Integration Orchestrator + Test Frontend + Test Backend  
+**Use Case:** Deep integration testing between frontend and backend components
+```bash
+lein run -- --mode integration-test
+```
+- Starts both frontend and backend in test mode
+- Runs comprehensive integration test suite
+- Validates gRPC communication paths
+- Tests all transport modes and failure scenarios
+
+#### combined
+**Components:** All components in single JVM  
+**Use Case:** Single-process deployment with maximum performance
+```bash
+lein run -- --mode combined --transport in-process
+```
+- Ultra-high-performance in-process communication
+- Single JVM with all components
+- Minimal resource usage
+- Ideal for standalone deployments
+
+#### distributed
+**Components:** Coordination of remote frontend and backend  
+**Use Case:** Multi-machine deployment coordination
+```bash
+lein run -- --mode distributed --frontend-host client-machine --backend-host server-machine
+```
+- Coordinates remote component deployment
+- Manages inter-machine communication
+- Handles distributed failure scenarios
+- Load balancing and health coordination
+
+#### dev-orchestrator
+**Components:** Development tooling and component management  
+**Use Case:** Development environment management
+```bash
+lein run -- --mode dev-orchestrator --auto-restart true
+```
+- Auto-restart components on code changes
+- Development-friendly logging and debugging
+- Hot reloading coordination
+- Developer productivity optimizations
+
+### Future Component Architecture
+
+The shared system would likely include these Integrant components:
+
+#### Integration Orchestrator Component
+- **Component coordination** between frontend and backend
+- **Health monitoring** across all components
+- **Failure detection** and automatic recovery
+- **Transport optimization** based on deployment mode
+
+#### Configuration Manager Component  
+- **Environment detection** and mode selection
+- **Component configuration** propagation
+- **Runtime reconfiguration** support
+- **Deployment validation** and compatibility checking
+
+#### Test Coordination Component
+- **Integration test execution** across frontend-backend boundary
+- **Test data management** using shared generators
+- **Performance benchmarking** of different transport modes
+- **Regression test automation** for gRPC communication
+
+### Integration Testing Architecture
+
+The shared project would serve as the **integration testing hub**:
+
+```bash
+# Comprehensive integration testing
+export OOLOI_SHARED_MODE=integration-test
+export OOLOI_SHARED_INTEGRATION_TIMEOUT=60000
+lein run
+
+# Performance benchmarking
+lein run -- --mode integration-test --transport in-process --benchmark true
+
+# Multi-user collaboration testing
+lein run -- --mode integration-test --multi-client true --client-count 5
+```
 
 ### REPL
 
@@ -277,6 +531,33 @@ lein repl
 ```
 
 The REPL will start in the `ooloi.shared.mon.core` namespace.
+
+### Monitoring and Health (Future)
+
+When the shared project gets its own system components, it will provide comprehensive monitoring for the combined application:
+
+**Multi-Component Health Status:**
+- Health aggregation across frontend and backend components
+- Inter-component communication monitoring
+- Distributed system health coordination
+- Cross-boundary error tracking and recovery
+
+**Integration Test Monitoring:**
+- Real-time integration test execution status
+- Performance metrics across transport modes
+- Regression detection and alerting
+- Multi-user collaboration test results
+
+**Application Lifecycle Coordination:**
+- **Startup**: Orchestrates component initialization in correct dependency order
+- **Runtime**: Monitors health across component boundaries, handles partial failures
+- **Shutdown**: Coordinates graceful shutdown of all managed components
+
+**Production Readiness (Future):**
+- **Distributed health endpoints**: Coordination across multiple machines
+- **Integration monitoring**: Real-time gRPC communication health
+- **Performance telemetry**: Transport optimization metrics and recommendations
+- **Component isolation**: Failure isolation preventing cascade failures
 
 ## Development Commands
 
@@ -322,6 +603,50 @@ The test suite includes comprehensive coverage of:
 **Design Principle**: Shared files CAN import backend dependencies when architecturally justified (attachment resolution, VPD operations, etc.), but frontend must selectively import only backend-free shared modules.
 
 **Generator Accessibility**: Test data generators in `shared/src` are available for frontend development and testing.
+
+### Dual Nature Development Implications
+
+**Code Library Development:**
+```bash
+# Developing shared code used by both projects
+cd shared/
+# Edit shared models, traits, interfaces
+lein midje  # Test shared code in isolation
+cd ../backend && lein midje  # Test backend integration
+cd ../frontend && lein midje  # Test frontend integration
+```
+
+**Integration Platform Development:**  
+```bash
+# Developing combined application features
+cd shared/
+lein run  # Test combined application
+# Edit integration orchestration components
+lein midje  # Test integration scenarios
+```
+
+**Deployment Flexibility Benefits:**
+- **Single Repository**: All three projects in one repo with shared development workflow
+- **Selective Dependencies**: Frontend/backend can import only needed shared modules
+- **Integration Testing**: Comprehensive testing across component boundaries
+- **Combined Packaging**: Single JAR for deployment scenarios requiring both components
+- **Code Reuse**: Maximum reuse while maintaining architectural boundaries
+
+### Development Workflow Coordination
+
+**Protocol Buffer Changes:**
+1. Edit `.proto` files in `shared/src/main/proto/`  
+2. Compile in shared: `lein clean && lein compile`
+3. Propagate to backend: `cd ../backend && lein clean && lein compile`
+4. Propagate to frontend: `cd ../frontend && lein clean && lein compile`
+5. Test integration: `cd ../shared && lein midje`
+
+**Shared Model Changes:**
+1. Edit models/traits/interfaces in `shared/src/main/clojure/`
+2. Test shared: `cd shared && lein midje`  
+3. Test backend compatibility: `cd ../backend && lein midje`
+4. Test frontend compatibility: `cd ../frontend && lein midje`
+5. Test integration scenarios: `cd ../shared && lein midje`
 
 ### Protocol Buffer Management
 

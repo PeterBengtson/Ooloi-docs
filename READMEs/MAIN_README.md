@@ -186,7 +186,7 @@ Ooloi is organized into three main components:
 The core server that handles musical data, calculations, and business logic.
 - **Status**: ✅ **Ready for installation and use**
 - **Key Features**: VPD-enhanced models, attachment system, timewalk operations  
-- **Test Coverage**: 16,662 passing tests
+- **Test Coverage**: 16,706 passing tests
 - **Installation**: See [backend/README.md](/backend/README.md) for detailed setup instructions
 - **Quick start**: `cd backend && lein deps && lein run`
 
@@ -194,16 +194,16 @@ The core server that handles musical data, calculations, and business logic.
 Unified data models, interfaces, and Protocol Buffer layer for frontend-backend communication.
 - **Status**: ✅ **Shared model contracts established**
 - **Key Features**: All core data models, multimethod interfaces, generator system
-- **Test Coverage**: 1,587 passing tests  
+- **Test Coverage**: 1,596 passing tests  
 - **Architecture**: Supports selective frontend imports with backend-dependent modules
 - **Documentation**: See [shared/README.md](/shared/README.md) for architecture details
 
 ### 📁 **[Frontend](/frontend/)** - User Interface Client
 The client application providing the graphical interface for music notation.
-- **Status**: 🚧 **Foundation Ready** - Test framework validated, selective shared imports working
-- **Key Readiness**: Generator system access, architecture constraints understood
-- **Test Coverage**: 3 passing tests (framework validation)
-- **Next Step**: gRPC client integration for backend communication
+- **Status**: ✅ **Ready for installation and use** - Complete application infrastructure with CLI, env vars, Integrant components
+- **Key Features**: gRPC client, UI manager, comprehensive configuration system, deployment modes
+- **Test Coverage**: 131 passing tests
+- **Installation**: See [frontend/README.md](/frontend/README.md) for detailed setup instructions
 - **Documentation**: See [frontend/README.md](/frontend/README.md)
 
 ### Development Focus

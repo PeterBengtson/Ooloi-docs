@@ -2,6 +2,46 @@
 
 This directory contains the frontend client code for Ooloi, a high-performance music notation software.
 
+## Table of Contents
+
+1. [Project Role](#project-role)
+2. [System Architecture](#system-architecture)
+3. [Directory Structure](#directory-structure)
+4. [Prerequisites](#prerequisites)
+   - [System Requirements](#system-requirements)
+   - [Platform-Specific Installation](#platform-specific-installation)
+   - [Frontend-Specific Requirements](#frontend-specific-requirements)
+   - [Verification](#verification)
+   - [Icon Files Setup](#icon-files-setup)
+5. [Installation](#installation)
+6. [Building the Frontend](#building-the-frontend)
+7. [Build Process Details](#build-process-details)
+8. [Version Handling](#version-handling)
+9. [Configuration and Deployment](#configuration-and-deployment)
+   - [Application Architecture](#application-architecture)
+   - [Command-Line Arguments](#command-line-arguments)
+   - [Environment Variables](#environment-variables)
+   - [Deployment Modes](#deployment-modes)
+   - [Error Handling and Exit Codes](#error-handling-and-exit-codes)
+   - [TLS and Security Configuration](#tls-and-security-configuration)
+   - [Integration Testing](#integration-testing)
+   - [Monitoring and Health](#monitoring-and-health)
+10. [Development](#development)
+    - [Running the Frontend](#running-the-frontend)
+    - [REPL](#repl)
+11. [Development Commands](#development-commands)
+    - [Running Tests](#running-tests)
+    - [Protocol Buffer Generation](#protocol-buffer-generation)
+    - [Building and Packaging](#building-and-packaging)
+    - [Documentation Generation](#documentation-generation)
+    - [Development Workflow](#development-workflow)
+12. [Shared Model Integration](#shared-model-integration)
+    - [Selective Shared Import Architecture](#selective-shared-import-architecture)
+    - [Testing Architecture](#testing-architecture)
+    - [Generator System Access](#generator-system-access)
+    - [Frontend Development Strategy](#frontend-development-strategy)
+13. [Notes](#notes)
+
 ## Project Role
 
 The **Ooloi Frontend** serves as the user-facing client component providing:
@@ -12,6 +52,34 @@ The **Ooloi Frontend** serves as the user-facing client component providing:
 4. **User Interaction Management**: Click handling, form validation, real-time UI updates, and client-side state management
 
 **Key Architectural Responsibility**: Implements presentation layer functionality and user experience while communicating with backend server through gRPC for all musical data operations.
+
+## System Architecture
+
+The frontend is a full-featured application using **Integrant dependency injection** for component lifecycle management:
+
+```
+┌─────────────────┐    ┌──────────────────┐
+│   Application   │    │   Environment    │
+│      Core       │◄──►│   Configuration  │
+└─────────────────┘    └──────────────────┘
+         │
+         ▼
+┌─────────────────┐    ┌──────────────────┐
+│   gRPC Client   │◄──►│   UI Manager     │
+│   Component     │    │   Component      │
+└─────────────────┘    └──────────────────┘
+         │                       │
+         ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐
+│  Backend Server │    │ User Interface   │
+│  Communication  │    │ & Interactions   │
+└─────────────────┘    └──────────────────┘
+```
+
+**Component Dependencies:**
+- **Application Core** → **gRPC Client** → **UI Manager**
+- Configuration flows from CLI/environment through all components
+- Clean shutdown ensures proper resource cleanup in reverse dependency order
 
 ## Directory structure
 
@@ -176,17 +244,231 @@ The build process automatically adjusts version numbers for compatibility with d
 - If the version starts with "0", it's changed to "1.0.0" for macOS compatibility.
 - The original version (including SNAPSHOT if applicable) is included in the application name.
 
+## Configuration and Deployment
+
+### Application Architecture
+
+The Ooloi Frontend is now a full-featured application with comprehensive system architecture matching the backend. It uses Integrant dependency injection for component lifecycle management and supports multiple deployment scenarios.
+
+**Key Components:**
+- **gRPC Client**: Manages connection to backend server
+- **UI Manager**: Handles user interface lifecycle and user interactions
+- **Application Core**: CLI argument parsing, configuration management, error handling
+
+### Command-Line Arguments
+
+The frontend supports comprehensive command-line configuration:
+
+```bash
+# Basic usage
+lein run
+
+# With backend connection configuration
+lein run -- --backend-host remote-server --backend-port 10700
+
+# With UI and transport options  
+lein run -- --ui-mode graphical --transport network
+
+# With security configuration
+lein run -- --tls true --cert-path /path/to/cert.pem --key-path /path/to/key.pem
+
+# Complete configuration example
+lein run -- --backend-host localhost --backend-port 10700 --transport network --ui-mode graphical --deployment-mode frontend --timeout-ms 5000 --tls false
+```
+
+#### Available CLI Arguments
+
+| **Argument** | **Values** | **Default** | **Description** |
+|--------------|------------|-------------|-----------------|
+| `--backend-host HOST` | hostname/IP | localhost | Backend server hostname or IP address |
+| `--backend-port PORT` | 1-65535 | 10700 | Backend server port number |
+| `--transport MODE` | network, in-process | network | Communication transport mechanism |
+| `--ui-mode MODE` | graphical, headless | graphical | User interface display mode |
+| `--deployment-mode MODE` | frontend, combined-client, dev-client-only | frontend | Application deployment configuration |
+| `--timeout-ms MS` | milliseconds | 5000 | Backend connection timeout |
+| `--tls FLAG` | true, false | false | Enable TLS encryption for backend connection |
+| `--cert-path PATH` | file path | - | TLS certificate file path (requires --key-path) |
+| `--key-path PATH` | file path | - | TLS private key file path (requires --cert-path) |
+
+**Argument Validation:**
+- Port numbers are validated as integers within valid range
+- Transport and UI modes are validated against allowed values
+- TLS setting accepts only "true" or "false"
+- Certificate paths must be provided together (both --cert-path and --key-path)
+
+### Environment Variables
+
+All CLI arguments have corresponding environment variable alternatives:
+
+| **Environment Variable** | **CLI Equivalent** | **Description** |
+|-------------------------|-------------------|-----------------|
+| `OOLOI_FRONTEND_BACKEND_HOST` | --backend-host | Backend server hostname |
+| `OOLOI_FRONTEND_BACKEND_PORT` | --backend-port | Backend server port |
+| `OOLOI_FRONTEND_TRANSPORT` | --transport | Transport mode (network/in-process) |
+| `OOLOI_FRONTEND_UI_MODE` | --ui-mode | UI mode (graphical/headless) |
+| `OOLOI_FRONTEND_DEPLOYMENT_MODE` | --deployment-mode | Deployment configuration |
+| `OOLOI_FRONTEND_TIMEOUT_MS` | --timeout-ms | Connection timeout in milliseconds |
+| `OOLOI_FRONTEND_TLS` | --tls | Enable TLS (true/false) |
+| `OOLOI_FRONTEND_CERT_PATH` | --cert-path | TLS certificate path |
+| `OOLOI_FRONTEND_KEY_PATH` | --key-path | TLS private key path |
+
+**Configuration Precedence:** CLI arguments override environment variables, which override application defaults.
+
+#### Environment Variable Usage Examples
+
+```bash
+# Basic development configuration
+export OOLOI_FRONTEND_BACKEND_HOST=localhost
+export OOLOI_FRONTEND_BACKEND_PORT=10700
+export OOLOI_FRONTEND_UI_MODE=graphical
+lein run
+
+# Remote backend configuration
+export OOLOI_FRONTEND_BACKEND_HOST=production-server.company.com
+export OOLOI_FRONTEND_BACKEND_PORT=443
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/certs/client.pem
+export OOLOI_FRONTEND_KEY_PATH=/etc/ssl/private/client.key
+lein run
+
+# Headless mode for automated testing
+export OOLOI_FRONTEND_UI_MODE=headless
+export OOLOI_FRONTEND_DEPLOYMENT_MODE=dev-client-only
+lein run
+```
+
+### Deployment Modes
+
+The frontend supports multiple deployment configurations:
+
+#### frontend (Default)
+**Components:** gRPC Client + UI Manager  
+**Use Case:** Standard client deployment connecting to remote backend server
+```bash
+lein run -- --deployment-mode frontend
+```
+- Connects to external backend server
+- Full graphical user interface
+- Typical production client configuration
+
+#### combined-client
+**Components:** All client components  
+**Use Case:** Single-process client with comprehensive functionality
+```bash
+lein run -- --deployment-mode combined-client
+```
+- All available client-side components
+- Enhanced local functionality
+- Suitable for standalone client deployments
+
+#### dev-client-only
+**Components:** gRPC Client only (minimal)  
+**Use Case:** Development and testing scenarios
+```bash
+lein run -- --deployment-mode dev-client-only
+```
+- Minimal client for development
+- No UI components (lightweight)
+- Ideal for integration testing and debugging
+
+### Error Handling and Exit Codes
+
+The frontend provides comprehensive error handling with specific exit codes for operational tooling:
+
+| **Exit Code** | **Error Type** | **Description** |
+|---------------|----------------|-----------------|
+| 0 | Success | Application started successfully |
+| 1 | Generic Failure | Unknown or unclassified error |
+| 10 | Component Failure | Component initialization failed |
+| 11 | Connection Failure | Cannot connect to backend server |
+| 12 | Configuration Error | Invalid configuration provided |
+| 13 | Dependency Missing | Required dependency unavailable |
+| 14 | Resource Exhaustion | System resources exhausted |
+
+**Error Resolution Guidance:**
+The application provides actionable guidance for common errors:
+- Connection failures: Check backend server status and network connectivity
+- Configuration errors: Validate CLI arguments and environment variables
+- Certificate errors: Verify TLS certificate and key file paths
+
+### TLS and Security Configuration
+
+**Client-Side TLS Support:**
+The frontend supports secure connections to backend servers:
+
+```bash
+# Enable TLS with auto-generated certificates (development)
+lein run -- --tls true
+
+# Production TLS with custom certificates
+lein run -- --tls true --cert-path ./client.pem --key-path ./client.key
+
+# Environment variable configuration
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/ooloi/client.pem
+export OOLOI_FRONTEND_KEY_PATH=/etc/ssl/ooloi/client.key
+lein run
+```
+
+**TLS Configuration Notes:**
+- Both certificate and key paths must be provided together
+- Frontend validates certificate path pairs at startup
+- TLS setting applies to gRPC client connection to backend
+- Invalid certificate configurations result in clear error messages
+
+### Integration Testing
+
+The frontend can be started as a separate process for integration testing:
+
+```bash
+# Start frontend in background for testing
+lein run -- --deployment-mode dev-client-only &
+FRONTEND_PID=$!
+
+# Run integration tests
+# ... test commands ...
+
+# Clean shutdown
+kill $FRONTEND_PID
+```
+
+### Monitoring and Health
+
+The frontend provides health monitoring capabilities:
+
+**Component Health Status:**
+- Each component reports its health status (healthy/unhealthy)
+- System-wide health aggregates component statuses  
+- Failed components can be isolated or restarted individually
+
+**Application Lifecycle:**
+- **Startup**: Components initialize in dependency order
+- **Runtime**: Health monitoring and error recovery
+- **Shutdown**: Clean resource cleanup via JVM shutdown hooks
+
+**Production Readiness:**
+- Structured error messages with actionable guidance
+- Specific exit codes for operational tooling integration
+- Environment variable configuration for containerized deployments
+- TLS support for secure client-server communication
+
 ## Development
 
 ### Running the Frontend
 
-To run the frontend client for development:
-
+**Basic Development:**
 ```bash
 lein run
 ```
 
-This will start the Ooloi frontend client.
+**With Configuration:**
+```bash
+# Connect to local backend with debugging
+lein run -- --backend-host localhost --backend-port 10700 --ui-mode graphical
+
+# Remote backend connection
+lein run -- --backend-host staging-server --backend-port 443 --tls true
+```
 
 ### REPL
 
@@ -217,14 +499,18 @@ lein coverage
 
 **Important**: Use `lein midje` instead of `lein test`. The project is configured for Midje testing framework.
 
-**Frontend Test Coverage**: 20 passing tests including:
+**Frontend Test Coverage**: 131 passing tests including:
+- **Application Infrastructure**: CLI argument parsing, configuration management, environment variables
+- **Component Lifecycle**: Integrant component initialization, dependency injection, health monitoring
+- **System Integration**: Deployment modes, configuration propagation, error handling
 - **gRPC Client Infrastructure**: Protocol buffer message creation and gRPC client class instantiation
 - **Shared Model Integration**: Tests for frontend-accessible shared functionality with mock backend support
 - **UI Component Testing**: Form validation, user interaction handling, and component state management  
-- **Client-side Functionality**: Connection management, error handling, and client-side data processing
+- **Client-side Functionality**: Connection management, error handling, client-side data processing
+- **Security Configuration**: TLS validation, certificate path verification, secure connection setup
 - **Mock Backend Integration**: Verification that shared traits and interfaces work with stubbed backend dependencies
 
-**Total: 20 tests** focused on frontend presentation layer, user experience, and client-side gRPC communication setup.
+**Total: 131 tests** covering complete application infrastructure including system architecture, configuration management, and client-side functionality.
 
 ### Protocol Buffer Generation
 
