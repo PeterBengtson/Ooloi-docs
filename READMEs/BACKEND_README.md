@@ -30,7 +30,7 @@ This directory contains the backend server code for Ooloi, a high-performance mu
     - [Monitoring and Health](#monitoring-and-health)
 11. [Development Commands](#development-commands)
     - [Running Tests](#running-tests)
-    - [Protocol Buffer Integration](#protocol-buffer-integration)
+    - [gRPC Integration](#grpc-integration)
     - [Building and Packaging](#building-and-packaging)
     - [Documentation Generation](#documentation-generation)
     - [Development Workflow](#development-workflow)
@@ -101,13 +101,24 @@ The backend is a sophisticated server application using **Integrant dependency i
 
 ```
 backend/
-├── docs/              ; The HTML documentation for the backend, created by Codox
-├── resources/         ; Resources for the application, notably icons
-├── src/               ; The source code hierarchy for the backend
-├── test/              ; The backend Midje tests
-└── CHANGELOG.md       ; The CHANGELOG (as of yet unused)
-└── README.md          ; This README
-└── project.clj        ; The Leiningen project file for the backend
+├── docs/                            ; HTML documentation created by Codox
+├── resources/                       ; Application resources, icons
+├── src/main/clojure/ooloi/backend/  ; Backend-specific source code
+│   ├── api.clj                      ; Backend API functions (delegates to shared)
+│   ├── core.clj                     ; Application entry point and main function
+│   ├── system.clj                   ; Integrant system configuration
+│   ├── components/                  ; Integrant system components
+│   │   ├── piece_manager.clj        ; STM-based piece storage and management
+│   │   └── grpc_server.clj          ; gRPC server component
+│   ├── grpc/                        ; gRPC server implementation
+│   │   ├── server.clj               ; Universal ExecuteMethod endpoint
+│   │   └── conversion.clj           ; OoloiValue conversion utilities
+│   └── ops/                         ; Backend-specific operations
+│       └── piece_manager.clj        ; Piece storage and STM coordination
+├── test/clojure/ooloi/backend/      ; Backend-specific tests (~1,869 tests)
+├── CHANGELOG.md
+├── README.md
+└── project.clj                      ; Dependencies: shared/, gRPC libraries
 ```
 
 ## Prerequisites
@@ -255,40 +266,53 @@ The backend implements shared model contracts, establishing clean separation bet
 
 ### Shared Model Integration
 
-**Shared Dependencies**: The backend now depends on shared model contracts from `../shared/src/main/clojure/`, providing:
+**Completed Shared Model Contracts**: The backend uses shared model contracts from `../shared/src/main/clojure/` (ADR-0023 completed implementation):
 
 - **Core Data Models**: All `defrecord` structures (Piece, Musician, Instrument, etc.) defined in shared
 - **Interfaces & Predicates**: Shared multimethod contracts and type checking predicates  
-- **Basic Operations**: Fundamental ops utilities moved to shared (access, pitches, rhythm, text)
+- **Basic Operations**: Fundamental ops utilities in shared (access, pitches, rhythm, text)
 - **All Traits**: Behavioral mixins (attachment, has-items, rhythmic-item, takes-attachment, transposable) in shared
 - **Generator System**: Test data generators accessible from `ooloi.shared.specs.generators`
 
 **Architecture Benefits**:
-- ✅ **Type Fidelity**: Frontend and backend use identical data models
+- ✅ **Type Fidelity**: Frontend and backend use identical data models for perfect gRPC round-trips
 - ✅ **Interface Consistency**: Shared multimethod contracts prevent API drift  
-- ✅ **Code Reuse**: Common utilities available to both projects
-- ✅ **Test Infrastructure**: Shared generators reduce duplication
+- ✅ **Unified Plugin Ecosystem**: Plugins define models once, work everywhere
+- ✅ **Zero Protocol Buffer Overhead**: Shared models work seamlessly with unified gRPC system
 
 ### Backend-Specific Enhancements
 
 **VPD-Enhanced Operations**: Backend extends shared models with Vector Path Descriptor capabilities:
 
 ```clojure
-;; Shared: Basic functionality
-(ooloi.shared.models.musical.pitch/create-pitch :note "C4" :duration 1/4)
-
-;; Backend: VPD-enhanced with timewalk integration  
-(ooloi.backend.models.core/create-pitch :note "C4" :duration 1/4)
-;; → Includes attachment system, timewalk operations, full VPD addressing
+;; Backend uses the same shared models but with additional server context
+(ooloi.shared.models.core/create-pitch :note "C4" :duration 1/4)
+;; → Backend provides gRPC server integration, STM transactions, piece management around shared models
 ```
 
-**Enhanced Model Features**: Backend models provide:
-- **Attachment System**: Comprehensive musical attachment support (ties, slurs, dynamics, etc.)
-- **Timewalk Operations**: Efficient traversal of musical structures  
+**Enhanced Model Features**: Backend provides:
+- **Server Integration**: gRPC service implementation and STM coordination
+- **Piece Management**: Centralized piece storage and concurrent access control  
 - **VPD Addressing**: Precise navigation within complex musical hierarchies
 - **Advanced Algorithms**: Music theory, layout, and rendering computations
 
 ### Namespace Organization
+
+**For 90% of your backend code, you only need this:**
+
+```clojure
+(ns my-namespace
+  (:require [ooloi.shared.models.core :refer :all]))
+```
+
+This gives you access to:
+- **All constructors**: `create-pitch`, `create-chord`, `create-measure`, etc. (from shared project)
+- **All predicates**: `pitch?`, `chord?`, `measure?` (raw items), plus `pitch??`, `chord??`, `measure??` (timewalk tuples), etc. (from shared project)
+- **All multimethods**: `get-duration`, `add-item`, `set-name`, etc. (interfaces from shared, implementations from backend)
+
+**Why this works**: The shared `core` namespace imports shared model contracts and provides a unified entry point for backend development.
+
+**Architecture Note**: Core data structures live in the `shared/` project. The shared `core` namespace serves as the complete Ooloi system that both frontend and backend consume.
 
 **Shared Operations** (now in shared project):
 ```clojure
@@ -298,18 +322,15 @@ The backend implements shared model contracts, establishing clean separation bet
 [ooloi.shared.ops.text :as text]        ; Text processing (pluralization, etc.)
 ```
 
-**Backend Re-exports**: For compatibility, backend maintains aliases:
-```clojure
-[ooloi.backend.ops.access :as xs]       ; Re-exports shared functionality
-[ooloi.backend.ops.pitches :as pitches] ; + backend-specific specs
-[ooloi.backend.ops.rhythm :as rhythm]   ; + backend-specific algorithms
-```
-
-**Backend-Only Operations**:
+**Backend-Specific Operations**:
 ```clojure
 [ooloi.backend.ops.timewalk :as tw]     ; Musical structure traversal
-[ooloi.backend.ops.changes :as ch]      ; Change-based attributes (time sigs, etc.)  
 [ooloi.backend.components.* :as *]      ; Integrant system components
+```
+
+**Shared Operations** (available to both frontend and backend):
+```clojure
+[ooloi.shared.models.changes :as ch]    ; Change-based attributes (time sigs, etc.) - now in shared
 ```
 
 ### Testing Architecture
@@ -324,17 +345,14 @@ The backend implements shared model contracts, establishing clean separation bet
 (generators/gen-pitch)                ; Pitch generator for property testing
 ```
 
-**Backend Test Coverage**: ~16,700 passing tests including:
-- **Shared Model Integration**: Tests for shared model compatibility and backend-specific implementations
-- **VPD Operations**: Comprehensive VPD addressing, navigation, and timewalk integration
-- **Attachment System**: All musical attachment types, behaviors, and cross-reference resolution
-- **gRPC Server Implementation**: Protocol buffer conversion, service methods, and unified ExecuteMethod interface
-- **Component Lifecycle**: Integrant system startup/shutdown scenarios and piece manager operations
-- **Musical Operations**: Complex algorithmic operations (timewalk, attachment resolution, rhythm processing)
+**Backend Test Coverage**: ~1,869 passing tests including:
+- **Shared Model Integration**: Backend-specific implementations of shared contracts
+- **Complex Musical Operations**: Timewalk traversal, attachment resolution, algorithmic processing
+- **gRPC Server Implementation**: Unified ExecuteMethod interface with dynamic API resolution
+- **Component Lifecycle**: Integrant system startup/shutdown scenarios and piece manager operations  
 - **STM Transactions**: Thread-safe concurrent piece modification and batch operations
-- **API Completeness**: All ~193 backend API methods with comprehensive behavior testing
+- **API Integration**: All ~193 backend API methods accessible via gRPC unified interface
 
-**Compatibility**: Backend maintains full API compatibility through namespace re-exports for legacy code.
 
 ## Development
 
@@ -567,68 +585,67 @@ lein coverage
 
 **Important**: Use `lein midje` instead of `lein test`. The project is configured for Midje testing framework.
 
-**Backend Test Coverage**: ~16,700 passing tests including:
+**Backend Test Coverage**: ~1,869 passing tests including:
 - **Application Infrastructure**: CLI argument parsing, configuration management, environment variables
 - **Component Lifecycle**: Integrant component initialization, dependency injection, health monitoring
 - **System Integration**: Deployment modes, configuration propagation, error handling
 - **Musical Data Management**: STM transactions, piece storage, concurrent modifications
-- **gRPC Server Implementation**: Protocol buffer conversion, service methods, unified ExecuteMethod interface
-- **VPD Operations**: Comprehensive VPD addressing, navigation, and timewalk integration
-- **Attachment System**: All musical attachment types, behaviors, and cross-reference resolution
+- **gRPC Server Implementation**: Unified ExecuteMethod interface, dynamic API method resolution
 - **Complex Musical Operations**: Timewalk traversal, attachment resolution, algorithmic processing
-- **API Completeness**: All ~193 backend API methods with comprehensive behavior testing
+- **API Delegation**: All ~193 backend API methods accessible via unified gRPC interface
 - **Performance Optimization**: Transport modes, in-process communication, connection management
 - **Security Configuration**: TLS validation, certificate generation, secure client-server communication
-- **Shared Model Integration**: Backend-specific implementations of shared contracts
+- **Backend-Specific Enhancements**: Server-side implementations using shared model contracts
 
-**Total: ~16,700 tests** covering complete backend functionality including system architecture, musical operations, gRPC communication, and production deployment scenarios.
+**Total: ~1,869 tests** covering backend-specific functionality including gRPC server implementation, complex musical operations, and production deployment scenarios.
 
-### Protocol Buffer Integration
+### gRPC Integration
 
-The backend uses gRPC for frontend communication:
+The backend implements Ooloi's unified gRPC server architecture:
 
 ```bash
-# Compile Protocol Buffers and generate Java classes
+# Compile application (includes automatic gRPC server generation)
 lein compile
-
-# Clean and recompile (when .proto files change)  
-lein clean && lein compile
 
 # Verify generated classes
 ls target/generated-sources/protobuf/
 ```
 
-#### Protocol Buffer Configuration
+#### Unified gRPC Server Architecture
 
-- **Proto source**: `../shared/src/main/proto/ooloi_service.proto`
+The backend implements Ooloi's **unified gRPC system** that eliminates complex protocol buffer management:
+
+- **Universal ExecuteMethod**: Single endpoint serves all API methods via dynamic resolution
+- **Unified Schema**: `OoloiValue` message handles all Clojure data types automatically  
+- **Zero Code Generation**: No per-method gRPC implementations - just delegate to `api.clj`
+- **Dynamic Function Resolution**: `(ns-resolve 'ooloi.backend.api (symbol method-name))`
+- **Perfect Type Fidelity**: Ratios, keywords, and custom records preserved automatically
+
+#### gRPC Server Configuration
+
+- **Proto source**: `../shared/src/main/proto/ooloi_service.proto` (unified schema)
 - **Generated output**: `target/generated-sources/protobuf/`
-- **Automatic compilation**: Java classes generated during `lein compile`
+- **Service implementation**: Universal `ExecuteMethod` with automatic API delegation
+- **Conversion**: Automatic Clojure ↔ `OoloiValue` conversion
 
-#### When to Recompile Protocol Buffers
+#### When Compilation is Needed
 
-Recompile when:
-- Modifying `.proto` files in `shared/src/main/proto/`
-- After `git pull` that updates protobuf definitions
-- Build errors related to missing protobuf classes
+**✅ Automatic**: No manual steps needed for:
+- New API methods in `api.clj`
+- New data models or records  
+- Plugin installations
+- Shared model changes
 
-**Development workflow:**
+**⚠️ Rare**: Recompilation only needed when `ooloi_service.proto` itself changes:
 ```bash
-# 1. Make your API changes
-# 2. Compile and test:
-cd backend
-lein compile
-lein midje
+# Only if the unified schema is modified
+lein clean && lein compile
 ```
 
-#### Manual Protocol Buffer Commands
-
+**🎯 Normal Development**: Just code and test:
 ```bash
-# Force recompilation
-lein clean
-lein compile
-
-# View generated classes
-find target/generated-sources/protobuf -name "*.java" | head -5
+# Add new API methods, modify data models, etc.
+lein midje  # Test - no compilation cascades needed
 ```
 
 ### Building and Packaging
@@ -657,7 +674,7 @@ The documentation will be generated in the `docs` directory.
 Recommended development sequence:
 
 1. **Setup**: `lein deps` (install dependencies)
-2. **Compile**: `lein compile` (generate Protocol Buffers + compile Clojure)
+2. **Compile**: `lein compile` (compile application with gRPC server)
 3. **Test**: `lein midje` (run test suite)
 4. **Run**: `lein run` (start backend server)
 5. **Iterate**: Make changes and repeat steps 2-4

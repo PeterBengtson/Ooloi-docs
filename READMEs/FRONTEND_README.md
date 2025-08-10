@@ -31,7 +31,7 @@ This directory contains the frontend client code for Ooloi, a high-performance m
     - [REPL](#repl)
 11. [Development Commands](#development-commands)
     - [Running Tests](#running-tests)
-    - [Protocol Buffer Generation](#protocol-buffer-generation)
+    - [gRPC Integration](#grpc-integration)
     - [Building and Packaging](#building-and-packaging)
     - [Documentation Generation](#documentation-generation)
     - [Development Workflow](#development-workflow)
@@ -85,13 +85,23 @@ The frontend is a full-featured application using **Integrant dependency injecti
 
 ```
 frontend/
-├── docs/              ; The HTML documentation for the frontend, created by Codox
-├── resources/         ; Resources for the application, notably icons
-├── src/               ; The source code hierarchy for the frontend
-├── test/              ; The frontend Midje tests
-└── CHANGELOG.md       ; The CHANGELOG (as of yet unused)
-└── README.md          ; This README
-└── project.clj        ; The Leiningen project file for the frontend
+├── docs/                            ; HTML documentation created by Codox
+├── resources/                       ; Application resources, icons
+├── src/main/clojure/ooloi/frontend/ ; Frontend consumer source code
+│   ├── components/                  ; UI components using shared data model
+│   │   ├── score_view.clj           ; Score rendering with shared Piece records
+│   │   └── measure_editor.clj       ; Measure editing using shared API
+│   ├── grpc/                        ; gRPC client for remote backend access
+│   │   ├── client.clj               ; OoloiService client wrapper
+│   │   └── connection.clj           ; Connection management
+│   └── core.clj                     ; Application entry point
+├── test/clojure/ooloi/frontend/     ; Frontend consumer tests (131 tests)
+│   ├── components/                  ; UI component tests
+│   ├── grpc/                        ; gRPC client tests
+│   └── integration/                 ; Unified data model integration tests
+├── CHANGELOG.md
+├── README.md
+└── project.clj                      ; Dependencies: shared/ (complete Ooloi system)
 ```
 
 ## Prerequisites
@@ -503,82 +513,69 @@ lein coverage
 - **Application Infrastructure**: CLI argument parsing, configuration management, environment variables
 - **Component Lifecycle**: Integrant component initialization, dependency injection, health monitoring
 - **System Integration**: Deployment modes, configuration propagation, error handling
-- **gRPC Client Infrastructure**: Protocol buffer message creation and gRPC client class instantiation
-- **Shared Model Integration**: Tests for frontend-accessible shared functionality with mock backend support
-- **UI Component Testing**: Form validation, user interaction handling, and component state management  
-- **Client-side Functionality**: Connection management, error handling, client-side data processing
+- **gRPC Client Infrastructure**: Unified OoloiService client setup and connection management
+- **Unified Data Model Testing**: Tests confirming frontend uses IDENTICAL data structures as backend
+- **UI Component Testing**: Form validation, user interaction handling, component state management
+- **Dual Usage Pattern Testing**: Local shared calls AND remote gRPC calls using same data
 - **Security Configuration**: TLS validation, certificate path verification, secure connection setup
-- **Mock Backend Integration**: Verification that shared traits and interfaces work with stubbed backend dependencies
+- **Data Fidelity Verification**: Tests ensuring `(= frontend-object backend-object) => true`
 
-**Total: 131 tests** covering complete application infrastructure including system architecture, configuration management, and client-side functionality.
+**Total: 131 tests** covering complete frontend consumer functionality with unified data model integration.
 
-### Protocol Buffer Generation
+### gRPC Integration
 
-The frontend includes gRPC client infrastructure with automatic Protocol Buffer compilation:
+**Essential Role**: Frontend is a **consumer of the unified Ooloi data model** located in shared/.
+
+**⚡ CRITICAL**: Frontend uses **identical** data structures as backend:
+- Same `Pitch` records, same `Piece` structures, same everything
+- No separate frontend representations - just the unified data model
+- Perfect fidelity: `(= frontend-pitch backend-pitch) => true`
+- Works locally (direct shared calls) and remotely (gRPC)
+
+The frontend uses Ooloi's unified gRPC architecture for remote backend communication:
 
 ```bash
-# Compile Protocol Buffers and generate Java classes
+# Compile application (includes automatic gRPC client generation)
 lein compile
-
-# Clean and recompile (recommended when .proto files change)  
-lein clean && lein compile
 
 # Verify generated classes
 ls target/generated-sources/protobuf/
 ```
 
-#### Protocol Buffer Configuration
+#### Unified gRPC Architecture
 
-The frontend automatically generates Java client classes from shared Protocol Buffer definitions:
+The frontend uses Ooloi's revolutionary **unified gRPC system** that eliminates complex protocol buffer management:
 
-- **Proto source**: `../shared/src/main/proto/` (shared with backend)
-- **Generated output**: `target/generated-sources/protobuf/`
-- **Compiler version**: protoc 3.25.3 (automatically downloaded)
-- **Generated files**: 
-  - `ooloi_domain.proto` → Domain model Java classes
-  - `ooloi_service.proto` → gRPC client stubs
-  - `vpd.proto` → VPD utility classes
+- **Unified Schema**: Single `OoloiValue` message handles all Clojure data types automatically
+- **Dynamic API Access**: All backend methods available via `ExecuteMethod` - no per-method generation needed
+- **Zero Maintenance**: New API methods and data types work immediately without regeneration
+- **Perfect Type Fidelity**: Ratios, keywords, and custom records preserved across network boundaries
 
-#### When to Regenerate Protocol Buffers
+#### gRPC Client Configuration
 
-**⚠️ Important**: Protocol Buffers must be regenerated after backend API changes:
+- **Proto source**: `../shared/src/main/proto/ooloi_service.proto` (unified schema)
+- **Generated output**: `target/generated-sources/protobuf/`  
+- **Client stubs**: Universal `OoloiService` client with `ExecuteMethod`
+- **Conversion**: Automatic Clojure ↔ `OoloiValue` conversion
 
-**Regenerate when backend adds:**
-- New API methods to `backend/models/interfaces.clj`, `models/core.clj`, or `api.clj`
-- New gRPC service methods or message types
-- Changes to existing API method signatures
+#### When Compilation is Needed
 
-**Frontend regeneration workflow:**
+**✅ Automatic**: No manual steps needed for:
+- New API methods in backend
+- New data models or records
+- Plugin installations  
+- Shared model changes
+
+**⚠️ Rare**: Recompilation only needed when `ooloi_service.proto` itself changes:
 ```bash
-# 1. First ensure shared/ and backend/ are regenerated
-cd ../shared && lein clean && lein compile
-cd ../backend && lein clean && lein compile
-
-# 2. Then regenerate frontend client stubs
-cd ../frontend
-lein clean
-lein protoc
-
-# 3. Verify client compilation
-lein compile
-lein midje
+# Only if the unified schema is modified
+lein clean && lein compile
 ```
 
-**Signs you need to regenerate:**
-- Missing gRPC client methods for new backend API functions
-- `NoSuchMethodError` when calling gRPC methods
-- Protocol buffer compilation errors
-- New backend methods not accessible from frontend
-
-#### Manual Protocol Buffer Commands
-
+**🎯 Normal Development**: Just code and test:
 ```bash
-# Force Protocol Buffer regeneration
-lein clean
-lein protoc
-
-# View generated Java classes
-find target/generated-sources/protobuf -name "*.java" | head -10
+# Make any changes to shared models, backend API, etc.
+lein midje  # Test - that's it!
 ```
 
 ### Building and Packaging
@@ -607,7 +604,7 @@ The documentation will be generated in the `docs` directory.
 Recommended development sequence:
 
 1. **Setup**: `lein deps` (install dependencies)
-2. **Compile**: `lein compile` (generate Protocol Buffers + compile Clojure)
+2. **Compile**: `lein compile` (compile application with gRPC client)
 3. **Test**: `lein midje` (run test suite)
 4. **Run**: `lein run` (start frontend client)
 5. **Iterate**: Make changes and repeat steps 2-4
@@ -616,60 +613,82 @@ Recommended development sequence:
 
 The frontend integrates with shared model contracts with important architectural constraints discovered during implementation.
 
+### Quick Start: What Most Frontend Code Needs
+
+**For 90% of your frontend code, you only need this:**
+
+```clojure
+(ns my-frontend-namespace
+  (:require [ooloi.shared.models.core :refer :all]))
+```
+
+This gives you access to:
+- **All constructors**: `create-pitch`, `create-chord`, `create-measure`, etc. (same as backend)
+- **All predicates**: `pitch?`, `chord?`, `measure?` (raw items), plus `pitch??`, `chord??`, `measure??` (timewalk tuples), etc. (same as backend)
+- **All multimethods**: `get-duration`, `add-item`, `set-name`, etc. (same interfaces as backend)
+
+**Why this works**: The shared `core` namespace provides the complete Ooloi system that frontend uses identically to backend.
+
+**Architecture Note**: Frontend uses the SAME data model as backend - no conversion, no separate representations. `(= frontend-pitch backend-pitch) => true`
+
 ### Selective Shared Import Architecture
 
 **Key Discovery**: Not all shared code is frontend-accessible due to legitimate backend dependencies in some shared files. This is by design, not a limitation.
 
 **Frontend-Safe Shared Code**:
 ```clojure
-;; ✅ Safe for frontend use
+;; ✅ Safe for frontend use - completed shared model contracts
 [ooloi.shared.ops.text :as text]                    ; Pure utilities (pluralization, etc.)
-[ooloi.shared.ops.pitches :as pitches]              ; Pitch normalization (with proper deps)  
+[ooloi.shared.ops.pitches :as pitches]              ; Pitch normalization utilities
 [ooloi.shared.specs.generators :as generators]      ; Test data generators
-[ooloi.shared.models.musical.pitch :refer [create-pitch]]  ; Basic model creation
+[ooloi.shared.models.musical.pitch :refer [create-pitch]]  ; Shared model constructors
+[ooloi.shared.interfaces :as interfaces]            ; Multimethod interface contracts
+[ooloi.shared.predicates :as predicates]            ; Type checking predicates
 ```
 
-**Backend-Dependent Shared Code** (Cannot be loaded by frontend):
+**Selective Import Pattern**:
 ```clojure
-;; ⚠️ Contains backend dependencies - architecture-dependent, not bugs
-[ooloi.shared.traits.attachment :as att]       ; Imports backend.models.musical.instrument
-[ooloi.shared.proto-conversion :as proto]      ; Imports backend ops for VPD operations  
-[ooloi.shared.models.* :as *]                  ; Many models depend on attachment system
+;; ✅ Frontend selectively imports backend-free shared modules
+[ooloi.shared.traits.has-items :as has-items]       ; Collection behaviors
+[ooloi.shared.traits.rhythmic-item :as rhythmic]    ; Duration-based elements  
+;; ⚠️ Some shared files have legitimate backend dependencies - use selective import
 ```
 
 ### Testing Architecture
 
-**Mock Backend Solution**: Frontend uses mock backend namespaces to enable full shared code access:
+**Unified System Access**: Frontend uses the complete shared Ooloi system directly:
 
 ```clojure
-;; Frontend test configuration  
-:source-paths ["src/main/clojure" "../shared/src/main/clojure"]  ; Full shared access
+;; Frontend configuration - unified data model access
+:source-paths ["src/main/clojure" "../shared/src/main/clojure"]  ; Complete Ooloi system
 :test-paths ["test/clojure"]
 
-;; Mock backend implementations in frontend
-frontend/src/main/clojure/ooloi/backend/ops/piece_manager.clj  ; Mock piece-manager functions
-frontend/src/main/clojure/ooloi/backend/ops/timewalk.clj       ; Mock timewalk transducers
-
-;; Test status: 20 passing tests with full shared imports working
+;; Frontend uses shared system directly - no mocks needed for unified architecture
+;; All data models, traits, interfaces, operations now in shared/
+;; Test status: 131 passing tests with direct shared system access
 ```
 
-**Architecture Solution**: Frontend provides stub implementations of backend dependencies that shared traits require. This allows:
+**Unified Architecture**: Frontend uses the complete shared system directly:
 
-- ✅ **Full shared code access**: Import predicates, interfaces, traits normally
-- ✅ **`lein midje` auto-discovery**: No manual test file specification required  
-- ✅ **Scalable test development**: Hundreds of tests can import shared code
-- ✅ **Normal development workflow**: Test any frontend integration with shared functionality
+- ✅ **Direct Shared Access**: All models, traits, interfaces, operations in shared/
+- ✅ **No Mock Dependencies**: Timewalk, attachments, traits all moved to shared  
+- ✅ **Identical Data Model**: Same records, same functions, same everything as backend
+- ✅ **Clean Architecture**: Frontend is pure consumer of unified system
 
 ```clojure
-;; Frontend can now import any shared code
-(ns my-frontend-test
+;; Frontend uses shared system directly (same as backend)
+(ns my-frontend-component
   (:require
-   [midje.sweet :refer :all]
-   [ooloi.shared.predicates :as p]         ; ✅ Works - predicates load normally
-   [ooloi.shared.interfaces :as i]))       ; ✅ Works - traits load with mock backend
+   [ooloi.shared.models.musical.pitch :refer [create-pitch]]   ; Same as backend
+   [ooloi.shared.ops.timewalk :as tw]                          ; Now in shared
+   [ooloi.shared.traits.attachment :as att]                    ; Now in shared  
+   [ooloi.shared.interfaces :as i]))                           ; Same as backend
+
+;; Creates identical objects to backend
+(def my-pitch (create-pitch "C4" "1/4"))  ; Same function, same Pitch record
 ```
 
-**Trade-offs**: Mock backend requires maintenance if backend interfaces change, but enables normal frontend test development without architectural constraints.
+**Architecture Benefits**: Unified system eliminates mock complexity and ensures perfect data fidelity across frontend and backend.
 
 ### Generator System Access
 
@@ -686,13 +705,23 @@ frontend/src/main/clojure/ooloi/backend/ops/timewalk.clj       ; Mock timewalk t
 
 ### Frontend Development Strategy
 
-**gRPC Client Readiness**: Frontend is positioned for gRPC client development with:
-- ✅ **Test framework validated** (midje working correctly)
-- ✅ **Selective shared imports working** (text utilities, generators)  
-- ✅ **Architecture constraints understood** (backend-dependent shared modules identified)
-- ✅ **Generator system accessible** (comprehensive test data creation)
+**Unified Data Model Consumer**: Frontend ready for production with:
+- ✅ **Identical Data Model** (same records as backend, zero conversion)
+- ✅ **Dual Usage Patterns** (local shared calls + remote gRPC calls)
+- ✅ **Perfect Object Fidelity** (frontend objects ARE backend objects)
+- ✅ **Zero-maintenance system** (unified architecture eliminates complexity)
 
-**Next Step**: gRPC client integration to communicate with backend models via protocol buffers, avoiding direct shared model dependencies where backend integration exists.
+**Development Reality**: Simple, unified workflow:
+```bash
+# Frontend uses SAME shared system as backend
+(def my-pitch (create-pitch "C4" "1/4"))   ; Same function as backend uses
+(pitch? my-pitch)                           ; Same predicate as backend uses
+
+# Make any changes to the unified system
+lein midje  # Test - frontend automatically gets all shared improvements
+```
+
+**Architecture Principle**: Frontend doesn't have separate data models - it IS a consumer of the complete Ooloi system in shared/, just like backend is.
 
 ## Notes
 
