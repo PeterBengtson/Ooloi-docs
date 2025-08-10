@@ -13,7 +13,7 @@ Different README files for various contexts and audiences.
 - **[SHARED_README.md](SHARED_README.md)**: gRPC infrastructure, Protocol Buffer management, and combined application setup
 
 ### Source Code Documentation
-- **[SRC_BACKEND_README.md](SRC_BACKEND_README.md)**: Backend source code architecture, patterns, and implementation details
+- **[SRC_SHARED_README.md](SRC_SHARED_README.md)**: Ooloi engine source code architecture, patterns, and implementation details
 
 ## Documentation Types
 
