@@ -43,7 +43,7 @@ We will implement **unified Clojure-aware gRPC architecture with comprehensive b
 ### 2. Dynamic API Method Resolution
 
 **Runtime Flexibility**: All API methods accessible through unified endpoint:
-- **Dynamic function resolution**: `(ns-resolve 'ooloi.backend.api (symbol method-name))`
+- **Dynamic function resolution**: `(ns-resolve 'ooloi.shared.api (symbol method-name))`
 - **VPD + piece-id patterns** work identically to local API usage
 - **Zero code generation overhead** - new API methods immediately available
 - **Plugin compatibility** - new plugin methods work automatically

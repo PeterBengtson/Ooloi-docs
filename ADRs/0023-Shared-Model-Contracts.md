@@ -40,27 +40,36 @@ We will create **Shared Model Contracts** by moving pure data model definitions 
 - Move to `shared/src/main/clojure/ooloi/shared/models/`
 - Maintain same namespace structure: `ooloi.shared.models.musical.pitch`, etc.
 
-### What Stays in Backend
+### Current Architecture Distribution
 
-**1. Multimethod Implementations**
-- All `defmethod` implementations remain in backend
-- Backend imports shared interfaces and implements them
+**Shared Project (The Ooloi Engine)**
+- All domain models, interfaces, predicates, traits, and hierarchy
+- STM-based piece management operations  
+- VPD operations and timewalk functionality
+- All multimethod definitions and implementations
+- Core business logic and musical knowledge
 
-**2. Backend-Specific Operations**
-- STM transaction logic
-- Persistence operations  
-- Backend service implementations
+**Backend Project (Server Wrapper)**
+- gRPC server implementation
+- Piece manager component (Integrant lifecycle coordination)
+- Persistence and storage operations
+- Network service layer
 
-**3. VPD Operations**
-- Complex operations like timewalk remain backend-specific
-- Simple VPD utilities already in shared project
+**Frontend Project (UI Wrapper)**
+- JavaFX user interface components
+- User interaction handling
+- Visual rendering and graphics
+- UI-specific state management
 
 ### Implementation Approach
 
-The shared model architecture follows a clear separation:
-1. **Shared contracts**: Data structures, interfaces, predicates, hierarchy moved to shared project
-2. **Backend implementations**: Multimethod implementations remain in backend, importing from shared
-3. **Frontend integration**: Frontend imports shared models for native type fidelity
+The architecture has fundamentally shifted to **shared project as the core engine**:
+
+1. **Shared Project = Ooloi Engine**: Contains all domain knowledge, classes, models, STM operations, VPD system, timewalk, interfaces, predicates, and traits
+2. **Backend Project = Server Wrapper**: Thin wrapper providing gRPC server, piece manager component coordination, and persistence layer around the shared engine
+3. **Frontend Project = UI Wrapper**: Thin wrapper providing user interface and JavaFX rendering around the shared engine
+
+Both backend and frontend are now essentially lightweight adapters that expose the shared engine through different interfaces (network vs. UI).
 
 ## Rationale
 
