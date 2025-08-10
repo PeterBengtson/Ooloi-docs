@@ -577,27 +577,13 @@ The backend uses Midje for comprehensive testing:
 lein midje
 
 # Run specific test namespace
-lein midje ooloi.backend.ops.timewalk-test
+lein midje ooloi.backend.ops.piece-manager-test
 
 # Run tests with coverage report
 lein coverage
 ```
 
 **Important**: Use `lein midje` instead of `lein test`. The project is configured for Midje testing framework.
-
-**Backend Test Coverage**: ~1,869 passing tests including:
-- **Application Infrastructure**: CLI argument parsing, configuration management, environment variables
-- **Component Lifecycle**: Integrant component initialization, dependency injection, health monitoring
-- **System Integration**: Deployment modes, configuration propagation, error handling
-- **Musical Data Management**: STM transactions, piece storage, concurrent modifications
-- **gRPC Server Implementation**: Unified ExecuteMethod interface, dynamic API method resolution
-- **Complex Musical Operations**: Timewalk traversal, attachment resolution, algorithmic processing
-- **API Delegation**: All ~193 backend API methods accessible via unified gRPC interface
-- **Performance Optimization**: Transport modes, in-process communication, connection management
-- **Security Configuration**: TLS validation, certificate generation, secure client-server communication
-- **Backend-Specific Enhancements**: Server-side implementations using shared model contracts
-
-**Total: ~1,869 tests** covering backend-specific functionality including gRPC server implementation, complex musical operations, and production deployment scenarios.
 
 ### gRPC Integration
 

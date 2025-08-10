@@ -509,19 +509,6 @@ lein coverage
 
 **Important**: Use `lein midje` instead of `lein test`. The project is configured for Midje testing framework.
 
-**Frontend Test Coverage**: 131 passing tests including:
-- **Application Infrastructure**: CLI argument parsing, configuration management, environment variables
-- **Component Lifecycle**: Integrant component initialization, dependency injection, health monitoring
-- **System Integration**: Deployment modes, configuration propagation, error handling
-- **gRPC Client Infrastructure**: Unified OoloiService client setup and connection management
-- **Unified Data Model Testing**: Tests confirming frontend uses IDENTICAL data structures as backend
-- **UI Component Testing**: Form validation, user interaction handling, component state management
-- **Dual Usage Pattern Testing**: Local shared calls AND remote gRPC calls using same data
-- **Security Configuration**: TLS validation, certificate path verification, secure connection setup
-- **Data Fidelity Verification**: Tests ensuring `(= frontend-object backend-object) => true`
-
-**Total: 131 tests** covering complete frontend consumer functionality with unified data model integration.
-
 ### gRPC Integration
 
 **Essential Role**: Frontend is a **consumer of the unified Ooloi data model** located in shared/.
@@ -544,7 +531,7 @@ ls target/generated-sources/protobuf/
 
 #### Unified gRPC Architecture
 
-The frontend uses Ooloi's revolutionary **unified gRPC system** that eliminates complex protocol buffer management:
+The frontend uses Ooloi's **unified gRPC system** that eliminates complex protocol buffer management:
 
 - **Unified Schema**: Single `OoloiValue` message handles all Clojure data types automatically
 - **Dynamic API Access**: All backend methods available via `ExecuteMethod` - no per-method generation needed

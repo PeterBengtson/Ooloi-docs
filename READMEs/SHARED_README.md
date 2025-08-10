@@ -334,12 +334,10 @@ The shared project contains Protocol Buffer definitions for frontend-backend com
 ### Protocol Buffer Schema
 
 - **`ooloi_service.proto`**: gRPC service definitions
-- **`vpd.proto`**: Vector Path Descriptor addressing structures
 
 ### Conversion Utilities
 
 - **`proto_conversion.clj`**: Clojure ↔ Protocol Buffer conversion
-- **`vpd_utils.clj`**: VPD manipulation utilities
 
 ### Build Integration
 
@@ -367,10 +365,8 @@ The shared project contains Protocol Buffer definitions for frontend-backend com
    ```
    
    The test suite includes comprehensive coverage of:
-   - Protocol Buffer conversion utilities (62 tests)
-   - VPD manipulation functions (12 tests)  
+   - Protocol Buffer conversion utilities
    - Round-trip conversion symmetry for all data types
-   - Context-aware VPD auto-detection
 
 3. Build the application:
    ```bash
@@ -640,15 +636,6 @@ lein midje ooloi.shared.proto-conversion-test
 lein coverage
 ```
 
-The test suite includes comprehensive coverage of:
-- **Protocol Buffer conversion utilities** (62 tests) - Clojure ↔ protobuf conversion logic
-- **VPD manipulation functions** (12 tests) - Vector Path Descriptor utilities  
-- **Shared model contracts** (~1,587 tests) - All shared model functionality and generator correctness
-- **gRPC Integration tests** - Real client-server communication testing (in-process, network, distributed)
-- **Build utilities** - Cross-project packaging and deployment tools
-
-**Total: ~15,048 tests** covering all shared model contracts, unified gRPC conversion utilities, and integration testing between frontend and backend.
-
 ### Architecture Insights
 
 **Unified Data Model Access**: Frontend and backend use IDENTICAL shared system:
@@ -725,7 +712,7 @@ ls target/generated-sources/protobuf/
 
 #### Unified gRPC Schema
 
-The shared project provides Ooloi's **revolutionary unified gRPC architecture**:
+The shared project provides Ooloi's **unified gRPC architecture**:
 
 - **`src/main/proto/ooloi_service.proto`** - Complete unified schema
   - **Universal OoloiValue**: Handles all Clojure data types automatically

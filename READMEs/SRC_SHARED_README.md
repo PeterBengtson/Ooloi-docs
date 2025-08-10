@@ -108,8 +108,8 @@ shared/src/main/clojure/ooloi/shared/
 
 **Complete Operations:**
 - `ops/` - All Ooloi operations and algorithms
-  - `timewalk.clj` - Musical structure traversal (moved from backend)
-  - `attachment_resolver.clj` - Attachment resolution (moved from backend)  
+  - `timewalk.clj` - Musical structure traversal 
+  - `attachment_resolver.clj` - Attachment resolution   
   - All other operations used by both frontend and backend
 
 **System Infrastructure:**
@@ -140,11 +140,9 @@ Piece
 
 The entire structure is always a pure tree, making serialization and deserialization straightforward. Cross-references are implemented as ID references, not pointers. IDs are lazily assigned to objects as needed.
 
-**⚡ UNIFIED ARCHITECTURE**: Frontend and backend use this IDENTICAL data model - no separate representations, no conversion layers.
-
 ## Class-specific Operations
 
-Each model file contains the most basic operations for that model, such as adding and deleting nested items, e.g., to add a Layout to a Piece. The focus is on brevity and understandability.
+Each model file contains the most basic operations for that model, such as adding and deleting nested items, e.g., to add a Layout to a Piece.
 
 More complex or abstract operations, such as formatting a MeasureView for display or traversing musical structures, are placed in the `ops/` directory to keep model files succinct and understandable.
 
@@ -172,7 +170,7 @@ For the `Pitch` model, the constructor function is `create-pitch`. To create a `
 (create-pitch :note "C4" :duration 1/4)
 ```
 
-Similar `create-xxxxx` functions are available for all models. **These functions work identically in frontend and backend.**
+Similar `create-xxxxx` functions are available for all models.
 
 ### Accessors and Mutators
 
@@ -198,8 +196,6 @@ ChangeSets (used for time signatures, key signatures, tempo changes) have these 
 - `remove-tempo`
 - `set-tempo`
 - `set-tempos`
-
-**⚡ UNIFIED API**: All accessors and mutators work identically in frontend and backend - same functions, same data structures, same everything.
 
 ## Core and API Polymorphism
 
@@ -259,8 +255,6 @@ The VPD compact form:
 ```clojure
 (remove-item [:m 0 0 0 0 1] "PieceID2418" 2)
 ```
-
-**⚡ UNIFIED SYSTEM**: Same API functions work locally (direct objects) and remotely (VPD + piece-id). Frontend can use both patterns depending on deployment mode.
 
 ## Unified gRPC Architecture
 
