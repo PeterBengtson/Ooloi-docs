@@ -1,5 +1,39 @@
 # ADR-0023: Shared Model Contracts
 
+## Table of Contents
+
+- [Status](#status)
+- [Context](#context)
+  - [Previous Architecture Limitations](#previous-architecture-limitations)
+  - [gRPC Unified Architecture Enables This](#grpc-unified-architecture-enables-this)
+- [Decision](#decision)
+  - [What Gets Moved to Shared](#what-gets-moved-to-shared)
+  - [Current Architecture Distribution](#current-architecture-distribution)
+  - [Implementation Approach](#implementation-approach)
+- [Rationale](#rationale)
+  - [Benefits](#benefits)
+  - [Trade-offs and Considerations](#trade-offs-and-considerations)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+  - [Neutral](#neutral)
+- [Architecture Details](#architecture-details)
+  - [Shared Project Structure](#shared-project-structure)
+  - [Unified API Access](#unified-api-access)
+- [Multi-Language gRPC Support Impact](#multi-language-grpc-support-impact)
+  - [No Impact on Non-Clojure gRPC Consumers](#no-impact-on-non-clojure-grpc-consumers)
+  - [gRPC Layer Separation](#grpc-layer-separation)
+  - [Multi-Language Support Architecture](#multi-language-support-architecture)
+  - [Language-Specific Implementation Examples](#language-specific-implementation-examples)
+  - [Benefits by Language Type](#benefits-by-language-type)
+  - [Architectural Isolation](#architectural-isolation)
+  - [Plugin Ecosystem Implications](#plugin-ecosystem-implications)
+- [Implementation Notes (August 2025)](#implementation-notes-august-2025)
+  - [Key Achievements](#key-achievements)
+  - [Architecture Validation](#architecture-validation)
+  - [Architecture Insights Discovered](#architecture-insights-discovered)
+- [Summary](#summary)
+
 ## Status
 
 Accepted - **Implementation Complete** (August 2025)
