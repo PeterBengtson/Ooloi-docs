@@ -74,13 +74,14 @@ We will create **Shared Model Contracts** by moving pure data model definitions 
 
 **Shared Project (The Ooloi Engine)**
 - All domain models, interfaces, predicates, traits, and hierarchy
-- STM-based piece management operations  
-- VPD operations and timewalk functionality
 - All multimethod definitions and implementations
 - Core business logic and musical knowledge
+- All trait implementations and musical operations
 
 **Backend Project (Server Wrapper)**
 - gRPC server implementation
+- STM-based piece management operations
+- VPD operations and timewalk functionality
 - Piece manager component (Integrant lifecycle coordination)
 - Persistence and storage operations
 - Network service layer
@@ -121,9 +122,9 @@ Both backend and frontend are now essentially lightweight adapters that expose t
 - Hot plugin installation maintains type consistency
 
 **4. Architectural Clarity**
-- Clear separation: shared contracts vs. implementation-specific logic
-- Backend focuses on business logic, not data structure definition
-- Frontend can reason about data models directly
+- Clear separation: shared engine vs. interface-specific adapters
+- Shared contains all business logic and musical knowledge
+- Backend/frontend are thin wrappers for their respective interfaces
 
 ### Trade-offs and Considerations
 
@@ -133,9 +134,9 @@ Both backend and frontend are now essentially lightweight adapters that expose t
 - **Benefit**: Clear separation between contracts and implementations
 
 **2. Dependency Management**
-- **Trade-off**: Shared project carries more responsibility for system contracts
-- **Architecture**: Shared project remains purely declarative (no business logic)
-- **Guideline**: Clear boundaries between shared contracts and backend implementations
+- **Trade-off**: Shared project carries responsibility for core engine functionality
+- **Architecture**: Shared project contains all business logic and musical operations
+- **Guideline**: Backend/frontend are thin adapters around the shared engine
 
 **3. Testing Architecture**
 - **Layer-based Testing**: Integration tests requiring both frontend and backend components reside in shared project
