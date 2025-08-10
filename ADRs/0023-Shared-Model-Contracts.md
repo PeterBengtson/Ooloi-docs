@@ -99,7 +99,7 @@ Both backend and frontend are now essentially lightweight adapters that expose t
 
 **1. Namespace Changes**
 - **Trade-off**: New import paths require developer familiarity with shared model structure
-- **Mitigation**: Backend compatibility layer provides unified access point
+- **Mitigation**: Shared `core.clj` and `api.clj` provide unified access points
 - **Benefit**: Clear separation between contracts and implementations
 
 **2. Dependency Management**
@@ -152,18 +152,18 @@ shared/src/main/clojure/ooloi/shared/
     └── attachment.clj         # Trait definitions
 ```
 
-### Backend Compatibility Layer
+### Unified API Access
 
-The backend provides a compatibility layer that imports shared contracts and re-exports them using Potemkin's `import-vars` for unified access:
+The shared project provides unified access to all contracts through `core.clj` and `api.clj` that consolidate shared functionality using Potemkin's `import-vars`:
 
 ```clojure
-;; backend/src/main/clojure/ooloi/backend/models/core.clj
-(ns ooloi.backend.models.core
+;; shared/src/main/clojure/ooloi/shared/core.clj
+(ns ooloi.shared.core
   (:require [ooloi.shared.interfaces :as interfaces]
             [ooloi.shared.predicates :as predicates]
             [potemkin :refer [import-vars]]))
 
-;; Re-export shared contracts preserving metadata and function identity
+;; Unified access point for all shared contracts
 (import-vars
   [ooloi.shared.interfaces
    get-duration add-item set-name ...]
@@ -175,7 +175,7 @@ The backend provides a compatibility layer that imports shared contracts and re-
    create-pitch])
 ```
 
-This approach preserves function metadata, docstrings, and identity while providing unified access to all shared functionality.
+This approach provides a single import point while preserving function metadata, docstrings, and identity.
 
 ## Multi-Language gRPC Support Impact
 
