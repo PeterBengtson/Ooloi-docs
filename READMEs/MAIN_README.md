@@ -162,7 +162,7 @@ The system's concurrency model, powered by Clojure's STM and enhanced by Specter
 | Software Transactional Memory | Thread-safe concurrent operations using Clojure's STM | Used throughout with `ref` and `dosync` | [ADR-0004](/ADRs/0004-STM-for-concurrency.md) |
 | Plugin Architecture | Extensible system supporting plugins in any JVM language | Core interfaces in backend | [ADR-0003](/ADRs/0003-Plugins.md) |
 | Shared Structure | Handling elements that span across the musical piece tree | [`ops/attachment_resolver.clj`](/shared/src/main/clojure/ooloi/shared/ops/attachment-resolver.clj) | [ADR-0011](/ADRs/0011-Shared-Structure.md) |
-| Timewalk/Traversal | Transducer-based traversal of piece structure with temporal coordination | [`ops/timewalk.clj`](/backend/src/main/clojure/ooloi/backend/ops/timewalk.clj) | [ADR-0014](/ADRs/0014-Timewalk.md) |
+| Timewalk/Traversal | Transducer-based traversal of piece structure with temporal coordination | [`ops/timewalk.clj`](/shared/src/main/clojure/ooloi/shared/ops/timewalk.clj) | [ADR-0014](/ADRs/0014-Timewalk.md) |
 | SMuFL Fonts | Standard Music Font Layout for notation rendering | Font files in [`SMuFL-fonts/`](/SMuFL-fonts/) | [ADR-0006](/ADRs/0006-SMuFL.md) |
 
 ## Directory Structure

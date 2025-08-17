@@ -1306,7 +1306,7 @@ Elements come in temporal order with proper layout data:
 ## Further Reading
 
 For more examples and advanced usage patterns, see:
-- `ooloi.backend.ops.timewalk-test` for comprehensive test examples
+- `ooloi.shared.ops.timewalk-test` for comprehensive test examples
 
 ## Envoi
 

@@ -488,7 +488,7 @@ For interactive development, you can start a REPL:
 lein repl
 ```
 
-The REPL will start in the `ooloi.frontend.mon.core` namespace.
+The REPL will start in the `ooloi.frontend.core` namespace.
 
 ## Development Commands
 

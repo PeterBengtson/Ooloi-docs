@@ -324,7 +324,7 @@ This gives you access to:
 
 **Backend-Specific Operations**:
 ```clojure
-[ooloi.backend.ops.timewalk :as tw]     ; Musical structure traversal
+[ooloi.shared.ops.timewalk :as tw]      ; Musical structure traversal
 [ooloi.backend.components.* :as *]      ; Integrant system components
 ```
 
