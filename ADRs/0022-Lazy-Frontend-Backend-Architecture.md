@@ -1279,9 +1279,8 @@ Using DockFX library for comprehensive docking capabilities:
 ### Event Streaming Setup
 
 **gRPC Integration**:
-- Server streaming from backend for layout updates
-- Client streaming for batch user operations
-- Bidirectional streaming for collaborative session management
+- Server-to-client event streaming for layout invalidation notifications
+- Client API operations via ExecuteMethod for user operations
 - Event classification and filtering for efficient updates
 
 ### Event Subscription Management

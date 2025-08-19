@@ -1,4 +1,4 @@
-# ADR-0018: API-gRPC Interface Generation and Bidirectional Communication Architecture
+# ADR-0018: API-gRPC Interface Generation and Event Notification Architecture
 
 ## Status
 
@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Ooloi's collaborative music notation system requires comprehensive gRPC exposure of its backend API while supporting real-time bidirectional communication between frontend and backend components. This decision builds upon the architectural foundations established in [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md), [ADR-0002: gRPC Communication](0002-gRPC.md), and [ADR-0017: System Architecture](0017-System-Architecture.md).
+Ooloi's collaborative music notation system requires comprehensive gRPC exposure of its backend API while supporting real-time event notifications from backend to frontend components. This decision builds upon the architectural foundations established in [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md), [ADR-0002: gRPC Communication](0002-gRPC.md), and [ADR-0017: System Architecture](0017-System-Architecture.md).
 
 ### Scale Requirements
 
@@ -16,9 +16,8 @@ The `api.clj` namespace currently contains 100+ methods and will contain **hundr
 
 Ooloi's collaborative features require sophisticated communication patterns:
 
-1. **Frontend → Backend**: Hundreds of API methods for musical operations, plus parallel commands (saving, async operations)
-2. **Backend → Frontend**: Real-time event streaming for collaboration (graphics recomputed, piece changes, state synchronization)
-3. **Bidirectional**: Both directions must operate concurrently without blocking
+1. **Frontend → Backend**: Hundreds of API methods for musical operations via ExecuteMethod
+2. **Backend → Frontend**: Real-time event notifications for collaboration (graphics recomputed, piece changes, state synchronization)
 
 ### Cognitive Load Considerations
 
@@ -30,7 +29,7 @@ Remote developers need a **single, consistent mental model** based on VPDs, whil
 
 ## Decision
 
-We will implement **unified Clojure-aware gRPC architecture with comprehensive bidirectional asynchronous communication** using the following approach:
+We will implement **unified Clojure-aware gRPC architecture with server-to-client event notifications** using the following approach:
 
 ### 1. Unified Protobuf Schema (Updated 2025)
 
