@@ -1284,6 +1284,37 @@ Using DockFX library for comprehensive docking capabilities:
 - Bidirectional streaming for collaborative session management
 - Event classification and filtering for efficient updates
 
+### Event Subscription Management
+
+**Automatic Server Event Subscription**: All clients automatically subscribe to server events (shutdown, maintenance, global notifications) upon connection establishment. No explicit subscription required.
+
+**Manual Piece Event Subscription**: Clients explicitly subscribe to piece-specific events when opening pieces locally for rendering, and unsubscribe when closing pieces. This enables targeted event delivery.
+
+**Server-Side Subscription Tracking**: Backend maintains subscription registry tracking which clients are subscribed to which pieces, enabling efficient piece-scoped event routing.
+
+**Subscription Lifecycle Management**:
+```clojure
+;; API patterns for piece subscription management
+(execute-method :subscribe-to-piece {:piece-id "symphony-draft"})
+(execute-method :unsubscribe-from-piece {:piece-id "symphony-draft"})
+
+;; Server-side subscription tracking
+(defn track-piece-subscription [client-id piece-id]
+  (swap! subscription-registry update-in [piece-id] conj client-id))
+
+;; Event routing based on subscriptions
+(defn route-piece-event [event]
+  (let [subscribed-clients (get @subscription-registry (:piece-id event))]
+    (doseq [client-id subscribed-clients]
+      (send-event client-id event))))
+```
+
+**Connection Lifecycle Integration**: When clients disconnect, server automatically revokes all their piece subscriptions. Clients should explicitly unsubscribe from pieces before disconnecting for clean lifecycle management.
+
+**Event Taxonomy**:
+- **Server Events**: Global scope (shutdown, maintenance, client connections) - automatically delivered to all connected clients
+- **Piece Events**: Piece scope (measure invalidation, layout changes) - delivered only to clients subscribed to that specific piece
+
 ### Viewport Management
 
 **STM-Based State**:
