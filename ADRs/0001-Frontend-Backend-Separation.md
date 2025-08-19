@@ -109,7 +109,7 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 ### 1. Communication Architecture
 - **gRPC with Java interop** for frontend-backend communication (see [ADR-0002: gRPC](0002-gRPC.md))
 - **Protocol Buffers** for efficient serialization of musical data structures
-- **Bi-directional streaming** for real-time score updates and collaboration
+- **Server-to-client event notifications** for real-time score updates and collaboration
 
 ### 2. Component Management
 - **Integrant** for lifecycle management in all projects (see [ADR-0017: System Architecture](0017-System-Architecture.md))

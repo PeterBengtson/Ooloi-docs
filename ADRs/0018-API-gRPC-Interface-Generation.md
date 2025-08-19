@@ -47,11 +47,11 @@ We will implement **unified Clojure-aware gRPC architecture with server-to-clien
 - **Zero code generation overhead** - new API methods immediately available
 - **Plugin compatibility** - new plugin methods work automatically
 
-### 3. Bidirectional Asynchronous Architecture
+### 3. Server-to-Client Event Notification Architecture
 
 **Comprehensive Communication Patterns**:
 - **Generated API Methods**: All VPD-based operations from `api.clj`
-- **Event Streaming**: Backend streams piece events to subscribed frontend clients
+- **Event Streaming**: Backend streams invalidation events to subscribed frontend clients
 - **Parallel Command Processing**: Frontend issues concurrent operations without blocking UI
 - **Real-time Synchronization**: Multiple clients stay synchronized on shared pieces
 
@@ -65,7 +65,7 @@ service OoloiService {
   rpc SetTimeSignature(SetTimeSignatureRequest) returns (SetTimeSignatureResponse);
   // ... hundreds more generated methods
   
-  // Bidirectional communication infrastructure
+  // Server-to-client event notification infrastructure
   rpc SubscribeToPieceEvents(PieceSubscriptionRequest) returns (stream PieceEvent);
   rpc ExecuteAsyncCommand(AsyncCommandRequest) returns (AsyncCommandResponse);
 }
@@ -89,10 +89,10 @@ service OoloiService {
 
 ### Communication Architecture
 
-**Why Bidirectional vs. Request-Response Only:**
-- **Collaboration requirements**: Multiple clients editing shared pieces need real-time updates
+**Why Server-to-Client Event Notifications vs. Request-Response Only:**
+- **Collaboration requirements**: Multiple clients editing shared pieces need real-time invalidation updates
 - **User experience**: Frontend operations (MIDI playback, saving) must run parallel to musical edits
-- **Event-driven synchronization**: Graphics recomputation, layout changes require pushing updates to all clients
+- **Event-driven synchronization**: Graphics recomputation, layout changes require pushing invalidation notifications to all clients
 - **Performance**: Eliminates polling overhead for real-time features
 
 **Why Event Streaming vs. Polling:**
@@ -295,7 +295,7 @@ rpc CollaborateOnPiece(stream CollaborationInput) returns (stream CollaborationO
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Establishes the distributed architecture requiring comprehensive gRPC interface
 - [ADR-0002: gRPC Communication](0002-gRPC.md) - Defines the gRPC foundation and Java interop approach this builds upon
 - [ADR-0008: VPDs](0008-VPDs.md) - Defines the VPD addressing system that enables universal API interface
-- [ADR-0009: Collaboration](0009-Collaboration.md) - Collaboration features requiring real-time bidirectional communication
+- [ADR-0009: Collaboration](0009-Collaboration.md) - Collaboration features requiring real-time server-to-client event notifications
 - [ADR-0017: System Architecture](0017-System-Architecture.md) - Component architecture and production deployment patterns
 
 ### Technical Documentation
@@ -308,6 +308,6 @@ rpc CollaborateOnPiece(stream CollaborationInput) returns (stream CollaborationO
 
 This decision represents the convergence of several architectural foundations: VPD-based universal addressing, frontend-backend separation, component lifecycle management, and collaborative real-time features. The automated generation approach is not just convenient but architecturally essential given the scale requirements.
 
-The bidirectional communication architecture directly supports Ooloi's collaborative music notation goals while maintaining the cognitive simplicity that makes the system approachable for developers. The event-driven synchronization model ensures that multiple musicians can work on the same piece with real-time coordination.
+The server-to-client event notification architecture directly supports Ooloi's collaborative music notation goals while maintaining the cognitive simplicity that makes the system approachable for developers. The event-driven synchronization model ensures that multiple musicians can work on the same piece with real-time coordination.
 
 Implementation should prioritize clear error messages and debugging support for the generated code, as this will be the primary interface for remote development. The code generation pipeline should include comprehensive validation and testing to ensure reliability at the scale required.

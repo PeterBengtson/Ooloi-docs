@@ -22,7 +22,7 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0015-Undo-and-Redo](0015-Undo-and-Redo.md)**: Undo/redo implementation approach
 - **[0016-Settings](0016-Settings.md)**: Settings architecture and persistence strategy
 - **[0017-System-Architecture](0017-System-Architecture.md)**: Component lifecycle management and system startup
-- **[0018-API-gRPC-Interface-Generation](0018-API-gRPC-Interface-Generation.md)**: Automated API-gRPC generation and bidirectional communication architecture
+- **[0018-API-gRPC-Interface-Generation](0018-API-gRPC-Interface-Generation.md)**: Automated API-gRPC generation and server-to-client event notification architecture
 - **[0019-In-Process-gRPC-Transport-Optimization](0019-In-Process-gRPC-Transport-Optimization.md)**: Performance optimization for combined deployments
 - **[0020-TLS-Infrastructure-and-Deployment-Architecture](0020-TLS-Infrastructure-and-Deployment-Architecture.md)**: TLS security infrastructure and certificate management
 - **[0021-Authentication](0021-Authentication.md)**: Pluggable authentication architecture with JWT-based security
