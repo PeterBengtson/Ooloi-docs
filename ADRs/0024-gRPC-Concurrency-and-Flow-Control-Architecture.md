@@ -12,7 +12,7 @@ During flow control system design, analysis revealed fundamental differences in 
 
 Key considerations:
 - Multi-threaded client applications (piece uploads, plugin bombardment, UI interactions)
-- STM-based server designed for concurrent transaction processing (100,000+ ops/second)
+- STM-based server designed for concurrent transaction processing
 - Event streaming requiring coordination between fast and slow clients
 - gRPC's built-in concurrency model vs custom flow control needs
 
@@ -37,7 +37,7 @@ Key considerations:
 
 - **Automatic conflict resolution**: STM handles concurrent modifications optimally
 - **Coordinated updates**: Multiple refs updated atomically within single transaction
-- **Retry mechanism**: STM automatically retries conflicted transactions (tested 100,000+ ops/second)
+- **Retry mechanism**: STM automatically retries conflicted transactions
 - **Server designed for bombardment**: ADR-0004 STM architecture explicitly built for concurrent load
 
 **Client Multi-Threading Scenarios**:
