@@ -103,7 +103,7 @@ Ooloi's backend uses Software Transactional Memory (STM) to coordinate concurren
         (vpd/mutate vpd piece add-note-fn pitch)))))
 ```
 
-STM handles conflicts when multiple clients edit the same musical element simultaneously by automatically retrying transactions. The system can process approximately 100,000 operations per second under typical conditions.
+STM handles conflicts when multiple clients edit the same musical element simultaneously by automatically retrying transactions.
 
 ### Why Flow Control Would Interfere
 
@@ -404,7 +404,6 @@ Concurrency characteristics:
 - Performance scales with available CPU cores
 - gRPC and STM work together without artificial constraints
 - STM handles conflicts through automatic retry mechanisms
-- Measured throughput: approximately 100,000 operations/second on typical hardware
 
 ### Event Streaming Performance
 
