@@ -213,4 +213,5 @@ The client application providing the graphical interface for music notation.
 
 For technical architecture details and development roadmap, see:
 - [Development Plan](/DEV_PLAN.md) - Complete project roadmap and milestones  
-- [gRPC Deep Dive](/DEV_PLAN_GRPC_DEEPDIVE.md) - Technical architecture for distributed music notation
+- [ADR-0024: gRPC Concurrency and Flow Control Architecture](/ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Technical rationale for communication patterns and flow control design
+- [gRPC Communication and Flow Control Guide](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md) - Practical communication patterns and collaborative scenarios
