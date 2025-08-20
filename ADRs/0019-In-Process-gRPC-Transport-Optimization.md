@@ -257,6 +257,7 @@ Based on rigorous academic research and verified industry benchmarks:
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Establishes three-deployment architecture requiring transport optimization
 - [ADR-0002: gRPC Communication](0002-gRPC.md) - Foundation gRPC architecture that this optimization builds upon
 - [ADR-0017: System Architecture](0017-System-Architecture.md) - Component lifecycle management and production deployment patterns
+- [ADR-0024: gRPC Concurrency and Flow Control Architecture](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Flow control architecture leveraging gRPC's inherent concurrency model
 
 ### Technical Documentation
 - [gRPC Java In-Process Transport Documentation](https://grpc.github.io/grpc-java/javadoc/io/grpc/inprocess/InProcessServerBuilder.html)
