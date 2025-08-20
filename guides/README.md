@@ -12,6 +12,7 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 4. **[TIMEWALKING_GUIDE.md](TIMEWALKING_GUIDE.md)** - Musical traversal patterns
 5. **[PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** - Asynchronous I/O
 6. **[ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** 🔴 - Performance optimization
+7. **[GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - gRPC layer characteristics
 
 ## What Each Guide Teaches
 
