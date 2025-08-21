@@ -48,7 +48,6 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 
 - **Architecture Decision Records (ADRs)**: See `/ADRs/` for design decisions
 - **API Documentation**: Generated docs in `/backend/docs/`
-- **Project Instructions**: See `/CLAUDE.md` for development guidelines
 
 ## Walking the Talk
 
