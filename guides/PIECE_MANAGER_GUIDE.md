@@ -593,6 +593,7 @@ Every VPD operation uses the piece manager internally:
 
 ### **Architecture**
 - **STM fundamentals**: See [ADR-0004: STM for Concurrency](../ADRs/0004-STM-for-concurrency.md) for the architectural foundation of piece ref management
+- **Server integration**: See [Ooloi Server Architectural Guide](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md) for how piece management integrates with distributed gRPC architecture and STM transactions
 
 ## Next Steps
 

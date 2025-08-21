@@ -777,3 +777,15 @@ Recommended development sequence:
 - JavaFX is included in the project dependencies, ensuring GUI capabilities.
 
 Remember to run tests (`lein midje`) before packaging to ensure everything is working correctly.
+
+## Related Documentation
+
+### Architecture Guides
+- **[Polymorphic API Guide](/guides/POLYMORPHIC_API_GUIDE.md)** - Type system foundations underlying the shared model architecture
+- **[Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Server architecture built on shared model contracts
+- **[gRPC Communication and Flow Control](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - How shared types enable seamless network serialization
+
+### Technical Documentation
+- **[Development Plan](/DEV_PLAN.md)** - Current development status and implementation roadmap
+- **[ADR-0023: Shared Model Contracts](/ADRs/0023-Shared-Model-Contracts.md)** - Multi-project architecture decisions
+- **[OOLOI_ARCHITECTURE_DEEPDIVE.md](/OOLOI_ARCHITECTURE_DEEPDIVE.md)** - Complete technical implementation details

@@ -10,9 +10,10 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 2. **[VPDs.md](VPDs.md)** - Path-based navigation
 3. **[PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** - Basic storage operations
 4. **[TIMEWALKING_GUIDE.md](TIMEWALKING_GUIDE.md)** - Musical traversal patterns
-5. **[PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** - Asynchronous I/O
-6. **[ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** 🔴 - Performance optimization
-7. **[GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - gRPC layer characteristics
+5. **[GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** 🔴 - gRPC communication patterns
+6. **[OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** 🔴 - Server architecture deep dive  
+7. **[PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** - Asynchronous I/O
+8. **[ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** 🔴 - Performance optimization
 
 ## What Each Guide Teaches
 
@@ -23,6 +24,8 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 | **[PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** | Piece lifecycle, reference management | STM (refs, dosync), concurrent state management |
 | **[PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** | Save/load workflows, I/O backends | Agents, asynchronous operations, error handling patterns |
 | **[ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** 🔴 | Parallel processing, performance optimization | STM coordination, parallel algorithms, performance tuning |
+| **[GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** 🔴 | gRPC communication, collaborative editing patterns | Network programming, distributed state, async operations |
+| **[OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** 🔴 | Server architecture, distributed systems, enterprise patterns | STM-gRPC integration, concurrent state management, functional architecture |
 | **[VPDs.md](VPDs.md)** | Path-based navigation, addressing | Vector operations, `get-in`/`update-in` patterns |
 
 ## Available Guides
@@ -33,6 +36,10 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 - **[PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** - Storage and lifecycle management
 - **[PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** - Asynchronous save/load operations
 - **[ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** 🔴 - Parallel processing with STM
+
+### Distributed Systems & Server Architecture
+- **[GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** 🔴 - gRPC communication patterns and collaborative scenarios
+- **[OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** 🔴 - Enterprise-grade server architecture and design patterns
 
 ### Reference Documentation
 - **[VPDs.md](VPDs.md)** - Vector Path Descriptors reference

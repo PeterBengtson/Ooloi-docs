@@ -184,34 +184,24 @@ Ooloi is organized into three main components:
 
 ### 📁 **[Backend](/backend/)** - Music Notation Engine
 The core server that handles musical data, calculations, and business logic.
-- **Status**: ✅ **Ready for installation and use**
-- **Key Features**: VPD-enhanced models, attachment system, timewalk operations  
-- **Test Coverage**: 16,706 passing tests
+- **Key Features**: gRPC server, piece management, real-time event streaming, server components
 - **Installation**: See [backend/README.md](/backend/README.md) for detailed setup instructions
 - **Quick start**: `cd backend && lein deps && lein run`
 
 ### 📁 **[Shared](/shared/)** - Model Contracts & gRPC Infrastructure  
 Unified data models, interfaces, and Protocol Buffer layer for frontend-backend communication.
-- **Status**: ✅ **Shared model contracts established**
-- **Key Features**: All core data models, multimethod interfaces, generator system
-- **Test Coverage**: 1,596 passing tests  
+- **Key Features**: All core data models, multimethod interfaces, attachment system, timewalk operations, unified gRPC protocol
 - **Architecture**: Supports selective frontend imports with backend-dependent modules
 - **Documentation**: See [shared/README.md](/shared/README.md) for architecture details
 
 ### 📁 **[Frontend](/frontend/)** - User Interface Client
 The client application providing the graphical interface for music notation.
-- **Status**: ✅ **Ready for installation and use** - Complete application infrastructure with CLI, env vars, Integrant components
 - **Key Features**: gRPC client, UI manager, comprehensive configuration system, deployment modes
-- **Test Coverage**: 131 passing tests
 - **Installation**: See [frontend/README.md](/frontend/README.md) for detailed setup instructions
 - **Documentation**: See [frontend/README.md](/frontend/README.md)
 
-### Development Focus
-
-**Current Priority**: Backend development and gRPC infrastructure
-**Next Phase**: Frontend user interface implementation
-
 For technical architecture details and development roadmap, see:
 - [Development Plan](/DEV_PLAN.md) - Complete project roadmap and milestones  
-- [ADR-0024: gRPC Concurrency and Flow Control Architecture](/ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Technical rationale for communication patterns and flow control design
+- [Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md) - Comprehensive server architecture analysis and enterprise patterns
 - [gRPC Communication and Flow Control Guide](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md) - Practical communication patterns and collaborative scenarios
+- [ADR-0024: gRPC Concurrency and Flow Control Architecture](/ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Technical decisions behind communication patterns

@@ -486,3 +486,17 @@ Different communication patterns have different concurrency requirements and con
 This approach applies the appropriate concurrency model to each communication pattern rather than using a uniform solution. The result is a system that handles both high-throughput API operations and reliable real-time event distribution, regardless of individual client performance characteristics.
 
 For implementers of custom gRPC clients, these patterns are relevant regardless of the client-side programming language or framework used.
+
+---
+
+## Related Documentation
+
+### Deep Dive Server Architecture
+- **[OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Comprehensive analysis of the server architecture implementing these communication patterns, including enterprise comparisons and production characteristics
+
+### Architectural Decision Records
+- **[ADR-0024: gRPC Concurrency and Flow Control Architecture](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)** - Detailed technical decisions behind these communication patterns
+
+### Implementation Guides
+- **[PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** - STM-based storage operations that integrate with gRPC transactions
+- **[ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** - Advanced STM coordination patterns used in server implementation

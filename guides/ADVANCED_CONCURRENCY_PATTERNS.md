@@ -443,6 +443,8 @@ This guide demonstrates how to leverage Ooloi's sophisticated concurrency archit
 
 - **Prerequisites**: [Timewalking Guide](TIMEWALKING_GUIDE.md) - Complete this first
 - **Piece management**: [Piece Manager Guide](PIECE_MANAGER_GUIDE.md) - STM coordination with piece refs and lifecycle management
+- **Server architecture**: [Ooloi Server Architectural Guide](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md) - How these STM patterns integrate with distributed gRPC architecture
+- **gRPC integration**: [gRPC Communication and Flow Control](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md) - STM-gRPC coordination patterns
 - **Architecture**: [ADR-0004: STM for Concurrency](../ADRs/0004-STM-for-concurrency.md) - Architectural foundation for STM approach
 - **STM fundamentals**: Clojure documentation on Software Transactional Memory
 - **Performance considerations**: See Ooloi backend performance benchmarks
