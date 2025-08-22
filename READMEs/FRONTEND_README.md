@@ -4,7 +4,7 @@ This directory contains the frontend client code for Ooloi, a high-performance m
 
 ## Table of Contents
 
-<img src="../img/frontend-ooloi.png" alt="Ooloi Frontend Architecture" align="right" width="400">
+<img src="../img/frontend-ooloi.png" alt="Ooloi Frontend Architecture" align="right" width="500">
 
 1. [Project Role](#project-role)
 2. [System Architecture](#system-architecture)

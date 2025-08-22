@@ -4,7 +4,7 @@ This directory contains the backend server code for Ooloi, a high-performance mu
 
 ## Table of Contents
 
-<img src="../img/backend-ooloi.png" alt="Ooloi Backend Architecture" align="right" width="400">
+<img src="../img/backend-ooloi.png" alt="Ooloi Backend Architecture" align="right" width="500">
 
 1. [Project Role](#project-role)
 2. [System Architecture](#system-architecture)
