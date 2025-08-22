@@ -2,6 +2,11 @@
 
 This directory contains the backend server code for Ooloi, a high-performance music notation software.
 
+<div align="center">
+<table>
+<tr>
+<td width="50%">
+
 ## Table of Contents
 
 1. [Project Role](#project-role)
@@ -37,6 +42,16 @@ This directory contains the backend server code for Ooloi, a high-performance mu
     - [Integration Testing](#integration-testing)
     - [Production Deployment](#production-deployment)
 12. [Notes](#notes)
+
+</td>
+<td width="50%">
+
+<img src="../img/backend-ooloi.png" alt="Ooloi Backend Architecture" width="80%">
+
+</td>
+</tr>
+</table>
+</div>
 
 ## Project Role
 
