@@ -65,7 +65,7 @@ This new iteration aims to avoid the pitfalls that led to the downfall of Igor E
 By naming the project Ooloi as it goes public and open-source, we signal a new direction that leverages modern technologies and development practices.
 
 <div align="center">
-<img src="img/main-readme-ooloi.png" alt="Ooloi" width="500">
+<img src="./img/main-readme-ooloi.png" alt="Ooloi" width="500">
 </div>
 
 ## License
