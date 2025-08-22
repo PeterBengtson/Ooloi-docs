@@ -1,7 +1,5 @@
 # Polymorphic API Guide: Type-Driven Elegance in Musical Software
 
-## Why This Guide Matters
-
 Most musical software requires musicians to adapt to developer abstractions. Ooloi takes a different approach: polymorphic dispatch allows musical thinking to drive the programming model.
 
 This reference examines how Clojure's type system and multimethods create APIs where:
