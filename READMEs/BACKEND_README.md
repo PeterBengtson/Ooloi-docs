@@ -3,9 +3,9 @@
 This directory contains the backend server code for Ooloi, a high-performance music notation software.
 
 <div align="center">
-<table>
+<table style="border: none;">
 <tr>
-<td width="50%">
+<td width="50%" style="border: none;">
 
 ## Table of Contents
 
@@ -44,9 +44,9 @@ This directory contains the backend server code for Ooloi, a high-performance mu
 12. [Notes](#notes)
 
 </td>
-<td width="50%">
+<td width="50%" style="border: none;">
 
-<img src="../img/backend-ooloi.png" alt="Ooloi Backend Architecture" width="80%">
+<img src="../img/backend-ooloi.png" alt="Ooloi Backend Architecture" width="100%">
 
 </td>
 </tr>
