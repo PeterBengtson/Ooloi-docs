@@ -57,18 +57,18 @@ The shared project has a unique **dual nature** serving both as a common code li
 
 The shared project is **the complete Ooloi data model and API**:
 
-### 🎯 **Primary Role: Complete Data Model**
+### **Primary Role: Complete Data Model**
 Contains the entire Ooloi data model, business logic, and API - this IS Ooloi's core functionality.
 
-### 🌐 **Secondary Role: Network Transport & Combined Applications**
+### **Secondary Role: Network Transport & Combined Applications**
 Provides gRPC infrastructure for network access and packages combined applications for deployment.
 
-### 📐 **Project Relationship**
+### **Project Relationship**
 - **Shared**: The complete Ooloi system (data models, business logic, API)
 - **Backend**: gRPC wrapper around shared (network transport layer)
 - **Frontend**: Consumer of shared data model (local + remote via gRPC)
 
-### ⚡ **CRITICAL: Unified Data Representation**
+### **CRITICAL: Unified Data Representation**
 **There are NO separate frontend/backend data representations.**
 - Same `Pitch` record used by frontend and backend
 - Same `Piece` structure, same `Musician` model, same everything
@@ -119,7 +119,7 @@ SHARED (Complete Ooloi System)
     (create-pitch "C4" "1/4")           ← IDENTICAL to frontend
     (pitch? some-pitch)                ← IDENTICAL to frontend
 
-⚡ KEY: Same data structures, same functions, same everything!
+KEY: Same data structures, same functions, same everything!
 ```
 
 ## Architecture Roles
@@ -723,19 +723,19 @@ The shared project provides Ooloi's **unified gRPC architecture**:
 
 #### Zero-Maintenance Architecture
 
-**✅ No compilation needed for**:
+**No compilation needed for**:
 - New API methods in backend
 - New data models or shared records
 - Plugin installations
 - Shared model contract changes
 
-**⚠️ Rare recompilation** only when `ooloi_service.proto` itself changes:
+**Rare recompilation** only when `ooloi_service.proto` itself changes:
 ```bash
 # Only if the unified schema structure is modified
 lein clean && lein compile
 ```
 
-**🎯 Development Reality**: Simple workflow:
+**Development Reality**: Simple workflow:
 ```bash
 # Make any changes - new models, API methods, plugins, etc.
 lein midje  # Test your changes - no compilation cascades needed
