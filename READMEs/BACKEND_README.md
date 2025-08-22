@@ -2,9 +2,9 @@
 
 This directory contains the backend server code for Ooloi, a high-performance music notation software.
 
-<div style="display: flex; align-items: flex-start;">
+<div>
 
-<div style="flex: 1; padding-right: 20px;">
+<div style="width: 45%; display: inline-block; vertical-align: top; padding-right: 5%;">
 
 ## Table of Contents
 
@@ -42,9 +42,7 @@ This directory contains the backend server code for Ooloi, a high-performance mu
     - [Production Deployment](#production-deployment)
 12. [Notes](#notes)
 
-</div>
-
-<div style="flex: 1;">
+</div><div style="width: 45%; display: inline-block; vertical-align: top;">
 
 <img src="../img/backend-ooloi.png" alt="Ooloi Backend Architecture" width="100%">
 
