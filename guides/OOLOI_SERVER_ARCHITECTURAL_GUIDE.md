@@ -37,15 +37,10 @@ This guide serves as both architectural documentation and a case study in applyi
 - [Error Handling](#error-handling)
   - [Comprehensive gRPC Status Mapping](#comprehensive-grpc-status-mapping)
   - [Distributed Error Propagation](#distributed-error-propagation)
-- [Key Differentiators](#key-differentiators)
-- [Comparison with Enterprise Solutions](#comparison-with-enterprise-solutions)
-  - [Traditional Enterprise gRPC Architecture](#traditional-enterprise-grpc-architecture)
+- [Enterprise Architecture Comparison](#enterprise-architecture-comparison)
+  - [Traditional Enterprise gRPC Challenges](#traditional-enterprise-grpc-challenges)
   - [Ooloi's Architectural Advantages](#oolois-architectural-advantages)
-  - [Enterprise-Grade Qualities](#enterprise-grade-qualities)
 - [Production Characteristics](#production-characteristics)
-  - [Reliability](#reliability)
-  - [Scalability](#scalability)
-  - [Maintainability](#maintainability)
 - [Related Documentation](#related-documentation)
 
 ## Overview
@@ -99,15 +94,54 @@ This is achieved through a specialized conversion layer that maps Clojure types 
 
 ### Software Transactional Memory Integration
 
-The server integrates Clojure's STM directly with gRPC operations, enabling **distributed ACID transactions**:
+The server integrates Clojure's STM directly with gRPC operations, enabling **distributed ACID transactions**. This synergy works because **each incoming gRPC request gets its own thread**, providing the multi-threaded environment that STM is designed to coordinate:
 
+- **Per-request threading**: Each gRPC call executes on its own server thread
+- **Concurrent STM access**: Multiple threads can safely access the same STM refs simultaneously
+- **Automatic conflict resolution**: STM detects and resolves conflicts between concurrent transactions
 - **Atomic batch operations**: Multiple musical modifications succeed or fail together
-- **Conflict resolution**: STM handles concurrent access from any source automatically  
 - **Consistency guarantees**: Musical scores never enter invalid intermediate states
 - **Isolation**: Concurrent operations don't see partial modifications
 
+```mermaid
+graph TB
+    subgraph "gRPC Server Threading Model"
+    A[Client A Request] --> T1[Thread 1]
+    B[Client B Request] --> T2[Thread 2]  
+    C[Client C Request] --> T3[Thread 3]
+    end
+    
+    subgraph "STM Coordination"
+    T1 --> S1[dosync block]
+    T2 --> S2[dosync block]
+    T3 --> S3[dosync block]
+    end
+    
+    subgraph "Shared Musical Data"
+    S1 --> R1[Piece Ref A]
+    S2 --> R1
+    S3 --> R1
+    S1 --> R2[Piece Ref B] 
+    S2 --> R2
+    S3 --> R2
+    end
+    
+    subgraph "Conflict Resolution"
+    R1 --> CR[STM Conflict Detection]
+    R2 --> CR
+    CR --> RT[Automatic Retry]
+    end
+    
+    style T1 fill:#e1f5fe
+    style T2 fill:#e1f5fe  
+    style T3 fill:#e1f5fe
+    style CR fill:#fff3e0
+    style RT fill:#fff3e0
+```
+
 ```clojure
 ;; Example: Atomic multi-staff transposition
+;; Each gRPC request runs this in its own thread
 (dosync
   (alter-piece piece-id transpose-staff :violin-1 :up-major-third)
   (alter-piece piece-id transpose-staff :violin-2 :up-major-third)
