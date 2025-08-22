@@ -94,8 +94,9 @@ This is achieved through a specialized conversion layer that maps Clojure types 
 
 ### Software Transactional Memory Integration
 
-The server integrates Clojure's STM directly with gRPC operations, enabling **distributed ACID transactions**. This synergy works because **each incoming gRPC request gets its own thread**, providing the multi-threaded environment that STM is designed to coordinate:
+The server integrates Clojure's STM directly with gRPC operations, enabling **distributed ACID transactions**. This synergy works because **gRPC uses HTTP/2 with request multiplexing**, allowing multiple requests to arrive simultaneously over the same connection, with **each incoming gRPC request getting its own thread**. This provides the multi-threaded environment that STM is designed to coordinate:
 
+- **HTTP/2 multiplexing**: Multiple requests arrive simultaneously over the same connection
 - **Per-request threading**: Each gRPC call executes on its own server thread
 - **Concurrent STM access**: Multiple threads can safely access the same STM refs simultaneously
 - **Automatic conflict resolution**: STM detects and resolves conflicts between concurrent transactions
