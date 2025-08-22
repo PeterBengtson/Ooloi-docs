@@ -132,11 +132,11 @@ graph TB
     CR --> RT[Automatic Retry]
     end
     
-    style T1 fill:#e1f5fe
-    style T2 fill:#e1f5fe  
-    style T3 fill:#e1f5fe
-    style CR fill:#fff3e0
-    style RT fill:#fff3e0
+    style T1 fill:#2196f3,color:#ffffff
+    style T2 fill:#2196f3,color:#ffffff  
+    style T3 fill:#2196f3,color:#ffffff
+    style CR fill:#ff9800,color:#ffffff
+    style RT fill:#ff9800,color:#ffffff
 ```
 
 ```clojure
