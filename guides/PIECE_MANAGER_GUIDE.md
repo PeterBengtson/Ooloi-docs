@@ -1,4 +1,4 @@
-# Piece Manager Guide: Storage, Retrieval, and Lifecycle Management
+# 🟡 Piece Manager Guide: Storage, Retrieval, and Lifecycle Management
 
 > 💡 **CONVENIENCE TIP**: While you CAN use `alter`, `ref`, and low-level STM operations, 
 > VPD-based API operations like `(api/set-measure vpd piece-id 5 measure)` are much easier! 

@@ -1,4 +1,4 @@
-# Ooloi Server Architectural Guide: Enterprise-Grade Concurrent Music System
+# 🔵 Ooloi Server Architectural Guide: Enterprise-Grade Concurrent Music System
 
 Distributed systems for complex domains like music notation face unique challenges in balancing semantic precision with concurrent access patterns. Ooloi's backend server explores how Clojure's functional programming strengths can combine with gRPC to address these challenges through asynchronous concurrency management.
 

@@ -1,4 +1,4 @@
-# Timewalking Guide: Musical Traversal with Temporal Coordination
+# 🟢 Timewalking Guide: Musical Traversal with Temporal Coordination
 
 *"Let's do the timewalk again" - The Unconventional Conventionalists*
 

@@ -1,4 +1,4 @@
-# Piece Persistence Guide: Asynchronous Save/Load Operations
+# 🟢 Piece Persistence Guide: Asynchronous Save/Load Operations
 
 ## Table of Contents
 

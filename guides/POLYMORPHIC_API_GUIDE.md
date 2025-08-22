@@ -1,4 +1,4 @@
-# Polymorphic API Guide: Type-Driven Elegance in Musical Software
+# 🟠 Polymorphic API Guide: Type-Driven Elegance in Musical Software
 
 Most musical software requires musicians to adapt to developer abstractions. Ooloi takes a different approach: polymorphic dispatch allows musical thinking to drive the programming model.
 

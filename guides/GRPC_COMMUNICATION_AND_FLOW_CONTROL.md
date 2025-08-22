@@ -1,4 +1,4 @@
-# gRPC Communication and Flow Control: Understanding Ooloi's Communication Architecture
+# 🟠 gRPC Communication and Flow Control: Understanding Ooloi's Communication Architecture
 
 **This guide explains Ooloi's gRPC communication patterns and the rationale behind its flow control decisions. While the examples use Clojure, the principles apply to any gRPC client implementation.**
 
