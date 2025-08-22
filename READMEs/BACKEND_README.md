@@ -45,7 +45,7 @@ This directory contains the backend server code for Ooloi, a high-performance mu
 The **Ooloi Backend** serves as the core server component providing:
 
 1. **Musical Data Management**: STM-based concurrent piece storage and manipulation
-2. **Complex Musical Operations**: Timewalk traversal, attachment resolution, and algorithmic processing
+2. **Server Infrastructure**: gRPC service implementation and STM-based piece management
 3. **gRPC Server Interface**: Unified API serving ~193 methods to frontend clients via protocol buffers
 4. **Component Architecture**: Integrant-based system with piece manager, gRPC server, and monitoring components
 
@@ -349,7 +349,7 @@ This gives you access to:
 
 **Backend Test Coverage includes**:
 - **Shared Model Integration**: Backend-specific implementations of shared contracts
-- **Complex Musical Operations**: Timewalk traversal, attachment resolution, algorithmic processing
+- **Server Infrastructure**: gRPC server implementation and piece management operations
 - **gRPC Server Implementation**: Unified ExecuteMethod interface with dynamic API resolution
 - **Component Lifecycle**: Integrant system startup/shutdown scenarios and piece manager operations  
 - **STM Transactions**: Thread-safe concurrent piece modification and batch operations
