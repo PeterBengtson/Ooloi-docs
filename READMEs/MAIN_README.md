@@ -1,14 +1,14 @@
 # Ooloi: a Body Reimagined
 
-<div align="center">
-<img src="/img/main-readme-top.png" alt="Ooloi">
-</div>
-
 Ooloi is a modern, open-source music notation software designed to handle complex musical scores with ease. It is designed to be a flexible and powerful music notation software tool providing professional, high-quality results. The core functionality includes inputting music notation, formatting scores and their parts, and printing them. Additional features can be added as plugins, allowing for a modular and customizable user experience.
 
 It leverages Clojure for both the backend and frontend, JavaFX with Skia for high-quality rendering, and gRPC for efficient server-client communication.
 
 For more information, check out our website and blog on [https://ooloi.org](https://ooloi.org), and also [our wiki](https://github.com/PeterBengtson/Ooloi/wiki).
+
+<div align="center">
+<img src="/img/main-readme-top.png" alt="Ooloi">
+</div>
 
 ## Table of Contents
 
