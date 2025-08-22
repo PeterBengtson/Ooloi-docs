@@ -3,16 +3,16 @@
 Distributed systems for complex domains like music notation face unique challenges in balancing semantic precision with concurrent access patterns. Ooloi's backend server explores how Clojure's functional programming strengths can combine with gRPC to address these challenges through asynchronous concurrency management.
 
 This comprehensive architectural analysis examines a server design that:
+- Handles concurrent access from multiple sources: collaborative users, background threads, file conversion plugins, and automated processes
+- Provides ACID transactions within the authoritative server process, atomic across batched operations within a request
+- Allows plugins to be loaded without restarting, running with equal speed and parity as core functionality
 - Preserves perfect type fidelity for complex musical data across network boundaries
 - Eliminates traditional protocol buffer complexity through unified message design
-- Provides distributed ACID transactions without external coordination services  
-- Handles concurrent access from multiple sources: collaborative users, background threads, file conversion plugins, and automated processes
-- Allows plugins to be loaded without restarting
 - Maintains enterprise reliability through architectural simplicity
 
 Topics covered:
 - **Unified Protocol Architecture**: Single message type eliminating traditional gRPC schema complexity
-- **STM-gRPC Integration**: Distributed transactions and asynchronous conflict resolution
+- **STM-gRPC Integration**: Server-local transactions and asynchronous conflict resolution
 - **Real-Time Event Streaming**: High-performance hierarchical event delivery for concurrent operations
 - **Enterprise Comparison**: Technical analysis comparing Ooloi with traditional enterprise patterns
 - **Production Characteristics**: Reliability, scalability, and operational qualities
@@ -22,10 +22,12 @@ This guide serves as both architectural documentation and a case study in applyi
 ## Table of Contents
 
 - [Overview](#overview)
+- [Deployment Scenarios](#deployment-scenarios)
 - [Core Architecture](#core-architecture)
   - [Unified Protocol Buffer Design](#unified-protocol-buffer-design)
   - [Perfect Type Fidelity](#perfect-type-fidelity)
   - [Software Transactional Memory Integration](#software-transactional-memory-integration)
+    - [Performance Characteristics](#performance-characteristics)
   - [Dynamic API Method Resolution](#dynamic-api-method-resolution)
 - [Real-Time Event Streaming](#real-time-event-streaming)
   - [Two-Tier Event System](#two-tier-event-system)
@@ -46,6 +48,32 @@ This guide serves as both architectural documentation and a case study in applyi
 ## Overview
 
 The Ooloi backend server represents a specialized approach to concurrent distributed systems, combining the strengths of functional programming, asynchronous processing, and domain-specific design. Built for complex music notation operations, it demonstrates how Clojure's Software Transactional Memory (STM) can integrate with unified protocol buffers and real-time event streaming to create a server architecture optimized for concurrent access patterns—whether from collaborative users, background processing threads, file conversion plugins, or automated analysis tools.
+
+## Deployment Scenarios
+
+The STM-gRPC architecture scales naturally across deployment contexts without architectural changes, adapting concurrency patterns to match usage requirements:
+
+### Single-User Combined Deployment
+- **Configuration**: Frontend and backend in same process, in-process gRPC transport
+- **STM concurrency**: Background operations (auto-save, layout), plugin processing, file import/export
+- **Typical use**: Individual composer/arranger working on scores
+
+### Local Network Collaboration  
+- **Configuration**: Backend on teacher's laptop, students connect via local network
+- **STM concurrency**: Manual edits from ~30 users, real-time collaborative updates, shared piece access
+- **Typical use**: Classroom instruction, small ensemble rehearsals
+
+### Enterprise Local Server
+- **Configuration**: Dedicated server within institution network  
+- **STM concurrency**: Hundreds of users across multiple pieces, department-level collaboration
+- **Typical use**: Music schools, conservatories, large performing organizations
+
+### Cloud SaaS Multi-Tenant
+- **Configuration**: Cloud deployment with authentication/authorization isolation
+- **STM concurrency**: Multi-tenant piece isolation, granular permissions, enterprise-scale concurrent access
+- **Typical use**: Global music education platforms, professional publishing workflows
+
+The same STM coordination mechanisms handle all deployment scenarios transparently, from single-user background processing to enterprise-scale collaborative editing, without requiring different concurrency models or performance tuning.
 
 ## Core Architecture
 
@@ -94,7 +122,7 @@ This is achieved through a specialized conversion layer that maps Clojure types 
 
 ### Software Transactional Memory Integration
 
-The server integrates Clojure's STM directly with gRPC operations, enabling **distributed ACID transactions**. This synergy works because **gRPC uses HTTP/2 with request multiplexing**, allowing multiple requests to arrive simultaneously over the same connection, with **each incoming gRPC request getting its own thread**. This provides the multi-threaded environment that STM is designed to coordinate:
+The server integrates Clojure's STM directly with gRPC operations, enabling **ACID transactions within the server process**. This synergy works because **gRPC uses HTTP/2 with request multiplexing**, allowing multiple requests to arrive simultaneously over the same connection, with **each incoming gRPC request getting its own thread**. This provides the multi-threaded environment that STM is designed to coordinate:
 
 - **HTTP/2 multiplexing**: Multiple requests arrive simultaneously over the same connection
 - **Per-request threading**: Each gRPC call executes on its own server thread
@@ -148,6 +176,34 @@ graph TB
   (alter-piece piece-id transpose-staff :violin-2 :up-major-third)
   (alter-piece piece-id update-key-signature :E-major))
 ```
+
+#### Performance Characteristics
+
+Benchmarking demonstrates **100,000+ contending transactions per second** on modest 2017 hardware. This capacity far exceeds music-notation workload requirements:
+
+* **Manual user operations**: 1–100 ops/sec across all human users
+* **Automated operations**: plugin mutations, background saves/loads, file imports, layout calculations
+* **System bottlenecks**: network latency (1–200 ms), file I/O (10–1000 ms), rendering operations
+* **STM coordination**: microseconds per transaction
+
+**STM Overhead in Context**
+
+Industry literature often cites a **4–5× overhead** for Software Transactional Memory compared to fine-grained locks, largely due to commit-time instrumentation and conflict retries. This criticism is valid for long, mutation-heavy transactions under high contention, and explains why STM has not seen broad uptake outside research.
+
+Clojure's STM, however, is **tighter than most implementations**:
+* **MVCC snapshot isolation** ensures transactions see a consistent view.
+* **Immutable data structures** make retries cheap—no rollback of in-place mutation.
+* **Commutative operations** (`commute`) reduce conflicts on common structures.
+* **Validators and watchers** let invariants be enforced without manual locks.
+
+For Ooloi's workload—**short batched edits, human-paced concurrency, and many more observers than writers**—STM overhead is below the noise floor. Microsecond-scale coordination costs vanish next to network hops, rendering, or I/O. The architecture provides ample capacity for any realistic deployment scenario.
+
+**Distributed Deployment Scaling**
+* **Theoretical capacity**: thousands of concurrent clients (though unrealistic for music notation)
+* **Memory overhead**: ~500 MB for 1000 clients (1000 events × 500 bytes per queue)
+* **Event filtering**: piece-based subscriptions prevent broadcast multiplication
+* **Load distribution**: mostly observers, with relatively few active editors per piece
+* **Practical deployment**: architecture provides more than enough capacity for all realistic notation scenarios
 
 ### Dynamic API Method Resolution
 
@@ -300,7 +356,7 @@ Most enterprise gRPC services follow conventional patterns that create significa
 - **Dynamic API discovery**: Plugin methods are available via runtime resolution with zero configuration
 
 **Integrated Transaction & Event Architecture**
-- **STM-gRPC integration**: True ACID transactions across network boundaries without external coordination services
+- **STM-gRPC integration**: ACID transactions within the server process without external coordination services
 - **Built-in event streaming**: Real-time hierarchical event delivery integrated directly into service architecture
 - **Automatic conflict resolution**: Concurrent operations from any source handled transparently with STM managing conflicts
 
