@@ -4,6 +4,8 @@ The shared project has a unique **dual nature** serving both as a common code li
 
 ## Table of Contents
 
+<img src="../img/shared-ooloi.png" alt="Ooloi Shared Architecture" align="right" width="500">
+
 1. [Dual Nature Architecture](#dual-nature-architecture)
    - [Role 1: Common Code Library](#role-1-common-code-library)
    - [Role 2: Integration Platform & Combined Application Builder](#role-2-integration-platform--combined-application-builder)
