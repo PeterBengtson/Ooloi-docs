@@ -7,6 +7,7 @@ This comprehensive architectural analysis examines a server design that:
 - Eliminates traditional protocol buffer complexity through unified message design
 - Provides distributed ACID transactions without external coordination services  
 - Handles concurrent access from multiple sources: collaborative users, background threads, file conversion plugins, and automated processes
+- Allows plugins to be loaded without restarting
 - Maintains enterprise reliability through architectural simplicity
 
 Topics covered:
