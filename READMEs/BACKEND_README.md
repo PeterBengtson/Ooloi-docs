@@ -83,9 +83,9 @@ The backend is a sophisticated server application using **Integrant dependency i
 
 #### Piece Manager Component
 - **STM-based concurrent piece storage** with ACID transaction support
-- **Musical data management** for complex scores and arrangements
-- **VPD addressing system** for precise musical element navigation
-- **Attachment system** supporting ties, slurs, dynamics, articulations
+- **Piece lifecycle management** for concurrent access and modifications
+- **Thread-safe operations** coordinating multiple client requests
+- **Integration with shared models** for consistent data representation
 
 #### gRPC Server Component  
 - **Unified API** serving ~193 methods via protocol buffers
