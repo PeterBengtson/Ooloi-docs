@@ -380,7 +380,6 @@ The Ooloi backend server represents a specialized approach to concurrent distrib
 
 ### Architectural Decision Records
 - **[ADR-0002: gRPC Architecture](../ADRs/0002-gRPC.md)** - Java interop approach and deployment models
-- **[ADR-0019: STM-gRPC Batch Transactions](../ADRs/0019-STM-gRPC-Batch-Transactions.md)** - Atomic operation implementation  
 - **[ADR-0024: gRPC Concurrency and Flow Control Architecture](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)** - Communication patterns and flow control design
 
 ### Implementation Guides
