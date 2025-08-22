@@ -1,4 +1,4 @@
-# Ooloi Server Architectural Guide: Enterprise-Grade Collaborative Music Editing
+# Ooloi Server Architectural Guide: Enterprise-Grade Concurrent Music System
 
 ## Why This Guide Matters
 
