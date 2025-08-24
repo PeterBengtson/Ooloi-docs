@@ -73,6 +73,122 @@ Statistics will be collected in real-time during operation with minimal performa
 
 ## Complete Statistics Field Specification
 
+### Server-Wide Statistics Structure
+
+Add new `server-statistics` atom to component with **complete aggregate visibility**:
+
+```clojure
+{;; ==========================================
+ ;; CONNECTION LIFECYCLE AGGREGATES (Zero Cost)
+ ;; ==========================================
+ :clients-connected-total 0                    ; Total connections since server start
+ :clients-connected-current 0                  ; Currently active connections  
+ :clients-connected-peak 0                     ; Peak concurrent connections
+ :clients-disconnected-total 0                 ; Total disconnections
+ :clients-disconnected-graceful 0              ; Clean disconnections
+ :clients-disconnected-error 0                 ; Error-based disconnections
+ :clients-disconnected-timeout 0               ; Timeout-based disconnections
+ :connection-duration-total-ms 0               ; Aggregate connection time
+ :connection-duration-avg-ms 0                 ; Average connection duration
+ :connection-duration-median-ms 0              ; Median connection duration
+ :shortest-session-ms Long/MAX_VALUE           ; Fastest client disconnect
+ :longest-session-ms 0                         ; Longest client session
+ 
+ ;; ==========================================
+ ;; API CALL AGGREGATES (Zero Cost)
+ ;; ==========================================
+ :api-calls-total 0                            ; Total API calls processed
+ :api-calls-success 0                          ; Successful API calls
+ :api-calls-failure 0                          ; Failed API calls
+ :api-concurrent-calls-current 0               ; Currently processing API calls
+ :api-concurrent-calls-peak 0                  ; Max simultaneous API processing
+ :api-slowest-call-ms 0                        ; Worst API response time ever
+ :api-fastest-call-ms Long/MAX_VALUE           ; Best API response time ever
+ 
+ ;; ==========================================
+ ;; EVENT STREAMING AGGREGATES (Zero Cost)
+ ;; ==========================================
+ :server-events-sent 0                         ; Total server events broadcast
+ :piece-events-sent 0                          ; Total piece events sent  
+ :connect-events-sent 0                        ; Client connect notifications
+ :disconnect-events-sent 0                     ; Client disconnect notifications
+ :events-sent-total 0                          ; All event types combined
+ :events-dropped-total 0                       ; Total events dropped (all clients)
+ :event-queues-overflow-total 0                ; Total queue overflow incidents
+ :event-queues-healthy-count 0                 ; Queues with no overflow
+ :event-queues-warning-count 0                 ; Queues near capacity
+ :event-queues-critical-count 0                ; Queues experiencing overflow
+ :event-delivery-attempts 0                    ; Total event delivery attempts
+ :event-delivery-successes 0                   ; Successful event deliveries
+ :event-broadcast-efficiency 0.0               ; Success rate across all clients
+ 
+ ;; ==========================================
+ ;; SYSTEM RESOURCE UTILIZATION (Zero Cost)
+ ;; ==========================================  
+ :bytes-transferred-total 0                    ; Total network traffic (all clients)
+ :bytes-api-requests-total 0                   ; Bytes from API calls
+ :bytes-api-responses-total 0                  ; Bytes in API responses  
+ :bytes-events-total 0                         ; Bytes in event messages
+ :largest-api-request-bytes 0                  ; Biggest API request ever
+ :largest-api-response-bytes 0                 ; Biggest API response ever
+ :largest-event-message-bytes 0                ; Biggest event message ever
+ 
+ ;; ==========================================
+ ;; ERROR TRACKING AND CATEGORIZATION (Zero Cost)
+ ;; ==========================================
+ :conversion-errors-total 0                    ; Protobuf conversion failures
+ :serialization-errors-total 0                 ; Data serialization failures
+ :network-errors-total 0                       ; Network-level errors
+ :internal-errors-total 0                      ; Unexpected server errors  
+ :timeout-errors-total 0                       ; Request timeout failures
+ :client-errors-total 0                        ; Client-side error responses
+ :server-errors-total 0                        ; Server-side error responses
+ :last-error-time timestamp                    ; Most recent error
+ :error-free-duration-ms 0                     ; Time since last error
+ :longest-error-free-period-ms 0               ; Best error-free streak
+ 
+ ;; ==========================================
+ ;; COLLABORATIVE EDITING METRICS (Zero Cost)
+ ;; ==========================================
+ :piece-subscriptions-total 0                  ; Total piece subscriptions
+ :piece-subscriptions-active 0                 ; Current piece subscriptions
+ :piece-subscriptions-peak 0                   ; Peak piece subscriptions
+ :most-subscribed-piece-count 0                ; Max clients on single piece
+ :subscription-changes-total 0                 ; Total subscription add/remove operations
+ 
+ ;; ==========================================  
+ ;; SYSTEM TIMING AND METADATA (Zero Cost)
+ ;; ==========================================
+ :server-start-time timestamp                  ; When server started
+ :server-restart-count 0                       ; Number of restarts
+ 
+ ;; ==========================================
+ ;; NOTES: Derived analytics computed on-demand for health endpoints  
+ ;; Raw data above enables calculation of:
+ ;; - :server-uptime-ms (current-time - server-start-time)
+ ;; - :server-health-score (composite from all error rates and performance)
+ ;; - :api-success-rate-overall (api-calls-success / api-calls-total) 
+ ;; - :event-delivery-success-rate ((events-sent-total - events-dropped-total) / events-sent-total)
+ ;; - :system-load-score (composite from resource utilization metrics)
+ ;; - :performance-trend-24h (trend analysis from historical ring buffers)
+ ;; - :collaborative-effectiveness (metrics derived from subscription patterns)
+ ;; - :subscription-churn-rate-per-hour (subscription-changes-total / uptime-hours)
+ ;; - :api-calls-per-hour (api-calls-total / uptime-hours)
+ ;; - :api-peak-calls-per-minute (external tool analysis of call timing patterns)
+ ;; - :api-method-usage-map (external tool aggregation from method labels)
+ ;; - :grpc-error-breakdown-by-status (external tool status code analysis)
+ ;; - :collaborative-sessions-active (calculated from current subscription data)
+ ;; - :pieces-with-multiple-subscribers (derived from subscription state)
+ ;; - :memory-usage-current-bytes (Runtime.getRuntime().totalMemory())
+ ;; - :memory-usage-peak-bytes (external tool tracking of memory peaks)
+ ;; - :thread-pool-active-count (ThreadPoolExecutor.getActiveCount())
+ ;; - :thread-pool-usage-peak (external tool thread pool monitoring)
+ ;; - :thread-pool-queue-size (ThreadPoolExecutor.getQueue().size())
+ ;; - :queue-memory-usage-total-bytes (calculated estimate from queue sizes)
+ ;; ==========================================
+ }
+```
+
 ### Per-Client Statistics Structure
 
 Expand existing connection registry `:metadata` field with **complete operational visibility**:
@@ -87,7 +203,6 @@ Expand existing connection registry `:metadata` field with **complete operationa
            ;; CONNECTION LIFECYCLE (Zero Cost)
            ;; ==========================================
            :connected-at timestamp                    ; Connection establishment time
-           :connection-duration-ms 0                  ; Live calculated duration
            :last-activity-time timestamp              ; Most recent API call or event
            
            ;; ==========================================
@@ -165,133 +280,15 @@ Expand existing connection registry `:metadata` field with **complete operationa
            ;; - :queue-health-score (composite from queue metrics)
            ;; - :client-health-score (overall health composite) 
            ;; - :performance-trend-7d (trend analysis from historical data)
-           ;; - :api-call-frequency-hz (total-calls / session-duration)
-           ;; - :event-consumption-rate-hz (events-sent / session-duration)
+           ;; - :connection-duration-ms (current-time - connected-at)
+           ;; - :api-call-frequency-hz (total-calls / connection-duration)
+           ;; - :event-consumption-rate-hz (events-sent / connection-duration)
            ;; - :active-subscription-count (count piece-subscriptions)
            ;; - :api-success-rate (success/total)
            ;; - :api-method-usage-map (external tool aggregation from method labels)
            ;; - :session-pieces-accessed (derived from API call logs or subscription events)
            ;; ==========================================
            }}
-```
-
-### Server-Wide Statistics Structure
-
-Add new `server-statistics` atom to component with **complete aggregate visibility**:
-
-```clojure
-{;; ==========================================
- ;; CONNECTION LIFECYCLE AGGREGATES (Zero Cost)
- ;; ==========================================
- :clients-connected-total 0                    ; Total connections since server start
- :clients-connected-current 0                  ; Currently active connections  
- :clients-connected-peak 0                     ; Peak concurrent connections
- :clients-disconnected-total 0                 ; Total disconnections
- :clients-disconnected-graceful 0              ; Clean disconnections
- :clients-disconnected-error 0                 ; Error-based disconnections
- :clients-disconnected-timeout 0               ; Timeout-based disconnections
- :connection-duration-total-ms 0               ; Aggregate connection time
- :connection-duration-avg-ms 0                 ; Average connection duration
- :connection-duration-median-ms 0              ; Median connection duration
- :shortest-session-ms Long/MAX_VALUE           ; Fastest client disconnect
- :longest-session-ms 0                         ; Longest client session
- 
- ;; ==========================================
- ;; API CALL AGGREGATES (Zero Cost)
- ;; ==========================================
- :api-calls-total 0                            ; Total API calls processed
- :api-calls-success 0                          ; Successful API calls
- :api-calls-failure 0                          ; Failed API calls
- :api-concurrent-calls-current 0               ; Currently processing API calls
- :api-concurrent-calls-peak 0                  ; Max simultaneous API processing
- :api-slowest-call-ms 0                        ; Worst API response time ever
- :api-fastest-call-ms Long/MAX_VALUE           ; Best API response time ever
- 
- ;; ==========================================
- ;; EVENT STREAMING AGGREGATES (Zero Cost)
- ;; ==========================================
- :server-events-sent 0                         ; Total server events broadcast
- :piece-events-sent 0                          ; Total piece events sent  
- :connect-events-sent 0                        ; Client connect notifications
- :disconnect-events-sent 0                     ; Client disconnect notifications
- :events-sent-total 0                          ; All event types combined
- :events-dropped-total 0                       ; Total events dropped (all clients)
- :event-queues-overflow-total 0                ; Total queue overflow incidents
- :event-queues-healthy-count 0                 ; Queues with no overflow
- :event-queues-warning-count 0                 ; Queues near capacity
- :event-queues-critical-count 0                ; Queues experiencing overflow
- :event-delivery-attempts 0                    ; Total event delivery attempts
- :event-delivery-successes 0                   ; Successful event deliveries
- :event-broadcast-efficiency 0.0               ; Success rate across all clients
- 
- ;; ==========================================
- ;; SYSTEM RESOURCE UTILIZATION (Minimal Cost)
- ;; ==========================================  
- :bytes-transferred-total 0                    ; Total network traffic (all clients)
- :bytes-api-requests-total 0                   ; Bytes from API calls
- :bytes-api-responses-total 0                  ; Bytes in API responses  
- :bytes-events-total 0                         ; Bytes in event messages
- :largest-api-request-bytes 0                  ; Biggest API request ever
- :largest-api-response-bytes 0                 ; Biggest API response ever
- :largest-event-message-bytes 0                ; Biggest event message ever
- :memory-usage-current-bytes 0                 ; Current JVM memory usage
- :memory-usage-peak-bytes 0                    ; Peak memory consumption
- :thread-pool-active-count 0                   ; Active event delivery threads
- :thread-pool-usage-peak 0                     ; Peak event delivery thread usage
- :thread-pool-queue-size 0                     ; Pending event delivery tasks
- :queue-memory-usage-total-bytes 0             ; Memory consumed by all event queues
- 
- ;; ==========================================
- ;; ERROR TRACKING AND CATEGORIZATION (Zero Cost)
- ;; ==========================================
- :conversion-errors-total 0                    ; Protobuf conversion failures
- :serialization-errors-total 0                 ; Data serialization failures
- :network-errors-total 0                       ; Network-level errors
- :internal-errors-total 0                      ; Unexpected server errors  
- :timeout-errors-total 0                       ; Request timeout failures
- :client-errors-total 0                        ; Client-side error responses
- :server-errors-total 0                        ; Server-side error responses
- :last-error-time timestamp                    ; Most recent error
- :error-free-duration-ms 0                     ; Time since last error
- :longest-error-free-period-ms 0               ; Best error-free streak
- 
- ;; ==========================================
- ;; COLLABORATIVE EDITING METRICS (Zero Cost)
- ;; ==========================================
- :piece-subscriptions-total 0                  ; Total piece subscriptions
- :piece-subscriptions-active 0                 ; Current piece subscriptions
- :piece-subscriptions-peak 0                   ; Peak piece subscriptions
- :most-subscribed-piece-count 0                ; Max clients on single piece
- :subscription-changes-total 0                 ; Total subscription add/remove operations
- 
- ;; ==========================================  
- ;; SYSTEM TIMING AND METADATA (Zero Cost)
- ;; ==========================================
- :server-start-time timestamp                  ; When server started
- :server-restart-count 0                       ; Number of restarts
- :last-statistics-update timestamp             ; Most recent stats calculation
- :statistics-calculation-time-ms 0             ; Performance overhead tracking
- 
- ;; ==========================================
- ;; NOTES: Derived analytics computed on-demand for health endpoints  
- ;; Raw data above enables calculation of:
- ;; - :server-uptime-ms (current-time - server-start-time)
- ;; - :server-health-score (composite from all error rates and performance)
- ;; - :api-success-rate-overall (api-calls-success / api-calls-total) 
- ;; - :event-delivery-success-rate ((events-sent-total - events-dropped-total) / events-sent-total)
- ;; - :system-load-score (composite from resource utilization metrics)
- ;; - :performance-trend-24h (trend analysis from historical ring buffers)
- ;; - :collaborative-effectiveness (metrics derived from subscription patterns)
- ;; - :subscription-churn-rate-per-hour (subscription-changes-total / uptime-hours)
- ;; - :statistics-update-frequency-hz (calculated from timing metadata)
- ;; - :api-calls-per-hour (api-calls-total / uptime-hours)
- ;; - :api-peak-calls-per-minute (external tool analysis of call timing patterns)
- ;; - :api-method-usage-map (external tool aggregation from method labels)
- ;; - :grpc-error-breakdown-by-status (external tool status code analysis)
- ;; - :collaborative-sessions-active (calculated from current subscription data)
- ;; - :pieces-with-multiple-subscribers (derived from subscription state)
- ;; ==========================================
- }
 ```
 
 ### Raw vs. Derived Statistics Architecture
