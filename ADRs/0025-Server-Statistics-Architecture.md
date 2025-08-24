@@ -15,6 +15,8 @@
   - [Raw vs. Derived Statistics Architecture](#raw-vs-derived-statistics-architecture)
   - [Statistics Collection Points](#statistics-collection-points)
   - [Performance Considerations](#performance-considerations)
+    - [Batched Atomic Updates](#batched-atomic-updates)
+    - [Zero-Cost Collection Principle](#zero-cost-collection-principle)
 - [Health Monitoring Integration](#health-monitoring-integration)
   - [Dual Health System Architecture](#dual-health-system-architecture)
   - [HTTP Statistics Endpoints](#http-statistics-endpoints)
@@ -399,15 +401,105 @@ Expand existing connection registry `:metadata` field with operational visibilit
 
 ### Performance Considerations
 
-#### Atomic Updates
-Statistics updates use atomic operations to prevent contention:
-```clojure
-;; Per-client updates
-(swap! registry update-in [client-id :metadata] update-statistics-fn)
+#### Batched Atomic Updates
 
-;; Server-wide updates  
-(swap! server-statistics update-server-metrics-fn)
+**Critical Performance Pattern**: Batch all statistics changes into a single `swap!` operation per atom to minimize contention and atomic operation overhead.
+
+**Delta Application Function**:
+```clojure
+(defn apply-deltas 
+  "Apply batched increments and updates to statistics map"
+  [stats-map {:keys [inc set max min]}]
+  (cond-> stats-map
+    inc (as-> $ (reduce-kv (fn [m k v] (update m k (fnil + 0) v)) $ inc))
+    set (merge set)
+    max (as-> $ (reduce-kv (fn [m k v] (update m k (fnil max 0) v)) $ max))
+    min (as-> $ (reduce-kv (fn [m k v] (update m k (fnil min Long/MAX_VALUE) v)) $ min))))
 ```
+
+**API Request Processing Example**:
+```clojure
+(defn handle-api-request [client-id method-name protobuf-request]
+  (let [start-time (System/currentTimeMillis)
+        request-bytes (.size protobuf-request)
+        result (execute-api-method method-name protobuf-request)
+        end-time (System/currentTimeMillis) 
+        response-bytes (.size (:response result))
+        duration-ms (- end-time start-time)
+        success? (:ok? result)]
+    
+    ;; Collect ALL statistics changes before applying
+    (let [server-deltas {:inc {:api-calls-total 1
+                              :api-calls-success (if success? 1 0)
+                              :api-calls-failure (if success? 0 1)  
+                              :bytes-api-requests-total request-bytes
+                              :bytes-api-responses-total response-bytes}
+                        :max {:api-call-peak-duration-ms duration-ms
+                              :largest-api-request-bytes request-bytes
+                              :largest-api-response-bytes response-bytes}
+                        :min {:api-call-min-duration-ms duration-ms}}
+          
+          client-deltas {:inc {:api-calls-total 1
+                              :api-calls-success (if success? 1 0)
+                              :api-calls-failure (if success? 0 1)
+                              :bytes-sent response-bytes
+                              :bytes-received request-bytes}
+                        :max {:slowest-api-call-ms duration-ms}
+                        :min {:fastest-api-call-ms duration-ms}
+                        :set {:last-api-call end-time
+                              :last-api-method method-name
+                              :last-activity-time end-time}}]
+      
+      ;; Single atomic update per statistics atom
+      (swap! server-statistics apply-deltas server-deltas)
+      (swap! registry update-in [client-id :metadata] apply-deltas client-deltas)
+      
+      result)))
+```
+
+**Event Delivery Processing Example**:
+```clojure
+(defn deliver-event-to-client [client-id event-message]
+  (let [event-bytes (.size (serialize-event event-message))
+        queue (get-client-queue client-id)
+        queue-size-before (.size queue)
+        delivery-start (System/currentTimeMillis)
+        offer-success (.offer queue event-message)
+        delivery-end (System/currentTimeMillis)
+        queue-size-after (.size queue)
+        delivery-lag-ms (- delivery-end delivery-start)]
+    
+    ;; Batch all event delivery statistics  
+    (let [server-deltas {:inc {:events-sent-total (if offer-success 1 0)
+                              :events-dropped-total (if offer-success 0 1)
+                              :event-delivery-attempts 1
+                              :event-delivery-successes (if offer-success 1 0)
+                              :bytes-events-total event-bytes}}
+          
+          client-deltas {:inc {:events-sent (if offer-success 1 0)
+                              :events-dropped (if offer-success 0 1)
+                              :queue-offer-attempts 1
+                              :queue-offer-successes (if offer-success 1 0)
+                              :bytes-events event-bytes}
+                        :max {:queue-size-peak queue-size-after
+                              :queue-consumer-lag-ms delivery-lag-ms}
+                        :set {:queue-size-current queue-size-after
+                              :last-event-time delivery-end
+                              :last-event-type (:type event-message)
+                              :last-activity-time delivery-end}}]
+      
+      ;; Single atomic operation per atom - minimal contention
+      (swap! server-statistics apply-deltas server-deltas)
+      (swap! registry update-in [client-id :metadata] apply-deltas client-deltas)
+      
+      offer-success)))
+```
+
+**Benefits of Batched Updates**:
+- **Reduced Contention**: One `swap!` per atom instead of multiple sequential updates
+- **Atomic Consistency**: All related statistics update together or not at all  
+- **Performance**: Eliminates retry overhead from multiple competing atomic operations
+- **Cleaner Code**: Statistics collection logic separated from business logic
 
 #### Zero-Cost Collection Principle
 
