@@ -33,45 +33,15 @@ Technical decisions that shaped Ooloi's architecture.
 
 ## Decisions by Technical Area
 
-### **Core Language & Runtime**
-- **[0000-Clojure](0000-Clojure.md)**: Primary language choice with functional programming benefits
-- **[0004-STM-for-concurrency](0004-STM-for-concurrency.md)**: Software Transactional Memory for thread-safe operations
-- **[0007-Nippy](0007-Nippy.md)**: High-performance Clojure serialization format
-
-### **Client-Server Architecture**
-- **[0001-Frontend-Backend-Separation](0001-Frontend-Backend-Separation.md)**: Architectural separation of concerns
-- **[0002-gRPC](0002-gRPC.md)**: Primary communication protocol between frontend and backend  
-- **[0018-API-gRPC-Interface-Generation](0018-API-gRPC-Interface-Generation.md)**: Automated API generation and event streaming
-- **[0019-In-Process-gRPC-Transport-Optimization](0019-In-Process-gRPC-Transport-Optimization.md)**: Performance optimization for combined deployments
-- **[0022-Lazy-Frontend-Backend-Architecture](0022-Lazy-Frontend-Backend-Architecture.md)**: Event-driven synchronization and windowing system
-- **[0023-Shared-Model-Contracts](0023-Shared-Model-Contracts.md)**: Unified data models across architectural boundaries
-- **[0024-gRPC-Concurrency-and-Flow-Control-Architecture](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)**: Flow control and concurrency patterns for event streaming
-- **[0025-Server-Statistics-Architecture](0025-Server-Statistics-Architecture.md)**: Comprehensive operational statistics and monitoring
-
-### **User Interface & Rendering**  
-- **[0005-JavaFX-and-Skija](0005-JavaFX-and-Skija.md)**: UI framework and high-performance graphics rendering
-- **[0006-SMuFL](0006-SMuFL.md)**: Standard Music Font Layout for professional notation rendering
-- **[0013-Slur-Formatting](0013-Slur-Formatting.md)**: Advanced curve rendering for musical slurs
-
-### **Data Architecture & Storage**
-- **[0008-VPDs](0008-VPDs.md)**: Vector Path Descriptors for hierarchical addressing system
-- **[0010-Pure-Trees](0010-Pure-Trees.md)**: Immutable tree structures with cross-references  
-- **[0011-Shared-Structure](0011-Shared-Structure.md)**: Memory optimization through data sharing
-- **[0012-Persisting-Pieces](0012-Persisting-Pieces.md)**: Musical piece persistence and storage strategy
-
-### **Musical Domain & Collaboration**
-- **[0009-Collaboration](0009-Collaboration.md)**: Multi-user editing and conflict resolution approach
-- **[0014-Timewalk](0014-Timewalk.md)**: Temporal coordination system for musical element traversal
-- **[0015-Undo-and-Redo](0015-Undo-and-Redo.md)**: Undo/redo implementation for musical editing
-
-### **System Infrastructure**
-- **[0016-Settings](0016-Settings.md)**: Configuration architecture and user preferences
-- **[0017-System-Architecture](0017-System-Architecture.md)**: Component lifecycle and dependency management
-- **[0020-TLS-Infrastructure-and-Deployment-Architecture](0020-TLS-Infrastructure-and-Deployment-Architecture.md)**: Security infrastructure and certificate management
-- **[0021-Authentication](0021-Authentication.md)**: Pluggable authentication with JWT security
-
-### **Extensibility**
-- **[0003-Plugins](0003-Plugins.md)**: Plugin architecture for system extensibility and third-party integration
+| **Technical Area** | **ADRs** | **Key Decisions** |
+|-------------------|----------|-------------------|
+| **Core Language & Runtime** | [0000](0000-Clojure.md), [0004](0004-STM-for-concurrency.md), [0007](0007-Nippy.md) | Clojure functional programming, STM concurrency, high-performance serialization |
+| **Client-Server Architecture** | [0001](0001-Frontend-Backend-Separation.md), [0002](0002-gRPC.md), [0018](0018-API-gRPC-Interface-Generation.md), [0019](0019-In-Process-gRPC-Transport-Optimization.md), [0022](0022-Lazy-Frontend-Backend-Architecture.md), [0023](0023-Shared-Model-Contracts.md), [0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md), [0025](0025-Server-Statistics-Architecture.md) | Clean separation, gRPC communication, event streaming, performance optimization, operational monitoring |
+| **User Interface & Rendering** | [0005](0005-JavaFX-and-Skija.md), [0006](0006-SMuFL.md), [0013](0013-Slur-Formatting.md) | JavaFX+Skija graphics, professional music fonts, advanced curve rendering |
+| **Data Architecture & Storage** | [0008](0008-VPDs.md), [0010](0010-Pure-Trees.md), [0011](0011-Shared-Structure.md), [0012](0012-Persisting-Pieces.md) | Hierarchical addressing, immutable trees, memory optimization, persistence |
+| **Musical Domain & Collaboration** | [0009](0009-Collaboration.md), [0014](0014-Timewalk.md), [0015](0015-Undo-and-Redo.md) | Multi-user editing, temporal coordination, undo/redo implementation |
+| **System Infrastructure** | [0016](0016-Settings.md), [0017](0017-System-Architecture.md), [0020](0020-TLS-Infrastructure-and-Deployment-Architecture.md), [0021](0021-Authentication.md) | Configuration management, component lifecycle, security infrastructure, authentication |
+| **Extensibility** | [0003](0003-Plugins.md) | Plugin architecture for third-party integration |
 
 ## Architecture Overview
 
