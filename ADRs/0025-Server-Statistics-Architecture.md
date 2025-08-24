@@ -334,7 +334,7 @@ Expand existing connection registry `:metadata` field with **complete operationa
 
 **Health endpoints compute derived metrics** when requested:
 ```clojure
-;; GET /health/statistics/clients/{id} - calculated on-demand
+;; GET /health/clients/{id} - calculated on-demand
 (defn compute-client-analytics [raw-stats]
   {:api-success-rate (/ (:api-calls-success raw-stats) 
                        (:api-calls-total raw-stats))
@@ -512,13 +512,13 @@ This ensures **consistent health status** across both protocols while providing 
 Extend existing HTTP health server with comprehensive statistics APIs:
 
 ```http
-GET /health                            # Basic health status (existing)
-GET /health/statistics/server          # Server-wide aggregate metrics
-GET /health/statistics/clients         # Per-client metrics summary  
-GET /health/statistics/clients/{id}    # Specific client detailed metrics
-GET /health/statistics/performance     # Response times, throughput
-GET /health/statistics/errors          # Error rates and categorization
-GET /health/statistics/resources       # Memory, threads, queue usage
+GET /health                     # Basic health status (existing)
+GET /health/server             # Server-wide aggregate metrics
+GET /health/clients            # Per-client metrics summary  
+GET /health/clients/{id}       # Specific client detailed metrics
+GET /health/performance        # Response times, throughput
+GET /health/errors             # Error rates and categorization
+GET /health/resources          # Memory, threads, queue usage
 ```
 
 ### Response Format
@@ -556,7 +556,7 @@ GET /health/statistics/resources       # Memory, threads, queue usage
 - job_name: 'ooloi-server'
   static_configs:
     - targets: ['ooloi-server:10701']
-  metrics_path: '/health/statistics/server'
+  metrics_path: '/health/server'
   scrape_interval: 15s
 ```
 
@@ -574,7 +574,7 @@ GET /health/statistics/resources       # Memory, threads, queue usage
 ```yaml
 # datadog.yaml integration
 instances:
-  - url: http://ooloi-server:10701/health/statistics
+  - url: http://ooloi-server:10701/health/server
     tags:
       - service:ooloi
       - environment:production
@@ -603,7 +603,7 @@ spec:
       app: ooloi-server
   endpoints:
   - port: health-port
-    path: /health/statistics/server
+    path: /health/server
 ```
 - **Auto-scaling Integration**: HPA based on custom metrics
 - **Service Mesh**: Istio/Linkerd integration via standard endpoints
@@ -636,7 +636,7 @@ location /health {
 - **Setup Complexity**: **Medium** - Requires tracing instrumentation
 
 **ELK Stack (Elasticsearch + Logstash + Kibana)**:
-- **Structured Logging**: JSON statistics as structured log entries
+- **Structured Logging**: JSON metrics as structured log entries
 - **Search and Analytics**: Query-based operational analysis
 - **Setup Complexity**: **Low** - Standard JSON log ingestion
 
