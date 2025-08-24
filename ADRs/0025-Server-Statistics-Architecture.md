@@ -46,28 +46,26 @@ This is a **new, experimental server design** with unique characteristics:
 
 ### Critical Need for Comprehensive Introspection
 
-**Novel Architecture Requires Deep Understanding**:
+The architecture's unique characteristics require operational insight:
 - How do queue-based event streams behave under load?
 - What are the performance characteristics of STM-gRPC integration?
 - How do concurrent collaborative sessions scale?
 - Which client usage patterns cause performance issues?
 
-**Test-Driven Statistics Requirements**:
-Current tests rely on opaque counts that provide no behavioral insight:
+Current tests rely on opaque counts that provide limited behavioral insight:
 ```clojure
-;; Problematic: What actually happened?
+;; Limited information: What actually happened?
 (count @client-events) => 3  ; Tells us nothing about event types, timing, failures
 ```
 
-Statistics enable **meaningful test validation**:
+Statistics enable detailed test validation:
 ```clojure  
-;; Comprehensive: Validates actual system behavior
+;; Detailed: Validates actual system behavior
 (get-server-stat :server-events-sent) => 2
 (get-client-stat client-id :server-events-received) => 2  
 (get-client-stat client-id :queue-overflow-count) => 0
 ```
 
-**Production Operations**:
 Without detailed statistics collection, operational issues, performance bottlenecks, and capacity planning become reactive rather than proactive.
 
 ### Current Limitations
@@ -102,10 +100,10 @@ Statistics will be collected in real-time during operation with minimal performa
 
 ### Server-Wide Statistics Structure
 
-Add new `server-statistics` atom to component with **complete aggregate visibility**:
+Add new `server-statistics` atom to component with aggregate visibility:
 
 ```clojure
-{;; ==========================================
+{ ;; ==========================================
  ;; CONNECTION LIFECYCLE AGGREGATES (Zero Cost)
  ;; ==========================================
  :clients-connected-total 0                    ; Total connections since server start
@@ -116,8 +114,6 @@ Add new `server-statistics` atom to component with **complete aggregate visibili
  :clients-disconnected-error 0                 ; Error-based disconnections
  :clients-disconnected-timeout 0               ; Timeout-based disconnections
  :connection-duration-total-ms 0               ; Aggregate connection time
- :connection-duration-avg-ms 0                 ; Average connection duration
- :connection-duration-median-ms 0              ; Median connection duration
  :shortest-session-ms Long/MAX_VALUE           ; Fastest client disconnect
  :longest-session-ms 0                         ; Longest client session
  
@@ -147,7 +143,6 @@ Add new `server-statistics` atom to component with **complete aggregate visibili
  :event-queues-critical-count 0                ; Queues experiencing overflow
  :event-delivery-attempts 0                    ; Total event delivery attempts
  :event-delivery-successes 0                   ; Successful event deliveries
- :event-broadcast-efficiency 0.0               ; Success rate across all clients
  
  ;; ==========================================
  ;; SYSTEM RESOURCE UTILIZATION (Zero Cost)
@@ -197,7 +192,7 @@ Add new `server-statistics` atom to component with **complete aggregate visibili
  ;; - :api-success-rate-overall (api-calls-success / api-calls-total) 
  ;; - :event-delivery-success-rate ((events-sent-total - events-dropped-total) / events-sent-total)
  ;; - :system-load-score (composite from resource utilization metrics)
- ;; - :performance-trend-24h (trend analysis from historical ring buffers)
+ ;; - :performance-trend-24h (trend analysis from historical data)
  ;; - :collaborative-effectiveness (metrics derived from subscription patterns)
  ;; - :subscription-churn-rate-per-hour (subscription-changes-total / uptime-hours)
  ;; - :api-calls-per-hour (api-calls-total / uptime-hours)
@@ -218,7 +213,7 @@ Add new `server-statistics` atom to component with **complete aggregate visibili
 
 ### Per-Client Statistics Structure
 
-Expand existing connection registry `:metadata` field with **complete operational visibility**:
+Expand existing connection registry `:metadata` field with operational visibility:
 
 ```clojure
 {:client-id "client-uuid"
@@ -233,7 +228,7 @@ Expand existing connection registry `:metadata` field with **complete operationa
            :last-activity-time timestamp              ; Most recent API call or event
            
            ;; ==========================================
-           ;; API CALL METRICS (Zero Cost) 
+           ;; API CALL METRICS (Zero Cost)
            ;; ==========================================
            :api-calls-total 0                        ; Total API calls made
            :api-calls-success 0                      ; Successful API calls
@@ -269,7 +264,7 @@ Expand existing connection registry `:metadata` field with **complete operationa
            :queue-consumer-lag-ms 0                  ; Delay between queue and delivery
            
            ;; ==========================================
-           ;; NETWORK PERFORMANCE (Zero Cost)  
+           ;; NETWORK PERFORMANCE (Zero Cost)
            ;; ==========================================
            :bytes-sent 0                             ; Total protobuf bytes to client
            :bytes-received 0                         ; Total protobuf bytes from client  
@@ -301,8 +296,7 @@ Expand existing connection registry `:metadata` field with **complete operationa
            ;; NOTES: Derived analytics computed on-demand for health endpoints
            ;; Raw data above enables calculation of:
            ;; - :api-success-rate (success/total)
-           ;; - :average-response-time-ms (mean of api-call-times)  
-           ;; - :p95-response-time-ms (95th percentile of api-call-times)
+           ;; - :response-time-range-ms (slowest - fastest)
            ;; - :event-delivery-reliability ((sent - dropped) / sent)
            ;; - :queue-health-score (composite from queue metrics)
            ;; - :client-health-score (overall health composite) 
@@ -327,7 +321,6 @@ Expand existing connection registry `:metadata` field with **complete operationa
 ;; Raw data - minimal overhead to collect
 :api-calls-total 15
 :api-calls-success 14  
-:api-call-times [12, 15, 8, 22, 11]  ; Ring buffer of actual timings
 :events-dropped 2
 :bytes-sent 4096
 ```
@@ -338,8 +331,8 @@ Expand existing connection registry `:metadata` field with **complete operationa
 (defn compute-client-analytics [raw-stats]
   {:api-success-rate (/ (:api-calls-success raw-stats) 
                        (:api-calls-total raw-stats))
-   :average-response-time-ms (mean (:api-call-times raw-stats))
-   :p95-response-time-ms (percentile (:api-call-times raw-stats) 0.95)
+   :response-time-range-ms (- (:slowest-api-call-ms raw-stats)
+                             (:fastest-api-call-ms raw-stats))
    :event-delivery-reliability (- 1.0 (/ (:events-dropped raw-stats) 
                                          (:events-sent raw-stats)))
    :client-health-score (composite-health-calculation raw-stats)})
@@ -406,14 +399,6 @@ Expand existing connection registry `:metadata` field with **complete operationa
 
 ### Performance Considerations
 
-#### Ring Buffer Pattern
-Use bounded collections for time-series data:
-```clojure
-;; Limit memory usage with ring buffers
-:api-call-times (ring-buffer 1000)  ; Last 1000 API timings
-:event-delivery-times (ring-buffer 1000)  ; Last 1000 event timings
-```
-
 #### Atomic Updates
 Statistics updates use atomic operations to prevent contention:
 ```clojure
@@ -426,7 +411,7 @@ Statistics updates use atomic operations to prevent contention:
 
 #### Zero-Cost Collection Principle
 
-**Capture All Available Data**: If data is already computed during normal operation, collect it at zero additional cost.
+**Capture Available Data**: If data is already computed during normal operation, collect it at zero additional cost.
 
 **API Call Processing Example**:
 ```clojure
@@ -437,14 +422,14 @@ Statistics updates use atomic operations to prevent contention:
       end-time (System/currentTimeMillis)
       response-bytes (.size protobuf-response)]
   
-  ;; Capture everything available at zero cost:
+  ;; Capture data already available at zero cost:
   (update-stats client-id {
-    :api-calls-total 1                    ; <-- Already tracking
-    :api-calls-success (if success 1 0)   ; <-- Already computed
-    :bytes-sent response-bytes            ; <-- FREE: already serialized  
-    :bytes-received request-bytes         ; <-- FREE: already deserialized
-    :api-call-duration (- end-time start-time)  ; <-- FREE: already timed
-    :method-name method-name}))           ; <-- FREE: already resolved
+    :api-calls-total 1                    ; Already tracking
+    :api-calls-success (if success 1 0)   ; Already computed
+    :bytes-sent response-bytes            ; Already serialized  
+    :bytes-received request-bytes         ; Already deserialized
+    :api-call-duration (- end-time start-time)  ; Already timed
+    :method-name method-name}))           ; Already resolved
 ```
 
 **Event Queue Operations Example**:
@@ -455,26 +440,25 @@ Statistics updates use atomic operations to prevent contention:
       offer-result (.offer event-queue event-message)
       queue-size-after (.size event-queue)]
   
-  ;; All this data is already computed:
+  ;; All data is already computed:
   (update-stats client-id {
     :events-sent (if offer-result 1 0)
-    :events-dropped (if offer-result 0 1)     ; <-- FREE: offer result known
-    :queue-size-current queue-size-after      ; <-- FREE: already queried
-    :queue-size-peak (max peak queue-size-after)  ; <-- FREE: simple comparison
-    :bytes-queued event-bytes}))              ; <-- FREE: already serialized
+    :events-dropped (if offer-result 0 1)     ; Offer result known
+    :queue-size-current queue-size-after      ; Already queried
+    :queue-size-peak (max peak queue-size-after)  ; Simple comparison
+    :bytes-queued event-bytes}))              ; Already serialized
 ```
 
 **Cost Categories**:
 - **Zero Cost**: Data already available in operation scope
 - **Minimal Cost**: Simple arithmetic on existing data (< 0.1ms)
-- **Calculated Cost**: Aggregations requiring additional computation
+- **Higher Cost**: Aggregations requiring additional computation
 
-**Design Principle**: Comprehensive collection of zero-cost data, selective collection of calculated data based on operational value.
+**Design Principle**: Comprehensive collection of zero-cost data, selective collection of higher-cost data based on operational value.
 
 #### Performance Optimization
 - Statistics collection adds < 1ms per operation
 - Updates performed asynchronously where possible  
-- Ring buffers prevent unbounded memory growth
 - Aggregates calculated on-demand rather than continuously
 
 ## Health Monitoring Integration
@@ -525,22 +509,21 @@ GET /health/resources          # Memory, threads, queue usage
 ```json
 {
   "server": {
-    "uptime_hours": 72.5,
-    "clients_connected": 15,
-    "clients_peak": 23,
-    "api_calls_total": 45230,
-    "api_success_rate": 0.998,
-    "avg_response_time_ms": 12.4,
-    "events_sent": 8934,
-    "bytes_transferred_gb": 2.1
+    "uptime-hours": 72.5,
+    "clients-connected": 15,
+    "clients-peak": 23,
+    "api-calls-total": 45230,
+    "api-success-rate": 0.998,
+    "events-sent": 8934,
+    "bytes-transferred-gb": 2.1
   },
   "clients": [
     {
-      "client_id": "uuid-123",
-      "connected_duration_hours": 2.3,
-      "api_calls": 234,
-      "events_received": 89,
-      "queue_health": "healthy"
+      "client-id": "uuid-123",
+      "connected-duration-hours": 2.3,
+      "api-calls": 234,
+      "events-received": 89,
+      "queue-health": "healthy"
     }
   ]
 }
@@ -550,7 +533,7 @@ GET /health/resources          # Memory, threads, queue usage
 
 #### Standard Production Monitoring Stack
 
-**Prometheus + Grafana + AlertManager** (Industry Standard):
+**Prometheus + Grafana + AlertManager**:
 ```yaml
 # prometheus.yml configuration
 - job_name: 'ooloi-server'
@@ -561,12 +544,12 @@ GET /health/resources          # Memory, threads, queue usage
 ```
 
 **Integration Benefits**:
-- **Native HTTP JSON**: No custom exporters needed
-- **Auto-discovery**: Standard Prometheus service discovery works  
-- **Rich Dashboards**: Pre-built Grafana templates for gRPC services
-- **Smart Alerting**: AlertManager rules for response time/error rate thresholds
+- HTTP JSON format without custom exporters
+- Standard Prometheus service discovery compatibility
+- Grafana templates for gRPC services
+- AlertManager rules for response time/error rate thresholds
 
-**Integration Complexity**: **Minimal** - Standard HTTP endpoints work with zero custom code.
+**Integration Complexity**: Minimal - Standard HTTP endpoints work without custom code.
 
 #### Enterprise Monitoring Solutions
 
@@ -579,14 +562,14 @@ instances:
       - service:ooloi
       - environment:production
 ```
-- **APM Integration**: Distributed tracing for gRPC calls
-- **Custom Metrics**: Direct JSON ingestion
-- **Setup Complexity**: **Low** - Standard HTTP integration
+- APM integration with distributed tracing for gRPC calls
+- Custom metrics via direct JSON ingestion
+- Setup complexity: Low - Standard HTTP integration
 
 **New Relic**:
-- **Infrastructure Monitoring**: Server resource utilization
-- **Custom Events**: Statistics API data as structured events  
-- **Setup Complexity**: **Low** - REST API compatible
+- Infrastructure monitoring for server resource utilization
+- Statistics API data as structured events  
+- Setup complexity: Low - REST API compatible
 
 #### Cloud-Native Monitoring
 
@@ -605,9 +588,9 @@ spec:
   - port: health-port
     path: /health/server
 ```
-- **Auto-scaling Integration**: HPA based on custom metrics
-- **Service Mesh**: Istio/Linkerd integration via standard endpoints
-- **Setup Complexity**: **Minimal** - Kubernetes-native configuration
+- Auto-scaling integration via HPA based on custom metrics
+- Service mesh integration (Istio/Linkerd) via standard endpoints
+- Setup complexity: Minimal - Kubernetes-native configuration
 
 #### Load Balancer Health Checking
 
@@ -625,39 +608,39 @@ location /health {
     proxy_read_timeout 1s;
 }
 ```
-- **Native HTTP Health Checks**: Built-in load balancer support
-- **Setup Complexity**: **Trivial** - Standard HTTP health endpoint
+- HTTP health checks with built-in load balancer support
+- Setup complexity: Standard HTTP health endpoint
 
 #### Observability Platforms
 
 **Jaeger (Distributed Tracing)**:
-- **gRPC Tracing**: Built-in OpenTracing support for gRPC services
-- **Custom Spans**: API call and event delivery tracing
-- **Setup Complexity**: **Medium** - Requires tracing instrumentation
+- gRPC tracing via OpenTracing support
+- Custom spans for API call and event delivery tracing
+- Setup complexity: Medium - Requires tracing instrumentation
 
 **ELK Stack (Elasticsearch + Logstash + Kibana)**:
-- **Structured Logging**: JSON metrics as structured log entries
-- **Search and Analytics**: Query-based operational analysis
-- **Setup Complexity**: **Low** - Standard JSON log ingestion
+- Structured logging with JSON metrics as log entries
+- Query-based operational analysis
+- Setup complexity: Low - Standard JSON log ingestion
 
 #### Comparative Completeness Assessment
 
-**Ooloi's Statistics vs. Typical Server Metrics**:
+**Ooloi's Statistics vs. Server Metrics**:
 
-#### ✅ **Comprehensive Coverage** (Industry Leading)
+#### Coverage Areas
 - **Connection Lifecycle**: Detailed per-client connection tracking
 - **Request/Response Metrics**: Success rates, timing percentiles, method-level analytics  
 - **Resource Utilization**: Queue usage, memory consumption, thread pool metrics
 - **Error Categorization**: gRPC status codes, error type classification
 - **Network Performance**: Bytes transferred, serialization performance
 
-#### ✅ **Advanced Features** (Beyond Standard)
+#### Implementation Features
 - **Per-Client Granularity**: Individual client behavior patterns and health
 - **Queue-Based Architecture**: Event delivery pipeline visibility
 - **Real-Time Streaming**: Live event delivery performance metrics
 - **Collaborative Metrics**: Multi-client interaction patterns
 
-#### ✅ **Production Operations** (Enterprise Grade)
+#### Operational Support
 - **Capacity Planning**: Peak usage patterns, growth trend analysis
 - **Performance Baselines**: Historical comparison and regression detection  
 - **Health Scoring**: Composite health metrics for automated decision making
@@ -665,28 +648,28 @@ location /health {
 
 #### Comparison to Industry Standards:
 
-**Redis**: Basic command statistics, memory usage, client connections
-- **Ooloi Advantage**: Per-client behavior patterns, queue health metrics
+**Redis**: Comprehensive INFO command metrics (190+ fields), real-time MONITOR streaming, built-in latency detection
+- **Ooloi's Focus**: Novel per-client queue architecture with overflow handling, collaborative editing integration
 
-**PostgreSQL**: Query statistics, connection pooling, lock contention
-- **Ooloi Advantage**: Real-time event streaming metrics, collaborative editing visibility
+**PostgreSQL**: Industry-leading 25+ system views with granular per-session tracking, cumulative statistics persistence  
+- **Ooloi's Focus**: STM-gRPC transaction integration monitoring, queue-based event streaming architecture
 
-**Kafka**: Partition metrics, consumer lag, throughput statistics  
-- **Ooloi Advantage**: Per-client queue management, event delivery guarantees
+**Kafka**: Comprehensive 100+ JMX metrics across broker/topic/partition/client dimensions, detailed latency breakdowns
+- **Ooloi's Focus**: Per-client queue overflow strategies, collaborative session analytics, behavioral pattern tracking
 
-**gRPC Services (Typical)**: Basic request counting, response times
-- **Ooloi Advantage**: Streaming connection health, collaborative session analytics
+**gRPC Services (Modern)**: Per-method success rates via Envoy, streaming message counts, distributed tracing integration
+- **Ooloi's Focus**: Streaming connection health, collaborative session coordination, client behavioral analysis
 
-#### Overall Assessment: **Exceptionally Comprehensive**
+#### Overall Assessment: Comprehensive with Novel Elements
 
-Ooloi's statistics architecture provides **significantly more operational visibility** than typical server implementations. The combination of:
-- Granular per-client tracking
-- Real-time streaming metrics  
-- Collaborative editing analytics
-- Comprehensive error categorization
-- Queue-based architecture visibility
+Ooloi's statistics architecture provides thorough operational visibility through architectural innovations not commonly found in traditional server implementations. The distinctive characteristics include:
+- Per-client queue management with overflow handling  
+- STM-gRPC transaction integration monitoring
+- Real-time collaborative editing session analytics
+- Sophisticated client behavioral pattern tracking
+- Two-level statistics approach balancing granular and aggregate metrics
 
-...creates an **enterprise-grade observability platform** that exceeds industry standards for operational insight and debugging capability.
+This represents a comprehensive monitoring approach that addresses the specific operational challenges of collaborative music editing systems while maintaining alignment with modern observability practices.
 
 ## Implementation Phases
 
@@ -736,7 +719,7 @@ Ooloi's statistics architecture provides **significantly more operational visibi
 
 **Memory Overhead**:
 - Per-client statistics consume additional memory per connection
-- Ring buffers and aggregate metrics require ongoing memory allocation  
+- Aggregate metrics require ongoing memory allocation  
 - Statistics persistence across server restarts requires additional storage
 
 **Performance Impact**:
@@ -752,7 +735,6 @@ Ooloi's statistics architecture provides **significantly more operational visibi
 ### Mitigation Strategies
 
 **Memory Management**:
-- Ring buffers prevent unbounded memory growth
 - Configurable retention periods for historical data
 - Optional statistics persistence to external systems
 
