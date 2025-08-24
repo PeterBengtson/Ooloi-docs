@@ -29,7 +29,7 @@
 
 ## Status
 
-Proposed 2025-08-24
+Accepted 2025-08-24
 
 ## Context
 
