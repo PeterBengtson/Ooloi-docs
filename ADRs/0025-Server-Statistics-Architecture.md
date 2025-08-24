@@ -1,5 +1,32 @@
 # ADR-0025: Server Statistics Architecture
 
+## Table of Contents
+
+- [Status](#status)
+- [Context](#context)
+  - [Critical Need for Comprehensive Introspection](#critical-need-for-comprehensive-introspection)
+  - [Current Limitations](#current-limitations)  
+  - [Operational Requirements](#operational-requirements)
+- [Decision](#decision)
+- [Architecture](#architecture)
+- [Complete Statistics Field Specification](#complete-statistics-field-specification)
+  - [Server-Wide Statistics Structure](#server-wide-statistics-structure)
+  - [Per-Client Statistics Structure](#per-client-statistics-structure)
+  - [Raw vs. Derived Statistics Architecture](#raw-vs-derived-statistics-architecture)
+  - [Statistics Collection Points](#statistics-collection-points)
+  - [Performance Considerations](#performance-considerations)
+- [Health Monitoring Integration](#health-monitoring-integration)
+  - [Dual Health System Architecture](#dual-health-system-architecture)
+  - [HTTP Statistics Endpoints](#http-statistics-endpoints)
+  - [External Monitoring Tool Integration](#external-monitoring-tool-integration)
+- [Implementation Phases](#implementation-phases)
+- [Consequences](#consequences)
+  - [Positive Outcomes](#positive-outcomes)
+  - [Trade-offs and Considerations](#trade-offs-and-considerations)
+  - [Mitigation Strategies](#mitigation-strategies)
+- [Related ADRs](#related-adrs)
+- [Future Considerations](#future-considerations)
+
 ## Status
 
 Proposed 2025-08-24
