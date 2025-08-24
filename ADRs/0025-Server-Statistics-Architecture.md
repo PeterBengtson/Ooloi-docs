@@ -89,8 +89,8 @@ Production operations require metrics for:
 
 Implement comprehensive two-level statistics collection:
 
-1. **Per-client statistics**: Operational metrics specific to individual client connections
-2. **Server-wide statistics**: Aggregate metrics that survive client connection churn
+1. **Server-wide statistics**: Aggregate metrics that survive client connection churn
+2. **Per-client statistics**: Operational metrics specific to individual client connections
 
 Statistics will be collected in real-time during operation with minimal performance impact, accessible via both programmatic APIs and health monitoring endpoints.
 
