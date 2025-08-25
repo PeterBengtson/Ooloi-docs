@@ -581,3 +581,4 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 - [ADR-0018: API-gRPC Interface Generation](0018-API-gRPC-Interface-Generation.md) - API methods used in communication
 - [ADR-0023: Shared Model Contracts](0023-Shared-Model-Contracts.md) - Multi-project architecture enabling frontend-backend integration
 - [ADR-0024: gRPC Concurrency and Flow Control Architecture](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Event streaming flow control for collaborative synchronization
+- [ADR-0025: Server Statistics Architecture](0025-Server-Statistics-Architecture.md) - Collaborative session analytics and performance monitoring

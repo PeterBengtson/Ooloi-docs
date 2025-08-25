@@ -119,6 +119,7 @@ Key considerations:
 - [ADR-0002: gRPC](0002-gRPC.md) - gRPC transport layer with inherent concurrency
 - [ADR-0019: STM-gRPC Batch Transactions](0019-STM-gRPC-Batch-Transactions.md) - Transaction boundary alignment
 - [ADR-0022: Lazy Frontend-Backend Architecture](0022-Lazy-Frontend-Backend-Architecture.md) - Event-driven synchronization
+- [ADR-0025: Server Statistics Architecture](0025-Server-Statistics-Architecture.md) - Event queue health monitoring and performance metrics
 
 ## Implementation Notes
 

@@ -453,6 +453,11 @@ This flow control architecture builds upon and enhances several existing Ooloi a
 **In-Process Transport Optimization ([ADR-0019](../ADRs/0019-In-Process-gRPC-Transport-Optimization.md))**:
 - Flow control works equally well with network and in-process transport
 - Performance benefits of in-process transport maintained
+
+**Server Statistics Architecture ([ADR-0025](../ADRs/0025-Server-Statistics-Architecture.md))**:
+- Event queue health monitoring enables proactive flow control management
+- Per-client queue statistics inform overflow prevention strategies  
+- Performance metrics guide flow control parameter tuning
 - Queue overhead minimal compared to transport optimisation gains
 
 ### Future Extensions
