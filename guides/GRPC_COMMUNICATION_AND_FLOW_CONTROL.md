@@ -8,6 +8,7 @@
 
 - [Prerequisites](#prerequisites)
 - [Introduction: Two Kinds of Communication](#introduction-two-kinds-of-communication)
+- [Unified Client Connection Architecture](#unified-client-connection-architecture)
 - [Understanding the Core Problem](#understanding-the-core-problem)
 - [API Requests: Why Flow Control Is Counterproductive](#api-requests-why-flow-control-is-counterproductive)
 - [Event Streaming: Why Flow Control Is Essential](#event-streaming-why-flow-control-is-essential)
@@ -45,6 +46,64 @@ Real-time notifications about changes:
 - "Auto-save completed"
 
 These patterns have different concurrency characteristics and flow control requirements.
+
+---
+
+## Unified Client Connection Architecture
+
+### Event-First Connection Sequence
+
+Ooloi clients use a **unified connection architecture** where both streaming and API connections are established automatically during client initialization, with **event streaming established first**:
+
+```
+Unified Client Connection Sequence
+┌─────────────┐                           ┌─────────────────┐
+│   Client    │                           │    Server       │
+│             │                           │                 │
+│  Component  │                           │                 │
+│    Init     │                           │                 │
+└──────┬──────┘                           └─────────────────┘
+       │                                           │
+       │ STEP 1: Establish Event Streaming         │
+       │ ──────────────────────────────────────── ▶│
+       │        streamEvents(clientId)             │
+       │                                          │
+       │              ◀ ──────────────────────────│
+       │         Server registers streaming        │
+       │         connection in registry            │
+       │                                          │
+       │ STEP 2: Create API Connection Pool        │
+       │ ──────────────────────────────────────── ▶│
+       │    4 pooled channels established          │
+       │                                          │
+       │              ◀ ──────────────────────────│
+       │         API pool ready for requests       │
+       │                                          │
+       │ ✓ Client ready for bidirectional comms   │
+       │                                          │
+```
+
+### Benefits of Event-First Architecture
+
+1. **Immediate Event Capability**: Events can be received as soon as client is operational
+2. **Bidirectional Communication**: Client can both send requests and receive real-time updates
+3. **Automatic Connection Management**: No separate connection establishment required
+4. **Uniform Client Behavior**: All clients follow the same connection pattern
+
+### Implementation Impact
+
+```clojure
+;; Before: Manual connection management
+(let [api-client (create-api-client config)
+      event-client (create-event-client config)]
+  (establish-event-streaming event-client)  ; Manual step
+  (use-clients api-client event-client))
+
+;; After: Unified automatic connection
+(let [unified-client (create-grpc-clients config)]
+  ;; Both streaming and API connections already established
+  (use-client unified-client))
+```
 
 ---
 
@@ -227,7 +286,7 @@ Each client receives events independently, preventing slow clients from affectin
 - **1000-item capacity** per client queue
 - **Drop-oldest policy** when queue overflows
 - **Dedicated thread pool** for asynchronous delivery
-- **Per-client statistics** for monitoring and health (nested under `:client-statistics` in metadata)
+- **Per-client statistics** for monitoring and health (separate top-level `:client-statistics` key)
 
 ```clojure
 ;; Simplified queue architecture
@@ -456,7 +515,7 @@ This flow control architecture builds upon and enhances several existing Ooloi a
 
 **Server Statistics Architecture ([ADR-0025](../ADRs/0025-Server-Statistics-Architecture.md))**:
 - Event queue health monitoring enables proactive flow control management
-- Per-client queue statistics (under `:client-statistics` metadata) inform overflow prevention strategies  
+- Per-client queue statistics (top-level `:client-statistics` key) inform overflow prevention strategies  
 - Performance metrics guide flow control parameter tuning
 - Queue overhead minimal compared to transport optimisation gains
 

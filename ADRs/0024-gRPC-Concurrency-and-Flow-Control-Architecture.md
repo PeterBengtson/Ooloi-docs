@@ -16,6 +16,55 @@ Key considerations:
 - Event streaming requiring coordination between fast and slow clients
 - gRPC's built-in concurrency model vs custom flow control needs
 
+## Client Connection Architecture
+
+### **Unified Event-First Connection Pattern**
+
+Ooloi clients use a **unified connection architecture** that automatically establishes both event streaming and API connections during client component initialization, with event streaming established first:
+
+```
+Client Connection Lifecycle
+┌─────────────────┐                    ┌─────────────────┐
+│  Frontend       │                    │   Backend       │
+│  Component      │                    │   Server        │
+│  Initialization │                    │                 │
+└─────────┬───────┘                    └─────────┬───────┘
+          │                                      │
+          │ 1. Create event stream client        │
+          │ ──────────────────────────────────► │
+          │    streamEvents(client-id)           │
+          │                                     │
+          │ ◄ ──────────────────────────────── │
+          │    Event streaming established       │  
+          │    (registered in connection        │
+          │     registry for flow control)      │
+          │                                     │
+          │ 2. Create API connection pool        │
+          │ ──────────────────────────────────► │
+          │    4 concurrent channels             │
+          │                                     │
+          │ ◄ ──────────────────────────────── │
+          │    API pool ready for requests      │
+          │                                     │
+          │ ✓ Bidirectional communication       │
+          │   established automatically         │
+          │                                     │
+```
+
+### **Connection Architecture Benefits**
+
+1. **Event-first ordering**: Event streaming available immediately for real-time collaboration
+2. **Automatic establishment**: No manual connection management required 
+3. **Unified client behavior**: All clients follow consistent connection pattern
+4. **Flow control integration**: Event streaming immediately benefits from per-client queue architecture
+
+### **Connection Count Impact**
+
+The unified architecture affects server connection statistics:
+- **Before**: Clients established API connections only
+- **After**: Clients establish both streaming (1) + API pool (4) = 5 total connections per client
+- **Flow control**: Only streaming connections participate in event queue management
+
 ## Rationale
 
 ### **API Request Concurrency: Flow Control Not Needed**

@@ -215,7 +215,7 @@ Add new `server-statistics` atom to component with aggregate visibility:
 
 ### Per-Client Statistics Structure
 
-Expand existing connection registry `:metadata` field with nested `:client-statistics` for operational visibility:
+Extend existing connection registry with separate top-level `:client-statistics` key for operational visibility:
 
 ```clojure
 {:client-id "client-uuid"
@@ -224,14 +224,14 @@ Expand existing connection registry `:metadata` field with nested `:client-stati
  :piece-subscriptions #{set-of-piece-ids}
  :metadata {
            ;; ==========================================
-           ;; EXISTING METADATA FIELDS (Preserved)
+           ;; CONNECTION METADATA FIELDS (Preserved)
            ;; ==========================================
-           :connected-at timestamp                   ; Connection establishment time (existing)
-           
-           ;; ==========================================
-           ;; CLIENT STATISTICS (Nested Structure)
-           ;; ==========================================
-           :client-statistics {
+           :connected-at timestamp                   ; Connection establishment time
+           :client-ip "127.0.0.1"                  ; Client IP address  
+           :client-port 54321                        ; Client port number
+           :connection-id "conn-uuid"               ; Transport connection identifier
+           }
+ :client-statistics {
              ;; ==========================================
              ;; CONNECTION LIFECYCLE (Zero Cost)
              ;; ==========================================
@@ -319,7 +319,6 @@ Expand existing connection registry `:metadata` field with nested `:client-stati
              ;; - :api-method-usage-map (external tool aggregation from method labels)
              ;; - :session-pieces-accessed (derived from API call logs or subscription events)
              ;; ==========================================
-           }
            }}
 ```
 
