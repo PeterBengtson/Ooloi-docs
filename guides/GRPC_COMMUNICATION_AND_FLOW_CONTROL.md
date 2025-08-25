@@ -227,7 +227,7 @@ Each client receives events independently, preventing slow clients from affectin
 - **1000-item capacity** per client queue
 - **Drop-oldest policy** when queue overflows
 - **Dedicated thread pool** for asynchronous delivery
-- **Per-client statistics** for monitoring and health
+- **Per-client statistics** for monitoring and health (nested under `:client-statistics` in metadata)
 
 ```clojure
 ;; Simplified queue architecture
@@ -456,7 +456,7 @@ This flow control architecture builds upon and enhances several existing Ooloi a
 
 **Server Statistics Architecture ([ADR-0025](../ADRs/0025-Server-Statistics-Architecture.md))**:
 - Event queue health monitoring enables proactive flow control management
-- Per-client queue statistics inform overflow prevention strategies  
+- Per-client queue statistics (under `:client-statistics` metadata) inform overflow prevention strategies  
 - Performance metrics guide flow control parameter tuning
 - Queue overhead minimal compared to transport optimisation gains
 

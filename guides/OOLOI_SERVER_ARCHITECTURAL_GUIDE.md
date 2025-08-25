@@ -290,7 +290,13 @@ The server maintains a concurrent connection registry using atoms for O(1) clien
 ```clojure
 ;; Registry structure
 {client-id {:observer stream-observer
-           :metadata {:connected-at timestamp}
+           :metadata {:connected-at timestamp
+                      :client-statistics {;; 33 client statistics fields
+                                         :api-calls-total 0
+                                         :events-sent 0
+                                         :queue-size-current 0
+                                         ;; ... (see ADR-0025 for complete structure)
+                                         }}
            :piece-subscriptions #{piece-id-1 piece-id-2}
            :event-queue bounded-queue
            :consumer-thread thread-ref}}

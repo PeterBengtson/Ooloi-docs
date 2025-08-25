@@ -215,7 +215,7 @@ Add new `server-statistics` atom to component with aggregate visibility:
 
 ### Per-Client Statistics Structure
 
-Expand existing connection registry `:metadata` field with operational visibility:
+Expand existing connection registry `:metadata` field with nested `:client-statistics` for operational visibility:
 
 ```clojure
 {:client-id "client-uuid"
@@ -224,93 +224,102 @@ Expand existing connection registry `:metadata` field with operational visibilit
  :piece-subscriptions #{set-of-piece-ids}
  :metadata {
            ;; ==========================================
-           ;; CONNECTION LIFECYCLE (Zero Cost)
+           ;; EXISTING METADATA FIELDS (Preserved)
            ;; ==========================================
-           :connected-at timestamp                    ; Connection establishment time
-           :last-activity-time timestamp              ; Most recent API call or event
+           :connected-at timestamp                   ; Connection establishment time (existing)
            
            ;; ==========================================
-           ;; API CALL METRICS (Zero Cost)
+           ;; CLIENT STATISTICS (Nested Structure)
            ;; ==========================================
-           :api-calls-total 0                        ; Total API calls made
-           :api-calls-success 0                      ; Successful API calls
-           :api-calls-failure 0                      ; Failed API calls  
-           :last-api-call timestamp                  ; Most recent API call time
-           :last-api-method string                   ; Most recent method called
-           :slowest-api-call-ms 0                    ; Worst response time
-           :fastest-api-call-ms Long/MAX_VALUE       ; Best response time
-           :concurrent-api-calls-current 0           ; Currently processing
-           :concurrent-api-calls-peak 0              ; Max simultaneous calls
-           
-           ;; ==========================================
-           ;; EVENT STREAMING METRICS (Zero Cost)
-           ;; ==========================================
-           :events-sent 0                            ; Total events delivered to client
-           :events-dropped 0                         ; Events lost due to queue overflow
-           :server-events-received 0                 ; Server-wide events received
-           :piece-events-received 0                  ; Piece-specific events received
-           :connect-events-received 0                ; Client connect notifications  
-           :disconnect-events-received 0             ; Client disconnect notifications
-           :last-event-time timestamp                ; Most recent event delivery
-           :last-event-type keyword                  ; Type of most recent event
-           
-           ;; ==========================================
-           ;; QUEUE HEALTH METRICS (Zero Cost)
-           ;; ==========================================
-           :queue-size-current 0                     ; Current queue depth
-           :queue-size-peak 0                        ; Maximum queue depth reached
-           :queue-overflow-count 0                   ; Number of overflow incidents  
-           :queue-overflow-total-events-dropped 0    ; Events lost across all overflows
-           :queue-offer-attempts 0                   ; Total queue insertions attempted
-           :queue-offer-successes 0                  ; Successful queue insertions
-           :queue-consumer-lag-ms 0                  ; Delay between queue and delivery
-           
-           ;; ==========================================
-           ;; NETWORK PERFORMANCE (Zero Cost)
-           ;; ==========================================
-           :bytes-sent 0                             ; Total protobuf bytes to client
-           :bytes-received 0                         ; Total protobuf bytes from client  
-           :bytes-events 0                           ; Bytes consumed by event messages
-           :bytes-api-requests 0                     ; Bytes from API calls
-           :bytes-api-responses 0                    ; Bytes in API responses
-           :largest-request-bytes 0                  ; Biggest API request  
-           :largest-response-bytes 0                 ; Biggest API response
-           :largest-event-bytes 0                    ; Biggest event message
-           
-           ;; ==========================================
-           ;; ERROR TRACKING (Zero Cost)
-           ;; ==========================================
-           :network-errors 0                         ; Network-level failures
-           :serialization-errors 0                   ; Protobuf conversion failures  
-           :conversion-errors 0                      ; Clojure<->Protobuf failures
-           :timeout-errors 0                         ; Request timeout failures
-           :last-error-time timestamp                ; Most recent error
-           :last-error-message string                ; Most recent error description
-           
-           ;; ==========================================
-           ;; CLIENT BEHAVIOR PATTERNS (Zero Cost)
-           ;; ==========================================
-           :subscription-add-count 0                 ; Total pieces subscribed to
-           :subscription-remove-count 0              ; Total pieces unsubscribed from  
-           :peak-subscription-count 0                ; Maximum concurrent subscriptions  
-           
-           ;; ==========================================
-           ;; NOTES: Derived analytics computed on-demand for health endpoints
-           ;; Raw data above enables calculation of:
-           ;; - :api-success-rate (success/total)
-           ;; - :response-time-range-ms (slowest - fastest)
-           ;; - :event-delivery-reliability ((sent - dropped) / sent)
-           ;; - :queue-health-score (composite from queue metrics)
-           ;; - :client-health-score (overall health composite) 
-           ;; - :performance-trend-7d (trend analysis from historical data)
-           ;; - :connection-duration-ms (current-time - connected-at)
-           ;; - :api-call-frequency-hz (total-calls / connection-duration)
-           ;; - :event-consumption-rate-hz (events-sent / connection-duration)
-           ;; - :active-subscription-count (count piece-subscriptions)
-           ;; - :api-success-rate (success/total)
-           ;; - :api-method-usage-map (external tool aggregation from method labels)
-           ;; - :session-pieces-accessed (derived from API call logs or subscription events)
-           ;; ==========================================
+           :client-statistics {
+             ;; ==========================================
+             ;; CONNECTION LIFECYCLE (Zero Cost)
+             ;; ==========================================
+             :last-activity-time timestamp           ; Most recent API call or event
+             
+             ;; ==========================================
+             ;; API CALL METRICS (Zero Cost)
+             ;; ==========================================
+             :api-calls-total 0                      ; Total API calls made
+             :api-calls-success 0                    ; Successful API calls
+             :api-calls-failure 0                    ; Failed API calls  
+             :last-api-call timestamp                ; Most recent API call time
+             :last-api-method string                 ; Most recent method called
+             :api-slowest-call-ms 0                  ; Worst response time
+             :api-fastest-call-ms Long/MAX_VALUE     ; Best response time
+             :api-concurrent-calls-current 0         ; Currently processing
+             :api-concurrent-calls-peak 0            ; Max simultaneous calls
+             
+             ;; ==========================================
+             ;; EVENT STREAMING METRICS (Zero Cost)
+             ;; ==========================================
+             :events-sent 0                          ; Total events delivered to client
+             :events-dropped 0                       ; Events lost due to queue overflow
+             :server-events-received 0               ; Server-wide events received
+             :piece-events-received 0                ; Piece-specific events received
+             :connect-events-received 0              ; Client connect notifications  
+             :disconnect-events-received 0           ; Client disconnect notifications
+             :last-event-time timestamp              ; Most recent event delivery
+             :last-event-type keyword                ; Type of most recent event
+             
+             ;; ==========================================
+             ;; QUEUE HEALTH METRICS (Zero Cost)
+             ;; ==========================================
+             :queue-size-current 0                   ; Current queue depth
+             :queue-size-peak 0                      ; Maximum queue depth reached
+             :queue-overflow-count 0                 ; Number of overflow incidents  
+             :queue-overflow-total-events-dropped 0  ; Events lost across all overflows
+             :queue-offer-attempts 0                 ; Total queue insertions attempted
+             :queue-offer-successes 0                ; Successful queue insertions
+             :queue-consumer-lag-ms 0                ; Delay between queue and delivery
+             
+             ;; ==========================================
+             ;; NETWORK PERFORMANCE (Zero Cost)
+             ;; ==========================================
+             :bytes-sent 0                           ; Total protobuf bytes to client
+             :bytes-received 0                       ; Total protobuf bytes from client  
+             :bytes-events 0                         ; Bytes consumed by event messages
+             :bytes-api-requests 0                   ; Bytes from API calls
+             :bytes-api-responses 0                  ; Bytes in API responses
+             :largest-request-bytes 0                ; Biggest API request  
+             :largest-response-bytes 0               ; Biggest API response
+             :largest-event-bytes 0                  ; Biggest event message
+             
+             ;; ==========================================
+             ;; ERROR TRACKING (Zero Cost)
+             ;; ==========================================
+             :network-errors 0                       ; Network-level failures
+             :serialization-errors 0                 ; Protobuf conversion failures  
+             :conversion-errors 0                    ; Clojure<->Protobuf failures
+             :timeout-errors 0                       ; Request timeout failures
+             :last-error-time timestamp              ; Most recent error
+             :last-error-message string              ; Most recent error description
+             
+             ;; ==========================================
+             ;; CLIENT BEHAVIOR PATTERNS (Zero Cost)
+             ;; ==========================================
+             :subscription-add-count 0               ; Total pieces subscribed to
+             :subscription-remove-count 0            ; Total pieces unsubscribed from  
+             :peak-subscription-count 0              ; Maximum concurrent subscriptions  
+             
+             ;; ==========================================
+             ;; NOTES: Derived analytics computed on-demand for health endpoints
+             ;; Raw data above enables calculation of:
+             ;; - :api-success-rate (success/total)
+             ;; - :response-time-range-ms (slowest - fastest)
+             ;; - :event-delivery-reliability ((sent - dropped) / sent)
+             ;; - :queue-health-score (composite from queue metrics)
+             ;; - :client-health-score (overall health composite) 
+             ;; - :performance-trend-7d (trend analysis from historical data)
+             ;; - :connection-duration-ms (current-time - connected-at)
+             ;; - :api-call-frequency-hz (total-calls / connection-duration)
+             ;; - :event-consumption-rate-hz (events-sent / connection-duration)
+             ;; - :active-subscription-count (count piece-subscriptions)
+             ;; - :api-success-rate (success/total)
+             ;; - :api-method-usage-map (external tool aggregation from method labels)
+             ;; - :session-pieces-accessed (derived from API call logs or subscription events)
+             ;; ==========================================
+           }
            }}
 ```
 
