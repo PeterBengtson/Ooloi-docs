@@ -951,31 +951,6 @@ curl -H 'Accept: application/json' http://localhost:10701/health/server?format=p
 - **Health Scoring**: Composite health metrics for automated decision making
 - **Debugging Context**: Rich error context for rapid troubleshooting
 
-#### Comparison to Industry Standards:
-
-**Redis**: Comprehensive INFO command metrics (190+ fields), real-time MONITOR streaming, built-in latency detection
-- **Ooloi's Focus**: Novel per-client queue architecture with overflow handling, collaborative editing integration
-
-**PostgreSQL**: Industry-leading 25+ system views with granular per-session tracking, cumulative statistics persistence  
-- **Ooloi's Focus**: STM-gRPC transaction integration monitoring, queue-based event streaming architecture
-
-**Kafka**: Comprehensive 100+ JMX metrics across broker/topic/partition/client dimensions, detailed latency breakdowns
-- **Ooloi's Focus**: Per-client queue overflow strategies, collaborative session analytics, behavioral pattern tracking
-
-**gRPC Services (Modern)**: Per-method success rates via Envoy, streaming message counts, distributed tracing integration
-- **Ooloi's Focus**: Streaming connection health, collaborative session coordination, client behavioral analysis
-
-#### Overall Assessment: Comprehensive with Novel Elements
-
-Ooloi's statistics architecture provides thorough operational visibility through architectural innovations not commonly found in traditional server implementations. The distinctive characteristics include:
-- Per-client queue management with overflow handling  
-- STM-gRPC transaction integration monitoring
-- Real-time collaborative editing session analytics
-- Sophisticated client behavioral pattern tracking
-- Two-level statistics approach balancing granular and aggregate metrics
-
-This represents a comprehensive monitoring approach that addresses the specific operational challenges of collaborative music editing systems while maintaining alignment with modern observability practices.
-
 ## Consequences
 
 ### Positive Outcomes
