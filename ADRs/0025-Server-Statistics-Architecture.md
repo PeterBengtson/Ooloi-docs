@@ -19,15 +19,23 @@
     - [Zero-Cost Collection Principle](#zero-cost-collection-principle)
 - [Health Monitoring Integration](#health-monitoring-integration)
   - [Dual Health System Architecture](#dual-health-system-architecture)
-  - [HTTP Statistics Endpoints](#http-statistics-endpoints)
+  - [HTTP Statistics Endpoints - Content Negotiation Architecture](#http-statistics-endpoints---content-negotiation-architecture)
+    - [Content Negotiation Contract](#content-negotiation-contract)
+    - [JSON Response Format (Default)](#json-response-format-default)
+    - [Prometheus Text Format](#prometheus-text-format)
+    - [Enterprise Operational Requirements](#enterprise-operational-requirements)
   - [External Monitoring Tool Integration](#external-monitoring-tool-integration)
-- [Implementation Phases](#implementation-phases)
+    - [Standard Production Monitoring Stack](#standard-production-monitoring-stack)
+    - [Enterprise Monitoring Solutions](#enterprise-monitoring-solutions)
+    - [Cloud-Native Monitoring](#cloud-native-monitoring)
+    - [Load Balancer Health Checking](#load-balancer-health-checking)
+    - [Content Negotiation Examples](#content-negotiation-examples)
+    - [Observability Platforms](#observability-platforms)
 - [Consequences](#consequences)
   - [Positive Outcomes](#positive-outcomes)
   - [Trade-offs and Considerations](#trade-offs-and-considerations)
   - [Mitigation Strategies](#mitigation-strategies)
 - [Related ADRs](#related-adrs)
-- [Future Considerations](#future-considerations)
 
 ## Status
 
@@ -591,9 +599,9 @@ The HTTP endpoint **builds on** the gRPC health service:
 
 This ensures **consistent health status** across both protocols while providing different access patterns for different use cases.
 
-### HTTP Statistics Endpoints
+### HTTP Statistics Endpoints - Content Negotiation Architecture
 
-Extend existing HTTP health server with comprehensive statistics APIs:
+**Enterprise-grade content negotiation** serving multiple formats from single URLs:
 
 ```http
 GET /health                     # Basic health status (existing)
@@ -605,77 +613,198 @@ GET /health/errors             # Error rates and categorization
 GET /health/resources          # Memory, threads, queue usage
 ```
 
-### Response Format
+#### Content Negotiation Contract
+
+**Field Naming Convention**: All HTTP responses use underscored field names (`clients_connected_current`) for universal compatibility. Internal ADR-0025 statistics maintain hyphenated names (`:clients-connected-current`) with transformation only at serialization boundary.
+
+**Format Selection Rules**:
+1. **Accept Header Priority**:
+   - `Accept: text/plain` or `Accept: application/openmetrics-text` → Prometheus text format
+   - Default → JSON format
+2. **Query Parameter Override**: `?format=prom` or `?format=json` overrides Accept header
+3. **User-Agent Detection**: `User-Agent: Prometheus/*` → Prometheus text format
+
+**OpenMetrics Evolution**: Ooloi may emit OpenMetrics headers when Prometheus defaults to OpenMetrics format, but the text exposition format remains stable for backward compatibility.
+
+**Versioning and Compatibility**:
+- **Schema Version Header**: `X-Ooloi-Metrics-Schema: 1` in all responses
+- **Stable URLs**: Endpoints never change, only representations evolve
+- **Backward Compatibility**: Add new metrics, never rename existing ones in Prometheus view
+
+#### JSON Response Format (Default)
+
+**Content-Type**: `application/json; charset=utf-8`  
+**Cache-Control**: `no-store`
+
 ```json
 {
   "server": {
-    "uptime-hours": 72.5,
-    "clients-connected": 15,
-    "clients-peak": 23,
-    "api-calls-total": 45230,
-    "api-success-rate": 0.998,
-    "events-sent": 8934,
-    "bytes-transferred-gb": 2.1
+    "server_uptime_ms": 259200000,
+    "clients_connected_current": 15,
+    "clients_connected_peak": 23,
+    "api_calls_total": 45230,
+    "api_calls_success": 45112,
+    "api_calls_failure": 118,
+    "api_success_rate": 0.998,
+    "events_sent_total": 8934,
+    "events_dropped_total": 12,
+    "bytes_transferred_total": 2147483648,
+    "event_queues_healthy_count": 13,
+    "event_queues_warning_count": 2,
+    "event_queues_critical_count": 0
   },
   "clients": [
     {
-      "client-id": "uuid-123",
-      "connected-duration-hours": 2.3,
-      "api-calls": 234,
-      "events-received": 89,
-      "queue-health": "healthy"
+      "client_id": "uuid-123",
+      "connected_duration_ms": 8280000,
+      "api_calls_total": 234,
+      "events_received": 89,
+      "queue_health_score": 0.95
     }
   ]
 }
 ```
 
+#### Prometheus Text Format
+
+**Content-Type**: `text/plain; version=0.0.4`  
+**Cache-Control**: `no-store`
+
+```
+# HELP ooloi_server_uptime_seconds Server uptime in seconds
+# TYPE ooloi_server_uptime_seconds counter
+ooloi_server_uptime_seconds 259200
+
+# HELP ooloi_clients_connected_current Currently connected clients
+# TYPE ooloi_clients_connected_current gauge  
+ooloi_clients_connected_current 15
+
+# HELP ooloi_clients_connected_peak Peak concurrent client connections
+# TYPE ooloi_clients_connected_peak gauge
+ooloi_clients_connected_peak 23
+
+# HELP ooloi_api_calls_total Total API calls processed
+# TYPE ooloi_api_calls_total counter
+ooloi_api_calls_total 45230
+
+# HELP ooloi_api_calls_success_total Successful API calls
+# TYPE ooloi_api_calls_success_total counter  
+ooloi_api_calls_success_total 45112
+
+# HELP ooloi_api_calls_failure_total Failed API calls
+# TYPE ooloi_api_calls_failure_total counter
+ooloi_api_calls_failure_total 118
+
+# HELP ooloi_events_sent_total Events sent to clients
+# TYPE ooloi_events_sent_total counter
+ooloi_events_sent_total 8934
+
+# HELP ooloi_events_dropped_total Events dropped due to queue overflow  
+# TYPE ooloi_events_dropped_total counter
+ooloi_events_dropped_total 12
+
+# HELP ooloi_bytes_transferred_total Network bytes transferred
+# TYPE ooloi_bytes_transferred_total counter
+ooloi_bytes_transferred_total 2147483648
+
+# HELP ooloi_event_queues_healthy Event queues in healthy state
+# TYPE ooloi_event_queues_healthy gauge
+ooloi_event_queues_healthy 13
+
+# HELP ooloi_event_queues_warning Event queues in warning state
+# TYPE ooloi_event_queues_warning gauge  
+ooloi_event_queues_warning 2
+
+# HELP ooloi_event_queues_critical Event queues in critical state
+# TYPE ooloi_event_queues_critical gauge
+ooloi_event_queues_critical 0
+```
+
+**Prometheus Metadata Completeness**: All metrics in Prometheus text format include `# HELP` and `# TYPE` lines following Prometheus best practices for metric discoverability and tool compatibility.
+
+#### Enterprise Operational Requirements
+
+**Cardinality Management**:
+- **Bounded Labels Only**: No unbounded `client_id` labels in Prometheus format by default
+- **Aggregate-First Strategy**: Per-client details available in JSON format only  
+- **Series Cap**: Maximum 150 active time series under normal load
+- **TTL Policy**: Client-specific metrics expire after disconnection
+- **Per-Client Metrics Opt-In**: If per-client metrics are ever exposed in Prometheus view, they will be behind an explicit opt-in flag (`--enable-prom-client-metrics`) with strict cardinality limits to prevent TSDB explosion
+
+**Performance Constraints**:
+- **Serialization Budget**: < 1ms typical response time for all formats
+- **Memory Footprint**: Stateless serialization, no cached representations
+- **Rate Limiting**: Per-IP token bucket with Prometheus scrape interval awareness
+
+**Cross-Representation Consistency**: JSON and Prometheus views are always generated from the same raw statistics atom snapshot, ensuring identical data across formats at request time.
+
+**Security Integration**:
+- **Authentication**: Support `Authorization: Bearer` for JSON endpoints
+- **Prometheus Access**: Allow unauthenticated scrape via IP allowlist/ingress policy  
+- **TLS**: HTTPS required in production; mTLS optional for scrape networks
+
 ### External Monitoring Tool Integration
+
+The content negotiation architecture provides universal compatibility with monitoring ecosystems through standard HTTP interfaces.
 
 #### Standard Production Monitoring Stack
 
-**Prometheus + Grafana + AlertManager**:
+**Prometheus + Grafana + AlertManager** - Zero configuration required:
+
 ```yaml
-# prometheus.yml configuration
-- job_name: 'ooloi-server'
-  static_configs:
-    - targets: ['ooloi-server:10701']
-  metrics_path: '/health/server'
-  scrape_interval: 15s
+# prometheus.yml - works immediately with content negotiation
+scrape_configs:
+  - job_name: 'ooloi'
+    static_configs:
+      - targets: ['ooloi-server:10701']
+    metrics_path: /health/server
+    scrape_interval: 15s
+    # Prometheus User-Agent automatically triggers text format response
+```
+
+**Grafana Development Integration**:
+```bash
+# JSON Datasource configuration (manual setup)
+# URL: http://localhost:10701
+# All /health/* endpoints return JSON by default - no Accept header needed
 ```
 
 **Integration Benefits**:
-- HTTP JSON format without custom exporters
-- Standard Prometheus service discovery compatibility
-- Grafana templates for gRPC services
-- AlertManager rules for response time/error rate thresholds
-
-**Integration Complexity**: Minimal - Standard HTTP endpoints work without custom code.
+- **Zero Custom Code**: Standard HTTP content negotiation, no exporters required
+- **Single URL Strategy**: Same endpoints serve both JSON (dev) and Prometheus (prod)  
+- **Automatic Format Detection**: Prometheus scraper gets text format, browsers get JSON
+- **Enterprise Ready**: Follows HTTP standards for multi-representation resources
 
 #### Enterprise Monitoring Solutions
 
-**DataDog**:
+**DataDog** - JSON ingestion via HTTP checks:
 ```yaml
-# datadog.yaml integration
+# datadog.yaml - automatically gets JSON format
 instances:
   - url: http://ooloi-server:10701/health/server
     tags:
       - service:ooloi
       - environment:production
 ```
-- APM integration with distributed tracing for gRPC calls
-- Custom metrics via direct JSON ingestion
-- Setup complexity: Low - Standard HTTP integration
 
-**New Relic**:
-- Infrastructure monitoring for server resource utilization
-- Statistics API data as structured events  
-- Setup complexity: Low - REST API compatible
+**New Relic** - Direct JSON API integration:
+```bash
+# Custom integration script - JSON format by default
+curl -H "Authorization: Bearer $NR_API_KEY" \
+     "http://ooloi-server:10701/health/server" | \
+     newrelic-cli events post --data @-
+```
+
+**Enterprise Benefits**:
+- **Universal JSON Support**: All enterprise tools consume JSON by default
+- **No Format Translation**: Direct API ingestion without middleware
+- **Standard HTTP**: Works with existing enterprise HTTP monitoring infrastructure
 
 #### Cloud-Native Monitoring
 
-**Kubernetes + Prometheus Operator**:
+**Kubernetes + Prometheus Operator** - Native Prometheus text format:
 ```yaml
-# ServiceMonitor custom resource  
+# ServiceMonitor - Prometheus Operator automatically configures scraping
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -687,29 +816,105 @@ spec:
   endpoints:
   - port: health-port
     path: /health/server
+    interval: 15s
+    # Prometheus scraper User-Agent triggers text format automatically
 ```
-- Auto-scaling integration via HPA based on custom metrics
-- Service mesh integration (Istio/Linkerd) via standard endpoints
-- Setup complexity: Minimal - Kubernetes-native configuration
+
+**Service Mesh Integration** - Works with any proxy:
+```yaml
+# Istio VirtualService example - standard HTTP health checks
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+spec:
+  http:
+  - match:
+    - uri:
+        prefix: /health
+    route:
+    - destination:
+        host: ooloi-server
+        port:
+          number: 10701
+```
 
 #### Load Balancer Health Checking
 
-**NGINX/HAProxy**:
+**NGINX/HAProxy** - Standard HTTP health endpoint:
 ```nginx
 upstream ooloi_servers {
     server ooloi1:10701 max_fails=3 fail_timeout=30s;
     server ooloi2:10701 max_fails=3 fail_timeout=30s;
 }
 
-# Health check configuration
+# Health check - gets JSON format by default
 location /health {
     proxy_pass http://ooloi_servers/health;
     proxy_connect_timeout 1s;
     proxy_read_timeout 1s;
+    # Load balancer doesn't need to parse JSON, just checks HTTP 200
 }
 ```
-- HTTP health checks with built-in load balancer support
-- Setup complexity: Standard HTTP health endpoint
+
+**Cloud Load Balancers** - Universal HTTP support:
+```bash
+# AWS ALB health check configuration
+# Target: /health (returns JSON with HTTP 200/503)
+# All cloud providers support standard HTTP health checks
+
+# GCP Load Balancer
+# Health check path: /health/server
+# Success criteria: HTTP 200 + JSON response
+
+# Azure Application Gateway  
+# Health probe: /health
+# Content negotiation transparent to load balancer
+```
+
+#### Content Negotiation Examples
+
+**Manual Testing and Discovery**:
+```bash
+# JSON format (default) - for development and API exploration
+curl http://localhost:10701/health/server | jq .
+
+# Prometheus text format - explicit Accept header
+curl -H 'Accept: text/plain; version=0.0.4' http://localhost:10701/health/server
+
+# Query parameter override - forces format regardless of headers
+curl http://localhost:10701/health/server?format=prom
+
+# Browser access - automatically gets JSON due to Accept: text/html
+open http://localhost:10701/health/server
+```
+
+**Production Integration Patterns**:
+```yaml
+# Prometheus scrape config - zero configuration required
+scrape_configs:
+  - job_name: 'ooloi'
+    static_configs: [{ targets: ['host:10701'] }]
+    metrics_path: /health/server
+    scrape_interval: 15s
+    # User-Agent: Prometheus/* automatically triggers text format
+
+# Grafana JSON datasource - points to same URLs
+# URL: http://host:10701
+# Paths: /health/server, /health/clients, /health/performance
+# Format: Automatic JSON (default response)
+```
+
+**Format Verification**:
+```bash
+# Verify Prometheus format is valid
+curl -H 'Accept: text/plain' http://localhost:10701/health/server | promtool check metrics
+
+# Verify JSON schema version
+curl -I http://localhost:10701/health/server | grep X-Ooloi-Metrics-Schema
+
+# Test query parameter override priority
+curl -H 'Accept: application/json' http://localhost:10701/health/server?format=prom
+# Should return Prometheus text despite JSON Accept header
+```
 
 #### Observability Platforms
 
@@ -770,28 +975,6 @@ Ooloi's statistics architecture provides thorough operational visibility through
 - Two-level statistics approach balancing granular and aggregate metrics
 
 This represents a comprehensive monitoring approach that addresses the specific operational challenges of collaborative music editing systems while maintaining alignment with modern observability practices.
-
-## Implementation Phases
-
-### Phase 1: Basic Collection Infrastructure
-- Extend connection registry metadata structure
-- Add server-wide statistics atom to component  
-- Implement atomic update patterns for statistics
-
-### Phase 2: Collection Point Integration  
-- Integrate API call timing and success/failure tracking
-- Add event delivery metrics collection
-- Implement connection lifecycle tracking
-
-### Phase 3: Health Endpoint Exposure
-- Create HTTP endpoints for statistics access
-- Implement JSON serialization for metrics
-- Add monitoring system integration points
-
-### Phase 4: Advanced Analytics
-- Implement trend analysis and performance baselines  
-- Add predictive capacity planning metrics
-- Create automated health scoring algorithms
 
 ## Consequences
 
@@ -854,21 +1037,3 @@ This represents a comprehensive monitoring approach that addresses the specific 
 - [ADR-0024: gRPC Concurrency and Flow Control](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Event streaming and queue management  
 - [ADR-0022: Lazy Frontend-Backend Architecture](0022-Lazy-Frontend-Backend-Architecture.md) - Event-driven collaboration patterns
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrent transaction processing
-
-## Future Considerations
-
-**Analytics and Machine Learning**:
-- Client behavior pattern recognition
-- Predictive scaling based on usage patterns
-- Anomaly detection in system performance  
-- Automated performance optimization recommendations
-
-**Distributed Statistics**:
-- Statistics aggregation across multiple server instances
-- Cross-server performance correlation analysis
-- Distributed health monitoring and alerting
-
-**Client-Side Integration**:
-- Frontend performance metrics collection  
-- End-to-end latency measurement
-- User experience quality metrics
