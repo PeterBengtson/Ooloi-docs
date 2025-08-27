@@ -151,12 +151,12 @@ service OoloiService {
 
 **Core Conversion Implementation**:
 ```clojure
-(defn clj->protobuf-value [obj]
+(defn clj->proto [obj]
   (cond
     (ratio? obj) {:ratio-val {:numerator (numerator obj) :denominator (denominator obj)}}
     (keyword? obj) {:keyword-val {:namespace (namespace obj) :name (name obj)}}
-    (map? obj) {:map-val {:entries (map (fn [[k v]] {:key (clj->protobuf-value k) 
-                                                     :value (clj->protobuf-value v)}) obj)}}
+    (map? obj) {:map-val {:entries (map (fn [[k v]] {:key (clj->proto k) 
+                                                     :value (clj->proto v)}) obj)}}
     ;; ... handles all Clojure types recursively
     ))
 ```
