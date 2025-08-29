@@ -120,110 +120,64 @@ Add new `server-statistics` atom to component with aggregate visibility:
 
 ```clojure
 { ;; ==========================================
- ;; CONNECTION LIFECYCLE AGGREGATES (Zero Cost)
+ ;; CONNECTION LIFECYCLE COUNTERS
  ;; ==========================================
- :clients-connected-total 0                    ; Total connections since server start
- :clients-connected-current 0                  ; Currently active connections  
- :clients-connected-peak 0                     ; Peak concurrent connections
- :clients-disconnected-total 0                 ; Total disconnections
- :clients-disconnected-graceful 0              ; Clean disconnections
- :clients-disconnected-error 0                 ; Error-based disconnections
- :clients-disconnected-timeout 0               ; Timeout-based disconnections
- :connection-duration-total-ms 0               ; Aggregate connection time
- :shortest-session-ms Long/MAX_VALUE           ; Fastest client disconnect
- :longest-session-ms 0                         ; Longest client session
- 
+ :clients-connected-total (LongAdder.)         ; Total connections since server start
+ :clients-disconnected-total (LongAdder.)      ; Total disconnections
+ :clients-disconnected-graceful (LongAdder.)   ; Clean disconnections
+ :clients-disconnected-error (LongAdder.)      ; Error-based disconnections
+ :clients-disconnected-timeout (LongAdder.)    ; Timeout-based disconnections
+ :connection-duration-total-ms (LongAdder.)    ; Aggregate connection time
+
  ;; ==========================================
- ;; API CALL AGGREGATES (Zero Cost)
+ ;; API CALL COUNTERS
  ;; ==========================================
- :api-calls-total 0                            ; Total API calls processed
- :api-calls-success 0                          ; Successful API calls
- :api-calls-failure 0                          ; Failed API calls
- :api-concurrent-calls-current 0               ; Currently processing API calls
- :api-concurrent-calls-peak 0                  ; Max simultaneous API processing
- :api-slowest-call-ms 0                        ; Worst API response time ever
- :api-fastest-call-ms Long/MAX_VALUE           ; Best API response time ever
- 
+ :api-calls-total (LongAdder.)                 ; Total API calls processed
+ :api-calls-success (LongAdder.)               ; Successful API calls
+ :api-calls-failure (LongAdder.)               ; Failed API calls
+
  ;; ==========================================
- ;; EVENT STREAMING AGGREGATES (Zero Cost)
+ ;; EVENT STREAMING COUNTERS
  ;; ==========================================
- :server-events-sent 0                         ; Total server events broadcast
- :piece-events-sent 0                          ; Total piece events sent  
- :connect-events-sent 0                        ; Client connect notifications
- :disconnect-events-sent 0                     ; Client disconnect notifications
- :events-sent-total 0                          ; All event types combined
- :events-dropped-total 0                       ; Total events dropped (all clients)
- :event-queues-overflow-total 0                ; Total queue overflow incidents
- :event-queues-healthy-count 0                 ; Queues with no overflow
- :event-queues-warning-count 0                 ; Queues near capacity
- :event-queues-critical-count 0                ; Queues experiencing overflow
- :event-delivery-attempts 0                    ; Total event delivery attempts
- :event-delivery-successes 0                   ; Successful event deliveries
- 
+ :server-events-sent (LongAdder.)              ; Total server events broadcast
+ :piece-events-sent (LongAdder.)               ; Total piece events sent  
+ :connect-events-sent (LongAdder.)             ; Client connect notifications
+ :disconnect-events-sent (LongAdder.)          ; Client disconnect notifications
+ :events-sent-total (LongAdder.)               ; All event types combined
+ :events-dropped-total (LongAdder.)            ; Total events dropped (all clients)
+ :event-queues-overflow-total (LongAdder.)     ; Total queue overflow incidents
+ :event-delivery-attempts (LongAdder.)         ; Total event delivery attempts
+ :event-delivery-successes (LongAdder.)        ; Successful event deliveries
+
  ;; ==========================================
- ;; SYSTEM RESOURCE UTILIZATION (Zero Cost)
+ ;; NETWORK TRAFFIC COUNTERS
  ;; ==========================================  
- :bytes-transferred-total 0                    ; Total network traffic (all clients)
- :bytes-api-requests-total 0                   ; Bytes from API calls
- :bytes-api-responses-total 0                  ; Bytes in API responses  
- :bytes-events-total 0                         ; Bytes in event messages
- :largest-api-request-bytes 0                  ; Biggest API request ever
- :largest-api-response-bytes 0                 ; Biggest API response ever
- :largest-event-message-bytes 0                ; Biggest event message ever
- 
+ :bytes-transferred-total (LongAdder.)         ; Total network traffic (all clients)
+ :bytes-api-requests-total (LongAdder.)        ; Bytes from API calls
+ :bytes-api-responses-total (LongAdder.)       ; Bytes in API responses  
+ :bytes-events-total (LongAdder.)              ; Bytes in event messages
+
  ;; ==========================================
- ;; ERROR TRACKING AND CATEGORIZATION (Zero Cost)
+ ;; ERROR TRACKING COUNTERS
  ;; ==========================================
- :conversion-errors-total 0                    ; Protobuf conversion failures
- :serialization-errors-total 0                 ; Data serialization failures
- :network-errors-total 0                       ; Network-level errors
- :internal-errors-total 0                      ; Unexpected server errors  
- :timeout-errors-total 0                       ; Request timeout failures
- :client-errors-total 0                        ; Client-side error responses
- :server-errors-total 0                        ; Server-side error responses
- :last-error-time timestamp                    ; Most recent error
- :error-free-duration-ms 0                     ; Time since last error
- :longest-error-free-period-ms 0               ; Best error-free streak
- 
+ :conversion-errors-total (LongAdder.)         ; Protobuf conversion failures
+ :serialization-errors-total (LongAdder.)     ; Data serialization failures
+ :network-errors-total (LongAdder.)           ; Network-level errors
+ :internal-errors-total (LongAdder.)          ; Unexpected server errors  
+ :timeout-errors-total (LongAdder.)           ; Request timeout failures
+ :client-errors-total (LongAdder.)            ; Client-side error responses
+ :server-errors-total (LongAdder.)            ; Server-side error responses
+
  ;; ==========================================
- ;; COLLABORATIVE EDITING METRICS (Zero Cost)
+ ;; COLLABORATIVE EDITING COUNTERS
  ;; ==========================================
- :piece-subscriptions-total 0                  ; Total piece subscriptions
- :piece-subscriptions-active 0                 ; Current piece subscriptions
- :piece-subscriptions-peak 0                   ; Peak piece subscriptions
- :most-subscribed-piece-count 0                ; Max clients on single piece
- :subscription-changes-total 0                 ; Total subscription add/remove operations
- 
+ :subscription-adds-total (LongAdder.)        ; Total piece subscriptions across all clients
+ :subscription-removes-total (LongAdder.)     ; Total piece unsubscriptions across all clients
+
  ;; ==========================================  
- ;; SYSTEM TIMING AND METADATA (Zero Cost)
+ ;; SYSTEM COUNTERS
  ;; ==========================================
- :server-start-time timestamp                  ; When server started
- :server-restart-count 0                       ; Number of restarts
- 
- ;; ==========================================
- ;; NOTES: Derived analytics computed on-demand for health endpoints  
- ;; Raw data above enables calculation of:
- ;; - :server-uptime-ms (current-time - server-start-time)
- ;; - :server-health-score (composite from all error rates and performance)
- ;; - :api-success-rate-overall (api-calls-success / api-calls-total) 
- ;; - :event-delivery-success-rate ((events-sent-total - events-dropped-total) / events-sent-total)
- ;; - :system-load-score (composite from resource utilization metrics)
- ;; - :performance-trend-24h (trend analysis from historical data)
- ;; - :collaborative-effectiveness (metrics derived from subscription patterns)
- ;; - :subscription-churn-rate-per-hour (subscription-changes-total / uptime-hours)
- ;; - :api-calls-per-hour (api-calls-total / uptime-hours)
- ;; - :api-peak-calls-per-minute (external tool analysis of call timing patterns)
- ;; - :api-method-usage-map (external tool aggregation from method labels)
- ;; - :grpc-error-breakdown-by-status (external tool status code analysis)
- ;; - :collaborative-sessions-active (calculated from current subscription data)
- ;; - :pieces-with-multiple-subscribers (derived from subscription state)
- ;; - :memory-usage-current-bytes (Runtime.getRuntime().totalMemory())
- ;; - :memory-usage-peak-bytes (external tool tracking of memory peaks)
- ;; - :thread-pool-active-count (ThreadPoolExecutor.getActiveCount())
- ;; - :thread-pool-usage-peak (external tool thread pool monitoring)
- ;; - :thread-pool-queue-size (ThreadPoolExecutor.getQueue().size())
- ;; - :queue-memory-usage-total-bytes (calculated estimate from queue sizes)
- ;; ==========================================
+ :server-restart-count (LongAdder.)           ; Number of restarts
  }
 ```
 
@@ -246,120 +200,78 @@ Extend existing connection registry with separate top-level `:client-statistics`
            :connection-id "conn-uuid"               ; Transport connection identifier
            }
  :client-statistics {
-             ;; ==========================================
-             ;; CONNECTION LIFECYCLE (Zero Cost)
-             ;; ==========================================
-             :last-activity-time timestamp           ; Most recent API call or event
-             
-             ;; ==========================================
-             ;; API CALL METRICS (Zero Cost)
-             ;; ==========================================
-             :api-calls-total 0                      ; Total API calls made
-             :api-calls-success 0                    ; Successful API calls
-             :api-calls-failure 0                    ; Failed API calls  
-             :last-api-call timestamp                ; Most recent API call time
-             :last-api-method string                 ; Most recent method called
-             :api-slowest-call-ms 0                  ; Worst response time
-             :api-fastest-call-ms Long/MAX_VALUE     ; Best response time
-             :api-concurrent-calls-current 0         ; Currently processing
-             :api-concurrent-calls-peak 0            ; Max simultaneous calls
-             
-             ;; ==========================================
-             ;; EVENT STREAMING METRICS (Zero Cost)
-             ;; ==========================================
-             :events-sent 0                          ; Total events delivered to client
-             :events-dropped 0                       ; Events lost due to queue overflow
-             :server-events-received 0               ; Server-wide events received
-             :piece-events-received 0                ; Piece-specific events received
-             :connect-events-received 0              ; Client connect notifications  
-             :disconnect-events-received 0           ; Client disconnect notifications
-             :last-event-time timestamp              ; Most recent event delivery
-             :last-event-type keyword                ; Type of most recent event
-             
-             ;; ==========================================
-             ;; QUEUE HEALTH METRICS (Zero Cost)
-             ;; ==========================================
-             :queue-size-current 0                   ; Current queue depth
-             :queue-size-peak 0                      ; Maximum queue depth reached
-             :queue-overflow-count 0                 ; Number of overflow incidents  
-             :queue-overflow-total-events-dropped 0  ; Events lost across all overflows
-             :queue-offer-attempts 0                 ; Total queue insertions attempted
-             :queue-offer-successes 0                ; Successful queue insertions
-             :queue-consumer-lag-ms 0                ; Delay between queue and delivery
-             
-             ;; ==========================================
-             ;; NETWORK PERFORMANCE (Zero Cost)
-             ;; ==========================================
-             :bytes-sent 0                           ; Total protobuf bytes to client
-             :bytes-received 0                       ; Total protobuf bytes from client  
-             :bytes-events 0                         ; Bytes consumed by event messages
-             :bytes-api-requests 0                   ; Bytes from API calls
-             :bytes-api-responses 0                  ; Bytes in API responses
-             :largest-request-bytes 0                ; Biggest API request  
-             :largest-response-bytes 0               ; Biggest API response
-             :largest-event-bytes 0                  ; Biggest event message
-             
-             ;; ==========================================
-             ;; ERROR TRACKING (Zero Cost)
-             ;; ==========================================
-             :network-errors 0                       ; Network-level failures
-             :serialization-errors 0                 ; Protobuf conversion failures  
-             :conversion-errors 0                    ; Clojure<->Protobuf failures
-             :timeout-errors 0                       ; Request timeout failures
-             :last-error-time timestamp              ; Most recent error
-             :last-error-message string              ; Most recent error description
-             
-             ;; ==========================================
-             ;; CLIENT BEHAVIOR PATTERNS (Zero Cost)
-             ;; ==========================================
-             :subscription-add-count 0               ; Total pieces subscribed to
-             :subscription-remove-count 0            ; Total pieces unsubscribed from  
-             :peak-subscription-count 0              ; Maximum concurrent subscriptions  
-             
-             ;; ==========================================
-             ;; NOTES: Derived analytics computed on-demand for health endpoints
-             ;; Raw data above enables calculation of:
-             ;; - :api-success-rate (success/total)
-             ;; - :response-time-range-ms (slowest - fastest)
-             ;; - :event-delivery-reliability ((sent - dropped) / sent)
-             ;; - :queue-health-score (composite from queue metrics)
-             ;; - :client-health-score (overall health composite) 
-             ;; - :performance-trend-7d (trend analysis from historical data)
-             ;; - :connection-duration-ms (current-time - connected-at)
-             ;; - :api-call-frequency-hz (total-calls / connection-duration)
-             ;; - :event-consumption-rate-hz (events-sent / connection-duration)
-             ;; - :active-subscription-count (count piece-subscriptions)
-             ;; - :api-success-rate (success/total)
-             ;; - :api-method-usage-map (external tool aggregation from method labels)
-             ;; - :session-pieces-accessed (derived from API call logs or subscription events)
-             ;; ==========================================
-           }}
+   ;; ==========================================
+   ;; API CALL COUNTERS
+   ;; ==========================================
+   :api-calls-total (LongAdder.)             ; Total API calls made
+   :api-calls-success (LongAdder.)           ; Successful API calls
+   :api-calls-failure (LongAdder.)           ; Failed API calls
+
+   ;; ==========================================
+   ;; EVENT STREAMING COUNTERS
+   ;; ==========================================
+   :events-sent (LongAdder.)                 ; Total events delivered to client
+   :events-dropped (LongAdder.)              ; Events lost due to queue overflow
+   :server-events-received (LongAdder.)      ; Server-wide events received
+   :piece-events-received (LongAdder.)       ; Piece-specific events received
+   :connect-events-received (LongAdder.)     ; Client connect notifications  
+   :disconnect-events-received (LongAdder.)  ; Client disconnect notifications
+
+   ;; ==========================================
+   ;; QUEUE HEALTH COUNTERS
+   ;; ==========================================
+   :queue-overflow-count (LongAdder.)        ; Number of overflow incidents  
+   :queue-overflow-total-events-dropped (LongAdder.) ; Events lost across all overflows
+   :queue-offer-attempts (LongAdder.)        ; Total queue insertions attempted
+   :queue-offer-successes (LongAdder.)       ; Successful queue insertions
+
+   ;; ==========================================
+   ;; NETWORK TRAFFIC COUNTERS
+   ;; ==========================================
+   :bytes-sent (LongAdder.)                  ; Total protobuf bytes to client
+   :bytes-received (LongAdder.)              ; Total protobuf bytes from client  
+   :bytes-events (LongAdder.)                ; Bytes consumed by event messages
+   :bytes-api-requests (LongAdder.)          ; Bytes from API calls
+   :bytes-api-responses (LongAdder.)         ; Bytes in API responses
+
+   ;; ==========================================
+   ;; ERROR TRACKING COUNTERS
+   ;; ==========================================
+   :network-errors (LongAdder.)              ; Network-level failures
+   :serialization-errors (LongAdder.)        ; Protobuf conversion failures  
+   :conversion-errors (LongAdder.)           ; Clojure<->Protobuf failures
+   :timeout-errors (LongAdder.)              ; Request timeout failures
+
+   ;; ==========================================
+   ;; SUBSCRIPTION COUNTERS
+   ;; ==========================================
+   :subscription-add-count (LongAdder.)      ; Total pieces subscribed to
+   :subscription-remove-count (LongAdder.)   ; Total pieces unsubscribed from  
+}}
 ```
 
 ### Raw vs. Derived Statistics Architecture
 
 #### Design Principle: Store Raw Data, Compute Analytics On-Demand
 
-**Atoms store only raw measurements** (zero/minimal collection cost):
+**Atoms store only raw LongAdder counters** (zero/minimal collection cost):
 ```clojure
-;; Raw data - minimal overhead to collect
-:api-calls-total 15
-:api-calls-success 14  
-:events-dropped 2
-:bytes-sent 4096
+;; Raw LongAdder counters - minimal overhead to collect
+:api-calls-total (LongAdder.)     ; Current sum: (.sum this) => 15
+:api-calls-success (LongAdder.)   ; Current sum: (.sum this) => 14
+:events-dropped (LongAdder.)      ; Current sum: (.sum this) => 2
+:bytes-sent (LongAdder.)          ; Current sum: (.sum this) => 4096
 ```
 
 **Health endpoints compute derived metrics** when requested:
 ```clojure
-;; GET /health/clients/{id} - calculated on-demand
-(defn compute-client-analytics [raw-stats]
-  {:api-success-rate (/ (:api-calls-success raw-stats) 
-                       (:api-calls-total raw-stats))
-   :response-time-range-ms (- (:slowest-api-call-ms raw-stats)
-                             (:fastest-api-call-ms raw-stats))
-   :event-delivery-reliability (- 1.0 (/ (:events-dropped raw-stats) 
-                                         (:events-sent raw-stats)))
-   :client-health-score (composite-health-calculation raw-stats)})
+;; GET /health/clients/{id} - calculated on-demand from LongAdder sums
+(defn compute-client-analytics [client-stats]
+  {:api-success-rate (/ (.sum (:api-calls-success client-stats)) 
+                       (.sum (:api-calls-total client-stats)))
+   :event-delivery-reliability (- 1.0 (/ (.sum (:events-dropped client-stats)) 
+                                         (.sum (:events-sent client-stats))))
+   :client-health-score (composite-health-calculation client-stats)})
 ```
 
 #### Benefits of This Architecture:
@@ -386,61 +298,50 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 ### Statistics Collection Points
 
-**Implementation Pattern**: All statistics collection follows the same vector-based pattern across all integration points. Statistics helper functions extract raw operational data, compute ALL relevant statistics for their domain, and return operation vectors for atomic application.
+**Implementation Pattern**: All statistics collection uses direct LongAdder increments at integration points. Statistics helper functions extract raw operational data and directly increment the appropriate LongAdder counters.
 
 **🔑 Key Architectural Benefit**: These integration point functions remain **completely stable** when adding or removing statistics. All statistics complexity is abstracted into helper functions, so integration points never need to change when the statistics requirements evolve.
 
 #### API Request Processing
 ```clojure
-;; Clean integration point - no manual statistics delta construction
-;; ALL statistics complexity abstracted into helper function
+;; Clean integration point - statistics complexity abstracted into helper function
 
 (defn execute-unified-method [method-name protobuf-request client-id]
   (let [start-time (System/currentTimeMillis)]
     (try
       ;; Normal business logic
       (let [result (execute-api-method method-name protobuf-request)
-            end-time (System/currentTimeMillis)
+            end-time (System/currentTimeMillis)]
             
-            ;; Single clean call to statistics helper
-            {:keys [server-ops client-ops]}
-            (compute-api-statistics-operations
-             {:start-time start-time
-              :end-time end-time
-              :result result
-              :request protobuf-request
-              :method-name method-name
-              :client-id client-id})]
-              
-        ;; Clean abstraction - no manual delta construction
-        (record-statistics server-ops client-ops server-component client-id)
+        ;; Clean abstraction - direct LongAdder increments
+        (increment-api-stats server-component client-id 
+                           {:start-time start-time
+                            :end-time end-time
+                            :result result
+                            :request protobuf-request
+                            :method-name method-name
+                            :success? true})
         result)
         
-      ;; Error path - same clean pattern with augmentation
+      ;; Error path - same clean pattern
       (catch Exception e
-        (let [end-time (System/currentTimeMillis)
+        (let [end-time (System/currentTimeMillis)]
               
-              ;; API failure statistics
-              api-stats (compute-api-statistics-operations
-                         {:start-time start-time :end-time end-time
-                          :request protobuf-request :method-name method-name
-                          :client-id client-id :exception e})
+          ;; API failure and error statistics
+          (increment-api-stats server-component client-id 
+                             {:start-time start-time :end-time end-time
+                              :request protobuf-request :method-name method-name
+                              :success? false :exception e})
                           
-              ;; Augment with error statistics
-              final-stats (compute-error-statistics-operations
-                           {:error-type (categorize-exception e)
-                            :exception e :client-id client-id
-                            :server-ops (:server-ops api-stats)
-                            :client-ops (:client-ops api-stats)})]
-                            
-          (record-statistics (:server-ops final-stats) (:client-ops final-stats) server-component client-id)
+          (increment-error-stats server-component client-id 
+                               {:error-type (categorize-exception e)
+                                :exception e})
           (throw e))))))
 ```
 
 #### Event Delivery Processing
 ```clojure  
-;; Clean integration point - no manual statistics delta construction
-;; ALL event statistics complexity abstracted into helper function
+;; Clean integration point - statistics complexity abstracted into helper function
 
 (defn create-and-queue-event [client-id event-message]
   (let [;; Normal event delivery logic
@@ -450,467 +351,206 @@ Extend existing connection registry with separate top-level `:client-statistics`
         delivery-start (System/currentTimeMillis)
         offer-success (.offer queue event-message)
         delivery-end (System/currentTimeMillis)
-        queue-size-after (.size queue)
+        queue-size-after (.size queue)]
         
-        ;; Single clean call to statistics helper
-        {:keys [server-ops client-ops]}
-        (compute-event-statistics-operations
-         {:event-message event-message
-          :event-bytes event-bytes
-          :queue-size-before queue-size-before
-          :queue-size-after queue-size-after
-          :offer-success offer-success
-          :delivery-lag-ms (- delivery-end delivery-start)
-          :client-id client-id})]
-          
-    ;; Clean abstraction - no manual delta construction
-    (record-statistics server-ops client-ops server-component client-id)
+    ;; Clean abstraction - direct LongAdder increments
+    (increment-event-stats server-component client-id
+                         {:event-message event-message
+                          :event-bytes event-bytes
+                          :queue-size-before queue-size-before
+                          :queue-size-after queue-size-after
+                          :offer-success offer-success
+                          :delivery-lag-ms (- delivery-end delivery-start)})
     offer-success))
 ```
 
 #### Connection Lifecycle
 ```clojure
-;; Clean integration point - no manual statistics delta construction
-;; ALL connection statistics complexity abstracted into helper function
+;; Clean integration point - statistics complexity abstracted into helper function
 
 ;; On client connection
 (defn handle-client-connect [stream-observer]
   (let [connect-time (System/currentTimeMillis)
         client-id (UUID/randomUUID)
-        current-count (inc (count @client-registry))
-        
-        ;; Single clean call to statistics helper
-        {:keys [server-ops client-ops]}
-        (compute-connection-statistics-operations
-         {:event-type :connect
-          :connect-time connect-time
-          :client-id client-id
-          :current-client-count current-count})]
+        current-count (inc (count @client-registry))]
           
     ;; Register client in system
     (register-client client-id stream-observer)
     
-    ;; Clean abstraction - no manual delta construction
-    (record-statistics server-ops client-ops server-component client-id)
+    ;; Clean abstraction - direct LongAdder increments
+    (increment-connection-stats server-component client-id
+                              {:event-type :connect
+                               :connect-time connect-time
+                               :current-client-count current-count})
     client-id))
 
 ;; On client disconnection  
 (defn handle-client-disconnect [client-id disconnect-reason]
   (let [disconnect-time (System/currentTimeMillis)
         connect-time (get-client-connect-time client-id)
-        current-count (dec (count @client-registry))
-        
-        ;; Single clean call to statistics helper
-        {:keys [server-ops client-ops]}
-        (compute-connection-statistics-operations
-         {:event-type :disconnect
-          :client-id client-id
-          :connect-time connect-time
-          :disconnect-time disconnect-time
-          :disconnect-reason disconnect-reason
-          :current-client-count current-count})]
+        current-count (dec (count @client-registry))]
           
     ;; Remove client from system
     (unregister-client client-id)
     
-    ;; Clean abstraction - no manual delta construction
-    (record-statistics server-ops client-ops server-component client-id)))
+    ;; Clean abstraction - direct LongAdder increments
+    (increment-connection-stats server-component client-id
+                              {:event-type :disconnect
+                               :connect-time connect-time
+                               :disconnect-time disconnect-time
+                               :disconnect-reason disconnect-reason
+                               :current-client-count current-count}))
 ```
 
-### Performance Considerations
+### Statistics Collection Implementation
 
-#### Batched Atomic Updates
+#### Direct Increment Architecture
 
-**Critical Performance Pattern**: Batch all statistics changes into a single `swap!` operation per atom to minimize contention and atomic operation overhead.
+Statistics collection uses direct LongAdder increments at integration points for maximum performance:
 
-**Vector-Based Operations Architecture**:
-
-Statistics collection uses **vector-based operations** for clean composition and transparent augmentation. Instead of complex nested map merging, operations are accumulated as simple vectors and applied sequentially.
+**Note**: The increment functions below will be implemented in `backend/src/main/clojure/ooloi/backend/grpc/stats.clj` to separate statistics concerns from gRPC business logic.
 
 ```clojure
-;; Statistics operations as vectors - transparent and composable
-[[:inc :api-calls-total 1]
- [:inc :bytes-sent 1024]  
- [:max :api-slowest-call-ms 150]
- [:set :last-api-call timestamp]]
-
-;; Augmentation via simple vector concatenation
-(into existing-ops new-ops)  ; Clean composition, no complex merging
-```
-
-**Benefits of Vector-Based Operations**:
-- **Transparent**: See exactly what operations will be applied
-- **Composable**: Simple vector concatenation for multi-domain statistics  
-- **Simple**: No complex nested map merging logic
-- **Debuggable**: Operations are visible data structures
-
-**Enhanced apply-deltas Function**:
-```clojure
-(defn apply-deltas
-  "Apply sequence of delta operations to statistics atom.
-   
-   Operations format: [[:operation :field value] ...]
-   - :inc - Increment field by value
-   - :set - Set field to absolute value  
-   - :max - Update field to maximum of current and new value
-   - :min - Update field to minimum of current and new value
-   
-   All operations applied sequentially within single atomic swap! for consistency."
-  [stats-atom operations]
-  (swap! stats-atom
-    (fn [current-stats]
-      (reduce
-        (fn [stats [operation field value]]
-          (case operation
-            :inc (assoc stats field (+ (get stats field 0) value))
-            :set (assoc stats field value)
-            :max (assoc stats field (max (get stats field 0) value))
-            :min (assoc stats field (min (get stats field Long/MAX_VALUE) value))))
-        current-stats
-        operations))))
-```
-
-**Vector-Based Statistics Collection Pattern**:
-
-```clojure
-(defn compute-api-statistics-operations
-  "Compute ALL API-related statistics operations from raw operational data.
-   Returns vector of operations for transparent, composable statistics collection."
-  [{:keys [start-time end-time result request method-name client-id exception]
-    :or {server-ops [] client-ops []}}]  ; Accept existing operations for augmentation
-    
-  (let [duration-ms (- end-time start-time)
-        success? (and result (not exception))
-        request-bytes (.size request)
-        response-bytes (if success? (.size (:response result)) 0)
-        
-        ;; Server operations - ALL 25+ API statistics as transparent operations
-        new-server-ops [[:inc :api-calls-total 1]
-                        [:inc :api-calls-success (if success? 1 0)]
-                        [:inc :api-calls-failure (if success? 0 1)]
-                        [:inc :bytes-api-requests-total request-bytes]
-                        [:inc :bytes-api-responses-total response-bytes]
-                        [:inc :bytes-transferred-total (+ request-bytes response-bytes)]
-                        [:max :api-slowest-call-ms duration-ms]
-                        [:min :api-fastest-call-ms duration-ms]
-                        [:max :largest-api-request-bytes request-bytes]
-                        [:max :largest-api-response-bytes response-bytes]]
-                        ;; ... PLUS all other API server statistics from table
-                        
-        ;; Client operations - ALL 15+ API client statistics  
-        new-client-ops [[:inc :api-calls-total 1]
-                        [:inc :api-calls-success (if success? 1 0)]
-                        [:inc :api-calls-failure (if success? 0 1)]
-                        [:inc :bytes-sent response-bytes]
-                        [:inc :bytes-received request-bytes]
-                        [:max :api-slowest-call-ms duration-ms]
-                        [:min :api-fastest-call-ms duration-ms]
-                        [:set :last-api-call end-time]
-                        [:set :last-api-method method-name]
-                        [:set :last-activity-time end-time]]]
-                        ;; ... PLUS all other API client statistics from table
-                        
-    {:server-ops (into server-ops new-server-ops)  ; Simple vector concatenation
-     :client-ops (into client-ops new-client-ops)}))
-
-;; Integration point usage (see Statistics Collection Points section above):
-;; (let [{:keys [server-ops client-ops]} (compute-api-statistics-operations {...})]
-;;   (record-statistics server-ops client-ops server-component client-id))
-```
-
-**Vector-Based Event Statistics Pattern**:
-
-```clojure
-(defn compute-event-statistics-operations
-  "Compute ALL event-related statistics operations from raw delivery data.
-   Returns transparent operation vectors for composable statistics collection."
-  [{:keys [event-message event-bytes queue-size-before queue-size-after 
-           offer-success delivery-lag-ms client-id]
-    :or {server-ops [] client-ops []}}]  ; Accept existing operations for augmentation
-    
-  (let [event-type (:type event-message)
-        delivery-time (System/currentTimeMillis)
-        
-        ;; Server operations - ALL 20+ event statistics as transparent operations  
-        new-server-ops [[:inc :events-sent-total (if offer-success 1 0)]
-                        [:inc :events-dropped-total (if offer-success 0 1)]
-                        [:inc :event-delivery-attempts 1]
-                        [:inc :event-delivery-successes (if offer-success 1 0)]
-                        [:inc :bytes-events-total event-bytes]
-                        ;; Event type breakdowns
-                        [:inc (case event-type
-                                :server-event :server-events-sent
-                                :piece-event :piece-events-sent
-                                :client-connected :connect-events-sent
-                                :client-disconnected :disconnect-events-sent) 1]
-                        [:max :largest-event-message-bytes event-bytes]]
-                        ;; ... PLUS all other event server statistics from table
-                        
-        ;; Client operations - ALL 15+ event client statistics
-        new-client-ops [[:inc :events-sent (if offer-success 1 0)]
-                        [:inc :events-dropped (if offer-success 0 1)]
-                        [:inc :queue-offer-attempts 1]
-                        [:inc :queue-offer-successes (if offer-success 1 0)]
-                        [:inc :bytes-events event-bytes]
-                        ;; Event type tracking
-                        [:inc (case event-type
-                                :server-event :server-events-received
-                                :piece-event :piece-events-received  
-                                :client-connected :connect-events-received
-                                :client-disconnected :disconnect-events-received) 1]
-                        [:max :queue-size-peak queue-size-after]
-                        [:max :queue-consumer-lag-ms delivery-lag-ms]
-                        [:max :largest-event-bytes event-bytes]
-                        [:set :queue-size-current queue-size-after]
-                        [:set :last-event-time delivery-time]
-                        [:set :last-event-type event-type]
-                        [:set :last-activity-time delivery-time]]]
-                        ;; ... PLUS all other event client statistics from table
-                        
-    {:server-ops (into server-ops new-server-ops)  ; Simple vector concatenation
-     :client-ops (into client-ops new-client-ops)}))
-
-;; Integration point usage (see Statistics Collection Points section above):
-;; (let [{:keys [server-ops client-ops]} (compute-event-statistics-operations {...})]
-;;   (record-statistics server-ops client-ops server-component client-id))
-```
-
-## Statistics Recording Architecture
-
-### Record-Statistics Abstraction
-
-The `record-statistics` function provides clean integration point abstraction that handles the complexity of nested atom architecture:
-
-```clojure
-(defn record-statistics
-  "Records statistics operations for both server and client metrics.
-   
-   Handles nested atom architecture:
-   - Server statistics: Single shared atom  
-   - Client statistics: Individual atoms within connection registry
-   
-   Parameters:
-   - server-ops: Vector of server statistics operations  
-   - client-ops: Vector of client statistics operations
-   - server-component: Component containing atoms and infrastructure
-   - client-id: String identifier for client"
-  [server-ops client-ops server-component client-id]
+;; Direct increment helper functions
+(defn increment-api-stats [server-component client-id {:keys [success? bytes-sent bytes-received]}]
   (let [{:keys [server-statistics connection-registry]} server-component]
-    ;; Server statistics: Direct atomic update
-    (apply-deltas server-statistics server-ops)
+    ;; Server statistics - shared counters
+    (.add (:api-calls-total server-statistics) 1)
+    (if success?
+      (.add (:api-calls-success server-statistics) 1)
+      (.add (:api-calls-failure server-statistics) 1))
+    (when bytes-sent
+      (.add (:bytes-api-responses-total server-statistics) bytes-sent))
+    (when bytes-received  
+      (.add (:bytes-api-requests-total server-statistics) bytes-received))
     
-    ;; Client statistics: Individual atom within registry
-    (when-let [client-atom (get-in @connection-registry [client-id :client-statistics])]
-      (apply-deltas client-atom client-ops))))
+    ;; Client statistics - individual counters  
+    (when-let [client-stats (:client-statistics (get @connection-registry client-id))]
+      (.add (:api-calls-total client-stats) 1)
+      (if success?
+        (.add (:api-calls-success client-stats) 1)
+        (.add (:api-calls-failure client-stats) 1))
+      (when bytes-sent (.add (:bytes-api-responses client-stats) bytes-sent))
+      (when bytes-received (.add (:bytes-api-requests client-stats) bytes-received)))))
 
-(defn flush-server-statistics!
-  "Forces immediate processing of queued server statistics operations.
-   Used for testing and shutdown to ensure no data loss."
-  []
-  ;; No-op in direct implementation, queue processing in optimized version
-  nil)
-```
-
-### Nested Atom Architecture
-
-#### Two-Level Atom Structure
-
-**Level 1: Component-Level Atoms**
-```clojure
-;; Component initialization creates top-level atoms
-server-statistics (atom {...})           ; Server-wide metrics (single shared atom)
-connection-registry (atom {})            ; Client topology (single shared atom for connect/disconnect)
-```
-
-**Level 2: Per-Client Atoms Within Registry**
-```clojure
-;; Registry structure contains individual client atoms
-connection-registry (atom {              
-  client-1 {:observer response-observer-1
-            :metadata {:connected-at timestamp}
-            :piece-subscriptions #{}
-            :event-queue queue-1
-            :client-statistics (atom {...})}  ; ← Individual atom for client-1 statistics
-  
-  client-2 {:observer response-observer-2
-            :metadata {:connected-at timestamp}
-            :piece-subscriptions #{}
-            :event-queue queue-2  
-            :client-statistics (atom {...})}  ; ← Individual atom for client-2 statistics
-  })
-```
-
-**Why This Architecture**:
-- **Connection registry atom**: Needed for connect/disconnect operations (topology changes)
-- **Individual client statistics atoms**: Eliminates inter-client contention for high-frequency statistics updates
-- **Server statistics atom**: Single shared atom for server-wide metrics (optimized with async queue under load)
-
-**Note**: The `:client-statistics` field shown in the Per-Client Statistics Structure section (line 247) becomes an **atom containing that structure** in the actual implementation, not a direct map.
-
-#### Contention Characteristics
-- **Server statistics**: Single atom, high contention under load (solved with async queue)
-- **Client statistics**: Individual atoms, zero inter-client contention  
-- **Registry operations**: Low contention (connect/disconnect operations only)
-
-### Server Statistics Optimization (Queue-Based)
-
-**Problem**: Under high load (1000 clients × multiple ops/sec), server statistics atom becomes bottleneck with massive contention.
-
-**Solution**: Async queue with batching to eliminate contention:
-
-```clojure
-;; Optimized record-statistics with async server queue
-(defn record-statistics [server-ops client-ops server-component client-id]
-  (let [{:keys [connection-registry server-stats-queue]} server-component]
-    ;; Server stats: Async queue (no contention)
-    (async/>!! server-stats-queue server-ops)
+(defn increment-event-stats [server-component client-id {:keys [event-type offer-success event-bytes]}]
+  (let [{:keys [server-statistics connection-registry]} server-component]
+    ;; Server statistics - shared counters
+    (.add (:events-sent-total server-statistics) 1)
+    (if offer-success
+      (.add (:event-delivery-successes server-statistics) 1)
+      (.add (:events-dropped-total server-statistics) 1))
+    (.add (:event-delivery-attempts server-statistics) 1)
+    (.add (:bytes-events-total server-statistics) event-bytes)
     
-    ;; Client stats: Individual atoms (no inter-client contention)
-    (when-let [client-atom (get-in @connection-registry [client-id :client-statistics])]
-      (apply-deltas client-atom client-ops))))
+    ;; Event type specific counters
+    (case event-type
+      :server-event (.add (:server-events-sent server-statistics) 1)
+      :piece-event (.add (:piece-events-sent server-statistics) 1)
+      :client-connected (.add (:connect-events-sent server-statistics) 1)
+      :client-disconnected (.add (:disconnect-events-sent server-statistics) 1)
+      nil)
+    
+    ;; Client statistics - individual counters
+    (when-let [client-stats (:client-statistics (get @connection-registry client-id))]
+      (if offer-success
+        (.add (:events-sent client-stats) 1)
+        (.add (:events-dropped client-stats) 1))
+      (.add (:bytes-events client-stats) event-bytes)
+      
+      ;; Event type specific client counters
+      (case event-type
+        :server-event (.add (:server-events-received client-stats) 1)
+        :piece-event (.add (:piece-events-received client-stats) 1)
+        :client-connected (.add (:connect-events-received client-stats) 1)
+        :client-disconnected (.add (:disconnect-events-received client-stats) 1)
+        nil))))
 
-;; Background batch consumer (100ms batching)
-(async/go-loop []
-  (let [timeout-ch (async/timeout 100)
-        batch (loop [ops []]
-                (let [[op ch] (async/alts! [server-stats-queue timeout-ch])]
-                  (cond
-                    (= ch timeout-ch) ops                    ; Timeout: process batch
-                    (nil? op) ops                            ; Channel closed
-                    :else (recur (into ops op)))))]          ; Accumulate
-    (when (seq batch)
-      (apply-deltas server-statistics batch)))
-  (recur)))
+(defn increment-connection-stats [server-component client-id {:keys [event-type disconnect-reason]}]
+  (let [{:keys [server-statistics]} server-component]
+    (case event-type
+      :connect (.add (:clients-connected-total server-statistics) 1)
+      :disconnect (do
+                    (.add (:clients-disconnected-total server-statistics) 1)
+                    (case disconnect-reason
+                      :graceful (.add (:clients-disconnected-graceful server-statistics) 1)
+                      :error (.add (:clients-disconnected-error server-statistics) 1)
+                      :timeout (.add (:clients-disconnected-timeout server-statistics) 1)
+                      nil))
+      nil)))
 
-(defn flush-server-statistics! []
-  "Forces immediate processing of all queued operations."
-  (loop []
-    (when-let [ops (async/poll! server-stats-queue)]
-      (apply-deltas server-statistics ops)
-      (recur))))
+(defn increment-error-stats [server-component client-id {:keys [error-type]}]
+  (let [{:keys [server-statistics connection-registry]} server-component]
+    ;; Server error counters
+    (case error-type
+      :conversion (.add (:conversion-errors-total server-statistics) 1)
+      :serialization (.add (:serialization-errors-total server-statistics) 1)
+      :network (.add (:network-errors-total server-statistics) 1)
+      :internal (.add (:internal-errors-total server-statistics) 1)
+      :timeout (.add (:timeout-errors-total server-statistics) 1)
+      :client (.add (:client-errors-total server-statistics) 1)
+      :server (.add (:server-errors-total server-statistics) 1)
+      nil)
+    
+    ;; Client error counters
+    (when-let [client-stats (:client-statistics (get @connection-registry client-id))]
+      (case error-type
+        :network (.add (:network-errors client-stats) 1)
+        :serialization (.add (:serialization-errors client-stats) 1)
+        :conversion (.add (:conversion-errors client-stats) 1)
+        :timeout (.add (:timeout-errors client-stats) 1)
+        nil))))
 ```
 
-**Benefits of Queue Optimization**:
-- **Eliminates Server Contention**: Queue operations instantly without blocking
-- **Batched Efficiency**: 100ms batches reduce atom updates by ~100x
-- **Preserves Client Isolation**: Individual client atoms remain uncontended
-- **Test-Friendly**: `flush-server-statistics!` for deterministic testing
+### Performance Characteristics
 
-**Benefits of Batched Updates**:
-- **Reduced Contention**: One `swap!` per atom instead of multiple sequential updates
-- **Atomic Consistency**: All related statistics update together or not at all  
-- **Performance**: Eliminates retry overhead from multiple competing atomic operations
-- **Cleaner Code**: Statistics collection logic separated from business logic
+**Infinite Scalability**: LongAdder uses per-CPU buckets for zero contention
+- 1 thread × 100 ops/sec: ~0.001ms overhead per operation
+- 1000 threads × 1000 ops/sec: Still ~0.001ms overhead per operation  
+- Linear scaling with no performance degradation
+
+**Memory Efficiency**: ~40 bytes overhead per LongAdder
+- 20 server counters × 40 bytes = 800 bytes server statistics  
+- 15 client counters × 40 bytes × 1000 clients = 600KB client statistics
+- Total memory footprint negligible even at scale
+
+**Architecture Benefits**:
+- **Server statistics**: LongAdders eliminate all contention between operations
+- **Client statistics**: Individual LongAdders within connection registry, zero inter-client contention
+- **No queues needed**: Direct `.add()` calls scale infinitely without blocking
 
 #### Zero-Cost Collection Principle
 
-**Capture Available Data**: If data is already computed during normal operation, collect it at zero additional cost using vector-based operations.
+**Capture Available Data**: If data is already computed during normal operation, collect it at zero additional cost using simple counter increments.
 
-**Zero-Cost Data Collection Examples**:
+**Simple Counter Collection Examples**:
 ```clojure
-;; Zero-cost principle: Capture data already computed during normal operations
-(let [start-time (System/currentTimeMillis)]
-  ;; Normal business logic
-  (let [result (execute-api-method ...)
-        end-time (System/currentTimeMillis)]
-        
-    ;; All this data is ALREADY available at zero cost:
-    ;; - duration-ms: (- end-time start-time)     ; Already timed
-    ;; - success?: (boolean result)               ; Already computed  
-    ;; - request-bytes: (.size request)           ; Already deserialized
-    ;; - response-bytes: (.size response)         ; Already serialized
-    ;; - method-name: method-name                 ; Already resolved
-    
-    ;; Statistics helper uses zero-cost data (see full function above)
-    (compute-api-statistics-operations
-     {:start-time start-time :end-time end-time
-      :result result :request request :method-name method-name})))
+;; Zero-cost principle: Increment counters based on data already computed
+(let [result (execute-api-method ...)]
+  ;; Simple success/failure tracking - data already known
+  (increment-api-stats server-component client-id 
+                     {:success? (boolean result)
+                      :bytes-sent (.size response)      ; Already serialized
+                      :bytes-received (.size request)}) ; Already deserialized
+  result)
 
-;; Event delivery zero-cost data:
-(let [queue-size-before (.size queue)
-      offer-result (.offer queue event)]
-  ;; All this data is ALREADY available at zero cost:
-  ;; - offer-result: offer-result               ; Offer outcome known
-  ;; - queue-size-after: (.size queue)         ; Already queried  
-  ;; - event-bytes: (.size event)              ; Already serialized
-  ;; - event-type: (:type event)               ; Already extracted
-  
-  ;; Statistics helper uses zero-cost data (see full function above)
-  (compute-event-statistics-operations
-   {:offer-success offer-result :event-bytes event-bytes
-    :queue-size-before queue-size-before :queue-size-after queue-size-after}))
+;; Event delivery - track outcomes already determined
+(let [offer-success (.offer queue event)]
+  ;; Simple success/drop tracking - outcome already known
+  (increment-event-stats server-component client-id
+                       {:event-type (:type event)      ; Already extracted
+                        :offer-success offer-success   ; Already determined
+                        :event-bytes (.size event)})   ; Already serialized
+  offer-success)
 ```
 
-**Cost Categories**:
-- **Zero Cost**: Data already available in operation scope
-- **Minimal Cost**: Simple arithmetic on existing data (< 0.1ms)
-- **Higher Cost**: Aggregations requiring additional computation
+**Collection Overhead**: 
+- **LongAdder increment**: ~0.001ms per `.add()` call
+- **No complex calculations**: Only simple counter increments
+- **No aggregations**: All analytics computed on-demand by health endpoints
 
-**Design Principle**: Comprehensive collection of zero-cost data, selective collection of higher-cost data based on operational value.
+**Design Principle**: Collect only simple counters that require zero additional computation beyond what's already available in the operation flow.
 
-### Implementation Summary
-
-**For Implementers**: All statistics collection follows this exact pattern across ALL integration points:
-
-1. **Create Statistics Helper Function** (template):
-   ```clojure
-   (defn compute-DOMAIN-statistics-operations
-     [{:keys [operational-data...] 
-       :or {server-ops [] client-ops []}}]  ; Accept existing for augmentation
-     ;; ... extract zero-cost data from operational parameters ...
-     ;; ... compute ALL statistics operations for this domain ...
-     {:server-ops (into server-ops [...new-operations...])
-      :client-ops (into client-ops [...new-operations...])})
-   ```
-
-2. **Call at Integration Point**:
-   ```clojure
-   ;; Business logic runs first, collecting operational data:
-   (let [start-time (System/currentTimeMillis)  ; Before operation
-         result (execute-business-logic ...)    ; Normal business logic
-         end-time (System/currentTimeMillis)    ; After operation
-         
-         ;; Statistics helper computes ALL operations, returns map:
-         {:keys [server-ops client-ops]}       ; Destructure the map
-         (compute-DOMAIN-statistics-operations
-          {:start-time start-time :end-time end-time :result result
-           :request request :client-id client-id})]  ; Pass raw data
-           
-     ;; Clean abstraction for statistics recording:
-     (record-statistics server-ops client-ops server-component client-id))
-   ```
-
-3. **Multi-Domain Augmentation** (chaining for error paths):
-   ```clojure
-   ;; Chain multiple statistics domains together via augmentation:
-   (let [;; First domain: API statistics (success or failure)
-         {:keys [server-ops client-ops]}  ; Destructure consistently
-         (compute-api-statistics-operations 
-          {:start-time start-time :end-time end-time :exception e ...})
-                    
-         ;; Second domain: Error statistics (augments API stats)  
-         {:keys [server-ops client-ops]}  ; Final destructure
-         (compute-error-statistics-operations
-          {:error-type :timeout :client-id client-id
-           :server-ops server-ops        ; Pass existing ops from first call
-           :client-ops client-ops        ; Pass existing ops from first call
-           })]  ; Helper merges and returns augmented vectors
-                       
-     ;; Still only ONE recording call per request:
-     (record-statistics server-ops client-ops server-component client-id))  
-   ```
-
-**Key Requirements**:
-- ALL statistics helpers return `{:server-ops [...] :client-ops [...]}`
-- Operations format: `[[:operation :field value] ...]`  
-- Exactly ONE `record-statistics` call per request
-- Collect ALL relevant statistics for each domain (API, events, connections)
-- Support augmentation via `:or {server-ops [] client-ops []}` parameter
-
-#### Performance Optimization
-- Statistics collection adds < 1ms per operation
-- Updates performed asynchronously where possible  
-- Aggregates calculated on-demand rather than continuously
 
 ## Health Monitoring Integration
 
@@ -974,6 +614,8 @@ GET /health/resources          # Memory, threads, queue usage
 - **Stable URLs**: Endpoints never change, only representations evolve
 - **Backward Compatibility**: Add new metrics, never rename existing ones in Prometheus view
 
+**Content Differentiation**: JSON may include **ratios derived from counters** (e.g., success rates); Prometheus exposes **raw counters only** for time-series analysis.
+
 #### JSON Response Format (Default)
 
 **Content-Type**: `application/json; charset=utf-8`  
@@ -982,27 +624,67 @@ GET /health/resources          # Memory, threads, queue usage
 ```json
 {
   "server": {
-    "server_uptime_ms": 259200000,
-    "clients_connected_current": 15,
-    "clients_connected_peak": 23,
+    "clients_connected_total": 1847,
+    "clients_disconnected_total": 1832,
+    "clients_disconnected_graceful": 1829,
+    "clients_disconnected_error": 2,
+    "clients_disconnected_timeout": 1,
+    "connection_duration_total_ms": 47382910000,
     "api_calls_total": 45230,
-    "api_calls_success": 45112,
-    "api_calls_failure": 118,
-    "api_success_rate": 0.998,
-    "events_sent_total": 8934,
+    "api_calls_success_total": 45112,
+    "api_calls_failure_total": 118,
+    "api_success_rate": 0.99739,
+    "server_events_sent": 2341,
+    "piece_events_sent": 5892,
+    "connect_events_sent": 1847,
+    "disconnect_events_sent": 1832,
+    "events_sent_total": 11912,
     "events_dropped_total": 12,
-    "bytes_transferred_total": 2147483648,
-    "event_queues_healthy_count": 13,
-    "event_queues_warning_count": 2,
-    "event_queues_critical_count": 0
+    "event_queues_overflow_total": 3,
+    "event_delivery_attempts": 11924,
+    "event_delivery_successes": 11912,
+    "event_delivery_success_rate": 0.99899,
+    "bytes_api_requests_total": 117384920,
+    "bytes_api_responses_total": 204010472,
+    "bytes_events_total": 12899876,
+    "conversion_errors_total": 0,
+    "serialization_errors_total": 1,
+    "network_errors_total": 2,
+    "internal_errors_total": 0,
+    "timeout_errors_total": 0,
+    "client_errors_total": 9,
+    "server_errors_total": 3,
+    "subscription_adds_total": 144,
+    "subscription_removes_total": 98,
+    "server_restart_count": 2
   },
   "clients": [
     {
       "client_id": "uuid-123",
-      "connected_duration_ms": 8280000,
       "api_calls_total": 234,
-      "events_received": 89,
-      "queue_health_score": 0.95
+      "api_calls_success_total": 233,
+      "api_calls_failure_total": 1,
+      "events_sent": 89,
+      "events_dropped": 0,
+      "server_events_received": 23,
+      "piece_events_received": 66,
+      "connect_events_received": 0,
+      "disconnect_events_received": 0,
+      "queue_overflow_count": 0,
+      "queue_overflow_total_events_dropped": 0,
+      "queue_offer_attempts": 89,
+      "queue_offer_successes": 89,
+      "bytes_sent": 51234,
+      "bytes_received": 93456,
+      "bytes_events": 8123,
+      "bytes_api_requests": 93456,
+      "bytes_api_responses": 51234,
+      "network_errors": 0,
+      "serialization_errors": 0,
+      "conversion_errors": 0,
+      "timeout_errors": 0,
+      "subscription_add_count": 3,
+      "subscription_remove_count": 1
     }
   ]
 }
@@ -1014,53 +696,129 @@ GET /health/resources          # Memory, threads, queue usage
 **Cache-Control**: `no-store`
 
 ```
-# HELP ooloi_server_uptime_seconds Server uptime in seconds
-# TYPE ooloi_server_uptime_seconds counter
-ooloi_server_uptime_seconds 259200
+# HELP ooloi_clients_connected_total Total client connections ever
+# TYPE ooloi_clients_connected_total counter
+ooloi_clients_connected_total 1847
 
-# HELP ooloi_clients_connected_current Currently connected clients
-# TYPE ooloi_clients_connected_current gauge  
-ooloi_clients_connected_current 15
+# HELP ooloi_clients_disconnected_total Total disconnections ever
+# TYPE ooloi_clients_disconnected_total counter
+ooloi_clients_disconnected_total 1832
 
-# HELP ooloi_clients_connected_peak Peak concurrent client connections
-# TYPE ooloi_clients_connected_peak gauge
-ooloi_clients_connected_peak 23
+# HELP ooloi_clients_disconnected_graceful Clean disconnections
+# TYPE ooloi_clients_disconnected_graceful counter
+ooloi_clients_disconnected_graceful 1829
+
+# HELP ooloi_clients_disconnected_error Error-based disconnections
+# TYPE ooloi_clients_disconnected_error counter
+ooloi_clients_disconnected_error 2
+
+# HELP ooloi_clients_disconnected_timeout Timeout-based disconnections
+# TYPE ooloi_clients_disconnected_timeout counter
+ooloi_clients_disconnected_timeout 1
+
+# HELP ooloi_connection_duration_total_ms Aggregate connection time
+# TYPE ooloi_connection_duration_total_ms counter
+ooloi_connection_duration_total_ms 47382910000
 
 # HELP ooloi_api_calls_total Total API calls processed
 # TYPE ooloi_api_calls_total counter
 ooloi_api_calls_total 45230
 
 # HELP ooloi_api_calls_success_total Successful API calls
-# TYPE ooloi_api_calls_success_total counter  
+# TYPE ooloi_api_calls_success_total counter
 ooloi_api_calls_success_total 45112
 
 # HELP ooloi_api_calls_failure_total Failed API calls
 # TYPE ooloi_api_calls_failure_total counter
 ooloi_api_calls_failure_total 118
 
-# HELP ooloi_events_sent_total Events sent to clients
-# TYPE ooloi_events_sent_total counter
-ooloi_events_sent_total 8934
+# HELP ooloi_server_events_sent Total server events broadcast
+# TYPE ooloi_server_events_sent counter
+ooloi_server_events_sent 2341
 
-# HELP ooloi_events_dropped_total Events dropped due to queue overflow  
+# HELP ooloi_piece_events_sent Total piece events sent
+# TYPE ooloi_piece_events_sent counter
+ooloi_piece_events_sent 5892
+
+# HELP ooloi_connect_events_sent Client connect notifications
+# TYPE ooloi_connect_events_sent counter
+ooloi_connect_events_sent 1847
+
+# HELP ooloi_disconnect_events_sent Client disconnect notifications
+# TYPE ooloi_disconnect_events_sent counter
+ooloi_disconnect_events_sent 1832
+
+# HELP ooloi_events_sent_total All event types combined
+# TYPE ooloi_events_sent_total counter
+ooloi_events_sent_total 11912
+
+# HELP ooloi_events_dropped_total Total events dropped (all clients)
 # TYPE ooloi_events_dropped_total counter
 ooloi_events_dropped_total 12
 
-# HELP ooloi_bytes_transferred_total Network bytes transferred
-# TYPE ooloi_bytes_transferred_total counter
-ooloi_bytes_transferred_total 2147483648
+# HELP ooloi_event_queues_overflow_total Total queue overflow incidents
+# TYPE ooloi_event_queues_overflow_total counter
+ooloi_event_queues_overflow_total 3
 
-# HELP ooloi_event_queues_healthy Event queues in healthy state
-# TYPE ooloi_event_queues_healthy gauge
-ooloi_event_queues_healthy 13
+# HELP ooloi_event_delivery_attempts Total event delivery attempts
+# TYPE ooloi_event_delivery_attempts counter
+ooloi_event_delivery_attempts 11924
 
-# HELP ooloi_event_queues_warning Event queues in warning state
-# TYPE ooloi_event_queues_warning gauge  
-ooloi_event_queues_warning 2
+# HELP ooloi_event_delivery_successes Successful event deliveries
+# TYPE ooloi_event_delivery_successes counter
+ooloi_event_delivery_successes 11912
 
-# HELP ooloi_event_queues_critical Event queues in critical state
-# TYPE ooloi_event_queues_critical gauge
-ooloi_event_queues_critical 0
+# HELP ooloi_bytes_api_requests_total Bytes from API calls
+# TYPE ooloi_bytes_api_requests_total counter
+ooloi_bytes_api_requests_total 117384920
+
+# HELP ooloi_bytes_api_responses_total Bytes in API responses
+# TYPE ooloi_bytes_api_responses_total counter
+ooloi_bytes_api_responses_total 204010472
+
+# HELP ooloi_bytes_events_total Bytes in event messages
+# TYPE ooloi_bytes_events_total counter
+ooloi_bytes_events_total 12899876
+
+# HELP ooloi_conversion_errors_total Protobuf conversion failures
+# TYPE ooloi_conversion_errors_total counter
+ooloi_conversion_errors_total 0
+
+# HELP ooloi_serialization_errors_total Data serialization failures
+# TYPE ooloi_serialization_errors_total counter
+ooloi_serialization_errors_total 1
+
+# HELP ooloi_network_errors_total Network-level errors
+# TYPE ooloi_network_errors_total counter
+ooloi_network_errors_total 2
+
+# HELP ooloi_internal_errors_total Unexpected server errors
+# TYPE ooloi_internal_errors_total counter
+ooloi_internal_errors_total 0
+
+# HELP ooloi_timeout_errors_total Request timeout failures
+# TYPE ooloi_timeout_errors_total counter
+ooloi_timeout_errors_total 0
+
+# HELP ooloi_client_errors_total Client-side error responses
+# TYPE ooloi_client_errors_total counter
+ooloi_client_errors_total 9
+
+# HELP ooloi_server_errors_total Server-side error responses
+# TYPE ooloi_server_errors_total counter
+ooloi_server_errors_total 3
+
+# HELP ooloi_subscription_adds_total Total piece subscriptions across all clients
+# TYPE ooloi_subscription_adds_total counter
+ooloi_subscription_adds_total 144
+
+# HELP ooloi_subscription_removes_total Total piece unsubscriptions across all clients
+# TYPE ooloi_subscription_removes_total counter
+ooloi_subscription_removes_total 98
+
+# HELP ooloi_server_restart_count Number of server restarts
+# TYPE ooloi_server_restart_count counter
+ooloi_server_restart_count 2
 ```
 
 **Prometheus Metadata Completeness**: All metrics in Prometheus text format include `# HELP` and `# TYPE` lines following Prometheus best practices for metric discoverability and tool compatibility.
@@ -1070,7 +828,7 @@ ooloi_event_queues_critical 0
 **Cardinality Management**:
 - **Bounded Labels Only**: No unbounded `client_id` labels in Prometheus format by default
 - **Aggregate-First Strategy**: Per-client details available in JSON format only  
-- **Series Cap**: Maximum 150 active time series under normal load
+- **Bounded series count**: No per-client labels to prevent TSDB explosion
 - **TTL Policy**: Client-specific metrics expire after disconnection
 - **Per-Client Metrics Opt-In**: If per-client metrics are ever exposed in Prometheus view, they will be behind an explicit opt-in flag (`--enable-prom-client-metrics`) with strict cardinality limits to prevent TSDB explosion
 
