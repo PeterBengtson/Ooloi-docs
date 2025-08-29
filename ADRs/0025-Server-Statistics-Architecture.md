@@ -249,7 +249,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 #### Design Principle: Store Raw Data, Compute Analytics On-Demand
 
-**Atoms store only raw LongAdder counters** (zero/minimal collection cost):
+**The server component holds only raw LongAdder counters** (zero/minimal collection cost):
 ```clojure
 ;; Raw LongAdder counters - minimal overhead to collect
 :api-calls-total (LongAdder.)     ; Current sum: (.sum this) => 15
@@ -279,7 +279,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
 **Data Freshness**:  
 - **Always current**: Derived metrics computed from latest raw data
 - **No stale calculations**: No cached derived values to become outdated
-- **Consistent snapshots**: All derived metrics calculated from same raw data snapshot
+- **Lock-free reads**: Derived metrics are computed by summing counters; slight skew is acceptable for ops
 
 **Flexibility**:
 - **Add new analytics** without changing storage schema
@@ -832,7 +832,7 @@ ooloi_server_restart_count 2
 - **Memory Footprint**: Stateless serialization, no cached representations
 - **Rate Limiting**: Per-IP token bucket with Prometheus scrape interval awareness
 
-**Cross-Representation Consistency**: JSON and Prometheus views are always generated from the same raw statistics atom snapshot, ensuring identical data across formats at request time.
+**Cross-Representation Consistency**: JSON and Prometheus views are always generated from the same point-in-time read of counter sums (non-atomic, lock-free), ensuring near-identical data across formats at request time.
 
 **Security Integration**:
 - **Authentication**: Support `Authorization: Bearer` for JSON endpoints
