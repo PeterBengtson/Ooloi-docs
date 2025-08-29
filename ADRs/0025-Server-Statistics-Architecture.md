@@ -14,15 +14,10 @@
   - [Per-Client Statistics Structure](#per-client-statistics-structure)
   - [Raw vs. Derived Statistics Architecture](#raw-vs-derived-statistics-architecture)
   - [Statistics Collection Points](#statistics-collection-points)
-  - [Performance Considerations](#performance-considerations)
-    - [Batched Atomic Updates](#batched-atomic-updates)
+  - [Statistics Collection Implementation](#statistics-collection-implementation)
+    - [Direct Increment Architecture](#direct-increment-architecture)
+    - [Performance Characteristics](#performance-characteristics)
     - [Zero-Cost Collection Principle](#zero-cost-collection-principle)
-- [Statistics Recording Architecture](#statistics-recording-architecture)
-  - [Record-Statistics Abstraction](#record-statistics-abstraction)
-  - [Nested Atom Architecture](#nested-atom-architecture)
-    - [Two-Level Atom Structure](#two-level-atom-structure)
-  - [Server Statistics Optimization (Queue-Based)](#server-statistics-optimization-queue-based)
-- [Implementation Summary](#implementation-summary)
 - [Health Monitoring Integration](#health-monitoring-integration)
   - [Dual Health System Architecture](#dual-health-system-architecture)
   - [HTTP Statistics Endpoints - Content Negotiation Architecture](#http-statistics-endpoints---content-negotiation-architecture)
@@ -116,7 +111,7 @@ Statistics will be collected in real-time during operation with minimal performa
 
 ### Server-Wide Statistics Structure
 
-Add new `server-statistics` atom to component with aggregate visibility:
+Add new `server-statistics` component field containing a map of thread-safe LongAdder counters:
 
 ```clojure
 { ;; ==========================================
@@ -355,12 +350,9 @@ Extend existing connection registry with separate top-level `:client-statistics`
         
     ;; Clean abstraction - direct LongAdder increments
     (increment-event-stats server-component client-id
-                         {:event-message event-message
+                         {:event-type (:type event-message)
                           :event-bytes event-bytes
-                          :queue-size-before queue-size-before
-                          :queue-size-after queue-size-after
-                          :offer-success offer-success
-                          :delivery-lag-ms (- delivery-end delivery-start)})
+                          :offer-success offer-success})
     offer-success))
 ```
 
@@ -453,8 +445,11 @@ Statistics collection uses direct LongAdder increments at integration points for
     
     ;; Client statistics - individual counters
     (when-let [client-stats (:client-statistics (get @connection-registry client-id))]
+      ;; Queue offer tracking
+      (.add (:queue-offer-attempts client-stats) 1)
       (if offer-success
-        (.add (:events-sent client-stats) 1)
+        (do (.add (:events-sent client-stats) 1)
+            (.add (:queue-offer-successes client-stats) 1))
         (.add (:events-dropped client-stats) 1))
       (.add (:bytes-events client-stats) event-bytes)
       
@@ -614,7 +609,7 @@ GET /health/resources          # Memory, threads, queue usage
 - **Stable URLs**: Endpoints never change, only representations evolve
 - **Backward Compatibility**: Add new metrics, never rename existing ones in Prometheus view
 
-**Content Differentiation**: JSON may include **ratios derived from counters** (e.g., success rates); Prometheus exposes **raw counters only** for time-series analysis.
+**Content Differentiation**: JSON may include **ratios derived from counters** (e.g., success rates); Prometheus exposes **raw counters only** for time-series analysis. If a denominator is 0, JSON ratios are `null`.
 
 #### JSON Response Format (Default)
 
@@ -732,21 +727,21 @@ ooloi_api_calls_success_total 45112
 # TYPE ooloi_api_calls_failure_total counter
 ooloi_api_calls_failure_total 118
 
-# HELP ooloi_server_events_sent Total server events broadcast
-# TYPE ooloi_server_events_sent counter
-ooloi_server_events_sent 2341
+# HELP ooloi_server_events_sent_total Total server events broadcast
+# TYPE ooloi_server_events_sent_total counter
+ooloi_server_events_sent_total 2341
 
-# HELP ooloi_piece_events_sent Total piece events sent
-# TYPE ooloi_piece_events_sent counter
-ooloi_piece_events_sent 5892
+# HELP ooloi_piece_events_sent_total Total piece events sent
+# TYPE ooloi_piece_events_sent_total counter
+ooloi_piece_events_sent_total 5892
 
-# HELP ooloi_connect_events_sent Client connect notifications
-# TYPE ooloi_connect_events_sent counter
-ooloi_connect_events_sent 1847
+# HELP ooloi_connect_events_sent_total Client connect notifications
+# TYPE ooloi_connect_events_sent_total counter
+ooloi_connect_events_sent_total 1847
 
-# HELP ooloi_disconnect_events_sent Client disconnect notifications
-# TYPE ooloi_disconnect_events_sent counter
-ooloi_disconnect_events_sent 1832
+# HELP ooloi_disconnect_events_sent_total Client disconnect notifications
+# TYPE ooloi_disconnect_events_sent_total counter
+ooloi_disconnect_events_sent_total 1832
 
 # HELP ooloi_events_sent_total All event types combined
 # TYPE ooloi_events_sent_total counter
