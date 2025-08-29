@@ -361,8 +361,9 @@ Extend existing connection registry with separate top-level `:client-statistics`
         current-count (inc (count @client-registry))]
           
     ;; Register client in system with connection timestamp
-    (register-client client-id stream-observer {:connected-at connect-time-ms
-                                               :connected-ns connect-time-ns})
+    (register-client client-id stream-observer
+      {:metadata {:connected-at connect-time-ms
+                  :connected-ns connect-time-ns}})
     
     ;; Clean abstraction - direct LongAdder increments
     (increment-connection-stats server-component client-id
@@ -429,13 +430,14 @@ Statistics collection uses direct LongAdder increments at integration points for
           (.add (:event-queues-overflow-total server-statistics) 1)))
     (.add (:bytes-events-total server-statistics) event-bytes)
     
-    ;; Event type specific counters
-    (case event-type
-      :server-event (.add (:server-events-sent server-statistics) 1)
-      :piece-event (.add (:piece-events-sent server-statistics) 1)
-      :client-connected (.add (:connect-events-sent server-statistics) 1)
-      :client-disconnected (.add (:disconnect-events-sent server-statistics) 1)
-      nil)
+    ;; Event type specific counters - only on successful delivery
+    (when offer-success
+      (case event-type
+        :server-event (.add (:server-events-sent server-statistics) 1)
+        :piece-event (.add (:piece-events-sent server-statistics) 1)
+        :client-connected (.add (:connect-events-sent server-statistics) 1)
+        :client-disconnected (.add (:disconnect-events-sent server-statistics) 1)
+        nil))
     
     ;; Client statistics - individual counters
     (when-let [client-stats (:client-statistics (get @connection-registry client-id))]
@@ -449,13 +451,14 @@ Statistics collection uses direct LongAdder increments at integration points for
             (.add (:queue-overflow-total-events-dropped client-stats) 1)))
       (.add (:bytes-events client-stats) event-bytes)
       
-      ;; Event type specific client counters
-      (case event-type
-        :server-event (.add (:server-events-received client-stats) 1)
-        :piece-event (.add (:piece-events-received client-stats) 1)
-        :client-connected (.add (:connect-events-received client-stats) 1)
-        :client-disconnected (.add (:disconnect-events-received client-stats) 1)
-        nil))))
+      ;; Event type specific client counters - only on successful delivery
+      (when offer-success
+        (case event-type
+          :server-event (.add (:server-events-received client-stats) 1)
+          :piece-event (.add (:piece-events-received client-stats) 1)
+          :client-connected (.add (:connect-events-received client-stats) 1)
+          :client-disconnected (.add (:disconnect-events-received client-stats) 1)
+          nil)))))
 
 (defn increment-connection-stats [server-component client-id {:keys [event-type disconnect-reason connect-time disconnect-time]}]
   (let [{:keys [server-statistics]} server-component]
@@ -501,7 +504,7 @@ Statistics collection uses direct LongAdder increments at integration points for
 **Near-linear scalability under load**: LongAdder uses per-CPU buckets for minimal contention
 - 1 thread × 100 ops/sec: ~0.001ms overhead per operation
 - 1000 threads × 1000 ops/sec: Still ~0.001ms overhead per operation  
-- Linear scaling with no performance degradation
+- Near-linear scaling with minimal degradation at high contention
 
 **Memory Efficiency**: ~40 bytes overhead per LongAdder
 - 20 server counters × 40 bytes = 800 bytes server statistics  
@@ -585,7 +588,7 @@ GET /health                     # Basic health status (existing)
 GET /health/server             # Server-wide aggregate metrics
 GET /health/clients            # Per-client metrics summary  
 GET /health/clients/{id}       # Specific client detailed metrics
-GET /health/performance        # Response times, throughput
+GET /health/performance        # Throughput and ratios derived from counters
 GET /health/errors             # Error rates and categorization
 GET /health/resources          # Memory, threads, queue usage
 ```
@@ -608,7 +611,9 @@ GET /health/resources          # Memory, threads, queue usage
 - **Stable URLs**: Endpoints never change, only representations evolve
 - **Backward Compatibility**: Add new metrics, never rename existing ones in Prometheus view
 
-**Content Differentiation**: JSON may include **ratios derived from counters** (e.g., success rates); Prometheus exposes **raw counters only** for time-series analysis. If a denominator is 0, JSON ratios are `null`.
+**Content Differentiation**: JSON may include **ratios and totals derived from counters** (e.g., success rates, `bytes_sent = bytes_api_responses + bytes_events`); Prometheus exposes **raw counters only** for time-series analysis. If a denominator is 0, JSON ratios are `null`.
+
+**Process Lifetime**: All counters are process-lifetime unless exported to an external TSDB; values reset on process restart.
 
 #### JSON Response Format (Default)
 
