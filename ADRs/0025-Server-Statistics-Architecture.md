@@ -652,7 +652,7 @@ The HTTP endpoint **builds on** the gRPC health service:
 ```clojure
 ;; HTTP endpoint queries same HealthStatusManager as gRPC service
 (let [health-service (.getHealthService health-manager)]
-  (if health-service "healthy" "unhealthy"))
+  (if health-service "SERVING" "NOT_SERVING"))
 ```
 
 This ensures **consistent health status** across both protocols while providing different access patterns for different use cases.
