@@ -382,37 +382,70 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 #### API Request Processing
 ```clojure
-;; In execute-unified-method function
+;; In execute-unified-method function - batched atomic updates at request completion
 (let [start-time (System/currentTimeMillis)
-      request-size (count (serialize request))
-      result (execute-method ...)]
-  ;; Update per-client statistics
-  (update-client-api-stats client-id start-time request-size result)
-  ;; Update server-wide statistics  
-  (update-server-api-stats method-name start-time request-size result))
+      request-bytes (.size protobuf-request)
+      result (execute-api-method ...)
+      end-time (System/currentTimeMillis) 
+      duration-ms (- end-time start-time)
+      success? (:success result)]
+  
+  ;; Batch all statistics changes before applying atomically
+  (let [server-deltas {:inc {:api-calls-total 1
+                            :api-calls-success (if success? 1 0)
+                            :api-calls-failure (if success? 0 1)}
+                      :max {:api-slowest-call-ms duration-ms}
+                      :min {:api-fastest-call-ms duration-ms}}
+        client-deltas {:inc {:api-calls-total 1
+                            :api-calls-success (if success? 1 0)}
+                      :set {:last-api-call end-time
+                            :last-api-method method-name}}]
+    ;; Single atomic update per statistics atom
+    (apply-deltas server-statistics server-deltas)
+    (apply-deltas client-statistics client-deltas)))
 ```
 
 #### Event Delivery Processing
 ```clojure  
-;; In create-and-queue-event function
-(let [event-size (count (serialize event))]
-  ;; Track successful delivery
-  (update-client-event-stats client-id :events-sent event-size)
-  ;; Track queue overflow if dropped
-  (when dropped? 
-    (update-client-event-stats client-id :events-dropped event-size))
-  ;; Update server aggregates
-  (update-server-event-stats event-type event-size))
+;; In create-and-queue-event function - batched atomic updates during event delivery
+(let [event-bytes (.size serialized-event)
+      queue-size-before (.size event-queue)
+      offer-success (.offer event-queue event-message)
+      queue-size-after (.size event-queue)]
+  
+  ;; Batch all event delivery statistics  
+  (let [server-deltas {:inc {:events-sent-total (if offer-success 1 0)
+                            :events-dropped-total (if offer-success 0 1)
+                            :bytes-events-total event-bytes}}
+        client-deltas {:inc {:events-sent (if offer-success 1 0)
+                            :events-dropped (if offer-success 0 1)
+                            :bytes-events event-bytes}
+                      :max {:queue-size-peak queue-size-after}
+                      :set {:queue-size-current queue-size-after
+                            :last-event-time (System/currentTimeMillis)}}]
+    ;; Single atomic operation per atom
+    (apply-deltas server-statistics server-deltas)
+    (apply-deltas client-statistics client-deltas)))
 ```
 
 #### Connection Lifecycle
 ```clojure
-;; On client connection
-(update-server-connection-stats :connected (System/currentTimeMillis))
+;; On client connection - update server-wide connection tracking
+(let [connect-time (System/currentTimeMillis)
+      server-deltas {:inc {:clients-connected-total 1
+                          :clients-connected-current 1}
+                    :max {:clients-connected-peak current-count}}]
+  (apply-deltas server-statistics server-deltas))
 
-;; On client disconnection  
-(let [duration (- disconnect-time connect-time)]
-  (update-server-connection-stats :disconnected duration))
+;; On client disconnection - update connection duration and disconnect counts  
+(let [disconnect-time (System/currentTimeMillis)
+      duration-ms (- disconnect-time connect-time)
+      server-deltas {:inc {:clients-disconnected-total 1
+                          :clients-connected-current -1
+                          :connection-duration-total-ms duration-ms}
+                    :max {:longest-session-ms duration-ms}
+                    :min {:shortest-session-ms duration-ms}}]
+  (apply-deltas server-statistics server-deltas))
 ```
 
 ### Performance Considerations
@@ -423,14 +456,39 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 **Delta Application Function**:
 ```clojure
-(defn apply-deltas 
-  "Apply batched increments and updates to statistics map"
-  [stats-map {:keys [inc set max min]}]
-  (cond-> stats-map
-    inc (as-> $ (reduce-kv (fn [m k v] (update m k (fnil + 0) v)) $ inc))
-    set (merge set)
-    max (as-> $ (reduce-kv (fn [m k v] (update m k (fnil max 0) v)) $ max))
-    min (as-> $ (reduce-kv (fn [m k v] (update m k (fnil min Long/MAX_VALUE) v)) $ min))))
+(defn apply-deltas
+  "Apply delta operations to server statistics atom.
+   
+   Atomic statistics updates supporting multiple operation types:
+   - :inc - Increment field by value
+   - :set - Set field to absolute value  
+   - :max - Update field to maximum of current and new value
+   - :min - Update field to minimum of current and new value
+   
+   All operations applied atomically in single swap! for consistency."
+  [stats-atom deltas]
+  (swap! stats-atom
+    (fn [current-stats]
+      (reduce-kv
+        (fn [stats operation fields]
+          (case operation
+            :inc (reduce-kv
+                   (fn [s field increment]
+                     (assoc s field (+ (get s field 0) increment)))
+                   stats fields)
+            :set (reduce-kv
+                   (fn [s field value]
+                     (assoc s field value))
+                   stats fields)
+            :max (reduce-kv
+                   (fn [s field value]
+                     (assoc s field (max (get s field 0) value)))
+                   stats fields)
+            :min (reduce-kv
+                   (fn [s field value]
+                     (assoc s field (min (get s field Long/MAX_VALUE) value)))
+                   stats fields)))
+        current-stats deltas))))
 ```
 
 **API Request Processing Example**:
@@ -467,8 +525,8 @@ Extend existing connection registry with separate top-level `:client-statistics`
                               :last-activity-time end-time}}]
       
       ;; Single atomic update per statistics atom
-      (swap! server-statistics apply-deltas server-deltas)
-      (swap! registry update-in [client-id :metadata] apply-deltas client-deltas)
+      (apply-deltas server-statistics server-deltas)
+      (apply-deltas client-statistics client-deltas)
       
       result)))
 ```
@@ -505,8 +563,8 @@ Extend existing connection registry with separate top-level `:client-statistics`
                               :last-activity-time delivery-end}}]
       
       ;; Single atomic operation per atom - minimal contention
-      (swap! server-statistics apply-deltas server-deltas)
-      (swap! registry update-in [client-id :metadata] apply-deltas client-deltas)
+      (apply-deltas server-statistics server-deltas)
+      (apply-deltas client-statistics client-deltas)
       
       offer-success)))
 ```
