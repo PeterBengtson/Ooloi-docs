@@ -259,11 +259,13 @@ Extend existing connection registry with separate top-level `:client-statistics`
 ```clojure
 ;; GET /health/clients/{id} - calculated on-demand from LongAdder sums
 (defn compute-client-analytics [client-stats]
-  {:api-success-rate (/ (.sum (:api-calls-success client-stats)) 
-                       (.sum (:api-calls-total client-stats)))
-   :event-delivery-reliability (- 1.0 (/ (.sum (:events-dropped client-stats)) 
-                                         (.sum (:events-sent client-stats))))
-   :client-health-score (composite-health-calculation client-stats)})
+  (let [succ (.sum (:api-calls-success client-stats))
+        tot  (.sum (:api-calls-total client-stats))
+        sent (.sum (:events-sent client-stats))
+        drop (.sum (:events-dropped client-stats))]
+    {:api-success-rate (when (pos? tot) (/ succ tot))
+     :event-delivery-reliability (when (pos? sent) (- 1.0 (/ drop sent)))
+     :client-health-score (composite-health-calculation client-stats)}))
 ```
 
 #### Benefits of This Architecture:
@@ -507,8 +509,8 @@ Statistics collection uses direct LongAdder increments at integration points for
 - Near-linear scaling with minimal degradation at high contention
 
 **Memory Efficiency**: ~40 bytes overhead per LongAdder
-- 20 server counters × 40 bytes = 800 bytes server statistics  
-- 15 client counters × 40 bytes × 1000 clients = 600KB client statistics
+- A few KB for server-wide statistics
+- ~1 KB per connected client (implementation-dependent)
 - Total memory footprint negligible even at scale
 
 **Architecture Benefits**:
@@ -611,9 +613,9 @@ GET /health/resources          # Memory, threads, queue usage
 - **Stable URLs**: Endpoints never change, only representations evolve
 - **Backward Compatibility**: Add new metrics, never rename existing ones in Prometheus view
 
-**Content Differentiation**: JSON may include **ratios and totals derived from counters** (e.g., success rates, `bytes_sent = bytes_api_responses + bytes_events`); Prometheus exposes **raw counters only** for time-series analysis. If a denominator is 0, JSON ratios are `null`.
+**Content Differentiation**: JSON may include **ratios and totals derived from counters** (e.g., success rates, `bytes_sent = bytes_api_responses + bytes_events`, `clients_connected_current = clients_connected_total - clients_disconnected_total`); Prometheus exposes **raw counters only** for time-series analysis. If a denominator is 0, JSON ratios are `null`.
 
-**Process Lifetime**: All counters are process-lifetime unless exported to an external TSDB; values reset on process restart.
+**Process Lifetime**: All counters are process-lifetime unless exported to an external TSDB; values reset on process restart. Prometheus/TSDBs preserve time series across restarts; in-process counters reset.
 
 #### JSON Response Format (Default)
 
