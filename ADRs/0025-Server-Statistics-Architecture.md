@@ -147,7 +147,6 @@ Add new `server-statistics` component field containing a map of thread-safe Long
  ;; ==========================================
  ;; NETWORK TRAFFIC COUNTERS
  ;; ==========================================  
- :bytes-transferred-total (LongAdder.)         ; Total network traffic (all clients)
  :bytes-api-requests-total (LongAdder.)        ; Bytes from API calls
  :bytes-api-responses-total (LongAdder.)       ; Bytes in API responses  
  :bytes-events-total (LongAdder.)              ; Bytes in event messages
@@ -223,8 +222,6 @@ Extend existing connection registry with separate top-level `:client-statistics`
    ;; ==========================================
    ;; NETWORK TRAFFIC COUNTERS
    ;; ==========================================
-   :bytes-sent (LongAdder.)                  ; Total protobuf bytes to client
-   :bytes-received (LongAdder.)              ; Total protobuf bytes from client  
    :bytes-events (LongAdder.)                ; Bytes consumed by event messages
    :bytes-api-requests (LongAdder.)          ; Bytes from API calls
    :bytes-api-responses (LongAdder.)         ; Bytes in API responses
@@ -288,7 +285,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 **Memory Efficiency**:
 - **No redundant storage** of calculated values
-- **Compact raw data** in memory atoms
+- **Compact raw data**
 - **On-demand computation** uses temporary memory only during health requests
 
 ### Statistics Collection Points
@@ -342,11 +339,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
   (let [;; Normal event delivery logic
         event-bytes (.size (serialize-event event-message))
         queue (get-client-queue client-id)
-        queue-size-before (.size queue)
-        delivery-start (System/currentTimeMillis)
-        offer-success (.offer queue event-message)
-        delivery-end (System/currentTimeMillis)
-        queue-size-after (.size queue)]
+        offer-success (.offer queue event-message)]
         
     ;; Clean abstraction - direct LongAdder increments
     (increment-event-stats server-component client-id
@@ -362,25 +355,25 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 ;; On client connection
 (defn handle-client-connect [stream-observer]
-  (let [connect-time (System/currentTimeMillis)
+  (let [connect-time-ms (System/currentTimeMillis)
+        connect-time-ns (System/nanoTime)
         client-id (UUID/randomUUID)
         current-count (inc (count @client-registry))]
           
-    ;; Register client in system
-    (register-client client-id stream-observer)
+    ;; Register client in system with connection timestamp
+    (register-client client-id stream-observer {:connected-at connect-time-ms
+                                               :connected-ns connect-time-ns})
     
     ;; Clean abstraction - direct LongAdder increments
     (increment-connection-stats server-component client-id
-                              {:event-type :connect
-                               :connect-time connect-time
-                               :current-client-count current-count})
+                              {:event-type :connect})
     client-id))
 
 ;; On client disconnection  
 (defn handle-client-disconnect [client-id disconnect-reason]
-  (let [disconnect-time (System/currentTimeMillis)
-        connect-time (get-client-connect-time client-id)
-        current-count (dec (count @client-registry))]
+  (let [disconnect-time-ns (System/nanoTime)
+        client-entry (get @connection-registry client-id)
+        connect-time-ns (get-in client-entry [:metadata :connected-ns])]
           
     ;; Remove client from system
     (unregister-client client-id)
@@ -388,10 +381,9 @@ Extend existing connection registry with separate top-level `:client-statistics`
     ;; Clean abstraction - direct LongAdder increments
     (increment-connection-stats server-component client-id
                               {:event-type :disconnect
-                               :connect-time connect-time
-                               :disconnect-time disconnect-time
-                               :disconnect-reason disconnect-reason
-                               :current-client-count current-count}))
+                               :connect-time connect-time-ns
+                               :disconnect-time disconnect-time-ns
+                               :disconnect-reason disconnect-reason}))
 ```
 
 ### Statistics Collection Implementation
@@ -404,6 +396,7 @@ Statistics collection uses direct LongAdder increments at integration points for
 
 ```clojure
 ;; Direct increment helper functions
+;; Note: increment-* helpers ignore unknown keys to keep call sites stable across ADR changes
 (defn increment-api-stats [server-component client-id {:keys [success? bytes-sent bytes-received]}]
   (let [{:keys [server-statistics connection-registry]} server-component]
     ;; Server statistics - shared counters
@@ -428,11 +421,12 @@ Statistics collection uses direct LongAdder increments at integration points for
 (defn increment-event-stats [server-component client-id {:keys [event-type offer-success event-bytes]}]
   (let [{:keys [server-statistics connection-registry]} server-component]
     ;; Server statistics - shared counters
-    (.add (:events-sent-total server-statistics) 1)
-    (if offer-success
-      (.add (:event-delivery-successes server-statistics) 1)
-      (.add (:events-dropped-total server-statistics) 1))
     (.add (:event-delivery-attempts server-statistics) 1)
+    (if offer-success
+      (do (.add (:events-sent-total server-statistics) 1)
+          (.add (:event-delivery-successes server-statistics) 1))
+      (do (.add (:events-dropped-total server-statistics) 1)
+          (.add (:event-queues-overflow-total server-statistics) 1)))
     (.add (:bytes-events-total server-statistics) event-bytes)
     
     ;; Event type specific counters
@@ -450,7 +444,9 @@ Statistics collection uses direct LongAdder increments at integration points for
       (if offer-success
         (do (.add (:events-sent client-stats) 1)
             (.add (:queue-offer-successes client-stats) 1))
-        (.add (:events-dropped client-stats) 1))
+        (do (.add (:events-dropped client-stats) 1)
+            (.add (:queue-overflow-count client-stats) 1)
+            (.add (:queue-overflow-total-events-dropped client-stats) 1)))
       (.add (:bytes-events client-stats) event-bytes)
       
       ;; Event type specific client counters
@@ -461,12 +457,15 @@ Statistics collection uses direct LongAdder increments at integration points for
         :client-disconnected (.add (:disconnect-events-received client-stats) 1)
         nil))))
 
-(defn increment-connection-stats [server-component client-id {:keys [event-type disconnect-reason]}]
+(defn increment-connection-stats [server-component client-id {:keys [event-type disconnect-reason connect-time disconnect-time]}]
   (let [{:keys [server-statistics]} server-component]
     (case event-type
       :connect (.add (:clients-connected-total server-statistics) 1)
       :disconnect (do
                     (.add (:clients-disconnected-total server-statistics) 1)
+                    (when (and connect-time disconnect-time)
+                      (let [duration-ms (quot (- disconnect-time connect-time) 1_000_000)]
+                        (.add (:connection-duration-total-ms server-statistics) duration-ms)))
                     (case disconnect-reason
                       :graceful (.add (:clients-disconnected-graceful server-statistics) 1)
                       :error (.add (:clients-disconnected-error server-statistics) 1)
@@ -499,7 +498,7 @@ Statistics collection uses direct LongAdder increments at integration points for
 
 ### Performance Characteristics
 
-**Infinite Scalability**: LongAdder uses per-CPU buckets for zero contention
+**Near-linear scalability under load**: LongAdder uses per-CPU buckets for minimal contention
 - 1 thread × 100 ops/sec: ~0.001ms overhead per operation
 - 1000 threads × 1000 ops/sec: Still ~0.001ms overhead per operation  
 - Linear scaling with no performance degradation
@@ -512,7 +511,7 @@ Statistics collection uses direct LongAdder increments at integration points for
 **Architecture Benefits**:
 - **Server statistics**: LongAdders eliminate all contention between operations
 - **Client statistics**: Individual LongAdders within connection registry, zero inter-client contention
-- **No queues needed**: Direct `.add()` calls scale infinitely without blocking
+- **No queues needed**: Direct `.add()` calls scale near-linearly without blocking
 
 #### Zero-Cost Collection Principle
 
@@ -1078,28 +1077,15 @@ curl -H 'Accept: application/json' http://localhost:10701/health/server?format=p
 
 **Performance Impact**:
 - Statistics updates add minimal latency to request processing
-- Atomic operations on shared statistics may introduce contention
-- JSON serialization for health endpoints requires CPU resources
 
 **Implementation Complexity**:
 - Two-level statistics tracking adds code complexity
-- Concurrent update handling requires careful synchronization
 - Health endpoint security and access control needs consideration
 
 ### Mitigation Strategies
 
-**Memory Management**:
-- Configurable retention periods for historical data
-- Optional statistics persistence to external systems
-
-**Performance Optimization**:
-- Asynchronous statistics updates where possible
-- Batched updates to reduce atomic operation frequency  
-- Lazy calculation of derived metrics
-
 **Operational Safety**:
 - Statistics collection failure never impacts core functionality
-- Graceful degradation when statistics systems are unavailable
 - Health endpoint rate limiting and authentication
 
 ## Related ADRs
