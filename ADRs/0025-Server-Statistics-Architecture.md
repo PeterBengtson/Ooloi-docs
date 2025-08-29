@@ -17,7 +17,12 @@
   - [Performance Considerations](#performance-considerations)
     - [Batched Atomic Updates](#batched-atomic-updates)
     - [Zero-Cost Collection Principle](#zero-cost-collection-principle)
-  - [Implementation Summary](#implementation-summary)
+- [Statistics Recording Architecture](#statistics-recording-architecture)
+  - [Record-Statistics Abstraction](#record-statistics-abstraction)
+  - [Nested Atom Architecture](#nested-atom-architecture)
+    - [Two-Level Atom Structure](#two-level-atom-structure)
+  - [Server Statistics Optimization (Queue-Based)](#server-statistics-optimization-queue-based)
+- [Implementation Summary](#implementation-summary)
 - [Health Monitoring Integration](#health-monitoring-integration)
   - [Dual Health System Architecture](#dual-health-system-architecture)
   - [HTTP Statistics Endpoints - Content Negotiation Architecture](#http-statistics-endpoints---content-negotiation-architecture)
@@ -407,9 +412,8 @@ Extend existing connection registry with separate top-level `:client-statistics`
               :method-name method-name
               :client-id client-id})]
               
-        ;; Single atomic application - no manual delta construction
-        (apply-deltas server-statistics server-ops)
-        (apply-deltas client-statistics client-ops)
+        ;; Clean abstraction - no manual delta construction
+        (record-statistics server-ops client-ops server-component client-id)
         result)
         
       ;; Error path - same clean pattern with augmentation
@@ -429,8 +433,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
                             :server-ops (:server-ops api-stats)
                             :client-ops (:client-ops api-stats)})]
                             
-          (apply-deltas server-statistics (:server-ops final-stats))
-          (apply-deltas client-statistics (:client-ops final-stats))
+          (record-statistics (:server-ops final-stats) (:client-ops final-stats) server-component client-id)
           (throw e))))))
 ```
 
@@ -460,9 +463,8 @@ Extend existing connection registry with separate top-level `:client-statistics`
           :delivery-lag-ms (- delivery-end delivery-start)
           :client-id client-id})]
           
-    ;; Single atomic application - no manual delta construction
-    (apply-deltas server-statistics server-ops)
-    (apply-deltas client-statistics client-ops)
+    ;; Clean abstraction - no manual delta construction
+    (record-statistics server-ops client-ops server-component client-id)
     offer-success))
 ```
 
@@ -488,9 +490,8 @@ Extend existing connection registry with separate top-level `:client-statistics`
     ;; Register client in system
     (register-client client-id stream-observer)
     
-    ;; Single atomic application - no manual delta construction
-    (apply-deltas server-statistics server-ops)
-    (apply-deltas client-statistics client-ops)
+    ;; Clean abstraction - no manual delta construction
+    (record-statistics server-ops client-ops server-component client-id)
     client-id))
 
 ;; On client disconnection  
@@ -512,9 +513,8 @@ Extend existing connection registry with separate top-level `:client-statistics`
     ;; Remove client from system
     (unregister-client client-id)
     
-    ;; Single atomic application - no manual delta construction
-    (apply-deltas server-statistics server-ops)
-    (apply-deltas client-statistics client-ops)))
+    ;; Clean abstraction - no manual delta construction
+    (record-statistics server-ops client-ops server-component client-id)))
 ```
 
 ### Performance Considerations
@@ -615,8 +615,7 @@ Statistics collection uses **vector-based operations** for clean composition and
 
 ;; Integration point usage (see Statistics Collection Points section above):
 ;; (let [{:keys [server-ops client-ops]} (compute-api-statistics-operations {...})]
-;;   (apply-deltas server-statistics server-ops)
-;;   (apply-deltas client-statistics client-ops))
+;;   (record-statistics server-ops client-ops server-component client-id))
 ```
 
 **Vector-Based Event Statistics Pattern**:
@@ -673,9 +672,129 @@ Statistics collection uses **vector-based operations** for clean composition and
 
 ;; Integration point usage (see Statistics Collection Points section above):
 ;; (let [{:keys [server-ops client-ops]} (compute-event-statistics-operations {...})]
-;;   (apply-deltas server-statistics server-ops)
-;;   (apply-deltas client-statistics client-ops))
+;;   (record-statistics server-ops client-ops server-component client-id))
 ```
+
+## Statistics Recording Architecture
+
+### Record-Statistics Abstraction
+
+The `record-statistics` function provides clean integration point abstraction that handles the complexity of nested atom architecture:
+
+```clojure
+(defn record-statistics
+  "Records statistics operations for both server and client metrics.
+   
+   Handles nested atom architecture:
+   - Server statistics: Single shared atom  
+   - Client statistics: Individual atoms within connection registry
+   
+   Parameters:
+   - server-ops: Vector of server statistics operations  
+   - client-ops: Vector of client statistics operations
+   - server-component: Component containing atoms and infrastructure
+   - client-id: String identifier for client"
+  [server-ops client-ops server-component client-id]
+  (let [{:keys [server-statistics connection-registry]} server-component]
+    ;; Server statistics: Direct atomic update
+    (apply-deltas server-statistics server-ops)
+    
+    ;; Client statistics: Individual atom within registry
+    (when-let [client-atom (get-in @connection-registry [client-id :client-statistics])]
+      (apply-deltas client-atom client-ops))))
+
+(defn flush-server-statistics!
+  "Forces immediate processing of queued server statistics operations.
+   Used for testing and shutdown to ensure no data loss."
+  []
+  ;; No-op in direct implementation, queue processing in optimized version
+  nil)
+```
+
+### Nested Atom Architecture
+
+#### Two-Level Atom Structure
+
+**Level 1: Component-Level Atoms**
+```clojure
+;; Component initialization creates top-level atoms
+server-statistics (atom {...})           ; Server-wide metrics (single shared atom)
+connection-registry (atom {})            ; Client topology (single shared atom for connect/disconnect)
+```
+
+**Level 2: Per-Client Atoms Within Registry**
+```clojure
+;; Registry structure contains individual client atoms
+connection-registry (atom {              
+  client-1 {:observer response-observer-1
+            :metadata {:connected-at timestamp}
+            :piece-subscriptions #{}
+            :event-queue queue-1
+            :client-statistics (atom {...})}  ; ← Individual atom for client-1 statistics
+  
+  client-2 {:observer response-observer-2
+            :metadata {:connected-at timestamp}
+            :piece-subscriptions #{}
+            :event-queue queue-2  
+            :client-statistics (atom {...})}  ; ← Individual atom for client-2 statistics
+  })
+```
+
+**Why This Architecture**:
+- **Connection registry atom**: Needed for connect/disconnect operations (topology changes)
+- **Individual client statistics atoms**: Eliminates inter-client contention for high-frequency statistics updates
+- **Server statistics atom**: Single shared atom for server-wide metrics (optimized with async queue under load)
+
+**Note**: The `:client-statistics` field shown in the Per-Client Statistics Structure section (line 247) becomes an **atom containing that structure** in the actual implementation, not a direct map.
+
+#### Contention Characteristics
+- **Server statistics**: Single atom, high contention under load (solved with async queue)
+- **Client statistics**: Individual atoms, zero inter-client contention  
+- **Registry operations**: Low contention (connect/disconnect operations only)
+
+### Server Statistics Optimization (Queue-Based)
+
+**Problem**: Under high load (1000 clients × multiple ops/sec), server statistics atom becomes bottleneck with massive contention.
+
+**Solution**: Async queue with batching to eliminate contention:
+
+```clojure
+;; Optimized record-statistics with async server queue
+(defn record-statistics [server-ops client-ops server-component client-id]
+  (let [{:keys [connection-registry server-stats-queue]} server-component]
+    ;; Server stats: Async queue (no contention)
+    (async/>!! server-stats-queue server-ops)
+    
+    ;; Client stats: Individual atoms (no inter-client contention)
+    (when-let [client-atom (get-in @connection-registry [client-id :client-statistics])]
+      (apply-deltas client-atom client-ops))))
+
+;; Background batch consumer (100ms batching)
+(async/go-loop []
+  (let [timeout-ch (async/timeout 100)
+        batch (loop [ops []]
+                (let [[op ch] (async/alts! [server-stats-queue timeout-ch])]
+                  (cond
+                    (= ch timeout-ch) ops                    ; Timeout: process batch
+                    (nil? op) ops                            ; Channel closed
+                    :else (recur (into ops op)))))]          ; Accumulate
+    (when (seq batch)
+      (apply-deltas server-statistics batch)))
+  (recur)))
+
+(defn flush-server-statistics! []
+  "Forces immediate processing of all queued operations."
+  (loop []
+    (when-let [ops (async/poll! server-stats-queue)]
+      (apply-deltas server-statistics ops)
+      (recur))))
+```
+
+**Benefits of Queue Optimization**:
+- **Eliminates Server Contention**: Queue operations instantly without blocking
+- **Batched Efficiency**: 100ms batches reduce atom updates by ~100x
+- **Preserves Client Isolation**: Individual client atoms remain uncontended
+- **Test-Friendly**: `flush-server-statistics!` for deterministic testing
 
 **Benefits of Batched Updates**:
 - **Reduced Contention**: One `swap!` per atom instead of multiple sequential updates
@@ -757,9 +876,8 @@ Statistics collection uses **vector-based operations** for clean composition and
           {:start-time start-time :end-time end-time :result result
            :request request :client-id client-id})]  ; Pass raw data
            
-     ;; Single atomic application of ALL operations:
-     (apply-deltas server-statistics server-ops)    ; Vector of operations
-     (apply-deltas client-statistics client-ops))   ; Vector of operations
+     ;; Clean abstraction for statistics recording:
+     (record-statistics server-ops client-ops server-component client-id))
    ```
 
 3. **Multi-Domain Augmentation** (chaining for error paths):
@@ -778,15 +896,14 @@ Statistics collection uses **vector-based operations** for clean composition and
            :client-ops client-ops        ; Pass existing ops from first call
            })]  ; Helper merges and returns augmented vectors
                        
-     ;; Still only ONE atomic application per atom:
-     (apply-deltas server-statistics server-ops)     ; Combined ops
-     (apply-deltas client-statistics client-ops))    ; Combined ops  
+     ;; Still only ONE recording call per request:
+     (record-statistics server-ops client-ops server-component client-id))  
    ```
 
 **Key Requirements**:
 - ALL statistics helpers return `{:server-ops [...] :client-ops [...]}`
 - Operations format: `[[:operation :field value] ...]`  
-- Exactly ONE `apply-deltas` call per atom per request
+- Exactly ONE `record-statistics` call per request
 - Collect ALL relevant statistics for each domain (API, events, connections)
 - Support augmentation via `:or {server-ops [] client-ops []}` parameter
 
