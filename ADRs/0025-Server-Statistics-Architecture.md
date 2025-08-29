@@ -17,6 +17,7 @@
   - [Performance Considerations](#performance-considerations)
     - [Batched Atomic Updates](#batched-atomic-updates)
     - [Zero-Cost Collection Principle](#zero-cost-collection-principle)
+  - [Implementation Summary](#implementation-summary)
 - [Health Monitoring Integration](#health-monitoring-integration)
   - [Dual Health System Architecture](#dual-health-system-architecture)
   - [HTTP Statistics Endpoints - Content Negotiation Architecture](#http-statistics-endpoints---content-negotiation-architecture)
