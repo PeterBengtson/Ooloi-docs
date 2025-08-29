@@ -122,7 +122,7 @@ Add new `server-statistics` component field containing a map of thread-safe Long
  :clients-disconnected-graceful (LongAdder.)   ; Clean disconnections
  :clients-disconnected-error (LongAdder.)      ; Error-based disconnections
  :clients-disconnected-timeout (LongAdder.)    ; Timeout-based disconnections
- :connection-duration-total-ms (LongAdder.)    ; Aggregate connection time
+ :connection-duration-seconds-total (LongAdder.) ; Aggregate connection time in seconds
 
  ;; ==========================================
  ;; API CALL COUNTERS
@@ -357,14 +357,14 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 ;; On client connection
 (defn handle-client-connect [stream-observer]
-  (let [connect-time-ms (System/currentTimeMillis)
+  (let [connect-time-seconds (/ (System/currentTimeMillis) 1000.0)
         connect-time-ns (System/nanoTime)
         client-id (UUID/randomUUID)
         current-count (inc (count @client-registry))]
           
     ;; Register client in system with connection timestamp
     (register-client client-id stream-observer
-      {:metadata {:connected-at connect-time-ms
+      {:metadata {:connected-at connect-time-seconds
                   :connected-ns connect-time-ns}})
     
     ;; Clean abstraction - direct LongAdder increments
@@ -374,8 +374,10 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 ;; On client disconnection  
 (defn handle-client-disconnect [client-id disconnect-reason]
-  (let [disconnect-time-ns (System/nanoTime)
+  (let [disconnect-time-seconds (/ (System/currentTimeMillis) 1000.0)
+        disconnect-time-ns (System/nanoTime)
         client-entry (get @connection-registry client-id)
+        connect-time-seconds (get-in client-entry [:metadata :connected-at])
         connect-time-ns (get-in client-entry [:metadata :connected-ns])]
           
     ;; Remove client from system
@@ -384,8 +386,8 @@ Extend existing connection registry with separate top-level `:client-statistics`
     ;; Clean abstraction - direct LongAdder increments
     (increment-connection-stats server-component client-id
                               {:event-type :disconnect
-                               :connect-time connect-time-ns
-                               :disconnect-time disconnect-time-ns
+                               :connect-time connect-time-seconds
+                               :disconnect-time disconnect-time-seconds
                                :disconnect-reason disconnect-reason}))
 ```
 
@@ -469,8 +471,8 @@ Statistics collection uses direct LongAdder increments at integration points for
       :disconnect (do
                     (.add (:clients-disconnected-total server-statistics) 1)
                     (when (and connect-time disconnect-time)
-                      (let [duration-ms (quot (- disconnect-time connect-time) 1_000_000)]
-                        (.add (:connection-duration-total-ms server-statistics) duration-ms)))
+                      (let [duration-seconds (- disconnect-time connect-time)]
+                        (.add (:connection-duration-seconds-total server-statistics) (long duration-seconds))))
                     (case disconnect-reason
                       :graceful (.add (:clients-disconnected-graceful server-statistics) 1)
                       :error (.add (:clients-disconnected-error server-statistics) 1)
@@ -630,7 +632,7 @@ GET /health/resources          # Memory, threads, queue usage
     "clients_disconnected_graceful": 1829,
     "clients_disconnected_error": 2,
     "clients_disconnected_timeout": 1,
-    "connection_duration_total_ms": 47382910000,
+    "connection_duration_seconds_total": 47382910,
     "api_calls_total": 45230,
     "api_calls_success_total": 45112,
     "api_calls_failure_total": 118,
@@ -717,9 +719,9 @@ ooloi_clients_disconnected_error 2
 # TYPE ooloi_clients_disconnected_timeout counter
 ooloi_clients_disconnected_timeout 1
 
-# HELP ooloi_connection_duration_total_ms Aggregate connection time
-# TYPE ooloi_connection_duration_total_ms counter
-ooloi_connection_duration_total_ms 47382910000
+# HELP ooloi_connection_duration_seconds_total Aggregate connection time in seconds
+# TYPE ooloi_connection_duration_seconds_total counter
+ooloi_connection_duration_seconds_total 47382910
 
 # HELP ooloi_api_calls_total Total API calls processed
 # TYPE ooloi_api_calls_total counter
