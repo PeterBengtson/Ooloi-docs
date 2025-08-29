@@ -122,7 +122,7 @@ Add new `server-statistics` component field containing a map of thread-safe Long
  :clients-disconnected-graceful (LongAdder.)   ; Clean disconnections
  :clients-disconnected-error (LongAdder.)      ; Error-based disconnections
  :clients-disconnected-timeout (LongAdder.)    ; Timeout-based disconnections
- :connection-duration-seconds-total (LongAdder.) ; Aggregate connection time in seconds
+ :connection-duration-nanos-total (LongAdder.)   ; Aggregate connection time in nanoseconds
 
  ;; ==========================================
  ;; API CALL COUNTERS
@@ -140,6 +140,10 @@ Add new `server-statistics` component field containing a map of thread-safe Long
  :disconnect-events-sent (LongAdder.)          ; Client disconnect notifications
  :events-sent-total (LongAdder.)               ; All event types combined
  :events-dropped-total (LongAdder.)            ; Total events dropped (all clients)
+ :server-events-dropped-total (LongAdder.)     ; Server events dropped
+ :piece-events-dropped-total (LongAdder.)      ; Piece events dropped
+ :connect-events-dropped-total (LongAdder.)    ; Connect events dropped
+ :disconnect-events-dropped-total (LongAdder.) ; Disconnect events dropped
  :event-queues-overflow-total (LongAdder.)     ; Total queue overflow incidents
  :event-delivery-attempts (LongAdder.)         ; Total event delivery attempts
  :event-delivery-successes (LongAdder.)        ; Successful event deliveries
@@ -249,10 +253,24 @@ Extend existing connection registry with separate top-level `:client-statistics`
 **The server component holds only raw LongAdder counters** (zero/minimal collection cost):
 ```clojure
 ;; Raw LongAdder counters - minimal overhead to collect
-:api-calls-total (LongAdder.)     ; Current sum: (.sum this) => 15
-:api-calls-success (LongAdder.)   ; Current sum: (.sum this) => 14
-:events-dropped (LongAdder.)      ; Current sum: (.sum this) => 2
-:bytes-sent (LongAdder.)          ; Current sum: (.sum this) => 4096
+:api-calls-total (LongAdder.)           ; Current sum: (.sum this) => 15
+:api-calls-success (LongAdder.)         ; Current sum: (.sum this) => 14
+:events-dropped (LongAdder.)            ; Current sum: (.sum this) => 2
+:bytes-sent (LongAdder.)                ; Current sum: (.sum this) => 4096
+:connection-duration-nanos-total (LongAdder.) ; Internal: nanoseconds for precision
+```
+
+**Timing Precision Strategy**: Duration counters store nanoseconds internally (LongAdder) but expose seconds externally:
+```clojure
+;; Internal storage (nanoseconds)
+(.add (:connection-duration-nanos-total server-statistics) duration-nanos)
+
+;; External rendering (seconds)
+(let [nanos (.sum (:connection-duration-nanos-total server-statistics))
+      seconds-total (/ (double nanos) 1.0e9)]
+  ;; JSON: "connection_duration_seconds_total": seconds-total
+  ;; Prometheus: ooloi_connection_duration_seconds_total seconds-total
+  )
 ```
 
 **Health endpoints compute derived metrics** when requested:
@@ -357,15 +375,13 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 ;; On client connection
 (defn handle-client-connect [stream-observer]
-  (let [connect-time-seconds (/ (System/currentTimeMillis) 1000.0)
-        connect-time-ns (System/nanoTime)
-        client-id (UUID/randomUUID)
-        current-count (inc (count @client-registry))]
+  (let [connect-time-ns (System/nanoTime)
+        client-id (UUID/randomUUID)]
           
     ;; Register client in system with connection timestamp
     (register-client client-id stream-observer
-      {:metadata {:connected-at connect-time-seconds
-                  :connected-ns connect-time-ns}})
+      {:metadata {:connected-ns connect-time-ns
+                  :connected-at (/ (System/currentTimeMillis) 1000.0)}})
     
     ;; Clean abstraction - direct LongAdder increments
     (increment-connection-stats server-component client-id
@@ -374,10 +390,8 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 ;; On client disconnection  
 (defn handle-client-disconnect [client-id disconnect-reason]
-  (let [disconnect-time-seconds (/ (System/currentTimeMillis) 1000.0)
-        disconnect-time-ns (System/nanoTime)
+  (let [disconnect-time-ns (System/nanoTime)
         client-entry (get @connection-registry client-id)
-        connect-time-seconds (get-in client-entry [:metadata :connected-at])
         connect-time-ns (get-in client-entry [:metadata :connected-ns])]
           
     ;; Remove client from system
@@ -386,8 +400,8 @@ Extend existing connection registry with separate top-level `:client-statistics`
     ;; Clean abstraction - direct LongAdder increments
     (increment-connection-stats server-component client-id
                               {:event-type :disconnect
-                               :connect-time connect-time-seconds
-                               :disconnect-time disconnect-time-seconds
+                               :connect-time connect-time-ns
+                               :disconnect-time disconnect-time-ns
                                :disconnect-reason disconnect-reason}))
 ```
 
@@ -429,19 +443,24 @@ Statistics collection uses direct LongAdder increments at integration points for
     (.add (:event-delivery-attempts server-statistics) 1)
     (if offer-success
       (do (.add (:events-sent-total server-statistics) 1)
-          (.add (:event-delivery-successes server-statistics) 1))
+          (.add (:event-delivery-successes server-statistics) 1)
+          (.add (:bytes-events-total server-statistics) event-bytes)
+          ;; Event type specific sent counters
+          (case event-type
+            :server-event (.add (:server-events-sent server-statistics) 1)
+            :piece-event (.add (:piece-events-sent server-statistics) 1)
+            :client-connected (.add (:connect-events-sent server-statistics) 1)
+            :client-disconnected (.add (:disconnect-events-sent server-statistics) 1)
+            nil))
       (do (.add (:events-dropped-total server-statistics) 1)
-          (.add (:event-queues-overflow-total server-statistics) 1)))
-    (.add (:bytes-events-total server-statistics) event-bytes)
-    
-    ;; Event type specific counters - only on successful delivery
-    (when offer-success
-      (case event-type
-        :server-event (.add (:server-events-sent server-statistics) 1)
-        :piece-event (.add (:piece-events-sent server-statistics) 1)
-        :client-connected (.add (:connect-events-sent server-statistics) 1)
-        :client-disconnected (.add (:disconnect-events-sent server-statistics) 1)
-        nil))
+          (.add (:event-queues-overflow-total server-statistics) 1)
+          ;; Event type specific dropped counters
+          (case event-type
+            :server-event (.add (:server-events-dropped-total server-statistics) 1)
+            :piece-event (.add (:piece-events-dropped-total server-statistics) 1)
+            :client-connected (.add (:connect-events-dropped-total server-statistics) 1)
+            :client-disconnected (.add (:disconnect-events-dropped-total server-statistics) 1)
+            nil)))
     
     ;; Client statistics - individual counters
     (when-let [client-stats (:client-statistics (get @connection-registry client-id))]
@@ -449,11 +468,11 @@ Statistics collection uses direct LongAdder increments at integration points for
       (.add (:queue-offer-attempts client-stats) 1)
       (if offer-success
         (do (.add (:events-sent client-stats) 1)
-            (.add (:queue-offer-successes client-stats) 1))
+            (.add (:queue-offer-successes client-stats) 1)
+            (.add (:bytes-events client-stats) event-bytes))
         (do (.add (:events-dropped client-stats) 1)
             (.add (:queue-overflow-count client-stats) 1)
             (.add (:queue-overflow-total-events-dropped client-stats) 1)))
-      (.add (:bytes-events client-stats) event-bytes)
       
       ;; Event type specific client counters - only on successful delivery
       (when offer-success
@@ -471,8 +490,8 @@ Statistics collection uses direct LongAdder increments at integration points for
       :disconnect (do
                     (.add (:clients-disconnected-total server-statistics) 1)
                     (when (and connect-time disconnect-time)
-                      (let [duration-seconds (- disconnect-time connect-time)]
-                        (.add (:connection-duration-seconds-total server-statistics) (long duration-seconds))))
+                      (let [duration-nanos (max 0 (- disconnect-time connect-time))]
+                        (.add (:connection-duration-nanos-total server-statistics) duration-nanos)))
                     (case disconnect-reason
                       :graceful (.add (:clients-disconnected-graceful server-statistics) 1)
                       :error (.add (:clients-disconnected-error server-statistics) 1)
