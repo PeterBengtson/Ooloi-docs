@@ -382,6 +382,10 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 #### API Request Processing
 ```clojure
+;; ⚠️ CONCEPTUAL EXAMPLE - Shows batching pattern, not complete field coverage
+;; ACTUAL IMPLEMENTATION MUST COLLECT ALL 25+ API-RELATED STATISTICS
+;; from the statistics table (concurrent calls, bytes, error categories, etc.)
+
 ;; In execute-unified-method function - batched atomic updates at request completion
 (let [start-time (System/currentTimeMillis)
       request-bytes (.size protobuf-request)
@@ -391,15 +395,24 @@ Extend existing connection registry with separate top-level `:client-statistics`
       success? (:success result)]
   
   ;; Batch all statistics changes before applying atomically
+  ;; NOTE: This example shows core pattern - actual implementation needs ALL fields
   (let [server-deltas {:inc {:api-calls-total 1
                             :api-calls-success (if success? 1 0)
-                            :api-calls-failure (if success? 0 1)}
-                      :max {:api-slowest-call-ms duration-ms}
+                            :api-calls-failure (if success? 0 1)
+                            ;; ... PLUS all other API server statistics from table
+                            }
+                      :max {:api-slowest-call-ms duration-ms
+                            ;; ... PLUS concurrent calls peak, request/response sizes, etc.
+                            }
                       :min {:api-fastest-call-ms duration-ms}}
         client-deltas {:inc {:api-calls-total 1
-                            :api-calls-success (if success? 1 0)}
+                            :api-calls-success (if success? 1 0)
+                            ;; ... PLUS all other API client statistics from table
+                            }
                       :set {:last-api-call end-time
-                            :last-api-method method-name}}]
+                            :last-api-method method-name
+                            ;; ... PLUS all other timestamp/state fields
+                            }}]
     ;; Single atomic update per statistics atom
     (apply-deltas server-statistics server-deltas)
     (apply-deltas client-statistics client-deltas)))
@@ -407,6 +420,10 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 #### Event Delivery Processing
 ```clojure  
+;; ⚠️ CONCEPTUAL EXAMPLE - Shows batching pattern, not complete field coverage
+;; ACTUAL IMPLEMENTATION MUST COLLECT ALL 20+ EVENT-RELATED STATISTICS
+;; from the statistics table (event types, queue health, delivery timing, etc.)
+
 ;; In create-and-queue-event function - batched atomic updates during event delivery
 (let [event-bytes (.size serialized-event)
       queue-size-before (.size event-queue)
@@ -414,15 +431,27 @@ Extend existing connection registry with separate top-level `:client-statistics`
       queue-size-after (.size event-queue)]
   
   ;; Batch all event delivery statistics  
+  ;; NOTE: This example shows core pattern - actual implementation needs ALL fields
   (let [server-deltas {:inc {:events-sent-total (if offer-success 1 0)
                             :events-dropped-total (if offer-success 0 1)
-                            :bytes-events-total event-bytes}}
+                            :bytes-events-total event-bytes
+                            ;; ... PLUS server/piece/connect/disconnect event counts
+                            ;; ... PLUS event delivery attempts/successes
+                            ;; ... PLUS queue health aggregates, etc.
+                            }}
         client-deltas {:inc {:events-sent (if offer-success 1 0)
                             :events-dropped (if offer-success 0 1)
-                            :bytes-events event-bytes}
-                      :max {:queue-size-peak queue-size-after}
+                            :bytes-events event-bytes
+                            ;; ... PLUS event type breakdowns (server/piece/connect/disconnect)
+                            ;; ... PLUS queue offer attempts/successes, overflow tracking, etc.
+                            }
+                      :max {:queue-size-peak queue-size-after
+                            ;; ... PLUS queue consumer lag, largest event bytes, etc.
+                            }
                       :set {:queue-size-current queue-size-after
-                            :last-event-time (System/currentTimeMillis)}}]
+                            :last-event-time (System/currentTimeMillis)
+                            ;; ... PLUS last-event-type, last-activity-time, etc.
+                            }}]
     ;; Single atomic operation per atom
     (apply-deltas server-statistics server-deltas)
     (apply-deltas client-statistics client-deltas)))
@@ -430,11 +459,20 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 #### Connection Lifecycle
 ```clojure
+;; ⚠️ CONCEPTUAL EXAMPLE - Shows batching pattern, not complete field coverage
+;; ACTUAL IMPLEMENTATION MUST COLLECT ALL 12+ CONNECTION-RELATED STATISTICS
+;; from the statistics table (disconnect reasons, session timing, etc.)
+
 ;; On client connection - update server-wide connection tracking
+;; NOTE: This example shows core pattern - actual implementation needs ALL fields
 (let [connect-time (System/currentTimeMillis)
       server-deltas {:inc {:clients-connected-total 1
-                          :clients-connected-current 1}
-                    :max {:clients-connected-peak current-count}}]
+                          :clients-connected-current 1
+                          ;; ... PLUS server restart tracking if applicable
+                          }
+                    :max {:clients-connected-peak current-count}
+                    :set {;; ... PLUS server-start-time if first connection, etc.
+                          }}]
   (apply-deltas server-statistics server-deltas))
 
 ;; On client disconnection - update connection duration and disconnect counts  
@@ -442,7 +480,10 @@ Extend existing connection registry with separate top-level `:client-statistics`
       duration-ms (- disconnect-time connect-time)
       server-deltas {:inc {:clients-disconnected-total 1
                           :clients-connected-current -1
-                          :connection-duration-total-ms duration-ms}
+                          :connection-duration-total-ms duration-ms
+                          ;; ... PLUS disconnect reason categorization
+                          ;; ... PLUS graceful/error/timeout breakdown
+                          }
                     :max {:longest-session-ms duration-ms}
                     :min {:shortest-session-ms duration-ms}}]
   (apply-deltas server-statistics server-deltas))
@@ -454,118 +495,212 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 **Critical Performance Pattern**: Batch all statistics changes into a single `swap!` operation per atom to minimize contention and atomic operation overhead.
 
-**Delta Application Function**:
+**Vector-Based Operations Architecture**:
+
+Statistics collection uses **vector-based operations** for clean composition and transparent augmentation. Instead of complex nested map merging, operations are accumulated as simple vectors and applied sequentially.
+
+```clojure
+;; Statistics operations as vectors - transparent and composable
+[[:inc :api-calls-total 1]
+ [:inc :bytes-sent 1024]  
+ [:max :api-slowest-call-ms 150]
+ [:set :last-api-call timestamp]]
+
+;; Augmentation via simple vector concatenation
+(into existing-ops new-ops)  ; Clean composition, no complex merging
+```
+
+**Benefits of Vector-Based Operations**:
+- **Transparent**: See exactly what operations will be applied
+- **Composable**: Simple vector concatenation for multi-domain statistics  
+- **Simple**: No complex nested map merging logic
+- **Debuggable**: Operations are visible data structures
+
+**Enhanced apply-deltas Function**:
 ```clojure
 (defn apply-deltas
-  "Apply delta operations to server statistics atom.
+  "Apply sequence of delta operations to statistics atom.
    
-   Atomic statistics updates supporting multiple operation types:
+   Operations format: [[:operation :field value] ...]
    - :inc - Increment field by value
    - :set - Set field to absolute value  
    - :max - Update field to maximum of current and new value
    - :min - Update field to minimum of current and new value
    
-   All operations applied atomically in single swap! for consistency."
-  [stats-atom deltas]
+   All operations applied sequentially within single atomic swap! for consistency."
+  [stats-atom operations]
   (swap! stats-atom
     (fn [current-stats]
-      (reduce-kv
-        (fn [stats operation fields]
+      (reduce
+        (fn [stats [operation field value]]
           (case operation
-            :inc (reduce-kv
-                   (fn [s field increment]
-                     (assoc s field (+ (get s field 0) increment)))
-                   stats fields)
-            :set (reduce-kv
-                   (fn [s field value]
-                     (assoc s field value))
-                   stats fields)
-            :max (reduce-kv
-                   (fn [s field value]
-                     (assoc s field (max (get s field 0) value)))
-                   stats fields)
-            :min (reduce-kv
-                   (fn [s field value]
-                     (assoc s field (min (get s field Long/MAX_VALUE) value)))
-                   stats fields)))
-        current-stats deltas))))
+            :inc (assoc stats field (+ (get stats field 0) value))
+            :set (assoc stats field value)
+            :max (assoc stats field (max (get stats field 0) value))
+            :min (assoc stats field (min (get stats field Long/MAX_VALUE) value))))
+        current-stats
+        operations))))
 ```
 
-**API Request Processing Example**:
+**Vector-Based Statistics Collection Pattern**:
+
 ```clojure
-(defn handle-api-request [client-id method-name protobuf-request]
-  (let [start-time (System/currentTimeMillis)
-        request-bytes (.size protobuf-request)
-        result (execute-api-method method-name protobuf-request)
-        end-time (System/currentTimeMillis) 
-        response-bytes (.size (:response result))
-        duration-ms (- end-time start-time)
-        success? (:ok? result)]
+(defn compute-api-statistics-operations
+  "Compute ALL API-related statistics operations from raw operational data.
+   Returns vector of operations for transparent, composable statistics collection."
+  [{:keys [start-time end-time result request method-name client-id exception]
+    :or {server-ops [] client-ops []}}]  ; Accept existing operations for augmentation
     
-    ;; Collect ALL statistics changes before applying
-    (let [server-deltas {:inc {:api-calls-total 1
-                              :api-calls-success (if success? 1 0)
-                              :api-calls-failure (if success? 0 1)  
-                              :bytes-api-requests-total request-bytes
-                              :bytes-api-responses-total response-bytes}
-                        :max {:api-call-peak-duration-ms duration-ms
-                              :largest-api-request-bytes request-bytes
-                              :largest-api-response-bytes response-bytes}
-                        :min {:api-call-min-duration-ms duration-ms}}
-          
-          client-deltas {:inc {:api-calls-total 1
-                              :api-calls-success (if success? 1 0)
-                              :api-calls-failure (if success? 0 1)
-                              :bytes-sent response-bytes
-                              :bytes-received request-bytes}
-                        :max {:slowest-api-call-ms duration-ms}
-                        :min {:fastest-api-call-ms duration-ms}
-                        :set {:last-api-call end-time
-                              :last-api-method method-name
-                              :last-activity-time end-time}}]
-      
-      ;; Single atomic update per statistics atom
-      (apply-deltas server-statistics server-deltas)
-      (apply-deltas client-statistics client-deltas)
-      
-      result)))
+  (let [duration-ms (- end-time start-time)
+        success? (and result (not exception))
+        request-bytes (.size request)
+        response-bytes (if success? (.size (:response result)) 0)
+        
+        ;; Server operations - ALL 25+ API statistics as transparent operations
+        new-server-ops [[:inc :api-calls-total 1]
+                        [:inc :api-calls-success (if success? 1 0)]
+                        [:inc :api-calls-failure (if success? 0 1)]
+                        [:inc :bytes-api-requests-total request-bytes]
+                        [:inc :bytes-api-responses-total response-bytes]
+                        [:inc :bytes-transferred-total (+ request-bytes response-bytes)]
+                        [:max :api-slowest-call-ms duration-ms]
+                        [:min :api-fastest-call-ms duration-ms]
+                        [:max :largest-api-request-bytes request-bytes]
+                        [:max :largest-api-response-bytes response-bytes]]
+                        ;; ... PLUS all other API server statistics from table
+                        
+        ;; Client operations - ALL 15+ API client statistics  
+        new-client-ops [[:inc :api-calls-total 1]
+                        [:inc :api-calls-success (if success? 1 0)]
+                        [:inc :api-calls-failure (if success? 0 1)]
+                        [:inc :bytes-sent response-bytes]
+                        [:inc :bytes-received request-bytes]
+                        [:max :api-slowest-call-ms duration-ms]
+                        [:min :api-fastest-call-ms duration-ms]
+                        [:set :last-api-call end-time]
+                        [:set :last-api-method method-name]
+                        [:set :last-activity-time end-time]]]
+                        ;; ... PLUS all other API client statistics from table
+                        
+    {:server-ops (into server-ops new-server-ops)  ; Simple vector concatenation
+     :client-ops (into client-ops new-client-ops)}))
+
+;; Clean integration at API processing point
+(defn execute-unified-method [method-name protobuf-request client-id]
+  (let [start-time (System/currentTimeMillis)]
+    (try
+      (let [result (execute-api-method ...)
+            end-time (System/currentTimeMillis)
+            
+            {:keys [server-ops client-ops]}
+            (compute-api-statistics-operations
+             {:start-time start-time
+              :end-time end-time
+              :result result
+              :request protobuf-request
+              :method-name method-name
+              :client-id client-id})]
+              
+        ;; Single atomic application of all operations
+        (apply-deltas server-statistics server-ops)
+        (apply-deltas client-statistics client-ops)
+        result)
+        
+      (catch Exception e
+        (let [end-time (System/currentTimeMillis)
+              
+              ;; Multi-domain error statistics via augmentation
+              api-stats (compute-api-statistics-operations
+                         {:start-time start-time :end-time end-time
+                          :request protobuf-request :method-name method-name
+                          :client-id client-id :exception e})
+                          
+              final-stats (compute-error-statistics-operations
+                           {:error-type (categorize-exception e)
+                            :exception e :client-id client-id
+                            :server-ops (:server-ops api-stats)   ; Augment API stats
+                            :client-ops (:client-ops api-stats)})] ; Augment API stats
+                            
+          (apply-deltas server-statistics (:server-ops final-stats))
+          (apply-deltas client-statistics (:client-ops final-stats))
+          (throw e))))))
 ```
 
-**Event Delivery Processing Example**:
+**Vector-Based Event Statistics Pattern**:
+
 ```clojure
-(defn deliver-event-to-client [client-id event-message]
+(defn compute-event-statistics-operations
+  "Compute ALL event-related statistics operations from raw delivery data.
+   Returns transparent operation vectors for composable statistics collection."
+  [{:keys [event-message event-bytes queue-size-before queue-size-after 
+           offer-success delivery-lag-ms client-id]
+    :or {server-ops [] client-ops []}}]  ; Accept existing operations for augmentation
+    
+  (let [event-type (:type event-message)
+        delivery-time (System/currentTimeMillis)
+        
+        ;; Server operations - ALL 20+ event statistics as transparent operations  
+        new-server-ops [[:inc :events-sent-total (if offer-success 1 0)]
+                        [:inc :events-dropped-total (if offer-success 0 1)]
+                        [:inc :event-delivery-attempts 1]
+                        [:inc :event-delivery-successes (if offer-success 1 0)]
+                        [:inc :bytes-events-total event-bytes]
+                        ;; Event type breakdowns
+                        [:inc (case event-type
+                                :server-event :server-events-sent
+                                :piece-event :piece-events-sent
+                                :client-connected :connect-events-sent
+                                :client-disconnected :disconnect-events-sent) 1]
+                        [:max :largest-event-message-bytes event-bytes]]
+                        ;; ... PLUS all other event server statistics from table
+                        
+        ;; Client operations - ALL 15+ event client statistics
+        new-client-ops [[:inc :events-sent (if offer-success 1 0)]
+                        [:inc :events-dropped (if offer-success 0 1)]
+                        [:inc :queue-offer-attempts 1]
+                        [:inc :queue-offer-successes (if offer-success 1 0)]
+                        [:inc :bytes-events event-bytes]
+                        ;; Event type tracking
+                        [:inc (case event-type
+                                :server-event :server-events-received
+                                :piece-event :piece-events-received  
+                                :client-connected :connect-events-received
+                                :client-disconnected :disconnect-events-received) 1]
+                        [:max :queue-size-peak queue-size-after]
+                        [:max :queue-consumer-lag-ms delivery-lag-ms]
+                        [:max :largest-event-bytes event-bytes]
+                        [:set :queue-size-current queue-size-after]
+                        [:set :last-event-time delivery-time]
+                        [:set :last-event-type event-type]
+                        [:set :last-activity-time delivery-time]]]
+                        ;; ... PLUS all other event client statistics from table
+                        
+    {:server-ops (into server-ops new-server-ops)  ; Simple vector concatenation
+     :client-ops (into client-ops new-client-ops)}))
+
+;; Clean integration at event delivery point
+(defn create-and-queue-event [client-id event-message]
   (let [event-bytes (.size (serialize-event event-message))
         queue (get-client-queue client-id)
         queue-size-before (.size queue)
         delivery-start (System/currentTimeMillis)
         offer-success (.offer queue event-message)
         delivery-end (System/currentTimeMillis)
-        queue-size-after (.size queue)
-        delivery-lag-ms (- delivery-end delivery-start)]
-    
-    ;; Batch all event delivery statistics  
-    (let [server-deltas {:inc {:events-sent-total (if offer-success 1 0)
-                              :events-dropped-total (if offer-success 0 1)
-                              :event-delivery-attempts 1
-                              :event-delivery-successes (if offer-success 1 0)
-                              :bytes-events-total event-bytes}}
-          
-          client-deltas {:inc {:events-sent (if offer-success 1 0)
-                              :events-dropped (if offer-success 0 1)
-                              :queue-offer-attempts 1
-                              :queue-offer-successes (if offer-success 1 0)
-                              :bytes-events event-bytes}
-                        :max {:queue-size-peak queue-size-after
-                              :queue-consumer-lag-ms delivery-lag-ms}
-                        :set {:queue-size-current queue-size-after
-                              :last-event-time delivery-end
-                              :last-event-type (:type event-message)
-                              :last-activity-time delivery-end}}]
-      
-      ;; Single atomic operation per atom - minimal contention
-      (apply-deltas server-statistics server-deltas)
-      (apply-deltas client-statistics client-deltas)
-      
+        queue-size-after (.size queue)]
+        
+    (let [{:keys [server-ops client-ops]}
+          (compute-event-statistics-operations
+           {:event-message event-message
+            :event-bytes event-bytes
+            :queue-size-before queue-size-before
+            :queue-size-after queue-size-after
+            :offer-success offer-success
+            :delivery-lag-ms (- delivery-end delivery-start)
+            :client-id client-id})]
+            
+      ;; Single atomic application of all event operations
+      (apply-deltas server-statistics server-ops)
+      (apply-deltas client-statistics client-ops)
       offer-success)))
 ```
 
@@ -581,6 +716,9 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 **API Call Processing Example**:
 ```clojure
+;; ⚠️ CONCEPTUAL EXAMPLE - Shows zero-cost collection principle
+;; ACTUAL IMPLEMENTATION MUST COLLECT ALL 25+ API STATISTICS from table
+
 ;; We're already doing this work:
 (let [request-bytes (.size protobuf-request)
       start-time (System/currentTimeMillis)
@@ -589,17 +727,24 @@ Extend existing connection registry with separate top-level `:client-statistics`
       response-bytes (.size protobuf-response)]
   
   ;; Capture data already available at zero cost:
+  ;; NOTE: This shows principle - actual implementation needs ALL API fields
   (update-stats client-id {
     :api-calls-total 1                    ; Already tracking
     :api-calls-success (if success 1 0)   ; Already computed
     :bytes-sent response-bytes            ; Already serialized  
     :bytes-received request-bytes         ; Already deserialized
     :api-call-duration (- end-time start-time)  ; Already timed
-    :method-name method-name}))           ; Already resolved
+    :method-name method-name              ; Already resolved
+    ;; ... MISSING: concurrent call tracking, error categorization
+    ;; ... MISSING: largest-request/response-bytes, all timing fields, etc.
+    }))
 ```
 
 **Event Queue Operations Example**:
 ```clojure
+;; ⚠️ CONCEPTUAL EXAMPLE - Shows zero-cost collection principle
+;; ACTUAL IMPLEMENTATION MUST COLLECT ALL 20+ EVENT STATISTICS from table
+
 ;; We're already checking queue state:
 (let [queue-size-before (.size event-queue)
       event-bytes (.size serialized-event)
@@ -607,12 +752,16 @@ Extend existing connection registry with separate top-level `:client-statistics`
       queue-size-after (.size event-queue)]
   
   ;; All data is already computed:
+  ;; NOTE: This shows principle - actual implementation needs ALL event fields
   (update-stats client-id {
     :events-sent (if offer-result 1 0)
     :events-dropped (if offer-result 0 1)     ; Offer result known
     :queue-size-current queue-size-after      ; Already queried
     :queue-size-peak (max peak queue-size-after)  ; Simple comparison
-    :bytes-queued event-bytes}))              ; Already serialized
+    :bytes-queued event-bytes                 ; Already serialized
+    ;; ... MISSING: event type breakdowns (server/piece/connect/disconnect)
+    ;; ... MISSING: queue overflow tracking, consumer lag, offer attempt counts, etc.
+    }))
 ```
 
 **Cost Categories**:
