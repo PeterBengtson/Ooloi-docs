@@ -380,113 +380,140 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 ### Statistics Collection Points
 
+**Implementation Pattern**: All statistics collection follows the same vector-based pattern across all integration points. Statistics helper functions extract raw operational data, compute ALL relevant statistics for their domain, and return operation vectors for atomic application.
+
+**🔑 Key Architectural Benefit**: These integration point functions remain **completely stable** when adding or removing statistics. All statistics complexity is abstracted into helper functions, so integration points never need to change when the statistics requirements evolve.
+
 #### API Request Processing
 ```clojure
-;; ⚠️ CONCEPTUAL EXAMPLE - Shows batching pattern, not complete field coverage
-;; ACTUAL IMPLEMENTATION MUST COLLECT ALL 25+ API-RELATED STATISTICS
-;; from the statistics table (concurrent calls, bytes, error categories, etc.)
+;; Clean integration point - no manual statistics delta construction
+;; ALL statistics complexity abstracted into helper function
 
-;; In execute-unified-method function - batched atomic updates at request completion
-(let [start-time (System/currentTimeMillis)
-      request-bytes (.size protobuf-request)
-      result (execute-api-method ...)
-      end-time (System/currentTimeMillis) 
-      duration-ms (- end-time start-time)
-      success? (:success result)]
-  
-  ;; Batch all statistics changes before applying atomically
-  ;; NOTE: This example shows core pattern - actual implementation needs ALL fields
-  (let [server-deltas {:inc {:api-calls-total 1
-                            :api-calls-success (if success? 1 0)
-                            :api-calls-failure (if success? 0 1)
-                            ;; ... PLUS all other API server statistics from table
-                            }
-                      :max {:api-slowest-call-ms duration-ms
-                            ;; ... PLUS concurrent calls peak, request/response sizes, etc.
-                            }
-                      :min {:api-fastest-call-ms duration-ms}}
-        client-deltas {:inc {:api-calls-total 1
-                            :api-calls-success (if success? 1 0)
-                            ;; ... PLUS all other API client statistics from table
-                            }
-                      :set {:last-api-call end-time
-                            :last-api-method method-name
-                            ;; ... PLUS all other timestamp/state fields
-                            }}]
-    ;; Single atomic update per statistics atom
-    (apply-deltas server-statistics server-deltas)
-    (apply-deltas client-statistics client-deltas)))
+(defn execute-unified-method [method-name protobuf-request client-id]
+  (let [start-time (System/currentTimeMillis)]
+    (try
+      ;; Normal business logic
+      (let [result (execute-api-method method-name protobuf-request)
+            end-time (System/currentTimeMillis)
+            
+            ;; Single clean call to statistics helper
+            {:keys [server-ops client-ops]}
+            (compute-api-statistics-operations
+             {:start-time start-time
+              :end-time end-time
+              :result result
+              :request protobuf-request
+              :method-name method-name
+              :client-id client-id})]
+              
+        ;; Single atomic application - no manual delta construction
+        (apply-deltas server-statistics server-ops)
+        (apply-deltas client-statistics client-ops)
+        result)
+        
+      ;; Error path - same clean pattern with augmentation
+      (catch Exception e
+        (let [end-time (System/currentTimeMillis)
+              
+              ;; API failure statistics
+              api-stats (compute-api-statistics-operations
+                         {:start-time start-time :end-time end-time
+                          :request protobuf-request :method-name method-name
+                          :client-id client-id :exception e})
+                          
+              ;; Augment with error statistics
+              final-stats (compute-error-statistics-operations
+                           {:error-type (categorize-exception e)
+                            :exception e :client-id client-id
+                            :server-ops (:server-ops api-stats)
+                            :client-ops (:client-ops api-stats)})]
+                            
+          (apply-deltas server-statistics (:server-ops final-stats))
+          (apply-deltas client-statistics (:client-ops final-stats))
+          (throw e))))))
 ```
 
 #### Event Delivery Processing
 ```clojure  
-;; ⚠️ CONCEPTUAL EXAMPLE - Shows batching pattern, not complete field coverage
-;; ACTUAL IMPLEMENTATION MUST COLLECT ALL 20+ EVENT-RELATED STATISTICS
-;; from the statistics table (event types, queue health, delivery timing, etc.)
+;; Clean integration point - no manual statistics delta construction
+;; ALL event statistics complexity abstracted into helper function
 
-;; In create-and-queue-event function - batched atomic updates during event delivery
-(let [event-bytes (.size serialized-event)
-      queue-size-before (.size event-queue)
-      offer-success (.offer event-queue event-message)
-      queue-size-after (.size event-queue)]
-  
-  ;; Batch all event delivery statistics  
-  ;; NOTE: This example shows core pattern - actual implementation needs ALL fields
-  (let [server-deltas {:inc {:events-sent-total (if offer-success 1 0)
-                            :events-dropped-total (if offer-success 0 1)
-                            :bytes-events-total event-bytes
-                            ;; ... PLUS server/piece/connect/disconnect event counts
-                            ;; ... PLUS event delivery attempts/successes
-                            ;; ... PLUS queue health aggregates, etc.
-                            }}
-        client-deltas {:inc {:events-sent (if offer-success 1 0)
-                            :events-dropped (if offer-success 0 1)
-                            :bytes-events event-bytes
-                            ;; ... PLUS event type breakdowns (server/piece/connect/disconnect)
-                            ;; ... PLUS queue offer attempts/successes, overflow tracking, etc.
-                            }
-                      :max {:queue-size-peak queue-size-after
-                            ;; ... PLUS queue consumer lag, largest event bytes, etc.
-                            }
-                      :set {:queue-size-current queue-size-after
-                            :last-event-time (System/currentTimeMillis)
-                            ;; ... PLUS last-event-type, last-activity-time, etc.
-                            }}]
-    ;; Single atomic operation per atom
-    (apply-deltas server-statistics server-deltas)
-    (apply-deltas client-statistics client-deltas)))
+(defn create-and-queue-event [client-id event-message]
+  (let [;; Normal event delivery logic
+        event-bytes (.size (serialize-event event-message))
+        queue (get-client-queue client-id)
+        queue-size-before (.size queue)
+        delivery-start (System/currentTimeMillis)
+        offer-success (.offer queue event-message)
+        delivery-end (System/currentTimeMillis)
+        queue-size-after (.size queue)
+        
+        ;; Single clean call to statistics helper
+        {:keys [server-ops client-ops]}
+        (compute-event-statistics-operations
+         {:event-message event-message
+          :event-bytes event-bytes
+          :queue-size-before queue-size-before
+          :queue-size-after queue-size-after
+          :offer-success offer-success
+          :delivery-lag-ms (- delivery-end delivery-start)
+          :client-id client-id})]
+          
+    ;; Single atomic application - no manual delta construction
+    (apply-deltas server-statistics server-ops)
+    (apply-deltas client-statistics client-ops)
+    offer-success))
 ```
 
 #### Connection Lifecycle
 ```clojure
-;; ⚠️ CONCEPTUAL EXAMPLE - Shows batching pattern, not complete field coverage
-;; ACTUAL IMPLEMENTATION MUST COLLECT ALL 12+ CONNECTION-RELATED STATISTICS
-;; from the statistics table (disconnect reasons, session timing, etc.)
+;; Clean integration point - no manual statistics delta construction
+;; ALL connection statistics complexity abstracted into helper function
 
-;; On client connection - update server-wide connection tracking
-;; NOTE: This example shows core pattern - actual implementation needs ALL fields
-(let [connect-time (System/currentTimeMillis)
-      server-deltas {:inc {:clients-connected-total 1
-                          :clients-connected-current 1
-                          ;; ... PLUS server restart tracking if applicable
-                          }
-                    :max {:clients-connected-peak current-count}
-                    :set {;; ... PLUS server-start-time if first connection, etc.
-                          }}]
-  (apply-deltas server-statistics server-deltas))
+;; On client connection
+(defn handle-client-connect [stream-observer]
+  (let [connect-time (System/currentTimeMillis)
+        client-id (UUID/randomUUID)
+        current-count (inc (count @client-registry))
+        
+        ;; Single clean call to statistics helper
+        {:keys [server-ops client-ops]}
+        (compute-connection-statistics-operations
+         {:event-type :connect
+          :connect-time connect-time
+          :client-id client-id
+          :current-client-count current-count})]
+          
+    ;; Register client in system
+    (register-client client-id stream-observer)
+    
+    ;; Single atomic application - no manual delta construction
+    (apply-deltas server-statistics server-ops)
+    (apply-deltas client-statistics client-ops)
+    client-id))
 
-;; On client disconnection - update connection duration and disconnect counts  
-(let [disconnect-time (System/currentTimeMillis)
-      duration-ms (- disconnect-time connect-time)
-      server-deltas {:inc {:clients-disconnected-total 1
-                          :clients-connected-current -1
-                          :connection-duration-total-ms duration-ms
-                          ;; ... PLUS disconnect reason categorization
-                          ;; ... PLUS graceful/error/timeout breakdown
-                          }
-                    :max {:longest-session-ms duration-ms}
-                    :min {:shortest-session-ms duration-ms}}]
-  (apply-deltas server-statistics server-deltas))
+;; On client disconnection  
+(defn handle-client-disconnect [client-id disconnect-reason]
+  (let [disconnect-time (System/currentTimeMillis)
+        connect-time (get-client-connect-time client-id)
+        current-count (dec (count @client-registry))
+        
+        ;; Single clean call to statistics helper
+        {:keys [server-ops client-ops]}
+        (compute-connection-statistics-operations
+         {:event-type :disconnect
+          :client-id client-id
+          :connect-time connect-time
+          :disconnect-time disconnect-time
+          :disconnect-reason disconnect-reason
+          :current-client-count current-count})]
+          
+    ;; Remove client from system
+    (unregister-client client-id)
+    
+    ;; Single atomic application - no manual delta construction
+    (apply-deltas server-statistics server-ops)
+    (apply-deltas client-statistics client-ops)))
 ```
 
 ### Performance Considerations
@@ -585,45 +612,10 @@ Statistics collection uses **vector-based operations** for clean composition and
     {:server-ops (into server-ops new-server-ops)  ; Simple vector concatenation
      :client-ops (into client-ops new-client-ops)}))
 
-;; Clean integration at API processing point
-(defn execute-unified-method [method-name protobuf-request client-id]
-  (let [start-time (System/currentTimeMillis)]
-    (try
-      (let [result (execute-api-method ...)
-            end-time (System/currentTimeMillis)
-            
-            {:keys [server-ops client-ops]}
-            (compute-api-statistics-operations
-             {:start-time start-time
-              :end-time end-time
-              :result result
-              :request protobuf-request
-              :method-name method-name
-              :client-id client-id})]
-              
-        ;; Single atomic application of all operations
-        (apply-deltas server-statistics server-ops)
-        (apply-deltas client-statistics client-ops)
-        result)
-        
-      (catch Exception e
-        (let [end-time (System/currentTimeMillis)
-              
-              ;; Multi-domain error statistics via augmentation
-              api-stats (compute-api-statistics-operations
-                         {:start-time start-time :end-time end-time
-                          :request protobuf-request :method-name method-name
-                          :client-id client-id :exception e})
-                          
-              final-stats (compute-error-statistics-operations
-                           {:error-type (categorize-exception e)
-                            :exception e :client-id client-id
-                            :server-ops (:server-ops api-stats)   ; Augment API stats
-                            :client-ops (:client-ops api-stats)})] ; Augment API stats
-                            
-          (apply-deltas server-statistics (:server-ops final-stats))
-          (apply-deltas client-statistics (:client-ops final-stats))
-          (throw e))))))
+;; Integration point usage (see Statistics Collection Points section above):
+;; (let [{:keys [server-ops client-ops]} (compute-api-statistics-operations {...})]
+;;   (apply-deltas server-statistics server-ops)
+;;   (apply-deltas client-statistics client-ops))
 ```
 
 **Vector-Based Event Statistics Pattern**:
@@ -678,30 +670,10 @@ Statistics collection uses **vector-based operations** for clean composition and
     {:server-ops (into server-ops new-server-ops)  ; Simple vector concatenation
      :client-ops (into client-ops new-client-ops)}))
 
-;; Clean integration at event delivery point
-(defn create-and-queue-event [client-id event-message]
-  (let [event-bytes (.size (serialize-event event-message))
-        queue (get-client-queue client-id)
-        queue-size-before (.size queue)
-        delivery-start (System/currentTimeMillis)
-        offer-success (.offer queue event-message)
-        delivery-end (System/currentTimeMillis)
-        queue-size-after (.size queue)]
-        
-    (let [{:keys [server-ops client-ops]}
-          (compute-event-statistics-operations
-           {:event-message event-message
-            :event-bytes event-bytes
-            :queue-size-before queue-size-before
-            :queue-size-after queue-size-after
-            :offer-success offer-success
-            :delivery-lag-ms (- delivery-end delivery-start)
-            :client-id client-id})]
-            
-      ;; Single atomic application of all event operations
-      (apply-deltas server-statistics server-ops)
-      (apply-deltas client-statistics client-ops)
-      offer-success)))
+;; Integration point usage (see Statistics Collection Points section above):
+;; (let [{:keys [server-ops client-ops]} (compute-event-statistics-operations {...})]
+;;   (apply-deltas server-statistics server-ops)
+;;   (apply-deltas client-statistics client-ops))
 ```
 
 **Benefits of Batched Updates**:
@@ -712,56 +684,41 @@ Statistics collection uses **vector-based operations** for clean composition and
 
 #### Zero-Cost Collection Principle
 
-**Capture Available Data**: If data is already computed during normal operation, collect it at zero additional cost.
+**Capture Available Data**: If data is already computed during normal operation, collect it at zero additional cost using vector-based operations.
 
-**API Call Processing Example**:
+**Zero-Cost Data Collection Examples**:
 ```clojure
-;; ⚠️ CONCEPTUAL EXAMPLE - Shows zero-cost collection principle
-;; ACTUAL IMPLEMENTATION MUST COLLECT ALL 25+ API STATISTICS from table
+;; Zero-cost principle: Capture data already computed during normal operations
+(let [start-time (System/currentTimeMillis)]
+  ;; Normal business logic
+  (let [result (execute-api-method ...)
+        end-time (System/currentTimeMillis)]
+        
+    ;; All this data is ALREADY available at zero cost:
+    ;; - duration-ms: (- end-time start-time)     ; Already timed
+    ;; - success?: (boolean result)               ; Already computed  
+    ;; - request-bytes: (.size request)           ; Already deserialized
+    ;; - response-bytes: (.size response)         ; Already serialized
+    ;; - method-name: method-name                 ; Already resolved
+    
+    ;; Statistics helper uses zero-cost data (see full function above)
+    (compute-api-statistics-operations
+     {:start-time start-time :end-time end-time
+      :result result :request request :method-name method-name})))
 
-;; We're already doing this work:
-(let [request-bytes (.size protobuf-request)
-      start-time (System/currentTimeMillis)
-      result (execute-api-method ...)
-      end-time (System/currentTimeMillis)
-      response-bytes (.size protobuf-response)]
+;; Event delivery zero-cost data:
+(let [queue-size-before (.size queue)
+      offer-result (.offer queue event)]
+  ;; All this data is ALREADY available at zero cost:
+  ;; - offer-result: offer-result               ; Offer outcome known
+  ;; - queue-size-after: (.size queue)         ; Already queried  
+  ;; - event-bytes: (.size event)              ; Already serialized
+  ;; - event-type: (:type event)               ; Already extracted
   
-  ;; Capture data already available at zero cost:
-  ;; NOTE: This shows principle - actual implementation needs ALL API fields
-  (update-stats client-id {
-    :api-calls-total 1                    ; Already tracking
-    :api-calls-success (if success 1 0)   ; Already computed
-    :bytes-sent response-bytes            ; Already serialized  
-    :bytes-received request-bytes         ; Already deserialized
-    :api-call-duration (- end-time start-time)  ; Already timed
-    :method-name method-name              ; Already resolved
-    ;; ... MISSING: concurrent call tracking, error categorization
-    ;; ... MISSING: largest-request/response-bytes, all timing fields, etc.
-    }))
-```
-
-**Event Queue Operations Example**:
-```clojure
-;; ⚠️ CONCEPTUAL EXAMPLE - Shows zero-cost collection principle
-;; ACTUAL IMPLEMENTATION MUST COLLECT ALL 20+ EVENT STATISTICS from table
-
-;; We're already checking queue state:
-(let [queue-size-before (.size event-queue)
-      event-bytes (.size serialized-event)
-      offer-result (.offer event-queue event-message)
-      queue-size-after (.size event-queue)]
-  
-  ;; All data is already computed:
-  ;; NOTE: This shows principle - actual implementation needs ALL event fields
-  (update-stats client-id {
-    :events-sent (if offer-result 1 0)
-    :events-dropped (if offer-result 0 1)     ; Offer result known
-    :queue-size-current queue-size-after      ; Already queried
-    :queue-size-peak (max peak queue-size-after)  ; Simple comparison
-    :bytes-queued event-bytes                 ; Already serialized
-    ;; ... MISSING: event type breakdowns (server/piece/connect/disconnect)
-    ;; ... MISSING: queue overflow tracking, consumer lag, offer attempt counts, etc.
-    }))
+  ;; Statistics helper uses zero-cost data (see full function above)
+  (compute-event-statistics-operations
+   {:offer-success offer-result :event-bytes event-bytes
+    :queue-size-before queue-size-before :queue-size-after queue-size-after}))
 ```
 
 **Cost Categories**:
@@ -770,6 +727,67 @@ Statistics collection uses **vector-based operations** for clean composition and
 - **Higher Cost**: Aggregations requiring additional computation
 
 **Design Principle**: Comprehensive collection of zero-cost data, selective collection of higher-cost data based on operational value.
+
+### Implementation Summary
+
+**For Implementers**: All statistics collection follows this exact pattern across ALL integration points:
+
+1. **Create Statistics Helper Function** (template):
+   ```clojure
+   (defn compute-DOMAIN-statistics-operations
+     [{:keys [operational-data...] 
+       :or {server-ops [] client-ops []}}]  ; Accept existing for augmentation
+     ;; ... extract zero-cost data from operational parameters ...
+     ;; ... compute ALL statistics operations for this domain ...
+     {:server-ops (into server-ops [...new-operations...])
+      :client-ops (into client-ops [...new-operations...])})
+   ```
+
+2. **Call at Integration Point**:
+   ```clojure
+   ;; Business logic runs first, collecting operational data:
+   (let [start-time (System/currentTimeMillis)  ; Before operation
+         result (execute-business-logic ...)    ; Normal business logic
+         end-time (System/currentTimeMillis)    ; After operation
+         
+         ;; Statistics helper computes ALL operations, returns map:
+         {:keys [server-ops client-ops]}       ; Destructure the map
+         (compute-DOMAIN-statistics-operations
+          {:start-time start-time :end-time end-time :result result
+           :request request :client-id client-id})]  ; Pass raw data
+           
+     ;; Single atomic application of ALL operations:
+     (apply-deltas server-statistics server-ops)    ; Vector of operations
+     (apply-deltas client-statistics client-ops))   ; Vector of operations
+   ```
+
+3. **Multi-Domain Augmentation** (chaining for error paths):
+   ```clojure
+   ;; Chain multiple statistics domains together via augmentation:
+   (let [;; First domain: API statistics (success or failure)
+         {:keys [server-ops client-ops]}  ; Destructure consistently
+         (compute-api-statistics-operations 
+          {:start-time start-time :end-time end-time :exception e ...})
+                    
+         ;; Second domain: Error statistics (augments API stats)  
+         {:keys [server-ops client-ops]}  ; Final destructure
+         (compute-error-statistics-operations
+          {:error-type :timeout :client-id client-id
+           :server-ops server-ops        ; Pass existing ops from first call
+           :client-ops client-ops        ; Pass existing ops from first call
+           })]  ; Helper merges and returns augmented vectors
+                       
+     ;; Still only ONE atomic application per atom:
+     (apply-deltas server-statistics server-ops)     ; Combined ops
+     (apply-deltas client-statistics client-ops))    ; Combined ops  
+   ```
+
+**Key Requirements**:
+- ALL statistics helpers return `{:server-ops [...] :client-ops [...]}`
+- Operations format: `[[:operation :field value] ...]`  
+- Exactly ONE `apply-deltas` call per atom per request
+- Collect ALL relevant statistics for each domain (API, events, connections)
+- Support augmentation via `:or {server-ops [] client-ops []}` parameter
 
 #### Performance Optimization
 - Statistics collection adds < 1ms per operation
