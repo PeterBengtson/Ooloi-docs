@@ -51,9 +51,9 @@ These patterns have different concurrency characteristics and flow control requi
 
 ## Unified Client Connection Architecture
 
-### Event-First Connection Sequence
+### Registration-First Connection Sequence
 
-Ooloi clients use a **unified connection architecture** where both streaming and API connections are established automatically during client initialization, with **event streaming established first**:
+Ooloi clients use a **unified connection architecture** where client registration and both streaming and API connections are established automatically during client initialization, with **client registration and event streaming established first**:
 
 ```
 Unified Client Connection Sequence
@@ -64,13 +64,13 @@ Unified Client Connection Sequence
 │    Init     │                           │                 │
 └──────┬──────┘                           └─────────────────┘
        │                                           │
-       │ STEP 1: Establish Event Streaming         │
+       │ STEP 1: Register Client with Streaming    │
        │ ──────────────────────────────────────── ▶│
-       │        streamEvents(clientId)             │
+       │        registerClient(clientId)             │
        │                                          │
        │              ◀ ──────────────────────────│
-       │         Server registers streaming        │
-       │         connection in registry            │
+       │         Server registers client with      │
+       │         integrated streaming capability   │
        │                                          │
        │ STEP 2: Create API Connection Pool        │
        │ ──────────────────────────────────────── ▶│
@@ -83,12 +83,12 @@ Unified Client Connection Sequence
        │                                          │
 ```
 
-### Benefits of Event-First Architecture
+### Benefits of Registration-First Architecture
 
-1. **Immediate Event Capability**: Events can be received as soon as client is operational
-2. **Bidirectional Communication**: Client can both send requests and receive real-time updates
-3. **Automatic Connection Management**: No separate connection establishment required
-4. **Uniform Client Behavior**: All clients follow the same connection pattern
+1. **Immediate Event Capability**: Events can be received as soon as client registration is complete
+2. **Bidirectional Communication**: Client registration automatically establishes both request capability and real-time event reception
+3. **Automatic Connection Management**: No separate connection or registration establishment required
+4. **Uniform Client Behavior**: All clients follow the same registration and connection pattern
 
 ### Implementation Impact
 
@@ -96,12 +96,12 @@ Unified Client Connection Sequence
 ;; Before: Manual connection management
 (let [api-client (create-api-client config)
       event-client (create-event-client config)]
-  (establish-event-streaming event-client)  ; Manual step
+  (register-for-events event-client)  ; Manual registration step
   (use-clients api-client event-client))
 
-;; After: Unified automatic connection
+;; After: Unified automatic registration and connection
 (let [unified-client (create-grpc-clients config)]
-  ;; Both streaming and API connections already established
+  ;; Client registration and both streaming and API connections already established
   (use-client unified-client))
 ```
 

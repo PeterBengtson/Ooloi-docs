@@ -445,19 +445,19 @@ Statistics collection uses direct LongAdder increments at integration points for
       (do (.add (:events-sent-total server-statistics) 1)
           (.add (:event-delivery-successes server-statistics) 1)
           (.add (:bytes-events-total server-statistics) event-bytes)
-          ;; Event type specific sent counters
+          ;; Event type specific sent counters - direct event type usage
           (case event-type
-            :server-event (.add (:server-events-sent server-statistics) 1)
-            :piece-event (.add (:piece-events-sent server-statistics) 1)
+            :server (.add (:server-events-sent server-statistics) 1)
+            :piece (.add (:piece-events-sent server-statistics) 1)
             :client-connected (.add (:connect-events-sent server-statistics) 1)
             :client-disconnected (.add (:disconnect-events-sent server-statistics) 1)
             nil))
       (do (.add (:events-dropped-total server-statistics) 1)
           (.add (:event-queues-overflow-total server-statistics) 1)
-          ;; Event type specific dropped counters
+          ;; Event type specific dropped counters - direct event type usage
           (case event-type
-            :server-event (.add (:server-events-dropped-total server-statistics) 1)
-            :piece-event (.add (:piece-events-dropped-total server-statistics) 1)
+            :server (.add (:server-events-dropped-total server-statistics) 1)
+            :piece (.add (:piece-events-dropped-total server-statistics) 1)
             :client-connected (.add (:connect-events-dropped-total server-statistics) 1)
             :client-disconnected (.add (:disconnect-events-dropped-total server-statistics) 1)
             nil)))
@@ -474,11 +474,11 @@ Statistics collection uses direct LongAdder increments at integration points for
             (.add (:queue-overflow-count client-stats) 1)
             (.add (:queue-overflow-total-events-dropped client-stats) 1)))
       
-      ;; Event type specific client counters - only on successful delivery
+      ;; Event type specific client counters - only on successful delivery - direct event type usage
       (when offer-success
         (case event-type
-          :server-event (.add (:server-events-received client-stats) 1)
-          :piece-event (.add (:piece-events-received client-stats) 1)
+          :server (.add (:server-events-received client-stats) 1)
+          :piece (.add (:piece-events-received client-stats) 1)
           :client-connected (.add (:connect-events-received client-stats) 1)
           :client-disconnected (.add (:disconnect-events-received client-stats) 1)
           nil)))))

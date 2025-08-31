@@ -20,7 +20,7 @@ Key considerations:
 
 ### **Unified Event-First Connection Pattern**
 
-Ooloi clients use a **unified connection architecture** that automatically establishes both event streaming and API connections during client component initialization, with event streaming established first:
+Ooloi clients use a **unified connection architecture** that automatically registers the client and establishes both event streaming and API connections during client component initialization, with client registration and event streaming established first:
 
 ```
 Client Connection Lifecycle
@@ -32,7 +32,7 @@ Client Connection Lifecycle
           │                                      │
           │ 1. Create event stream client        │
           │ ──────────────────────────────────► │
-          │    streamEvents(client-id)           │
+          │    registerClient(client-id)           │
           │                                     │
           │ ◄ ──────────────────────────────── │
           │    Event streaming established       │  
@@ -53,9 +53,9 @@ Client Connection Lifecycle
 
 ### **Connection Architecture Benefits**
 
-1. **Event-first ordering**: Event streaming available immediately for real-time collaboration
-2. **Automatic establishment**: No manual connection management required 
-3. **Unified client behavior**: All clients follow consistent connection pattern
+1. **Registration-first ordering**: Client registration with integrated event streaming available immediately for real-time collaboration
+2. **Automatic establishment**: No manual connection or registration management required 
+3. **Unified client behavior**: All clients follow consistent registration and connection pattern
 4. **Flow control integration**: Event streaming immediately benefits from per-client queue architecture
 
 ### **Connection Count Impact**
