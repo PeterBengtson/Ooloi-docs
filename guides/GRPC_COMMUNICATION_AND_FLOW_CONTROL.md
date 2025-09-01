@@ -16,6 +16,7 @@
 - [STM and gRPC: A Perfect Partnership](#stm-and-grpc-a-perfect-partnership)
 - [Practical Examples](#practical-examples)
 - [Performance Implications](#performance-implications)
+  - [Event Structure and Conventions](#event-structure-and-conventions)
 - [Related Architecture](#related-architecture)
 
 ---
@@ -478,6 +479,38 @@ Concurrency characteristics:
 - Performance scales with available CPU cores
 - gRPC and STM work together without artificial constraints
 - STM handles conflicts through automatic retry mechanisms
+
+### Event Structure and Conventions
+
+All events follow a consistent structure to ensure predictable handling across the event streaming pipeline:
+
+```clojure
+;; Standard event structure received by clients
+{:type :event-type-keyword          ; Required: Event type as keyword
+ :timestamp 1693827465123           ; Required: Unix timestamp (added during transport)
+ :client-id "client-123"            ; Optional: Originating client identifier
+ :message "Human readable message"  ; Optional: User-friendly description
+ ...additional-fields...}           ; Event-specific data fields
+```
+
+**Event Type Conventions**:
+- **Always keywords**: `:server-maintenance`, `:client-registration-confirmed`, `:piece-updated`
+- **Kebab-case naming**: Multi-word types use dashes (`:client-registration-confirmed`)
+- **Hierarchical naming**: Complex events can use namespace-style (`:piece/content-changed`)
+
+**Core Event Categories**:
+- **Server events**: `:server-maintenance`, `:server-shutdown`, `:server-status`
+- **Client events**: `:client-registration-confirmed`, `:client-connected`
+- **Piece events**: `:piece-updated`, `:piece-created`, `:piece-deleted`
+- **Collaboration events**: `:user-joined`, `:user-left`, `:concurrent-edit`
+
+**Event Processing Pipeline**:
+1. **Server creation**: Event data created with `:type` and content fields
+2. **Transport**: Event data serialized to protobuf, timestamp added to EventMessage wrapper
+3. **Client reception**: EventMessage metadata (timestamp) merged with event data
+4. **Final structure**: Client applications receive complete event with all metadata
+
+For comprehensive event structure documentation, see [ADR-0018: API-gRPC Interface Generation](../ADRs/0018-API-gRPC-Interface-Generation.md#event-structure-and-conventions).
 
 ### Event Streaming Performance
 

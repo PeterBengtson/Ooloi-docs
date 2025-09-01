@@ -1,5 +1,18 @@
 # ADR-0018: API-gRPC Interface Generation and Event Notification Architecture
 
+## Table of Contents
+
+- [Status](#status)
+- [Context](#context)
+- [Decision](#decision)
+- [Event Structure and Conventions](#event-structure-and-conventions)
+- [Implementation Approach](#implementation-approach)
+- [Rationale](#rationale)
+- [Consequences](#consequences)
+- [Alternatives Considered](#alternatives-considered)
+- [References](#references)
+- [Notes](#notes)
+
 ## Status
 
 Accepted
@@ -137,6 +150,111 @@ service OoloiService {
 - **Performance optimization**: Conversion function optimization and caching for frequently used patterns
 - **Development tooling**: Runtime introspection tools for debugging dynamic method calls
 - **Monitoring and observability**: Built-in metrics for conversion performance and method usage
+
+## Event Structure and Conventions
+
+### Standard Event Format
+
+All events in Ooloi's gRPC system follow a consistent structure to ensure predictable handling across client and server components:
+
+```clojure
+;; Standard event structure
+{:type :event-type-keyword          ; Required: Event type as keyword
+ :timestamp 1693827465123           ; Required: Unix timestamp in milliseconds (added by system)
+ :client-id "client-123"            ; Optional: Originating client identifier
+ :message "Human readable message"  ; Optional: User-friendly description
+ ...additional-fields...}           ; Event-specific data fields
+```
+
+### Event Type Conventions
+
+**Event Type Field** (`:type`):
+- **Always a keyword**: `:server-maintenance`, `:client-registration-confirmed`, `:piece-updated`
+- **Never a string**: Avoid `"server-maintenance"` or `{:event-type "..."}`
+- **Kebab-case naming**: Use dashes for multi-word types (`:client-registration-confirmed`)
+- **Hierarchical naming**: Use namespace-style for complex events (`:piece/content-changed`)
+
+**Core Event Categories**:
+- **Server events**: `:server-maintenance`, `:server-shutdown`, `:server-status`
+- **Client events**: `:client-registration-confirmed`, `:client-connected`, `:client-disconnected`
+- **Piece events**: `:piece-updated`, `:piece-created`, `:piece-deleted`
+- **Collaboration events**: `:user-joined`, `:user-left`, `:concurrent-edit`
+
+### Event Lifecycle and Processing
+
+**Event Creation** (Server-side):
+```clojure
+;; Server creates event with core data
+(let [event-data {:type :client-registration-confirmed
+                  :client-id client-id
+                  :message "Registration successful"}
+      timestamp (System/currentTimeMillis)]
+  (create-and-queue-event queue observer event-data "confirmation" timestamp source))
+```
+
+**Event Transport** (Protocol Buffer):
+- Event data serialized to `OoloiValue` protobuf message
+- Timestamp and metadata added to `EventMessage` wrapper
+- Transport via gRPC streaming to subscribed clients
+
+**Event Reception** (Client-side):
+```clojure
+;; Client merges EventMessage metadata with event data
+(let [event-data (.getEventData event-message)
+      clj-data (-> event-data bridge/protobuf-object->internal-map conv/proto->clj)
+      timestamp (.getTimestamp event-message)
+      complete-event (assoc clj-data :timestamp timestamp)]
+  (process-received-event complete-event client-id))
+```
+
+**Final Event Structure**: Client applications receive events with all metadata merged:
+```clojure
+{:type :client-registration-confirmed
+ :client-id "test-client-42h"
+ :message "Registration successful"
+ :timestamp 1693827465123}  ; Added during client processing
+```
+
+### Event Consistency Requirements
+
+**Field Naming Standards**:
+- Use kebab-case for all field names: `:client-id`, `:piece-id`, `:event-data`
+- Prefer keywords over strings for enumerated values
+- Use consistent field names across similar event types
+
+**Timestamp Handling**:
+- **Server responsibility**: Generate timestamp at event creation time
+- **Transport level**: Timestamp carried in `EventMessage.timestamp`
+- **Client processing**: Merge timestamp into final event data
+- **Format**: Unix timestamp in milliseconds (Java `System/currentTimeMillis()`)
+
+**Event Content Guidelines**:
+- Include human-readable `:message` field for user-facing events
+- Use `:client-id` for client-specific events
+- Include relevant entity IDs (`:piece-id`, `:user-id`) for context
+- Keep event data flat when possible; nest only when semantically grouped
+
+### Testing Event Structure
+
+**Event Validation Pattern**:
+```clojure
+(fact "Event has correct structure"
+  (let [event (receive-test-event)]
+    (:type event) => :expected-event-type
+    (:timestamp event) => #(and (number? %) (pos? %))
+    (:client-id event) => "expected-client-id"
+    (:message event) => "Expected message text"))
+```
+
+**Event Capture for Testing**:
+```clojure
+(with-redefs [event-client/process-received-event
+              (fn [event client-id]
+                (swap! captured-events conj event))]
+  ;; Test operations that generate events
+  ;; Validate captured events structure and content
+  )
+```
 
 ## Implementation Approach
 
