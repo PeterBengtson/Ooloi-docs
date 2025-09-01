@@ -98,9 +98,8 @@ We are committed to providing a friendly, safe, and welcoming environment for al
    - Decoupled design allows for local operation or potential SaaS deployment
    - Utilizes multithreading and multiprocessing for efficiency
 
-2. **Backend (Clojure with JavaFX)**
+2. **Backend (Clojure)**
    - Leverages JVM for performance and interoperability
-   - JavaFX for cross-platform server dashboards and debugging tools
    - Implements core logic, data structures, and computational tasks
    - Utilizes Clojure's functional programming paradigms and immutability
    - Handles data persistence and plugin management
@@ -109,7 +108,7 @@ We are committed to providing a friendly, safe, and welcoming environment for al
 3. **Frontend (Clojure with JavaFX and Skija)**
    - Native application built with Clojure, not browser-based
    - JavaFX for cross-platform windowing and UI components
-   - Skija (Java binding for Skia) for high-performance 2D graphics rendering
+   - Skija (Java binding for Skia) for GPU-accelerated, high-performance 2D graphics rendering
    - Capable of handling large, complex scores (e.g., 100 staves or more, thousands of measures or more)
 
 4. **Rendering System**
@@ -149,7 +148,7 @@ We are committed to providing a friendly, safe, and welcoming environment for al
 
 10. **Cross-Platform Compatibility**
     - JavaFX ensures consistent behavior across Windows, MacOS, and Linux
-    - Skija provides consistent rendering across platforms
+    - Skija provides consistent GPU-accelerated rendering across platforms
     - Uses jpackage for creating native installers for different platforms
 
 11. **Development and Build Tools**
