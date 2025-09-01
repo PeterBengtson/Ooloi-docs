@@ -49,14 +49,14 @@ These patterns have different concurrency characteristics and flow control requi
 
 ---
 
-## Unified Client Connection Architecture
+## Explicit App-Controlled Connection Architecture
 
-### Registration-First Connection Sequence
+### Two-Phase Connection Sequence
 
-Ooloi clients use a **unified connection architecture** where client registration and both streaming and API connections are established automatically during client initialization, with **client registration and event streaming established first**:
+Ooloi clients use a **two-phase connection architecture** where component initialization prepares the gRPC infrastructure but applications explicitly control when network connections are established:
 
 ```
-Unified Client Connection Sequence
+Two-Phase Client Connection Sequence
 ┌─────────────┐                           ┌─────────────────┐
 │   Client    │                           │    Server       │
 │             │                           │                 │
@@ -64,7 +64,17 @@ Unified Client Connection Sequence
 │    Init     │                           │                 │
 └──────┬──────┘                           └─────────────────┘
        │                                           │
-       │ STEP 1: Register Client with Streaming    │
+       │ PHASE 1: Component Preparation            │
+       │ (No network activity)                     │
+       │                                          │
+       │ ✓ gRPC client infrastructure ready        │
+       │ ✓ Connection pools prepared               │
+       │ ✓ Event handlers configured               │
+       │                                          │
+       │ ... Application decides when to connect...│
+       │                                          │
+       │ PHASE 2: Explicit Connection             │
+       │ register-for-events() called by app       │
        │ ──────────────────────────────────────── ▶│
        │        registerClient(clientId)             │
        │                                          │
@@ -72,37 +82,42 @@ Unified Client Connection Sequence
        │         Server registers client with      │
        │         integrated streaming capability   │
        │                                          │
-       │ STEP 2: Create API Connection Pool        │
+       │ API connection pool activated             │
        │ ──────────────────────────────────────── ▶│
        │    4 pooled channels established          │
        │                                          │
        │              ◀ ──────────────────────────│
        │         API pool ready for requests       │
        │                                          │
-       │ ✓ Client ready for bidirectional comms   │
+       │ ✓ Bidirectional communication ready       │
+       │   when application needs it               │
        │                                          │
 ```
 
-### Benefits of Registration-First Architecture
+### Benefits of App-Controlled Architecture
 
-1. **Immediate Event Capability**: Events can be received as soon as client registration is complete
-2. **Bidirectional Communication**: Client registration automatically establishes both request capability and real-time event reception
-3. **Automatic Connection Management**: No separate connection or registration establishment required
-4. **Uniform Client Behavior**: All clients follow the same registration and connection pattern
+1. **Application Timing Control**: Apps can establish connections after UI frameworks initialize, windowing systems are ready, or other prerequisites are met
+2. **Resource Management**: Network resources allocated precisely when needed, preventing premature resource allocation
+3. **Error Separation**: Clear distinction between component setup failures vs network connectivity issues  
+4. **Testing Control**: Tests can control exactly when connections are established for better resource lifecycle management
 
 ### Implementation Impact
 
 ```clojure
-;; Before: Manual connection management
-(let [api-client (create-api-client config)
-      event-client (create-event-client config)]
-  (register-for-events event-client)  ; Manual registration step
-  (use-clients api-client event-client))
+;; Before: Immediate connection during component init
+(let [grpc-clients (ig/init-key :grpc-clients config)]
+  ;; Network connections already established
+  (use-client grpc-clients))
 
-;; After: Unified automatic registration and connection
-(let [unified-client (create-grpc-clients config)]
-  ;; Client registration and both streaming and API connections already established
-  (use-client unified-client))
+;; After: Explicit app-controlled connection
+(let [grpc-clients (ig/init-key :grpc-clients config)]
+  ;; Only component infrastructure ready - no network connections
+  
+  ;; App decides when to connect (e.g., after UI initialization)
+  (register-for-events config grpc-clients)
+  
+  ;; Now bidirectional communication is ready
+  (use-client grpc-clients))
 ```
 
 ---

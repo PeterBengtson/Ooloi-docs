@@ -18,9 +18,9 @@ Key considerations:
 
 ## Client Connection Architecture
 
-### **Unified Event-First Connection Pattern**
+### **Explicit App-Controlled Connection Pattern**
 
-Ooloi clients use a **unified connection architecture** that automatically registers the client and establishes both event streaming and API connections during client component initialization, with client registration and event streaming established first:
+Ooloi clients use a **two-phase connection architecture** where component initialization creates client infrastructure but applications control when network connections are actually established:
 
 ```
 Client Connection Lifecycle
@@ -30,7 +30,17 @@ Client Connection Lifecycle
 │  Initialization │                    │                 │
 └─────────┬───────┘                    └─────────┬───────┘
           │                                      │
-          │ 1. Create event stream client        │
+          │ PHASE 1: Component Setup             │
+          │ (no network activity)                │
+          │                                     │
+          │ ✓ gRPC client components ready       │
+          │ ✓ Connection pools prepared          │
+          │ ✓ Event handlers configured          │
+          │                                     │
+          │ ... Application decides when ...     │
+          │                                     │
+          │ PHASE 2: Explicit Connection        │
+          │ register-for-events() called         │
           │ ──────────────────────────────────► │
           │    registerClient(client-id)           │
           │                                     │
@@ -39,31 +49,29 @@ Client Connection Lifecycle
           │    (registered in connection        │
           │     registry for flow control)      │
           │                                     │
-          │ 2. Create API connection pool        │
+          │ API pool activated for requests      │
           │ ──────────────────────────────────► │
-          │    4 concurrent channels             │
-          │                                     │
-          │ ◄ ──────────────────────────────── │
-          │    API pool ready for requests      │
+          │    4 concurrent channels active      │
           │                                     │
           │ ✓ Bidirectional communication       │
-          │   established automatically         │
+          │   ready when app needs it           │
           │                                     │
 ```
 
 ### **Connection Architecture Benefits**
 
-1. **Registration-first ordering**: Client registration with integrated event streaming available immediately for real-time collaboration
-2. **Automatic establishment**: No manual connection or registration management required 
-3. **Unified client behavior**: All clients follow consistent registration and connection pattern
-4. **Flow control integration**: Event streaming immediately benefits from per-client queue architecture
+1. **Application-controlled timing**: Apps can establish connections after UI initialization, windowing system readiness, or other prerequisites
+2. **Resource management**: Network resources allocated precisely when needed, not during component startup
+3. **Error separation**: Clear distinction between component initialization failures vs network connectivity issues
+4. **Testing control**: Tests can control exactly when connections are established for better resource management
 
 ### **Connection Count Impact**
 
-The unified architecture affects server connection statistics:
-- **Before**: Clients established API connections only
-- **After**: Clients establish both streaming (1) + API pool (4) = 5 total connections per client
+The explicit connection architecture affects server connection statistics:
+- **Component initialization**: No network connections established
+- **After register-for-events**: Clients establish both streaming (1) + API pool (4) = 5 total connections per client
 - **Flow control**: Only streaming connections participate in event queue management
+- **Lifecycle**: Applications control exactly when these connections are created and destroyed
 
 ## Rationale
 
