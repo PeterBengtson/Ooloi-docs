@@ -40,7 +40,7 @@ Client Connection Lifecycle
           │ ... Application decides when ...     │
           │                                     │
           │ PHASE 2: Explicit Connection        │
-          │ register-for-events() called         │
+          │ register-with-server() called         │
           │ ──────────────────────────────────► │
           │    registerClient(client-id)           │
           │                                     │
@@ -69,7 +69,7 @@ Client Connection Lifecycle
 
 The explicit connection architecture affects server connection statistics:
 - **Component initialization**: No network connections established
-- **After register-for-events**: Clients establish both streaming (1) + API pool (4) = 5 total connections per client
+- **After register-with-server**: Clients establish both streaming (1) + API pool (4) = 5 total connections per client
 - **Flow control**: Only streaming connections participate in event queue management
 - **Lifecycle**: Applications control exactly when these connections are created and destroyed
 

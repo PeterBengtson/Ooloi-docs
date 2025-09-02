@@ -77,7 +77,7 @@ Two-Phase Client Connection Sequence
        │ ... Application decides when to connect...│
        │                                          │
        │ PHASE 2: Explicit Connection             │
-       │ register-for-events() called by app       │
+       │ register-with-server() called by app       │
        │ ──────────────────────────────────────── ▶│
        │        registerClient(clientId)             │
        │                                          │
@@ -117,7 +117,7 @@ Two-Phase Client Connection Sequence
   ;; Only component infrastructure ready - no network connections
   
   ;; App decides when to connect (e.g., after UI initialization)
-  (register-for-events config grpc-clients)
+  (register-with-server config grpc-clients)
   
   ;; Now bidirectional communication is ready
   (use-client grpc-clients))
