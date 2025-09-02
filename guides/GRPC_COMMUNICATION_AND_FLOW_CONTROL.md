@@ -17,6 +17,8 @@
 - [Practical Examples](#practical-examples)
 - [Performance Implications](#performance-implications)
   - [Event Structure and Conventions](#event-structure-and-conventions)
+  - [Event Broadcasting Examples](#event-broadcasting-examples)
+  - [Event Streaming Performance](#event-streaming-performance)
 - [Related Architecture](#related-architecture)
 
 ---
@@ -487,7 +489,7 @@ All events follow a consistent structure to ensure predictable handling across t
 ```clojure
 ;; Standard event structure received by clients
 {:type :event-type-keyword          ; Required: Event type as keyword
- :timestamp 1693827465123           ; Required: Unix timestamp (added during transport)
+ :timestamp 1693827465123456789     ; Required: Nanosecond timestamp (added during transport)
  :client-id "client-123"            ; Optional: Originating client identifier
  :message "Human readable message"  ; Optional: User-friendly description
  ...additional-fields...}           ; Event-specific data fields
@@ -510,7 +512,149 @@ All events follow a consistent structure to ensure predictable handling across t
 3. **Client reception**: EventMessage metadata (timestamp) merged with event data
 4. **Final structure**: Client applications receive complete event with all metadata
 
-For comprehensive event structure documentation, see [ADR-0018: API-gRPC Interface Generation](../ADRs/0018-API-gRPC-Interface-Generation.md#event-structure-and-conventions).
+For comprehensive event structure documentation, see [ADR-0018: API-gRPC Interface and Events](../ADRs/0018-API-gRPC-Interface-and-Events.md#event-structure-and-conventions).
+
+### Event Broadcasting Examples
+
+The server provides two optimized functions for event broadcasting with automatic field derivation. Both functions feature identical signatures for consistency and ease of use.
+
+#### Server Events - Global Broadcasts
+
+Server events are broadcast to all connected clients regardless of piece subscriptions. Use these for system-wide notifications:
+
+```clojure
+;; System maintenance notification
+(send-server-event server-component
+  {:type :server-maintenance
+   :message "System will restart in 5 minutes"
+   :affected-services ["api" "streaming"]
+   :estimated-downtime "2 minutes"})
+
+;; Server status updates  
+(send-server-event server-component
+  {:type :server-status
+   :status :degraded
+   :message "Experiencing high load"
+   :response-time-ms 850})
+
+;; User session events
+(send-server-event server-component
+  {:type :server-user-limit
+   :message "Maximum concurrent users reached"
+   :current-users 100
+   :max-users 100})
+```
+
+#### Piece Events - Targeted Broadcasts
+
+Piece events are broadcast only to clients subscribed to the specific piece. Use these for piece-specific notifications:
+
+```clojure
+;; Content changes in a musical piece
+(send-piece-event server-component
+  {:type :piece-content-changed
+   :piece-id "symphony-op27"
+   :measures [45 46 47]
+   :change-type :notes-added
+   :editor-client "user-maria"
+   :instruments ["violin-1" "violin-2"]})
+
+;; Collaborative editing events
+(send-piece-event server-component
+  {:type :piece-user-joined
+   :piece-id "quartet-in-d"
+   :user-id "user-james"
+   :user-role "violinist"
+   :join-time (System/nanoTime)})
+
+;; Auto-save notifications  
+(send-piece-event server-component
+  {:type :piece-auto-saved
+   :piece-id "concerto-no3"
+   :save-version 47
+   :changed-sections ["exposition" "development"]})
+
+;; Layout invalidation
+(send-piece-event server-component
+  {:type :piece-layout-invalidated
+   :piece-id "sonata-k545"
+   :affected-pages [1 2]
+   :reason "time-signature-change"
+   :requires-reflow true})
+```
+
+#### Practical Usage Patterns
+
+**Event Chaining for Complex Operations**:
+```clojure
+;; Multi-step operation with progress updates
+(defn transpose-piece [server-component piece-id semitones]
+  ;; Notify start
+  (send-piece-event server-component
+    {:type :piece-operation-started
+     :piece-id piece-id
+     :operation :transpose
+     :parameters {:semitones semitones}})
+  
+  ;; Perform operation
+  (let [result (perform-transposition piece-id semitones)]
+    ;; Notify completion
+    (send-piece-event server-component
+      {:type :piece-operation-completed
+       :piece-id piece-id
+       :operation :transpose
+       :affected-measures (:measures result)
+       :success true})))
+```
+
+**Error Event Broadcasting**:
+```clojure
+;; Piece-specific errors
+(send-piece-event server-component
+  {:type :piece-operation-failed
+   :piece-id "symphony-unfinished" 
+   :operation :auto-harmonize
+   :error-code "insufficient-voice-leading"
+   :message "Cannot harmonize: voice leading constraints violated"
+   :suggested-action "Review voice ranges in measures 23-27"})
+
+;; Server-wide errors
+(send-server-event server-component
+  {:type :server-error
+   :error-level :warning
+   :message "Database connection pool exhausted"
+   :affected-operations ["save" "auto-save"]
+   :recovery-eta "30 seconds"})
+```
+
+#### Integration with Component Lifecycle
+
+```clojure
+;; In your component's event handling
+(defn handle-piece-update [server-component piece-id changes]
+  (when (significant-change? changes)
+    (send-piece-event server-component
+      {:type :piece-content-changed
+       :piece-id piece-id
+       :changes changes
+       :change-id (generate-change-id)
+       :requires-layout-update (layout-affecting? changes)}))
+  
+  ;; Check for conflicts
+  (when-let [conflicts (detect-conflicts piece-id changes)]
+    (send-piece-event server-component
+      {:type :piece-conflict-detected
+       :piece-id piece-id
+       :conflicts conflicts
+       :resolution-required true})))
+```
+
+**Key Benefits of This Approach**:
+- **Simplified signatures**: Both functions use identical `(server-component event-data)` pattern
+- **Automatic validation**: Events validated against ADR conventions before broadcast
+- **Perfect consistency**: Event-type strings automatically derived from `:type` fields
+- **Type safety**: Piece events automatically validated for required `:piece-id` field
+- **Nanosecond precision**: Timestamps automatically generated for accurate timing
 
 ### Event Streaming Performance
 
@@ -552,7 +696,7 @@ This flow control architecture builds upon and enhances several existing Ooloi a
 - Adds sophisticated event streaming on top of gRPC's streaming capabilities
 - Preserves all deployment models (combined, distributed, etc.)
 
-**API-gRPC Interface Generation ([ADR-0018](../ADRs/0018-API-gRPC-Interface-Generation.md))**:
+**API-gRPC Interface and Events ([ADR-0018](../ADRs/0018-API-gRPC-Interface-and-Events.md))**:
 - Generated gRPC interfaces continue to work without flow control
 - Event streaming adds new capabilities without breaking existing patterns
 - Bidirectional communication enhanced by proper flow control

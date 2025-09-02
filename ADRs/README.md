@@ -22,7 +22,7 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0015-Undo-and-Redo](0015-Undo-and-Redo.md)**: Undo/redo implementation approach
 - **[0016-Settings](0016-Settings.md)**: Settings architecture and persistence strategy
 - **[0017-System-Architecture](0017-System-Architecture.md)**: Component lifecycle management and system startup
-- **[0018-API-gRPC-Interface-Generation](0018-API-gRPC-Interface-Generation.md)**: Automated API-gRPC generation and server-to-client event notification architecture
+- **[0018-API-gRPC-Interface-and-Events](0018-API-gRPC-Interface-and-Events.md)**: Automated API-gRPC generation and server-to-client event notification architecture
 - **[0019-In-Process-gRPC-Transport-Optimization](0019-In-Process-gRPC-Transport-Optimization.md)**: Performance optimization for combined deployments
 - **[0020-TLS-Infrastructure-and-Deployment-Architecture](0020-TLS-Infrastructure-and-Deployment-Architecture.md)**: TLS security infrastructure and certificate management
 - **[0021-Authentication](0021-Authentication.md)**: Pluggable authentication architecture with JWT-based security
@@ -36,7 +36,7 @@ Technical decisions that shaped Ooloi's architecture.
 | **Technical Area** | **ADRs** | **Key Decisions** |
 |-------------------|----------|-------------------|
 | **Core Language & Runtime** | [0000](0000-Clojure.md), [0004](0004-STM-for-concurrency.md), [0007](0007-Nippy.md) | Clojure functional programming, STM concurrency, high-performance serialization |
-| **Client-Server Architecture** | [0001](0001-Frontend-Backend-Separation.md), [0002](0002-gRPC.md), [0018](0018-API-gRPC-Interface-Generation.md), [0019](0019-In-Process-gRPC-Transport-Optimization.md), [0022](0022-Lazy-Frontend-Backend-Architecture.md), [0023](0023-Shared-Model-Contracts.md), [0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md), [0025](0025-Server-Statistics-Architecture.md) | Clean separation, gRPC communication, event streaming, performance optimization, operational monitoring |
+| **Client-Server Architecture** | [0001](0001-Frontend-Backend-Separation.md), [0002](0002-gRPC.md), [0018](0018-API-gRPC-Interface-and-Events.md), [0019](0019-In-Process-gRPC-Transport-Optimization.md), [0022](0022-Lazy-Frontend-Backend-Architecture.md), [0023](0023-Shared-Model-Contracts.md), [0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md), [0025](0025-Server-Statistics-Architecture.md) | Clean separation, gRPC communication, event streaming, performance optimization, operational monitoring |
 | **User Interface & Rendering** | [0005](0005-JavaFX-and-Skija.md), [0006](0006-SMuFL.md), [0013](0013-Slur-Formatting.md) | JavaFX+Skija graphics, professional music fonts, advanced curve rendering |
 | **Data Architecture & Storage** | [0008](0008-VPDs.md), [0010](0010-Pure-Trees.md), [0011](0011-Shared-Structure.md), [0012](0012-Persisting-Pieces.md) | Hierarchical addressing, immutable trees, memory optimization, persistence |
 | **Musical Domain & Collaboration** | [0009](0009-Collaboration.md), [0014](0014-Timewalk.md), [0015](0015-Undo-and-Redo.md) | Multi-user editing, temporal coordination, undo/redo implementation |
