@@ -124,11 +124,19 @@ The explicit connection architecture affects server connection statistics:
 - Client processing delays (UI thread blocked) affect server performance
 - One failed client can disrupt entire event system
 
-**Solution Architecture** (Tests 38a-38c):
-- **Per-client event queues**: Independent delivery buffers (Test 38 - implemented)
-- **Asynchronous delivery**: Thread pool for non-blocking event distribution (Test 38a)
-- **Backpressure handling**: Queue overflow management (Test 38b)
-- **Performance monitoring**: Delivery statistics and health metrics (Test 38c)
+**Threading Complexity**: Network transport event streaming requires sophisticated threading coordination beyond simple queue management. Unlike in-process transport where StreamObserver operations are simple method calls, network transport requires:
+
+- **HTTP/2 connection context**: StreamObserver objects maintain strict thread affinity with specific Netty event loops
+- **Flow control compliance**: Operations must respect `isReady()` status and use `onReady` callbacks for backpressure
+- **Context propagation**: gRPC context must be properly maintained across background processing threads
+
+These transport-layer threading constraints necessitate careful architectural patterns to ensure reliable event delivery without violating gRPC's threading contracts.
+
+**Solution Architecture**:
+- **Per-client event queues**: Independent delivery buffers
+- **Asynchronous delivery**: Backpressure-aware drainer pattern for non-blocking event distribution
+- **Backpressure handling**: Queue overflow management with drop-oldest policy
+- **Performance monitoring**: Delivery statistics and health metrics
 
 ## Decision Details
 
@@ -144,9 +152,9 @@ The explicit connection architecture affects server connection statistics:
 
 ### **Event Streaming: Sophisticated Flow Control**
 
-**New behaviors** (Test 38+ implementation):
+**New behaviors**:
 - Per-client bounded event queues (1000-item capacity)
-- Asynchronous event delivery via dedicated thread pool
+- Backpressure-aware drainer pattern for reliable delivery across transport types
 - Drop-oldest policy for queue overflow situations
 - Statistical monitoring for client health and performance
 
@@ -164,11 +172,13 @@ The explicit connection architecture affects server connection statistics:
 - **Architectural clarity**: Flow control applied only where needed
 - **Scalability preservation**: STM's linear core scaling maintained
 - **Operational insight**: Event delivery monitoring provides visibility
+- **Transport reliability**: Threading patterns work correctly across in-process and network transport
 
 ### Cons:
 - **Complexity focus shift**: Flow control concentrated in event system only  
 - **Memory overhead**: Per-client event queues consume additional memory
-- **Implementation complexity**: Async event delivery more sophisticated than synchronous
+- **Implementation complexity**: Backpressure-aware delivery more sophisticated than synchronous approach
+- **Threading constraints**: Network transport requires careful threading coordination
 
 ## Related Decisions
 
@@ -177,6 +187,10 @@ The explicit connection architecture affects server connection statistics:
 - [ADR-0019: STM-gRPC Batch Transactions](0019-STM-gRPC-Batch-Transactions.md) - Transaction boundary alignment
 - [ADR-0022: Lazy Frontend-Backend Architecture](0022-Lazy-Frontend-Backend-Architecture.md) - Event-driven synchronization
 - [ADR-0025: Server Statistics Architecture](0025-Server-Statistics-Architecture.md) - Event queue health monitoring and performance metrics
+
+## Implementation References
+
+- **[gRPC Server Streaming: Threading and Backpressure in Clojure](../guides/GRPC_STREAMING_THREADING_GUIDE.md)** - Complete implementation patterns for the backpressure-aware drainer architecture, including solutions to network transport threading constraints
 
 ## Implementation Notes
 
@@ -188,12 +202,12 @@ resolve API function → STM-wrapped API function → dosync transaction
 
 **Event Streaming Architecture** (enhanced):
 ```
-Server Event → Per-client Queue → Async Thread Pool → 
-StreamObserver.onNext → Client Reception
+Server Event → Per-client Queue → Backpressure-Aware Drainer Pattern → 
+Context-Propagated Thread → StreamObserver.onNext → Client Reception
 ```
 
 **Flow Control Boundary**:
 - **Input side**: No flow control - maximum concurrent API throughput
-- **Output side**: Sophisticated flow control - robust event delivery
+- **Output side**: Sophisticated flow control with transport-aware threading - robust event delivery
 
-This architecture maximizes both API performance (via STM + gRPC concurrency) and event reliability (via queue-based flow control) while maintaining clear separation of concerns.
+This architecture maximizes both API performance (via STM + gRPC concurrency) and event reliability (via queue-based flow control with proper threading patterns) while maintaining clear separation of concerns.
