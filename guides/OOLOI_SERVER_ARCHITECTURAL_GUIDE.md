@@ -398,7 +398,7 @@ The Ooloi backend server represents a specialized approach to concurrent distrib
 - **[PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** - Storage and lifecycle management that the server coordinates
 
 ### Technical Documentation  
-- **[OOLOI_ARCHITECTURE_DEEPDIVE.md](../OOLOI_ARCHITECTURE_DEEPDIVE.md)** - Complete technical implementation details
+- **[gRPC Deep Dive Guide](GRPC_DEEPDIVE.md)** - Complete technical implementation details
 - **[DEV_PLAN.md](../DEV_PLAN.md)** - Current development status and implementation roadmap
 
 ### Development Resources

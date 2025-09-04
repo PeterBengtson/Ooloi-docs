@@ -790,4 +790,4 @@ Remember to run tests (`lein midje`) before packaging to ensure everything is wo
 ### Technical Documentation
 - **[Development Plan](/DEV_PLAN.md)** - Current development status and implementation roadmap
 - **[ADR-0023: Shared Model Contracts](/ADRs/0023-Shared-Model-Contracts.md)** - Multi-project architecture decisions
-- **[OOLOI_ARCHITECTURE_DEEPDIVE.md](/OOLOI_ARCHITECTURE_DEEPDIVE.md)** - Complete technical implementation details
+- **[gRPC Deep Dive Guide](/guides/GRPC_DEEPDIVE.md)** - Complete technical implementation details
