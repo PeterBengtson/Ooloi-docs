@@ -105,9 +105,10 @@ We are committed to providing a friendly, safe, and welcoming environment for al
    - Handles data persistence and plugin management
    - Leverages Methodical, Potemkin, and Specter for its internal architecture
 
-3. **Frontend (Clojure with JavaFX and Skija)**
+3. **Frontend (Clojure with cljfx, AtlantaFX, and Skija)**
    - Native application built with Clojure, not browser-based
-   - JavaFX for cross-platform windowing and UI components
+   - cljfx for JavaFX integration providing cross-platform windowing and UI components
+   - AtlantaFX dark theme for modern, futuristic sci-fi aesthetic
    - Skija (Java binding for Skia) for GPU-accelerated, high-performance 2D graphics rendering
    - Capable of handling large, complex scores (e.g., 100 staves or more, thousands of measures or more)
 
@@ -147,7 +148,7 @@ We are committed to providing a friendly, safe, and welcoming environment for al
    - Integrates with system print services via Java's printing API
 
 10. **Cross-Platform Compatibility**
-    - JavaFX ensures consistent behavior across Windows, MacOS, and Linux
+    - cljfx + JavaFX ensures consistent behavior across Windows, MacOS, and Linux
     - Skija provides consistent GPU-accelerated rendering across platforms
     - Uses jpackage for creating native installers for different platforms
 

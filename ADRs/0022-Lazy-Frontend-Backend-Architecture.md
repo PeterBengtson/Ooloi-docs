@@ -247,7 +247,7 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 
 ### Viewport Management
 
-**Viewport Architecture**: Windowing system coordinates multiple independent viewports using lazy patterns for efficient rendering in large scores.
+**Viewport Architecture**: Windowing system (JavaFX + AtlantaFX) coordinates multiple independent viewports using lazy patterns for efficient rendering in large scores.
 
 **Viewport State Requirements**:
 - **Visible element tracking**: Each viewport must know which visual elements are currently displayed

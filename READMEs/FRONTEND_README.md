@@ -48,7 +48,7 @@ This directory contains the frontend client code for Ooloi, a high-performance m
 
 The **Ooloi Frontend** serves as the user-facing client component providing:
 
-1. **User Interface**: JavaFX-based graphical interface for music notation editing and visualization
+1. **User Interface**: cljfx + JavaFX-based graphical interface with AtlantaFX dark theme for modern, futuristic music notation editing and visualization
 2. **Score Rendering**: High-performance visual display of musical structures and notation
 3. **gRPC Client Integration**: Communication with backend via protocol buffer-based unified interface
 4. **User Interaction Management**: Click handling, form validation, real-time UI updates, and client-side state management
@@ -163,7 +163,9 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 The frontend requires additional components for UI and graphics:
 
+- **cljfx** - Clojure wrapper for JavaFX, providing declarative UI programming
 - **JavaFX** - Included in project dependencies, handles windowing and UI components
+- **AtlantaFX** - Modern dark theme providing futuristic sci-fi aesthetic for professional music notation interface
 - **Skija** - Java bindings for Skia graphics library (handles high-quality 2D rendering)
 - **Platform-specific graphics drivers** - Ensure graphics drivers are up to date for optimal rendering
 

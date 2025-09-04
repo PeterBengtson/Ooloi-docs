@@ -72,12 +72,12 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
 
 ## Implementation Approach
 
-1. Set up a basic JavaFX application structure using Clojure.
+1. Set up a basic JavaFX application structure using cljfx (Clojure JavaFX wrapper).
 2. Integrate Skija for custom rendering of musical notation.
-3. Implement core UI components using JavaFX controls.
+3. Implement core UI components using cljfx declarative syntax and JavaFX controls.
 4. Develop custom JavaFX components for music-specific elements (e.g., staff, measure, note).
 5. Use Skija for rendering detailed musical symbols and notation.
-6. Implement reactive UI updates using JavaFX properties and bindings.
+6. Implement reactive UI updates using cljfx's React-inspired declarative model.
 7. Develop the printing subsystem early in the project:
    - Implement Skija-based rendering for print output.
    - Ensure consistency between screen display and printed output.
@@ -112,6 +112,21 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural decision requiring frontend GUI framework choice
 - [ADR-0006: SMuFL](0006-SMuFL.md) - Musical symbol standard that will be rendered through JavaFX/Skija
 
+## Theme Implementation
+
+**AtlantaFX Dark Theme**: Modern, futuristic dark theme providing sci-fi aesthetic for professional music notation interface
+
+- **Version**: 2.1.0 (integrated in frontend/project.clj)
+- **Theme Direction**: Dark themes with custom extensions for organic, futuristic appearance inspired by Butler's sci-fi aesthetic
+- **Design Philosophy**: Modern, clean interface that feels both professional and forward-looking
+- **Benefits**: 
+  - Reduced eye strain during long composition sessions
+  - Modern flat design language consistent across platforms
+  - Extensive component styling with dark mode optimizations
+  - Professional appearance suitable for commercial music software
+- **Integration**: Direct JavaFX theme integration through AtlantaFX, minimal code changes required
+- **Extensibility**: AtlantaFX provides foundation for custom styling and component extensions
+
 ## Notes
 
 - Regular performance benchmarking should be conducted, especially for large score rendering and printing.
@@ -122,3 +137,4 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
 - Plan for potential future web deployment by designing components with possible web adaptation in mind.
 - Establish a comprehensive test suite for printing functionality, covering various score complexities, paper sizes, and printer types.
 - Consider partnering with printing experts or music publishers to validate the quality and consistency of printed output.
+- Develop custom AtlantaFX theme extensions to achieve the desired sci-fi aesthetic while maintaining professional usability.
