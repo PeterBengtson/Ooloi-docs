@@ -71,10 +71,16 @@ Current tests rely on opaque counts that provide limited behavioral insight:
 
 Statistics enable detailed test validation:
 ```clojure  
-;; Detailed: Validates actual system behavior
-(get-server-stat :server-events-sent) => 2
-(get-client-stat client-id :server-events-received) => 2  
-(get-client-stat client-id :queue-overflow-count) => 0
+;; Basic statistics access helpers (implemented in ooloi.backend.grpc.stats)
+(get-server-stat server-component :server-events-sent) => 2
+(get-client-stat server-component client-id :server-events-received) => 2  
+(get-client-stat server-component client-id :queue-overflow-count) => 0
+
+;; Statistics mutation helpers with fail-fast validation
+(inc-server-stat! server-component :api-calls-total)     ; default increment by 1
+(inc-server-stat! server-component :api-calls-total 5)   ; increment by 5
+(inc-client-stat! server-component client-id :events-sent)      ; default increment by 1  
+(inc-client-stat! server-component client-id :events-sent 3)    ; increment by 3
 ```
 
 Without detailed statistics collection, operational issues, performance bottlenecks, and capacity planning become reactive rather than proactive.
@@ -263,10 +269,10 @@ Extend existing connection registry with separate top-level `:client-statistics`
 **Timing Precision Strategy**: Duration counters store nanoseconds internally (LongAdder) but expose seconds externally:
 ```clojure
 ;; Internal storage (nanoseconds)
-(.add (:connection-duration-nanos-total server-statistics) duration-nanos)
+(inc-server-stat! server-component :connection-duration-nanos-total duration-nanos)
 
 ;; External rendering (seconds)
-(let [nanos (.sum (:connection-duration-nanos-total server-statistics))
+(let [nanos (get-server-stat server-component :connection-duration-nanos-total)
       seconds-total (/ (double nanos) 1.0e9)]
   ;; JSON: "connection_duration_seconds_total": seconds-total
   ;; Prometheus: ooloi_connection_duration_seconds_total seconds-total
@@ -414,112 +420,134 @@ Statistics collection uses direct LongAdder increments at integration points for
 **Note**: The increment functions below will be implemented in `backend/src/main/clojure/ooloi/backend/grpc/stats.clj` to separate statistics concerns from gRPC business logic.
 
 ```clojure
-;; Direct increment helper functions
-;; Note: increment-* helpers ignore unknown keys to keep call sites stable across ADR changes
-(defn increment-api-stats [server-component client-id {:keys [success? bytes-sent bytes-received]}]
-  (let [{:keys [server-statistics connection-registry]} server-component]
-    ;; Server statistics - shared counters
-    (.add (:api-calls-total server-statistics) 1)
-    (if success?
-      (.add (:api-calls-success server-statistics) 1)
-      (.add (:api-calls-failure server-statistics) 1))
-    (when bytes-sent
-      (.add (:bytes-api-responses-total server-statistics) bytes-sent))
-    (when bytes-received  
-      (.add (:bytes-api-requests-total server-statistics) bytes-received))
-    
-    ;; Client statistics - individual counters  
-    (when-let [client-stats (:client-statistics (get @connection-registry client-id))]
-      (.add (:api-calls-total client-stats) 1)
-      (if success?
-        (.add (:api-calls-success client-stats) 1)
-        (.add (:api-calls-failure client-stats) 1))
-      (when bytes-sent (.add (:bytes-api-responses client-stats) bytes-sent))
-      (when bytes-received (.add (:bytes-api-requests client-stats) bytes-received)))))
+;; Direct increment helper functions using basic statistics API
+(defn increment-api-stats 
+  "Increment API call statistics for both server and client.
+   
+   Args:
+     sc: Server component with statistics
+     client-id: String identifying the client
+     options: Map with :success? (boolean), :bytes-sent (long), :bytes-received (long)"
+  [sc client-id {:keys [success? bytes-sent bytes-received]}]
+  ;; Server statistics - shared counters
+  (inc-server-stat! sc :api-calls-total)
+  (if success?
+    (inc-server-stat! sc :api-calls-success)
+    (inc-server-stat! sc :api-calls-failure))
+  (when bytes-sent
+    (inc-server-stat! sc :bytes-api-responses-total bytes-sent))
+  (when bytes-received  
+    (inc-server-stat! sc :bytes-api-requests-total bytes-received))
+  
+  ;; Client statistics - individual counters  
+  (inc-client-stat! sc client-id :api-calls-total)
+  (if success?
+    (inc-client-stat! sc client-id :api-calls-success)
+    (inc-client-stat! sc client-id :api-calls-failure))
+  (when bytes-sent (inc-client-stat! sc client-id :bytes-api-responses bytes-sent))
+  (when bytes-received (inc-client-stat! sc client-id :bytes-api-requests bytes-received)))
 
-(defn increment-event-stats [server-component client-id {:keys [event-type offer-success event-bytes]}]
-  (let [{:keys [server-statistics connection-registry]} server-component]
-    ;; Server statistics - shared counters
-    (.add (:event-delivery-attempts server-statistics) 1)
-    (if offer-success
-      (do (.add (:events-sent-total server-statistics) 1)
-          (.add (:event-delivery-successes server-statistics) 1)
-          (.add (:bytes-events-total server-statistics) event-bytes)
-          ;; Event type specific sent counters - direct event type usage
-          (case event-type
-            :server (.add (:server-events-sent server-statistics) 1)
-            :piece (.add (:piece-events-sent server-statistics) 1)
-            :client-connected (.add (:connect-events-sent server-statistics) 1)
-            :client-disconnected (.add (:disconnect-events-sent server-statistics) 1)
-            nil))
-      (do (.add (:events-dropped-total server-statistics) 1)
-          (.add (:event-queues-overflow-total server-statistics) 1)
-          ;; Event type specific dropped counters - direct event type usage
-          (case event-type
-            :server (.add (:server-events-dropped-total server-statistics) 1)
-            :piece (.add (:piece-events-dropped-total server-statistics) 1)
-            :client-connected (.add (:connect-events-dropped-total server-statistics) 1)
-            :client-disconnected (.add (:disconnect-events-dropped-total server-statistics) 1)
-            nil)))
-    
-    ;; Client statistics - individual counters
-    (when-let [client-stats (:client-statistics (get @connection-registry client-id))]
-      ;; Queue offer tracking
-      (.add (:queue-offer-attempts client-stats) 1)
-      (if offer-success
-        (do (.add (:events-sent client-stats) 1)
-            (.add (:queue-offer-successes client-stats) 1)
-            (.add (:bytes-events client-stats) event-bytes))
-        (do (.add (:events-dropped client-stats) 1)
-            (.add (:queue-overflow-count client-stats) 1)
-            (.add (:queue-overflow-total-events-dropped client-stats) 1)))
-      
-      ;; Event type specific client counters - only on successful delivery - direct event type usage
-      (when offer-success
+(defn increment-event-stats
+  "Increment event delivery statistics for both server and client.
+   
+   Args:
+     sc: Server component with statistics  
+     client-id: String identifying the client
+     options: Map with :event-type (:server/:piece/:client-connected/:client-disconnected), 
+              :offer-success (boolean), :event-bytes (long)"
+  [sc client-id {:keys [event-type offer-success event-bytes]}]
+  ;; Server statistics - shared counters
+  (inc-server-stat! sc :event-delivery-attempts)
+  (if offer-success
+    (do (inc-server-stat! sc :events-sent-total)
+        (inc-server-stat! sc :event-delivery-successes)
+        (inc-server-stat! sc :bytes-events-total event-bytes)
+        ;; Event type specific sent counters
         (case event-type
-          :server (.add (:server-events-received client-stats) 1)
-          :piece (.add (:piece-events-received client-stats) 1)
-          :client-connected (.add (:connect-events-received client-stats) 1)
-          :client-disconnected (.add (:disconnect-events-received client-stats) 1)
-          nil)))))
-
-(defn increment-connection-stats [server-component client-id {:keys [event-type disconnect-reason connect-time disconnect-time]}]
-  (let [{:keys [server-statistics]} server-component]
+          :server (inc-server-stat! sc :server-events-sent)
+          :piece (inc-server-stat! sc :piece-events-sent)
+          :client-connected (inc-server-stat! sc :connect-events-sent)
+          :client-disconnected (inc-server-stat! sc :disconnect-events-sent)
+          nil))
+    (do (inc-server-stat! sc :events-dropped-total)
+        (inc-server-stat! sc :event-queues-overflow-total)
+        ;; Event type specific dropped counters
+        (case event-type
+          :server (inc-server-stat! sc :server-events-dropped-total)
+          :piece (inc-server-stat! sc :piece-events-dropped-total)
+          :client-connected (inc-server-stat! sc :connect-events-dropped-total)
+          :client-disconnected (inc-server-stat! sc :disconnect-events-dropped-total)
+          nil)))
+  
+  ;; Client statistics - individual counters
+  ;; Queue offer tracking
+  (inc-client-stat! sc client-id :queue-offer-attempts)
+  (if offer-success
+    (do (inc-client-stat! sc client-id :events-sent)
+        (inc-client-stat! sc client-id :queue-offer-successes)
+        (inc-client-stat! sc client-id :bytes-events event-bytes))
+    (do (inc-client-stat! sc client-id :events-dropped)
+        (inc-client-stat! sc client-id :queue-overflow-count)
+        (inc-client-stat! sc client-id :queue-overflow-total-events-dropped)))
+  
+  ;; Event type specific client counters - only on successful delivery
+  (when offer-success
     (case event-type
-      :connect (.add (:clients-connected-total server-statistics) 1)
-      :disconnect (do
-                    (.add (:clients-disconnected-total server-statistics) 1)
-                    (when (and connect-time disconnect-time)
-                      (let [duration-nanos (max 0 (- disconnect-time connect-time))]
-                        (.add (:connection-duration-nanos-total server-statistics) duration-nanos)))
-                    (case disconnect-reason
-                      :graceful (.add (:clients-disconnected-graceful server-statistics) 1)
-                      :error (.add (:clients-disconnected-error server-statistics) 1)
-                      :timeout (.add (:clients-disconnected-timeout server-statistics) 1)
-                      nil))
+      :server (inc-client-stat! sc client-id :server-events-received)
+      :piece (inc-client-stat! sc client-id :piece-events-received)
+      :client-connected (inc-client-stat! sc client-id :connect-events-received)
+      :client-disconnected (inc-client-stat! sc client-id :disconnect-events-received)
       nil)))
 
-(defn increment-error-stats [server-component client-id {:keys [error-type]}]
-  (let [{:keys [server-statistics connection-registry]} server-component]
-    ;; Server error counters
-    (case error-type
-      :conversion (.add (:conversion-errors-total server-statistics) 1)
-      :serialization (.add (:serialization-errors-total server-statistics) 1)
-      :network (.add (:network-errors-total server-statistics) 1)
-      :internal (.add (:internal-errors-total server-statistics) 1)
-      :timeout (.add (:timeout-errors-total server-statistics) 1)
-      :client (.add (:client-errors-total server-statistics) 1)
-      :server (.add (:server-errors-total server-statistics) 1)
-      nil)
-    
-    ;; Client error counters
-    (when-let [client-stats (:client-statistics (get @connection-registry client-id))]
-      (case error-type
-        :network (.add (:network-errors client-stats) 1)
-        :serialization (.add (:serialization-errors client-stats) 1)
-        :conversion (.add (:conversion-errors client-stats) 1)
-        :timeout (.add (:timeout-errors client-stats) 1)
-        nil))))
+(defn increment-connection-stats
+  "Increment connection lifecycle statistics for server.
+   
+   Args:
+     sc: Server component with statistics
+     client-id: String identifying the client  
+     options: Map with :event-type (:connect/:disconnect), :disconnect-reason (:graceful/:error/:timeout),
+              :connect-time (nanoseconds), :disconnect-time (nanoseconds)"
+  [sc client-id {:keys [event-type disconnect-reason connect-time disconnect-time]}]
+  (case event-type
+    :connect (inc-server-stat! sc :clients-connected-total)
+    :disconnect (do
+                  (inc-server-stat! sc :clients-disconnected-total)
+                  (when (and connect-time disconnect-time)
+                    (let [duration-nanos (max 0 (- disconnect-time connect-time))]
+                      (inc-server-stat! sc :connection-duration-nanos-total duration-nanos)))
+                  (case disconnect-reason
+                    :graceful (inc-server-stat! sc :clients-disconnected-graceful)
+                    :error (inc-server-stat! sc :clients-disconnected-error)
+                    :timeout (inc-server-stat! sc :clients-disconnected-timeout)
+                    nil))
+    nil))
+
+(defn increment-error-stats
+  "Increment error statistics for both server and client.
+   
+   Args:
+     sc: Server component with statistics
+     client-id: String identifying the client
+     options: Map with :error-type (:conversion/:serialization/:network/:internal/:timeout/:client/:server)"
+  [sc client-id {:keys [error-type]}]
+  ;; Server error counters
+  (case error-type
+    :conversion (inc-server-stat! sc :conversion-errors-total)
+    :serialization (inc-server-stat! sc :serialization-errors-total)
+    :network (inc-server-stat! sc :network-errors-total)
+    :internal (inc-server-stat! sc :internal-errors-total)
+    :timeout (inc-server-stat! sc :timeout-errors-total)
+    :client (inc-server-stat! sc :client-errors-total)
+    :server (inc-server-stat! sc :server-errors-total)
+    nil)
+  
+  ;; Client error counters
+  (case error-type
+    :network (inc-client-stat! sc client-id :network-errors)
+    :serialization (inc-client-stat! sc client-id :serialization-errors)
+    :conversion (inc-client-stat! sc client-id :conversion-errors)
+    :timeout (inc-client-stat! sc client-id :timeout-errors)
+    nil))
 ```
 
 ### Performance Characteristics
@@ -607,7 +635,7 @@ This ensures **consistent health status** across both protocols while providing 
 **Enterprise-grade content negotiation** serving multiple formats from single URLs:
 
 ```http
-GET /health                     # Basic health status (existing)
+GET /health                    # Basic health status (existing)
 GET /health/server             # Server-wide aggregate metrics
 GET /health/clients            # Per-client metrics summary  
 GET /health/clients/{id}       # Specific client detailed metrics
