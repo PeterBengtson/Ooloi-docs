@@ -110,7 +110,6 @@ Add new `server-statistics` component field containing a map of thread-safe Long
  ;; ==========================================
  :clients-connected-total (LongAdder.)         ; Total connections since server start
  :clients-disconnected-total (LongAdder.)      ; Total disconnections
- :clients-disconnected-graceful (LongAdder.)   ; Clean disconnections
  :clients-disconnected-error (LongAdder.)      ; Error-based disconnections
  :clients-disconnected-timeout (LongAdder.)    ; Timeout-based disconnections
  :connection-duration-nanos-total (LongAdder.)   ; Aggregate connection time in nanoseconds
@@ -501,7 +500,6 @@ Statistics collection uses direct LongAdder increments at integration points for
                     (let [duration-nanos (max 0 (- disconnect-time connect-time))]
                       (inc-server-stat! sc :connection-duration-nanos-total duration-nanos)))
                   (case disconnect-reason
-                    :graceful (inc-server-stat! sc :clients-disconnected-graceful)
                     :error (inc-server-stat! sc :clients-disconnected-error)
                     :timeout (inc-server-stat! sc :clients-disconnected-timeout)
                     nil))
