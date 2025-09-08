@@ -5,7 +5,6 @@
 - [Status](#status)
 - [Context](#context)
   - [Critical Need for Comprehensive Introspection](#critical-need-for-comprehensive-introspection)
-  - [Current Limitations](#current-limitations)  
   - [Operational Requirements](#operational-requirements)
 - [Decision](#decision)
 - [Architecture](#architecture)
@@ -63,12 +62,6 @@ The architecture's unique characteristics require operational insight:
 - How do concurrent collaborative sessions scale?
 - Which client usage patterns cause performance issues?
 
-Current tests rely on opaque counts that provide limited behavioral insight:
-```clojure
-;; Limited information: What actually happened?
-(count @client-events) => 3  ; Tells us nothing about event types, timing, failures
-```
-
 Statistics enable detailed test validation:
 ```clojure  
 ;; Basic statistics access helpers (implemented in ooloi.backend.grpc.stats)
@@ -83,15 +76,7 @@ Statistics enable detailed test validation:
 (inc-client-stat! server-component client-id :events-sent 3)    ; increment by 3
 ```
 
-Without detailed statistics collection, operational issues, performance bottlenecks, and capacity planning become reactive rather than proactive.
-
-### Current Limitations
-
-The existing architecture lacks systematic statistics collection:
-- No visibility into API call patterns (success/failure rates, performance characteristics)
-- No tracking of event delivery performance or client queue health
-- No aggregate metrics for capacity planning or operational monitoring
-- No historical data for performance analysis or debugging
+With detailed statistics collection, operational issues, performance bottlenecks, and capacity planning are easy to detect and do.
 
 ### Operational Requirements
 
@@ -109,7 +94,7 @@ Implement comprehensive two-level statistics collection:
 1. **Server-wide statistics**: Aggregate metrics that survive client connection churn
 2. **Per-client statistics**: Operational metrics specific to individual client connections
 
-Statistics will be collected in real-time during operation with minimal performance impact, accessible via both programmatic APIs and health monitoring endpoints.
+Statistics are collected in real-time during operation with minimal performance impact, accessible via both programmatic APIs and health monitoring endpoints.
 
 ## Architecture
 
