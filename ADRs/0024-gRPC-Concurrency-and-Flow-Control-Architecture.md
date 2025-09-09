@@ -20,7 +20,7 @@ Key considerations:
 
 ### **Explicit App-Controlled Connection Pattern**
 
-Ooloi clients use a **two-phase connection architecture** where component initialization creates client infrastructure but applications control when network connections are actually established:
+Ooloi clients use a **five-phase connection lifecycle** where component initialization creates client infrastructure but applications control when network connections are actually established, followed by comprehensive event notifications for client coordination:
 
 ```
 Client Connection Lifecycle
@@ -32,30 +32,53 @@ Client Connection Lifecycle
           │                                      │
           │ PHASE 1: Component Setup             │
           │ (no network activity)                │
-          │                                     │
+          │                                      │
           │ ✓ gRPC client components ready       │
           │ ✓ Connection pools prepared          │
           │ ✓ Event handlers configured          │
-          │                                     │
+          │                                      │
           │ ... Application decides when ...     │
-          │                                     │
-          │ PHASE 2: Explicit Connection        │
-          │ register-with-server() called         │
-          │ ──────────────────────────────────► │
-          │    registerClient(client-id)           │
-          │                                     │
-          │ ◄ ──────────────────────────────── │
+          │                                      │
+          │ PHASE 2: Explicit Connection         │
+          │ register-with-server() called        │
+          │ ───────────────────────────────────► │
+          │    registerClient(client-id)         │
+          │                                      │
+          │ ◄ ────────────────────────────────── │
           │    Event streaming established       │  
-          │    (registered in connection        │
-          │     registry for flow control)      │
-          │                                     │
+          │    (registered in connection         │
+          │     registry for flow control)       │
+          │                                      │
+          │ PHASE 3: Connection Confirmation     │
+          │ ◄ ────────────────────────────────── │
+          │    Confirmation event sent to        │
+          │    this client only                  │
+          │                                      │
+          │ PHASE 4: Connection Broadcast        │
+          │ ◄ ────────────────────────────────── │
+          │    server-client-connected event     │
+          │    sent to ALL connected clients     │
+          │    (including this one)              │
+          │                                      │
           │ API pool activated for requests      │
-          │ ──────────────────────────────────► │
+          │ ───────────────────────────────────► │
           │    4 concurrent channels active      │
-          │                                     │
-          │ ✓ Bidirectional communication       │
-          │   ready when app needs it           │
-          │                                     │
+          │                                      │ 
+          │ ✓ Bidirectional communication        │
+          │   ready when app needs it            │
+          │                                      │
+          │ ... Client operates normally ...     │
+          │                                      │
+          │ DISCONNECT: Client shuts down        │
+          │ ───────────────────────────────────► │
+          │    Connection terminated             │
+          │                                      │
+          │                    PHASE 5: Disconnect Broadcast  │
+          │                    ─────────────────────────────► │
+          │                        server-client-disconnected │
+          │                        event sent to ALL          │
+          │                        remaining clients          │
+          │                                      │
 ```
 
 ### **Connection Architecture Benefits**
@@ -64,6 +87,25 @@ Client Connection Lifecycle
 2. **Resource management**: Network resources allocated precisely when needed, not during component startup
 3. **Error separation**: Clear distinction between component initialization failures vs network connectivity issues
 4. **Testing control**: Tests can control exactly when connections are established for better resource management
+5. **Client awareness**: All connected clients receive notifications about connection/disconnection events for coordination
+6. **Connection confirmation**: New clients receive explicit confirmation that their connection was successful
+7. **Real-time collaboration**: Event broadcasting enables clients to respond to other clients joining or leaving
+
+### **Event Notification Architecture**
+
+The connection lifecycle includes comprehensive event notifications for client coordination:
+
+**Connection Events**:
+- **Phase 3 - Connection Confirmation**: Server sends a confirmation event exclusively to the newly connected client
+- **Phase 4 - Connection Broadcast**: Server sends `server-client-connected` event to ALL connected clients (including the new client)
+
+**Disconnection Events**:
+- **Phase 5 - Disconnect Broadcast**: Server sends `server-client-disconnected` event to ALL remaining connected clients after a legitimate client disconnect
+
+**Event Routing**:
+- **Confirmation events**: Targeted delivery to specific client for acknowledgment
+- **Broadcast events**: Delivered to all connected clients for awareness and coordination
+- **Event delivery**: Uses the same event streaming infrastructure as piece notifications
 
 ### **Connection Count Impact**
 
