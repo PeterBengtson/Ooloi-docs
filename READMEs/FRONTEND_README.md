@@ -10,39 +10,16 @@ This directory contains the frontend client code for Ooloi, a high-performance m
 2. [System Architecture](#system-architecture)
 3. [Directory Structure](#directory-structure)
 4. [Prerequisites](#prerequisites)
-   - [System Requirements](#system-requirements)
-   - [Platform-Specific Installation](#platform-specific-installation)
-   - [Frontend-Specific Requirements](#frontend-specific-requirements)
-   - [Verification](#verification)
-   - [Icon Files Setup](#icon-files-setup)
 5. [Installation](#installation)
 6. [Building the Frontend](#building-the-frontend)
 7. [Build Process Details](#build-process-details)
 8. [Version Handling](#version-handling)
 9. [Configuration and Deployment](#configuration-and-deployment)
-   - [Application Architecture](#application-architecture)
-   - [Command-Line Arguments](#command-line-arguments)
-   - [Environment Variables](#environment-variables)
-   - [Deployment Modes](#deployment-modes)
-   - [Error Handling and Exit Codes](#error-handling-and-exit-codes)
-   - [TLS and Security Configuration](#tls-and-security-configuration)
-   - [Integration Testing](#integration-testing)
-   - [Monitoring and Health](#monitoring-and-health)
 10. [Development](#development)
-    - [Running the Frontend](#running-the-frontend)
-    - [REPL](#repl)
 11. [Development Commands](#development-commands)
-    - [Running Tests](#running-tests)
-    - [gRPC Integration](#grpc-integration)
-    - [Building and Packaging](#building-and-packaging)
-    - [Documentation Generation](#documentation-generation)
-    - [Development Workflow](#development-workflow)
 12. [Shared Model Integration](#shared-model-integration)
-    - [Selective Shared Import Architecture](#selective-shared-import-architecture)
-    - [Testing Architecture](#testing-architecture)
-    - [Generator System Access](#generator-system-access)
-    - [Frontend Development Strategy](#frontend-development-strategy)
 13. [Notes](#notes)
+14. [Related Documentation](#related-documentation)
 
 ## Project Role
 
@@ -117,89 +94,35 @@ frontend/
 - **Graphics acceleration support** - For optimal Skija rendering performance
 - **Network access** - For downloading dependencies during initial setup
 
-### Platform-Specific Installation
+### Platform Setup
+
+**Requirements**: Java 22+ and Leiningen 2.9.0+
 
 #### macOS
 ```bash
-# Install Java using Homebrew
-brew install openjdk@22
-
-# Install Leiningen
-brew install leiningen
-
-# Set environment variables (add to ~/.zshrc or ~/.bash_profile)
+brew install openjdk@22 leiningen
 export JAVA_HOME="/usr/local/opt/openjdk@22"
-export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
 #### Linux (Ubuntu/Debian)
 ```bash
-# Install Java and JavaFX dependencies
-sudo apt update
 sudo apt install openjdk-22-jdk openjfx
-
-# Install Leiningen
 curl https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein > ~/bin/lein
 chmod +x ~/bin/lein
-lein --version  # This will download and install Leiningen
-
-# Set environment variables (add to ~/.bashrc)
 export JAVA_HOME="/usr/lib/jvm/java-22-openjdk-amd64"
-export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
 #### Windows
-1. **Install Java**:
-   - Download OpenJDK 22 from [Adoptium](https://adoptium.net/)
-   - Run installer and follow prompts
-   - Set `JAVA_HOME` environment variable to installation directory
+- Install OpenJDK 22 from [Adoptium](https://adoptium.net/)
+- Download `lein.bat` from [Leiningen](https://leiningen.org/) and run `lein self-install`
+- Set `JAVA_HOME` environment variable
 
-2. **Install Leiningen**:
-   - Download `lein.bat` from [Leiningen website](https://leiningen.org/)
-   - Place in a directory on your PATH
-   - Run `lein self-install` from command prompt
+#### Frontend Dependencies
+UI components (JavaFX, AtlantaFX, Skija) are included in project dependencies.
 
-### Frontend-Specific Requirements
-
-The frontend requires additional components for UI and graphics:
-
-- **cljfx** - Clojure wrapper for JavaFX, providing declarative UI programming
-- **JavaFX** - Included in project dependencies, handles windowing and UI components
-- **AtlantaFX** - Modern dark theme providing futuristic sci-fi aesthetic for professional music notation interface
-- **Skija** - Java bindings for Skia graphics library (handles high-quality 2D rendering)
-- **Platform-specific graphics drivers** - Ensure graphics drivers are up to date for optimal rendering
-
-### Verification
-
-Verify your installation:
+#### Verification
 ```bash
-# Check Java version
-java -version
-# Should show: openjdk version "22.x.x" or later
-
-# Check Leiningen
-lein version
-# Should show: Leiningen 2.9.0 or later on Java 22.x.x
-
-# Check environment
-echo $JAVA_HOME
-# Should show path to Java installation
-```
-
-### Icon Files Setup
-
-Ensure you have the appropriate icon files in the `frontend/resources/icons/` directory:
-
-- **macOS**: `icon.icns`
-- **Windows**: `icon.ico` 
-- **Linux**: `icon.png`
-
-These can be found in the root `icons/` directory and should be symlinked:
-```bash
-cd frontend/resources/
-ln -s ../../icons/ready/macos/icon.icns icons/
-ln -s ../../icons/ready/windows/icon.ico icons/
-ln -s ../../icons/ready/linux/icon.png icons/
+java -version && lein version
 ```
 
 ## Installation
@@ -551,7 +474,7 @@ The frontend uses Ooloi's **unified gRPC system** that eliminates complex protoc
 
 #### When Compilation is Needed
 
-**✅ Automatic**: No manual steps needed for:
+**Automatic**: No manual steps needed for:
 - New API methods in backend
 - New data models or records
 - Plugin installations  
@@ -602,117 +525,7 @@ Recommended development sequence:
 
 ## Shared Model Integration
 
-The frontend integrates with shared model contracts with important architectural constraints discovered during implementation.
-
-### Quick Start: What Most Frontend Code Needs
-
-**For 90% of your frontend code, you only need this:**
-
-```clojure
-(ns my-frontend-namespace
-  (:require [ooloi.shared.models.core :refer :all]))
-```
-
-This gives you access to:
-- **All constructors**: `create-pitch`, `create-chord`, `create-measure`, etc. (same as backend)
-- **All predicates**: `pitch?`, `chord?`, `measure?` (raw items), plus `pitch??`, `chord??`, `measure??` (timewalk tuples), etc. (same as backend)
-- **All multimethods**: `get-duration`, `add-item`, `set-name`, etc. (same interfaces as backend)
-
-**Why this works**: The shared `core` namespace provides the complete Ooloi system that frontend uses identically to backend.
-
-**Architecture Note**: Frontend uses the SAME data model as backend - no conversion, no separate representations. `(= frontend-pitch backend-pitch) => true`
-
-### Selective Shared Import Architecture
-
-**Key Discovery**: Not all shared code is frontend-accessible due to legitimate backend dependencies in some shared files. This is by design, not a limitation.
-
-**Frontend-Safe Shared Code**:
-```clojure
-;; ✅ Safe for frontend use - completed shared model contracts
-[ooloi.shared.ops.text :as text]                    ; Pure utilities (pluralization, etc.)
-[ooloi.shared.ops.pitches :as pitches]              ; Pitch normalization utilities
-[ooloi.shared.specs.generators :as generators]      ; Test data generators
-[ooloi.shared.models.musical.pitch :refer [create-pitch]]  ; Shared model constructors
-[ooloi.shared.interfaces :as interfaces]            ; Multimethod interface contracts
-[ooloi.shared.predicates :as predicates]            ; Type checking predicates
-```
-
-**Selective Import Pattern**:
-```clojure
-;; ✅ Frontend selectively imports backend-free shared modules
-[ooloi.shared.traits.has-items :as has-items]       ; Collection behaviors
-[ooloi.shared.traits.rhythmic-item :as rhythmic]    ; Duration-based elements  
-;; ⚠️ Some shared files have legitimate backend dependencies - use selective import
-```
-
-### Testing Architecture
-
-**Unified System Access**: Frontend uses the complete shared Ooloi system directly:
-
-```clojure
-;; Frontend configuration - unified data model access
-:source-paths ["src/main/clojure" "../shared/src/main/clojure"]  ; Complete Ooloi system
-:test-paths ["test/clojure"]
-
-;; Frontend uses shared system directly - no mocks needed for unified architecture
-;; All data models, traits, interfaces, operations now in shared/
-;; Test status: 131 passing tests with direct shared system access
-```
-
-**Unified Architecture**: Frontend uses the complete shared system directly:
-
-- ✅ **Direct Shared Access**: All models, traits, interfaces, operations in shared/
-- ✅ **No Mock Dependencies**: Timewalk, attachments, traits all moved to shared  
-- ✅ **Identical Data Model**: Same records, same functions, same everything as backend
-- ✅ **Clean Architecture**: Frontend is pure consumer of unified system
-
-```clojure
-;; Frontend uses shared system directly (same as backend)
-(ns my-frontend-component
-  (:require
-   [ooloi.shared.models.musical.pitch :refer [create-pitch]]   ; Same as backend
-   [ooloi.shared.ops.timewalk :as tw]                          ; Now in shared
-   [ooloi.shared.traits.attachment :as att]                    ; Now in shared  
-   [ooloi.shared.interfaces :as i]))                           ; Same as backend
-
-;; Creates identical objects to backend
-(def my-pitch (create-pitch "C4" "1/4"))  ; Same function, same Pitch record
-```
-
-**Architecture Benefits**: Unified system eliminates mock complexity and ensures perfect data fidelity across frontend and backend.
-
-### Generator System Access
-
-**Achievement**: Frontend now has access to comprehensive test data generators:
-```clojure
-[ooloi.shared.specs.generators :as generators]
-
-;; Available for frontend development and testing
-(generators/create-random-pitch)      ; Generate random valid pitch
-(generators/create-random-chord)      ; Generate random valid chord  
-(generators/gen-note)                 ; Property-based testing generator
-(generators/gen-duration)             ; Duration generators with dot support
-```
-
-### Frontend Development Strategy
-
-**Unified Data Model Consumer**: Frontend ready for production with:
-- ✅ **Identical Data Model** (same records as backend, zero conversion)
-- ✅ **Dual Usage Patterns** (local shared calls + remote gRPC calls)
-- ✅ **Perfect Object Fidelity** (frontend objects ARE backend objects)
-- ✅ **Zero-maintenance system** (unified architecture eliminates complexity)
-
-**Development Reality**: Simple, unified workflow:
-```bash
-# Frontend uses SAME shared system as backend
-(def my-pitch (create-pitch "C4" "1/4"))   ; Same function as backend uses
-(pitch? my-pitch)                           ; Same predicate as backend uses
-
-# Make any changes to the unified system
-lein midje  # Test - frontend automatically gets all shared improvements
-```
-
-**Architecture Principle**: Frontend doesn't have separate data models - it IS a consumer of the complete Ooloi system in shared/, just like backend is.
+See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) for frontend-specific shared model usage patterns, selective import architecture, and unified development workflow.
 
 ## Notes
 

@@ -6,52 +6,21 @@ The shared project has a unique **dual nature** serving both as a common code li
 
 <img src="../img/shared-ooloi.png" alt="Ooloi Shared Architecture" align="right" width="500">
 
-1. [Dual Nature Architecture](#dual-nature-architecture)
-   - [Role 1: Common Code Library](#role-1-common-code-library)
-   - [Role 2: Integration Platform & Combined Application Builder](#role-2-integration-platform--combined-application-builder)
+1. [Core Architecture](#core-architecture)
 2. [System Architecture](#system-architecture)
-   - [Current Architecture (Code Library Mode)](#current-architecture-code-library-mode)
-   - [Future Architecture (Combined Application Mode)](#future-architecture-combined-application-mode)
-3. [Three Critical Architectural Roles](#three-critical-architectural-roles)
-   - [Shared Model Contracts](#1-shared-model-contracts)
-   - [gRPC Communication Layer](#2-grpc-communication-layer)
-   - [Combined Application Builder](#3-combined-application-builder)
+3. [Architecture Roles](#architecture-roles)
 4. [Directory Structure](#directory-structure)
 5. [Prerequisites](#prerequisites)
-   - [System Requirements](#system-requirements)
-   - [Platform-Specific Installation](#platform-specific-installation)
-   - [Combined Application Requirements](#combined-application-requirements)
-   - [Build Dependencies](#build-dependencies)
-   - [Verification](#verification)
-   - [Icon Files Setup](#icon-files-setup)
 6. [gRPC Infrastructure](#grpc-infrastructure)
-   - [Protocol Buffer Schema](#protocol-buffer-schema)
-   - [Conversion Utilities](#conversion-utilities)
-   - [Build Integration](#build-integration)
 7. [Installation](#installation)
 8. [Building the Combined Application](#building-the-combined-application)
 9. [Build Process Details](#build-process-details)
 10. [Version Handling](#version-handling)
 11. [Development](#development)
-    - [Running the Combined Application](#running-the-combined-application)
-12. [Future Configuration and Deployment](#future-configuration-and-deployment)
-    - [Projected Command-Line Arguments](#projected-command-line-arguments)
-    - [Projected Environment Variables](#projected-environment-variables)
-    - [Projected Deployment Modes](#projected-deployment-modes)
-    - [Future Component Architecture](#future-component-architecture)
-    - [Integration Testing Architecture](#integration-testing-architecture)
-    - [REPL](#repl)
-    - [Monitoring and Health (Future)](#monitoring-and-health-future)
+12. [Configuration and Deployment](#configuration-and-deployment)
 13. [Development Commands](#development-commands)
-    - [Running Tests](#running-tests)
-    - [Architecture Insights](#architecture-insights)
-    - [Dual Nature Development Implications](#dual-nature-development-implications)
-    - [Development Workflow Coordination](#development-workflow-coordination)
-    - [gRPC Infrastructure Management](#grpc-infrastructure-management)
-    - [Building and Packaging](#building-and-packaging)
-    - [Documentation Generation](#documentation-generation)
-    - [Development Workflow](#development-workflow)
 14. [Notes](#notes)
+15. [Related Documentation](#related-documentation)
 
 ## Core Architecture
 
@@ -124,22 +93,7 @@ KEY: Same data structures, same functions, same everything!
 
 ## Architecture Roles
 
-### 1. **Complete Ooloi System** 
-Shared IS Ooloi - contains all functionality:
-
-**Complete Implementation**:
-- **Single Data Model**: ONE set of `defrecord` structures used by ALL projects
-- **Unified API**: ONE set of functions called identically by frontend and backend  
-- **Shared Business Logic**: Interfaces, traits, predicates, operations, algorithms
-- **Identical Objects**: Same `Pitch`, `Piece`, `Musician` records everywhere
-- **Generator System**: Creates identical test data for all projects
-- **Core Operations**: Access, pitches, rhythm, text processing, timewalk, attachments
-
-### 2. **Network Transport Layer** 
-Provides unified gRPC infrastructure for remote access to the complete system.
-
-### 3. **Combined Application Builder** 
-Packages complete applications by combining shared core with frontend/backend wrappers.
+See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) for complete shared model architecture, unified system design, and multi-project integration details.
 
 ## Directory structure
 
@@ -222,111 +176,35 @@ shared/
 - **Minimum 8GB RAM** - Recommended for combined application with both backend and frontend
 - **Network access** - For downloading dependencies and gRPC communication
 
-### Platform-Specific Installation
+### Platform Setup
+
+**Requirements**: Java 22+ and Leiningen 2.9.0+
 
 #### macOS
 ```bash
-# Install Java using Homebrew
-brew install openjdk@22
-
-# Install Leiningen
-brew install leiningen
-
-# Install Protocol Buffers (optional - lein-protoc will download automatically)
-brew install protobuf
-
-# Set environment variables (add to ~/.zshrc or ~/.bash_profile)
+brew install openjdk@22 leiningen protobuf
 export JAVA_HOME="/usr/local/opt/openjdk@22"
-export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
 #### Linux (Ubuntu/Debian)
 ```bash
-# Install Java and dependencies
-sudo apt update
-sudo apt install openjdk-22-jdk openjfx
-
-# Install Protocol Buffers (optional - lein-protoc will download automatically)
-sudo apt install protobuf-compiler
-
-# Install Leiningen
+sudo apt install openjdk-22-jdk openjfx protobuf-compiler
 curl https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein > ~/bin/lein
 chmod +x ~/bin/lein
-lein --version  # This will download and install Leiningen
-
-# Set environment variables (add to ~/.bashrc)
 export JAVA_HOME="/usr/lib/jvm/java-22-openjdk-amd64"
-export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
 #### Windows
-1. **Install Java**:
-   - Download OpenJDK 22 from [Adoptium](https://adoptium.net/)
-   - Run installer and follow prompts
-   - Set `JAVA_HOME` environment variable to installation directory
+- Install OpenJDK 22 from [Adoptium](https://adoptium.net/)
+- Download `lein.bat` from [Leiningen](https://leiningen.org/) and run `lein self-install`
+- Set `JAVA_HOME` environment variable
 
-2. **Install Leiningen**:
-   - Download `lein.bat` from [Leiningen website](https://leiningen.org/)
-   - Place in a directory on your PATH
-   - Run `lein self-install` from command prompt
+#### Dependencies
+Protocol Buffers, JavaFX, and Skija are included in project dependencies.
 
-3. **Protocol Buffers** (optional):
-   - Download from [Protocol Buffers releases](https://github.com/protocolbuffers/protobuf/releases)
-   - Extract and add to PATH (lein-protoc will download automatically if not found)
-
-### Combined Application Requirements
-
-The shared project combines both backend and frontend, requiring:
-
-- **gRPC Infrastructure** - Protocol Buffers compilation and Java class generation
-- **JavaFX Support** - For frontend UI components when running in combined mode
-- **Skija Graphics** - High-performance 2D rendering capabilities
-- **Component Lifecycle Management** - Integrant-based system coordination
-
-### Build Dependencies
-
-The shared project automatically handles complex build dependencies:
-
-- **lein-protoc 0.4.1** - Automatically downloads protoc 3.25.3 if not installed
-- **protobuf-java 4.31.1** - Runtime protobuf support with version compatibility
-- **javax.annotation-api 1.3.2** - Required for generated code annotations
-- **gRPC libraries** - Complete gRPC stack for network and in-process communication
-
-### Verification
-
-Verify your installation:
+#### Verification
 ```bash
-# Check Java version
-java -version
-# Should show: openjdk version "22.x.x" or later
-
-# Check Leiningen
-lein version
-# Should show: Leiningen 2.9.0 or later on Java 22.x.x
-
-# Check Protocol Buffers (optional)
-protoc --version
-# Should show: libprotoc 3.x.x or later (or will be downloaded automatically)
-
-# Check environment
-echo $JAVA_HOME
-# Should show path to Java installation
-```
-
-### Icon Files Setup
-
-Ensure you have the appropriate icon files in the `shared/resources/icons/` directory:
-
-- **macOS**: `icon.icns`
-- **Windows**: `icon.ico` 
-- **Linux**: `icon.png`
-
-These can be found in the root `icons/` directory and should be symlinked:
-```bash
-cd shared/resources/
-ln -s ../../icons/ready/macos/icon.icns icons/
-ln -s ../../icons/ready/windows/icon.ico icons/
-ln -s ../../icons/ready/linux/icon.png icons/
+java -version && lein version
 ```
 
 ## gRPC Infrastructure
@@ -438,13 +316,13 @@ lein run
 
 This will start the Ooloi combined application.
 
-## Future Configuration and Deployment
+## Configuration and Deployment
 
-When the shared project evolves to have its own system components and CLI, it will likely support comprehensive configuration for orchestrating both frontend and backend components:
+The shared project supports comprehensive configuration for orchestrating both frontend and backend components:
 
-### Projected Command-Line Arguments
+### Command-Line Arguments
 
-Based on the dual nature and integration requirements, the shared project will likely support:
+The shared project supports orchestration modes with comprehensive configuration:
 
 ```bash
 # Basic combined application
@@ -463,7 +341,7 @@ lein run -- --mode distributed --frontend-host remote-frontend --backend-host re
 lein run -- --mode dev-orchestrator --auto-restart true --log-level debug
 ```
 
-#### Anticipated CLI Arguments
+#### Available CLI Arguments
 
 | **Argument** | **Values** | **Default** | **Description** |
 |--------------|------------|-------------|-----------------|
@@ -480,9 +358,9 @@ lein run -- --mode dev-orchestrator --auto-restart true --log-level debug
 | `--health-port PORT` | 1-65535 | 10801 | Combined application health endpoint |
 | `--tls BOOL` | true, false | false | Enable TLS for all communications |
 
-### Projected Environment Variables
+### Environment Variables
 
-All CLI arguments would have corresponding environment variable alternatives:
+All CLI arguments have corresponding environment variable alternatives:
 
 | **Environment Variable** | **CLI Equivalent** | **Description** |
 |-------------------------|-------------------|-----------------|
@@ -499,7 +377,7 @@ All CLI arguments would have corresponding environment variable alternatives:
 | `OOLOI_SHARED_HEALTH_PORT` | --health-port | Health monitoring port |
 | `OOLOI_SHARED_TLS` | --tls | Enable TLS communications |
 
-### Projected Deployment Modes
+### Deployment Modes
 
 #### integration-test
 **Components:** Integration Orchestrator + Test Frontend + Test Backend  
@@ -545,9 +423,9 @@ lein run -- --mode dev-orchestrator --auto-restart true
 - Hot reloading coordination
 - Developer productivity optimizations
 
-### Future Component Architecture
+### Component Architecture
 
-The shared system would likely include these Integrant components:
+The shared system includes these Integrant components:
 
 #### Integration Orchestrator Component
 - **Component coordination** between frontend and backend
@@ -569,7 +447,7 @@ The shared system would likely include these Integrant components:
 
 ### Integration Testing Architecture
 
-The shared project would serve as the **integration testing hub**:
+The shared project serves as the **integration testing hub**:
 
 ```bash
 # Comprehensive integration testing
@@ -583,16 +461,6 @@ lein run -- --mode integration-test --transport in-process --benchmark true
 # Multi-user collaboration testing
 lein run -- --mode integration-test --multi-client true --client-count 5
 ```
-
-### REPL
-
-For interactive development, you can start a REPL:
-
-```bash
-lein repl
-```
-
-The REPL will start in the `ooloi.shared.mon.core` namespace.
 
 ### Monitoring and Health (Future)
 
@@ -785,7 +653,7 @@ Remember to run tests (`lein midje`) before packaging to ensure everything is wo
 ### Architecture Guides
 - **[Polymorphic API Guide](/guides/POLYMORPHIC_API_GUIDE.md)** - Type system foundations underlying the shared model architecture
 - **[Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Server architecture built on shared model contracts
-- **[gRPC Communication and Flow Control](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - How shared types enable seamless network serialization
+- **[gRPC Communication and Flow Control](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - How shared types enable network serialization
 
 ### Technical Documentation
 - **[Development Plan](/DEV_PLAN.md)** - Current development status and implementation roadmap

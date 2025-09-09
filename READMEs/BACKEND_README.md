@@ -1,6 +1,6 @@
 # Ooloi Backend
 
-This directory contains the backend server code for Ooloi, a high-performance music notation software.
+The backend server component providing gRPC API services, STM-based piece management, and real-time client communication.
 
 ## Table of Contents
 
@@ -8,48 +8,23 @@ This directory contains the backend server code for Ooloi, a high-performance mu
 
 1. [Project Role](#project-role)
 2. [System Architecture](#system-architecture)
-   - [Core Components](#core-components)
-     - [Piece Manager Component](#piece-manager-component)
-     - [gRPC Server Component](#grpc-server-component)
-     - [Application Core](#application-core)
 3. [Directory Structure](#directory-structure)
 4. [Prerequisites](#prerequisites)
-   - [System Requirements](#system-requirements)
-   - [Platform-Specific Installation](#platform-specific-installation)
-   - [Verification](#verification)
-   - [Icon Files Setup](#icon-files-setup)
 5. [Installation](#installation)
 6. [Building the Backend](#building-the-backend)
-7. [Build Process Details](#build-process-details)
-8. [Version Handling](#version-handling)
-9. [Shared Model Architecture](#shared-model-architecture)
-   - [Shared Model Integration](#shared-model-integration)
-   - [Backend-Specific Enhancements](#backend-specific-enhancements)
-   - [Namespace Organization](#namespace-organization)
-   - [Testing Architecture](#testing-architecture)
-10. [Development](#development)
-    - [Running the Backend](#running-the-backend)
-    - [Monitoring and Health](#monitoring-and-health)
-11. [Development Commands](#development-commands)
-    - [Running Tests](#running-tests)
-    - [gRPC Integration](#grpc-integration)
-    - [Building and Packaging](#building-and-packaging)
-    - [Documentation Generation](#documentation-generation)
-    - [Development Workflow](#development-workflow)
-    - [Integration Testing](#integration-testing)
-    - [Production Deployment](#production-deployment)
-12. [Notes](#notes)
+7. [Shared Model Architecture](#shared-model-architecture)
+8. [Development](#development)
+9. [Related Documentation](#related-documentation)
 
 ## Project Role
 
-The **Ooloi Backend** serves as the core server component providing:
+The backend server component providing:
+- **gRPC API Server**: Unified interface serving frontend clients
+- **STM-based Piece Management**: Concurrent musical data storage and operations  
+- **Real-time Communication**: Event streaming and client coordination
+- **Health Monitoring**: Component status and operational metrics
 
-1. **Musical Data Management**: STM-based concurrent piece storage and manipulation
-2. **Server Infrastructure**: gRPC service implementation and STM-based piece management
-3. **gRPC Server Interface**: Unified API serving ~193 methods to frontend clients via protocol buffers
-4. **Component Architecture**: Integrant-based system with piece manager, gRPC server, and monitoring components
-
-**Key Architectural Responsibility**: Implements backend-specific multimethod behaviors for shared model contracts while providing a unified gRPC interface for frontend communication.
+See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) for architecture details.
 
 ## System Architecture
 
@@ -133,79 +108,32 @@ backend/
 - **Minimum 4GB RAM** - Recommended for development and large musical scores
 - **Network access** - For downloading dependencies during initial setup
 
-### Platform-Specific Installation
+### Platform Setup
+
+**Requirements**: Java 22+ and Leiningen 2.9.0+
 
 #### macOS
 ```bash
-# Install Java using Homebrew
-brew install openjdk@22
-
-# Install Leiningen
-brew install leiningen
-
-# Set environment variables (add to ~/.zshrc or ~/.bash_profile)
+brew install openjdk@22 leiningen
 export JAVA_HOME="/usr/local/opt/openjdk@22"
-export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
 #### Linux (Ubuntu/Debian)
 ```bash
-# Install Java
-sudo apt update
 sudo apt install openjdk-22-jdk
-
-# Install Leiningen
 curl https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein > ~/bin/lein
 chmod +x ~/bin/lein
-lein --version  # This will download and install Leiningen
-
-# Set environment variables (add to ~/.bashrc)
 export JAVA_HOME="/usr/lib/jvm/java-22-openjdk-amd64"
-export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
 #### Windows
-1. **Install Java**:
-   - Download OpenJDK 22 from [Adoptium](https://adoptium.net/)
-   - Run installer and follow prompts
-   - Set `JAVA_HOME` environment variable to installation directory
+- Install OpenJDK 22 from [Adoptium](https://adoptium.net/)
+- Download `lein.bat` from [Leiningen](https://leiningen.org/) and run `lein self-install`
+- Set `JAVA_HOME` environment variable
 
-2. **Install Leiningen**:
-   - Download `lein.bat` from [Leiningen website](https://leiningen.org/)
-   - Place in a directory on your PATH
-   - Run `lein self-install` from command prompt
-
-### Verification
-
-Verify your installation:
+#### Verification
 ```bash
-# Check Java version
-java -version
-# Should show: openjdk version "22.x.x" or later
-
-# Check Leiningen
-lein version
-# Should show: Leiningen 2.9.0 or later on Java 22.x.x
-
-# Check environment
-echo $JAVA_HOME
-# Should show path to Java installation
-```
-
-### Icon Files Setup
-
-Ensure you have the appropriate icon files in the `backend/resources/icons/` directory:
-
-- **macOS**: `icon.icns`
-- **Windows**: `icon.ico` 
-- **Linux**: `icon.png`
-
-These can be found in the root `icons/` directory and should be symlinked:
-```bash
-cd backend/resources/
-ln -s ../../icons/ready/macos/icon.icns icons/
-ln -s ../../icons/ready/windows/icon.ico icons/
-ln -s ../../icons/ready/linux/icon.png icons/
+java -version && lein version
 ```
 
 ## Installation
@@ -268,92 +196,7 @@ The backend implements shared model contracts, establishing clean separation bet
 
 ### Shared Model Integration
 
-**Completed Shared Model Contracts**: The backend uses shared model contracts from `../shared/src/main/clojure/` (ADR-0023 completed implementation):
-
-- **Core Data Models**: All `defrecord` structures (Piece, Musician, Instrument, etc.) defined in shared
-- **Interfaces & Predicates**: Shared multimethod contracts and type checking predicates  
-- **Basic Operations**: Fundamental ops utilities in shared (access, pitches, rhythm, text)
-- **All Traits**: Behavioral mixins (attachment, has-items, rhythmic-item, takes-attachment, transposable) in shared
-- **Generator System**: Test data generators accessible from `ooloi.shared.specs.generators`
-
-**Architecture Benefits**:
-- ✅ **Type Fidelity**: Frontend and backend use identical data models for perfect gRPC round-trips
-- ✅ **Interface Consistency**: Shared multimethod contracts prevent API drift  
-- ✅ **Unified Plugin Ecosystem**: Plugins define models once, work everywhere
-- ✅ **Zero Protocol Buffer Overhead**: Shared models work seamlessly with unified gRPC system
-
-### Backend-Specific Enhancements
-
-**VPD-Enhanced Operations**: Backend extends shared models with Vector Path Descriptor capabilities:
-
-```clojure
-;; Backend uses the same shared models but with additional server context
-(ooloi.shared.models.core/create-pitch :note "C4" :duration 1/4)
-;; → Backend provides gRPC server integration, STM transactions, piece management around shared models
-```
-
-**Enhanced Model Features**: Backend provides:
-- **Server Integration**: gRPC service implementation and STM coordination
-- **Piece Management**: Centralized piece storage and concurrent access control  
-- **VPD Addressing**: Precise navigation within complex musical hierarchies
-- **Advanced Algorithms**: Music theory, layout, and rendering computations
-
-### Namespace Organization
-
-**For 90% of your backend code, you only need this:**
-
-```clojure
-(ns my-namespace
-  (:require [ooloi.shared.models.core :refer :all]))
-```
-
-This gives you access to:
-- **All constructors**: `create-pitch`, `create-chord`, `create-measure`, etc. (from shared project)
-- **All predicates**: `pitch?`, `chord?`, `measure?` (raw items), plus `pitch??`, `chord??`, `measure??` (timewalk tuples), etc. (from shared project)
-- **All multimethods**: `get-duration`, `add-item`, `set-name`, etc. (interfaces from shared, implementations from backend)
-
-**Why this works**: The shared `core` namespace imports shared model contracts and provides a unified entry point for backend development.
-
-**Architecture Note**: Core data structures live in the `shared/` project. The shared `core` namespace serves as the complete Ooloi system that both frontend and backend consume.
-
-**Shared Operations** (now in shared project):
-```clojure
-[ooloi.shared.ops.access :as xs]        ; Vector/attribute operations (was vectors-and-attributes)
-[ooloi.shared.ops.pitches :as pitches]  ; Pitch normalization and conversion
-[ooloi.shared.ops.rhythm :as rhythm]    ; Duration and rhythm utilities  
-[ooloi.shared.ops.text :as text]        ; Text processing (pluralization, etc.)
-```
-
-**Backend-Specific Operations**:
-```clojure
-[ooloi.shared.ops.timewalk :as tw]      ; Musical structure traversal
-[ooloi.backend.components.* :as *]      ; Integrant system components
-```
-
-**Shared Operations** (available to both frontend and backend):
-```clojure
-[ooloi.shared.models.changes :as ch]    ; Change-based attributes (time sigs, etc.) - now in shared
-```
-
-### Testing Architecture
-
-**Test Data Generation**: Backend uses shared generators:
-```clojure
-[ooloi.shared.specs.generators :as generators]  ; All model generators
-
-;; Available generators
-(generators/create-random-piece)      ; Complete piece with all sub-models
-(generators/create-random-musician)   ; Musician with instruments  
-(generators/gen-pitch)                ; Pitch generator for property testing
-```
-
-**Backend Test Coverage includes**:
-- **Shared Model Integration**: Backend-specific implementations of shared contracts
-- **Server Infrastructure**: gRPC server implementation and piece management operations
-- **gRPC Server Implementation**: Unified ExecuteMethod interface with dynamic API resolution
-- **Component Lifecycle**: Integrant system startup/shutdown scenarios and piece manager operations  
-- **STM Transactions**: Thread-safe concurrent piece modification and batch operations
-- **API Integration**: All ~193 backend API methods accessible via gRPC unified interface
+See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) for shared model architecture, namespace organization, and integration details.
 
 
 ## Development
@@ -384,11 +227,11 @@ lein run -- --port 8080
 # Deployment mode
 lein run -- --deployment-mode combined
 
-# TLS configuration (ADR-0020)
+# TLS configuration ([ADR-0020](../ADRs/0020-TLS-Infrastructure-and-Deployment-Architecture.md))
 lein run -- --tls true
 lein run -- --tls true --cert-path ./custom.crt --key-path ./custom.key
 
-# gRPC transport optimization (ADR-0019)
+# gRPC transport optimization ([ADR-0019](../ADRs/0019-In-Process-gRPC-Transport-Optimization.md))
 lein run -- --grpc-transport in-process --health-port 10701
 
 # Multiple options
@@ -427,7 +270,7 @@ lein run
 - **`combined`**: All components including UI support - single-process deployment  
 - **`dev-engine-only`**: Only piece manager - minimal development/testing mode
 
-**gRPC Transport Optimization** (ADR-0019):
+**gRPC Transport Optimization** ([ADR-0019](../ADRs/0019-In-Process-gRPC-Transport-Optimization.md)):
 - **`auto`** (default): Automatic selection - `in-process` for combined mode, `network` for backend mode
 - **`in-process`**: Ultra-high-performance direct communication (37.5-75x faster, 98.7-99.3% latency reduction, for combined deployments)
 - **`network`**: Standard TCP communication (for debugging or separate process deployment)
@@ -440,7 +283,7 @@ lein run
 
 #### TLS Configuration and Test Certificates
 
-**TLS Overview** (ADR-0020: TLS Infrastructure and Deployment Architecture):
+**TLS Overview** ([ADR-0020: TLS Infrastructure and Deployment Architecture](../ADRs/0020-TLS-Infrastructure-and-Deployment-Architecture.md)):
 - **Default**: TLS disabled for immediate developer productivity
 - **Development**: Enable with `--tls true` or `OOLOI_TLS=true` - certificates auto-generated
 - **Certificate Management**: Intelligent creation at specified paths or platform defaults
@@ -485,7 +328,7 @@ java -jar target/ooloi-backend-*-standalone.jar
 - **Automatic**: Certificates are generated automatically when TLS is enabled
 - **Persistent**: Once created, certificates are reused across server restarts
 - **Configurable**: Use `--cert-path` and `--key-path` to control certificate locations
-- **Cross-platform**: Works seamlessly on Unix, macOS, and Windows
+- **Cross-platform**: Works on Unix, macOS, and Windows
 
 #### Production Deployment
 
@@ -599,27 +442,13 @@ lein compile
 ls target/generated-sources/protobuf/
 ```
 
-#### Unified gRPC Server Architecture
+#### gRPC Architecture
 
-The backend implements Ooloi's **unified gRPC system** that eliminates complex protocol buffer management:
-
-- **Universal ExecuteMethod**: Single endpoint serves all API methods via dynamic resolution
-- **Real-Time Event Streaming**: Server-to-client event notification system with subscription management
-- **Unified Schema**: `OoloiValue` message handles all Clojure data types automatically  
-- **Zero Code Generation**: No per-method gRPC implementations - just delegate to `api.clj`
-- **Dynamic Function Resolution**: `(ns-resolve 'ooloi.backend.api (symbol method-name))`
-- **Perfect Type Fidelity**: Ratios, keywords, and custom records preserved automatically
-
-#### gRPC Server Configuration
-
-- **Proto source**: `../shared/src/main/proto/ooloi_service.proto` (unified schema)
-- **Generated output**: `target/generated-sources/protobuf/`
-- **Service implementation**: Universal `ExecuteMethod` with automatic API delegation
-- **Conversion**: Automatic Clojure ↔ `OoloiValue` conversion
+See [ADR-0024: gRPC Concurrency and Flow Control Architecture](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) for unified server design and implementation details.
 
 #### When Compilation is Needed
 
-**✅ Automatic**: No manual steps needed for:
+**Automatic**: No manual steps needed for:
 - New API methods in `api.clj`
 - New data models or records  
 - Plugin installations
@@ -697,14 +526,7 @@ kill $BACKEND_PID
 # Build production JAR
 lein uberjar
 
-# Production deployment with environment configuration
-export OOLOI_PORT=10700
-export OOLOI_DEPLOYMENT_MODE=backend
-export OOLOI_TLS=true
-export OOLOI_CERT_PATH=/etc/ssl/ooloi.crt
-export OOLOI_KEY_PATH=/etc/ssl/ooloi.key
-
-# Run production server
+# Run production server (see Configuration section for environment setup)
 java -jar target/ooloi-backend-*-standalone.jar
 ```
 
@@ -746,5 +568,5 @@ Remember to run tests (`lein midje`) before packaging to ensure everything is wo
 
 ### Technical Documentation
 - **[Development Plan](/DEV_PLAN.md)** - Current development status and implementation roadmap
-- **[ADR-0019: STM-gRPC Batch Transactions](/ADRs/0019-STM-gRPC-Batch-Transactions.md)** - Atomic operation implementation
+- **[ADR-0019: In-Process gRPC Transport Optimization](/ADRs/0019-In-Process-gRPC-Transport-Optimization.md)** - Transport performance optimization
 - **[ADR-0024: gRPC Concurrency and Flow Control Architecture](/ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)** - Technical decisions behind communication patterns
