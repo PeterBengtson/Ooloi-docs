@@ -2,6 +2,23 @@
 
 Decision: Implement flow control only for server-to-client event streaming, not for client-to-server API requests, based on gRPC's inherent concurrency model and STM's conflict resolution capabilities.
 
+## Table of Contents
+
+- [Context](#context)
+- [Client Connection Architecture](#client-connection-architecture)
+  - [Explicit App-Controlled Connection Pattern](#explicit-app-controlled-connection-pattern)
+  - [Connection Architecture Benefits](#connection-architecture-benefits)
+  - [Event Notification Architecture](#event-notification-architecture)
+  - [Connection Count Impact](#connection-count-impact)
+  - [Client Validation Architecture](#client-validation-architecture)
+- [Rationale](#rationale)
+  - [API Request Concurrency: Flow Control Not Needed](#api-request-concurrency-flow-control-not-needed)
+  - [Event Streaming: Flow Control Required](#event-streaming-flow-control-required)
+- [Decision Details](#decision-details)
+- [Consequences](#consequences)
+- [Related Decisions](#related-decisions)
+- [Implementation References](#implementation-references)
+
 ## Context
 
 Ooloi's gRPC architecture handles two distinct communication patterns:
@@ -114,6 +131,29 @@ The explicit connection architecture affects server connection statistics:
 - **After register-with-server**: Clients establish both streaming (1) + API pool (4) = 5 total connections per client
 - **Flow control**: Only streaming connections participate in event queue management
 - **Lifecycle**: Applications control exactly when these connections are created and destroyed
+
+### **Client Validation Architecture**
+
+The connection establishment includes comprehensive client-id validation as a security gate:
+
+**Validation Rules**:
+- **Format**: Client-ids must match pattern `^[a-zA-Z0-9_-]{3,64}$`
+- **Length**: 3-64 characters inclusive
+- **Characters**: Alphanumeric characters, dashes, and underscores only
+- **Uniqueness**: Server-side registry check prevents duplicate registrations
+
+**Security Enforcement**:
+- **Injection Prevention**: Restricted character set prevents protocol injection attacks
+- **Resource Protection**: Length limits prevent memory exhaustion via unlimited client names
+- **Connection Integrity**: Uniqueness enforcement ensures proper resource management and cleanup
+
+**Error Handling**:
+- **Duplicate client-id**: Returns `ALREADY_EXISTS` gRPC status
+- **Invalid format/length**: Returns `INVALID_ARGUMENT` gRPC status  
+- **Statistics Integration**: Failed validations increment `:clients-disconnected-error`
+- **Resource Cleanup**: Failed registrations properly clean up allocated gRPC channels
+
+**Implementation Location**: `ooloi.backend.grpc.server/validate-client-connection` with constants in `ooloi.backend.constants/client-id-pattern`
 
 ## Rationale
 

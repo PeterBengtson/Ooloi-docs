@@ -173,7 +173,7 @@ Using STM keeps client registry updates consistent:
    
    Registers client with per-client backpressure-aware drainer:
    - Bounded queues (1000 events) with drop-oldest backpressure
-   - Client ID validation prevents duplicate connections
+   - Client ID validation prevents duplicate connections and enforces naming rules
    - Piece subscription tracking for targeted events
    - Uses ServerCallStreamObserver readiness + single-writer drainer
    
@@ -190,7 +190,8 @@ Using STM keeps client registry updates consistent:
     (let [client-info (extract-client-info request)
           client-id (:client-id client-info)
           registry (:connection-registry server-component)]
-      (when (validate-client-connection registry client-info response-observer)
+      ;; Validate client-id: format (^[a-zA-Z0-9_-]{3,64}$), uniqueness, send gRPC errors
+      (when (validate-client-connection server-component client-info response-observer)
         
         ;; Set up registry entry and drainer infrastructure
         (let [drain! (setup-client-registry-and-drainer client-id server-component response-observer)

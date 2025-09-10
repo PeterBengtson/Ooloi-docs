@@ -12,10 +12,9 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 4. **🟡 [PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** - Basic storage operations (important)
 5. **🟠 [POLYMORPHIC_API_GUIDE.md](POLYMORPHIC_API_GUIDE.md)** - Type system foundations (advanced intermediate)
 6. **🟠 [GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - gRPC communication patterns (distributed systems)
-7. **🔴 [GRPC_DEEPDIVE.md](GRPC_DEEPDIVE.md)** - Unified gRPC architecture implementation (deep technical details)
-8. **🔴 [GRPC_STREAMING_THREADING_GUIDE.md](GRPC_STREAMING_THREADING_GUIDE.md)** - gRPC streaming implementation patterns (advanced threading - trips up developers across all languages)
-9. **🔵 [OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Server architecture reference (comprehensive)
-10. **🔴 [ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** - Performance optimization (advanced/dangerous)
+7. **🔴 [GRPC_STREAMING_THREADING_GUIDE.md](GRPC_STREAMING_THREADING_GUIDE.md)** - gRPC streaming implementation patterns (advanced threading - trips up developers across all languages)
+8. **🔵 [OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Server architecture reference (comprehensive)
+9. **🔴 [ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** - Performance optimization (advanced/dangerous)
 
 ## What Each Guide Teaches
 
@@ -27,7 +26,6 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 | **🟡 [PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** | Piece lifecycle, reference management | STM (refs, dosync), concurrent state management |
 | **🟠 [POLYMORPHIC_API_GUIDE.md](POLYMORPHIC_API_GUIDE.md)** | Type system, VPD vs object dispatch, musical API design | Multimethods, hierarchies, polymorphic dispatch, `derive`/`isa?` |
 | **🟠 [GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** | gRPC communication, collaborative editing patterns | Network programming, distributed state, async operations |
-| **🔴 [GRPC_DEEPDIVE.md](GRPC_DEEPDIVE.md)** | Unified gRPC architecture, type fidelity, hot plugin installation | Protocol buffer design, type conversion, dynamic method resolution |
 | **🔴 [GRPC_STREAMING_THREADING_GUIDE.md](GRPC_STREAMING_THREADING_GUIDE.md)** | Network transport streaming, backpressure patterns | gRPC threading constraints, HTTP/2 flow control, context propagation |
 | **🔵 [OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** | Server architecture, distributed systems, enterprise patterns | STM-gRPC integration, concurrent state management, functional architecture |
 | **🔴 [ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** | Parallel processing, performance optimization | STM coordination, parallel algorithms, performance tuning |
@@ -43,7 +41,6 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 
 ### Distributed Systems & Server Architecture
 - **🟠 [GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - gRPC communication patterns and collaborative scenarios (distributed systems)
-- **🔴 [GRPC_DEEPDIVE.md](GRPC_DEEPDIVE.md)** - Unified gRPC architecture implementation with type fidelity and hot plugin system (deep technical implementation)
 - **🔴 [GRPC_STREAMING_THREADING_GUIDE.md](GRPC_STREAMING_THREADING_GUIDE.md)** - gRPC streaming implementation with proper threading (advanced - common pitfall across all languages)
 - **🔵 [OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Enterprise-grade server architecture and design patterns (comprehensive reference)
 

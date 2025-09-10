@@ -35,6 +35,7 @@ This guide serves as both architectural documentation and a case study in applyi
   - [Performance Optimizations](#performance-optimizations)
 - [Connection Management](#connection-management)
   - [Connection Registry Architecture](#connection-registry-architecture)
+  - [Client Validation Security](#client-validation-security)
   - [Lifecycle Management](#lifecycle-management)
 - [Error Handling](#error-handling)
   - [Comprehensive gRPC Status Mapping](#comprehensive-grpc-status-mapping)
@@ -304,9 +305,31 @@ The server maintains a concurrent connection registry using atoms for O(1) clien
            :consumer-thread thread-ref}}
 ```
 
+### Client Validation Security
+
+The connection establishment implements comprehensive client-id validation as a security gate:
+
+**Validation Rules**:
+- **Format Enforcement**: Client-ids must match `^[a-zA-Z0-9_-]{3,64}$` pattern
+- **Length Limits**: 3-64 characters inclusive to prevent memory exhaustion
+- **Character Restrictions**: Only alphanumeric, dashes, underscores (prevents injection attacks)
+- **Uniqueness Check**: Server-side registry prevents duplicate client connections
+
+**Security Benefits**:
+- **Protocol Injection Prevention**: Restricted character set blocks malicious payloads
+- **Resource Protection**: Length limits prevent unbounded memory allocation
+- **Connection Integrity**: Unique client-ids ensure proper resource tracking and cleanup
+
+**Error Responses**:
+- **`ALREADY_EXISTS`**: Returned for duplicate client-id attempts
+- **`INVALID_ARGUMENT`**: Returned for format/length violations
+- **Statistics Integration**: Failed validations increment `:clients-disconnected-error`
+- **Resource Cleanup**: Failed registrations properly release allocated gRPC channels
+
 ### Lifecycle Management
 
-- **Automatic server subscriptions**: Clients receive server events upon connection
+- **Connection Validation**: Client-id validation occurs before registry entry creation
+- **Automatic server subscriptions**: Clients receive server events upon successful connection
 - **Manual piece subscriptions**: API methods for piece-specific event subscriptions  
 - **Graceful cleanup**: Disconnected clients are automatically removed from all registries
 - **Resource management**: Event queues and consumer threads are properly cleaned up
@@ -398,7 +421,7 @@ The Ooloi backend server represents a specialized approach to concurrent distrib
 - **[PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** - Storage and lifecycle management that the server coordinates
 
 ### Technical Documentation  
-- **[gRPC Deep Dive Guide](GRPC_DEEPDIVE.md)** - Complete technical implementation details
+- **[gRPC Streaming & Threading Guide](GRPC_STREAMING_THREADING_GUIDE.md)** - Advanced streaming implementation patterns
 - **[DEV_PLAN.md](../DEV_PLAN.md)** - Current development status and implementation roadmap
 
 ### Development Resources
