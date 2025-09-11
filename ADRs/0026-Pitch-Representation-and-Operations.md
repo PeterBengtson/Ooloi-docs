@@ -36,7 +36,7 @@ Ooloi requires a pitch representation system that balances computational efficie
 
 The system must handle diverse musical contexts:
 
-- **Traditional tonal music**: Standard 12-tone equal temperament with double accidentals (C##, Bbb) and precise spelling preservation
+- **Traditional tonal music**: Standard 12-tone equal temperament with multiple accidentals (C##, Bbb, Abbb, G####, etc) and precise spelling preservation
 - **Contemporary atonal music**: Primarily single accidentals without reference to a specific key
 - **Microtonal music**: Arbitrary cent deviations with consistent transposition behavior and MIDI playback support via pitch bend or direct virtual instrument control
 - **Instrument transposition**: Both chromatic (frequency-based) and diatonic (letter-preserving) modes
