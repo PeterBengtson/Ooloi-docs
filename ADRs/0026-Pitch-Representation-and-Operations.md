@@ -84,7 +84,7 @@ Implement comprehensive pitch operations in `ooloi.shared.ops.pitches` with the 
 
 **Chromatic Mode**: Essential for accurate playback mathematics where enharmonic equivalents (C# = Db) must produce identical frequencies. Guarantees consistent MIDI output regardless of input spelling.
 
-**Diatonic Mode**: Critical for notation correctness where spelling relationships must be preserved. A piece requiring "C## to D##" progression cannot accept chromatic mode's "C# to Eb" output, as this destroys the intended harmonic analysis.
+**Diatonic Mode**: Critical for notation correctness where spelling relationships must be preserved. A piece requiring "C## to D##" progression cannot accept chromatic mode's "C## to E" output, as this destroys the intended harmonic analysis.
 
 **No Simplification Policy**: Automatic enharmonic simplification (C## → D) would corrupt composer intent. Contemporary music frequently uses extreme accidentals for specific harmonic or analytic purposes that must be preserved exactly.
 
