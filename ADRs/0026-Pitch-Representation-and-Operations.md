@@ -19,7 +19,7 @@ Decision: Adopt string-based pitch representation ("C#4+25") as canonical format
 Ooloi requires a pitch representation system that balances computational efficiency with musical correctness. The system must serve two critical needs:
 
 1. **Playback accuracy**: Precise frequency calculations for MIDI output and audio rendering
-2. **Notation correctness**: Proper spelling preservation, including extreme accidentals for contemporary music
+2. **Notation correctness**: Proper spelling preservation after transposition, including microtonal cent offsets and accidentals for contemporary music
 
 ### Design Alternatives Considered
 
