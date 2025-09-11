@@ -86,7 +86,7 @@ Implement comprehensive pitch operations in `ooloi.shared.ops.pitches` with the 
 
 **Diatonic Mode**: Critical for notation correctness where spelling relationships must be preserved. A piece requiring "C## to D##" progression cannot accept chromatic mode's "C## to E" output, as this destroys the intended harmonic analysis.
 
-**No Simplification Policy**: Automatic enharmonic simplification (C## → D) would corrupt composer intent. Contemporary music frequently uses extreme accidentals for specific harmonic or analytic purposes that must be preserved exactly.
+**No Simplification Policy**: Automatic enharmonic simplification (C## → D) would corrupt composer intent. Tonal music frequently uses multiple accidentals that must be preserved exactly in the target transposition key.
 
 ## Why a Factory
 
@@ -178,7 +178,7 @@ Compares normalized frequency values, abstracting away spelling differences. Cri
 
 ### Diatonic Transposition Complexity
 
-Diatonic transposition must preserve letter-name relationships while reaching correct chromatic targets. Algorithm ensures C## + major second = D## (not Eb), maintaining harmonic analysis integrity.
+Diatonic transposition must preserve letter-name relationships while reaching correct chromatic targets. Algorithm ensures C## + major second = D## (not E), maintaining harmonic analysis integrity.
 
 **Implementation Strategy**: Letter-first approach calculates letter advancement, then adds accidentals to reach chromatic target frequency.
 
@@ -217,23 +217,7 @@ Factory itself memoizes generated functions by parameter tuple `(mode, direction
 
 Real-world instruments declare transpositions as parameter tuples that integrate directly with the factory system:
 
-### Example Instrument Configurations
-
-**Bb Clarinet** (sounds major second down):
-- Written-to-sounding: `(make-transposer :diatonic :down 2)`
-- Sounding-to-written: `(make-transposer :diatonic :up 2)`
-
-**Piccolo** (sounds octave up):
-- Written-to-sounding: `(make-transposer :diatonic :up 12)`  
-- Sounding-to-written: `(make-transposer :diatonic :down 12)`
-
-**French Horn in F** (sounds perfect fifth down):
-- Written-to-sounding: `(make-transposer :diatonic :down 7)`
-- Sounding-to-written: `(make-transposer :diatonic :up 7)`
-
-### Direct Parameter Integration
-
-Instrument definitions store transposition parameters as tuples that map directly to factory calls:
+Instrument definitions store transposition parameters as tuples that map directly to factory calls. Conceptually:
 ```clojure
 {:name "Bb Clarinet"
  :written-to-sounding [:diatonic :down 2]
@@ -249,6 +233,8 @@ Instrument definitions store transposition parameters as tuples that map directl
 ```
 
 These parameter tuples apply directly to the factory via `(apply make-transposer params)`, enabling clean separation between instrument data and transposition logic.
+
+This supports both transposing scores and parts, as well as MIDI playback.
 
 ## Outcome
 
