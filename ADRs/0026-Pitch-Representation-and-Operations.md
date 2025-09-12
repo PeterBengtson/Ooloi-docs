@@ -157,7 +157,7 @@ Frequency-based ordering provides musically intuitive results across enharmonic 
 
 ### Enharmonic Equivalence
 
-Compares normalized frequency values, abstracting away spelling differences. Critical for harmonic analysis and chord recognition where C# and Db must be treated identically.
+Compares normalized frequency values, abstracting away spelling differences. Critical for finding tie endpoints for enharmonically identical notes, e.g. where a C# is tied to a Db.
 
 ### Transposition Algorithms
 
