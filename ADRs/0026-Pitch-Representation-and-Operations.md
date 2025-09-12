@@ -131,7 +131,7 @@ Each represents a fundamentally different musical operation, despite similar mat
 
 **Normalization Process**:
 1. Parse components using regex pattern matching
-2. Validate ranges: accidentals ≤ 3, octave -1 to 9, cents arbitrary range
+2. Validate ranges: octave -1 to 9, cents arbitrary range
 3. Canonical case conversion and format standardization
 
 ### Conversion Operations
