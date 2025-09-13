@@ -89,7 +89,7 @@ Ooloi's plugin-based architecture addresses the same musical intelligence requir
 
 ## Decision
 
-The Ooloi core provides no audio or MIDI output. All playback and output are delegated to frontend plugins. The only audio-related functionality in the core is MIDI (and MPE) input handling for note entry, which the frontend translates into API commands for the backend.
+The Ooloi core provides no audio or MIDI functionality whatsoever. All audio processing, MIDI input/output, and playback are delegated to frontend plugins. The frontend translates all input (MIDI, screen clicks, scripting, plugins) into API commands for the backend.
 
 ### Core Architecture
 
@@ -99,17 +99,17 @@ The Ooloi core provides no audio or MIDI output. All playback and output are del
 - **No server audio**: Backend provides no audio capabilities, suitable for cloud deployment
 - **Client independence**: Each client manages its own audio setup and plugin configuration
 
-**Backend Audio Separation**: Backend provides no audio processing
+**Backend Audio Separation**: Backend provides no audio or MIDI processing
 - **Musical data only**: Backend handles musical structure, collaboration, and paintlist generation
-- **No MIDI processing**: Backend never receives or processes MIDI data
-- **No audio streaming**: No audio data transmitted from backend to clients
-- **Cloud compatibility**: Backend suitable for deployment on cloud infrastructure without audio capabilities
+- **Input agnostic**: Backend receives high-level API commands regardless of input source (MIDI, clicks, scripts, plugins)
+- **No audio/MIDI data**: No audio or MIDI data transmitted to or processed by backend
+- **Cloud compatibility**: Backend suitable for deployment on cloud infrastructure without audio/MIDI capabilities
 
-**MIDI Input Processing**: Local keyboard input with command translation
-- **Frontend responsibility**: MIDI keyboards connect to frontend clients, not backend
-- **Local interpretation**: Clients translate MIDI input to musical commands locally
-- **API communication**: Musical commands sent to backend via gRPC API calls
-- **Collaborative updates**: MIDI-derived musical changes propagated to other clients through backend
+**Input Processing**: All input handled locally by frontend
+- **Frontend responsibility**: All input devices (MIDI keyboards, mouse, touchscreen) connect to frontend clients
+- **Local interpretation**: Clients translate all input types to high-level musical commands locally
+- **API communication**: Musical commands sent to backend via gRPC API calls regardless of input source
+- **Collaborative updates**: All musical changes propagated to other clients through backend
 
 **Plugin Audio Architecture**: Multiple audio strategies available through frontend plugins
 - **VST/AU hosting plugins**: Professional sample library integration on client machines
@@ -213,10 +213,10 @@ The Ooloi core provides no audio or MIDI output. All playback and output are del
 ### Frontend-Backend Separation (ADR-0001)
 
 Plugin-based audio architecture reinforces clean frontend-backend separation:
-- **Backend responsibilities**: Musical data storage, collaboration coordination, paintlist generation - no audio processing
-- **Frontend responsibilities**: All audio input/output, plugin management, MIDI translation, local playback
-- **Cloud deployment**: Backend suitable for cloud infrastructure without audio hardware dependencies
-- **Network efficiency**: Only musical data and paintlists transmitted between frontend and backend, no audio streaming
+- **Backend responsibilities**: Musical data storage, collaboration coordination, paintlist generation - no audio/MIDI processing
+- **Frontend responsibilities**: All audio/MIDI input/output, plugin management, input translation, local playback
+- **Cloud deployment**: Backend suitable for cloud infrastructure without audio/MIDI hardware dependencies
+- **Network efficiency**: Only musical data and paintlists transmitted between frontend and backend, no audio/MIDI streaming
 
 ### Plugin Architecture (ADR-0003)
 
@@ -229,8 +229,8 @@ Frontend audio plugins integrate with established plugin system architecture:
 ### gRPC Communication (ADR-0002)
 
 Audio architecture supports efficient backend communication:
-- **Musical command API**: MIDI input translated to high-level musical commands sent via gRPC
-- **No audio data**: gRPC communication handles musical structure changes, not raw audio or MIDI data
+- **Musical command API**: All input types translated to high-level musical commands sent via gRPC
+- **No audio/MIDI data**: gRPC communication handles musical structure changes, not raw audio or MIDI data
 - **Playback coordination**: Synchronized playback across clients coordinated through backend timing commands
 - **Collaboration efficiency**: Musical changes propagated to clients for local audio rendering rather than centralized audio processing
 
