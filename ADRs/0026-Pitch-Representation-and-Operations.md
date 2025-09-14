@@ -115,6 +115,7 @@ Implement `ooloi.shared.ops.pitches` with a canonical **string** pitch format an
 ### Pitch String Format & Normalization
 
 `[A-G][accidentals][octave][±cents]`
+
 Examples: `"C4"`, `"F#3"`, `"Ebb5"`, `"G4+25"`, `"A3-50"`.
 Normalization constrains cent-offset to `[-99..99]` and yields sharp-canonical pitch class.
 
