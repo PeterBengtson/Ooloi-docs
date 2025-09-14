@@ -53,29 +53,29 @@ Implement `ooloi.shared.ops.pitches` with a canonical **string** pitch format an
 ### Transposer Factory (Three Lanes)
 
 1) **Interval string lane (primary)** — case-sensitive quality  
-   ```clojure
-   (make-transposer :interval "<Q><N>[+|-]" [:cents C])
-   ;; <Q> ∈ P | M | m | A+ | d+   (one or more A/d allowed)
-   ;; <N> ∈ integer ≥ 1           (1..7 simple; 8=9th; 9=10th; unbounded)
-   ;; [+|-] optional direction    (+ = up; − = down; default up)
+```clojure
+(make-transposer :interval "<Q><N>[+|-]" [:cents C])
+;; <Q> ∈ P | M | m | A+ | d+   (one or more A/d allowed)
+;; <N> ∈ integer ≥ 1           (1..7 simple; 8=9th; 9=10th; unbounded)
+;; [+|-] optional direction    (+ = up; − = down; default up)
 ````
 
 2. **Fluid keyword lane (order-agnostic; only \:cents takes a number)**
 
-   ```clojure
-   (make-transposer [:up|:down] <quality/base/modifiers> <ordinal> [:octave ...] [:cents C])
-   ;; Direction: :up | :down   (default :up)
-   ;; Ordinal (exactly one): :unison | :second | :third | :fourth | :fifth | :sixth | :seventh | :octave | :ninth
-   ;; Extra octaves: add :octave tokens (each adds 7 letter-steps); :ninth ≡ :second + one :octave
-   ;; Quality: base (0 or 1) :perfect | :major | :minor  + modifiers (repeatable) :augmented / :diminished
-   ;; Invalid: :minor with 1/4/5; :perfect with 2/3/6/7
-   ```
+```clojure
+(make-transposer [:up|:down] <quality/base/modifiers> <ordinal> [:octave ...] [:cents C])
+;; Direction: :up | :down   (default :up)
+;; Ordinal (exactly one): :unison | :second | :third | :fourth | :fifth | :sixth | :seventh | :octave | :ninth
+;; Extra octaves: add :octave tokens (each adds 7 letter-steps); :ninth ≡ :second + one :octave
+;; Quality: base (0 or 1) :perfect | :major | :minor  + modifiers (repeatable) :augmented / :diminished
+;; Invalid: :minor with 1/4/5; :perfect with 2/3/6/7
+```
 
 3. **Chromatic lane**
 
-   ```clojure
-   (make-transposer :chromatic S [:cents C])   ;; S = signed semitones
-   ```
+```clojure
+(make-transposer :chromatic S [:cents C])   ;; S = signed semitones
+```
 
 ### Diatonic & Chromatic Semantics
 
