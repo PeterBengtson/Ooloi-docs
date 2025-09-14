@@ -1,258 +1,230 @@
 # ADR-0026: Pitch Representation and Operations
 
-Decision: Adopt string-based pitch representation ("C#4+25") as canonical format with comprehensive transposition operations through a factory-based transposer system supporting both chromatic and diatonic modes.
+**Decision:** Adopt string-based pitch representation (`"C#4+25"`) as the canonical format with a factory-based transposer system supporting **three lanes**: interval string, fluid keywords, and chromatic. Internally, diatonic transposition uses a direction-aware `(D,A,C)` model that preserves spelling exactly and supports arbitrary multi-accidentals.
 
 ## Table of Contents
 
 - [Context](#context)
 - [Decision](#decision)
+  - [Primary Operations](#primary-operations)
+  - [Transposer Factory (Three Lanes)](#transposer-factory-three-lanes)
+  - [Diatonic & Chromatic Semantics](#diatonic--chromatic-semantics)
 - [Rationale](#rationale)
-- [Why a Factory](#why-a-factory)
+  - [String Representation Benefits](#string-representation-benefits)
+  - [Why a Factory](#why-a-factory)
 - [Detailed Design](#detailed-design)
+  - [Pitch String Format & Normalization](#pitch-string-format--normalization)
+  - [Transposition Lanes & Grammars](#transposition-lanes--grammars)
+  - [Error Handling](#error-handling)
 - [Challenges Addressed](#challenges-addressed)
 - [Caching Strategy](#caching-strategy)
 - [Instrument Integration](#instrument-integration)
+- [Performance](#performance)
 - [Outcome](#outcome)
+
+---
 
 ## Context
 
-Ooloi requires a pitch representation system that balances computational efficiency with musical correctness. The system must serve two critical needs:
+Ooloi needs pitch operations that are fast, notation-correct, and microtonal-aware:
 
-1. **Playback accuracy**: Precise frequency calculations for MIDI output and audio rendering
-2. **Notation correctness**: Proper spelling preservation after transposition, including microtonal cent offsets and accidentals for contemporary music
+1. **Playback accuracy**: Precise frequency (Hz) and MIDI calculations (incl. cents).
+2. **Notation correctness**: Spelling preserved under diatonic transposition (double/triple accidentals allowed), microtonal cent offsets stable.
 
-### Design Alternatives Considered
+**Alternatives considered**
+- **Compound pitch objects** (e.g., Igor Engraver): semantically clear, but higher memory/CPU overhead in large scores.
+- **String canonical representation** (Ooloi): compact, human-readable, cache-friendly, integrates naturally with parsers/serializers.
 
-**Igor Engraver Approach**: Used compound pitch objects with separate fields for letter name, accidental, octave, and microtonal offset. While semantically clear, this approach creates overhead for large orchestral scores where thousands of pitches require frequent operations.
-
-**Ooloi's String-Based Approach**: Adopts compact string notation ("C#4+25") as the canonical representation, offering several advantages:
-
-- **Compact for large scores**: Single string per pitch reduces memory overhead in complex works
-- **Human readable**: Musicians can directly interpret "Bb4-15" without decoding object fields  
-- **Natural parsing integration**: String format works seamlessly with score parsing and caching systems
-- **Microtonal support**: Arbitrary cent offsets handle microtonal music requirements
-
-### Musical Requirements
-
-The system must handle diverse musical contexts:
-
-- **Traditional tonal music**: Standard 12-tone equal temperament with multiple accidentals (C##, Bbb, Abbb, G####, etc) and precise spelling preservation
-- **Contemporary atonal music**: Primarily single accidentals without reference to a specific key
-- **Microtonal music**: Arbitrary cent deviations with consistent transposition behavior and MIDI playback support via pitch bend or direct virtual instrument control
-- **Instrument transposition**: Both chromatic (frequency-based) and diatonic (letter-preserving) modes
+---
 
 ## Decision
 
-Implement comprehensive pitch operations in `ooloi.shared.ops.pitches` with the following core components:
+Implement `ooloi.shared.ops.pitches` with a canonical **string** pitch format and a **transposer factory** that exposes three input lanes.
 
 ### Primary Operations
-- **Normalization**: Canonical string format with validated ranges
-- **Conversion**: MIDI number and Hz frequency calculation with memoization
-- **Sorting**: Frequency-based pitch ordering
-- **Enharmonic comparison**: Equivalence testing across different spellings
-- **Transposition**: Factory-based transposer system
 
-### Transposer Factory Signature
+- **Normalization** → `{:pitch <sharp-canonical>, :octave <int>, :cent-offset <-99..99>}`
+- **Conversion** → `:midi` + `:hz` (memoized)
+- **Sorting** → by frequency, microtonal-safe
+- **Enharmonic comparison** → `enharmonically-equal?`
+- **Transposition** → factory returns `(fn [pitch-str] -> pitch-str)`
 
-```clojure
-(make-transposer MODE DIRECTION DELTA & [CENTS])
-```
+### Transposer Factory (Three Lanes)
 
-**Parameters**:
-- `MODE`: `:diatonic` | `:chromatic` - Controls spelling behavior
-- `DIRECTION`: `:up` | `:down` - Transposition direction  
-- `DELTA`: Non-negative integer semitones (octaves folded in)
-- `CENTS`: Optional integer cents (default 0)
+1) **Interval string lane (primary)** — case-sensitive quality  
+   ```clojure
+   (make-transposer :interval "<Q><N>[+|-]" [:cents C])
+   ;; <Q> ∈ P | M | m | A+ | d+   (one or more A/d allowed)
+   ;; <N> ∈ integer ≥ 1           (1..7 simple; 8=9th; 9=10th; unbounded)
+   ;; [+|-] optional direction    (+ = up; − = down; default up)
+````
 
-**Mode Semantics**:
-- `:chromatic`: Produces canonical sharp spelling for consistent playback math
-- `:diatonic`: Preserves letter-name relationships, adds accidentals as needed, no simplification
+2. **Fluid keyword lane (order-agnostic; only \:cents takes a number)**
 
-**Validation**: Invalid inputs throw `ex-info` with descriptive error messages.
+   ```clojure
+   (make-transposer [:up|:down] <quality/base/modifiers> <ordinal> [:octave ...] [:cents C])
+   ;; Direction: :up | :down   (default :up)
+   ;; Ordinal (exactly one): :unison | :second | :third | :fourth | :fifth | :sixth | :seventh | :octave | :ninth
+   ;; Extra octaves: add :octave tokens (each adds 7 letter-steps); :ninth ≡ :second + one :octave
+   ;; Quality: base (0 or 1) :perfect | :major | :minor  + modifiers (repeatable) :augmented / :diminished
+   ;; Invalid: :minor with 1/4/5; :perfect with 2/3/6/7
+   ```
+
+3. **Chromatic lane**
+
+   ```clojure
+   (make-transposer :chromatic S [:cents C])   ;; S = signed semitones
+   ```
+
+### Diatonic & Chromatic Semantics
+
+**Internal diatonic model:** `(D,A,C)`
+
+* `D` = signed **letter steps** (0=unison, 1=2nd, …; +7 per compound octave). Sign is direction.
+* `A` = signed **semitone tweak** relative to Major/Perfect base magnitude for `D`.
+  **Rule:** `+1` always **raises** final pitch height, `−1` always **lowers**, regardless of direction.
+
+  * Perfect-type degrees: 1/4/5; Major-type: 2/3/6/7.
+* `C` = signed **cents** applied after semitone shift.
+
+**Chromatic:** `S` = signed semitones; spelling uses sharp-canonical normalization.
+
+**Invertibility:** inverse of `(D,A,C)` is `(-D,-A,-C)`.
+
+---
 
 ## Rationale
 
 ### String Representation Benefits
 
-**Efficiency**: Single string representation reduces memory allocation compared to multi-field objects, critical for large orchestral scores with thousands of pitch instances.
+* **Efficient & compact** for large scores.
+* **Readable** for musicians (`"Bb4-15"` is self-explanatory).
+* **Serializer/parsers friendly**; microtonal cent offsets embedded.
 
-**Readability**: Musicians can directly interpret pitch strings during development and debugging without requiring object field inspection.
+### Why a Factory
 
-**Integration**: String format aligns naturally with score file parsing, caching systems, and serialization requirements.
+* **Higher-order closures** capture configuration once; application cost is minimal.
+* **Composability** with `comp`, threading, etc.
+* **Separation of concerns:** interval-string lane (UI-friendly), fluid lane (dialog-friendly), and chromatic lane (playback/MIDI).
 
-### Two-Mode Transposition System
-
-**Chromatic Mode**: Essential for accurate playback mathematics where enharmonic equivalents (C# = Db) must produce identical frequencies. Guarantees consistent MIDI output regardless of input spelling.
-
-**Diatonic Mode**: Critical for notation correctness where spelling relationships must be preserved. A piece requiring "C## to D##" progression cannot accept chromatic mode's "C## to E" output, as this destroys the intended harmonic analysis.
-
-**No Simplification Policy**: Automatic enharmonic simplification (C## → D) would corrupt composer intent. Tonal music frequently uses multiple accidentals that must be preserved exactly in the target transposition key.
-
-## Why a Factory
-
-The factory pattern leverages higher-order functions and closures to create efficient, composable transposition operations. Rather than repeatedly passing configuration parameters, the factory generates specialized functions that encapsulate both the transposition logic and their specific musical behavior rules.
-
-### Higher-Order Function Benefits
-
-**Closure Efficiency**: Each generated transposer is a closure that captures its configuration (mode, direction, delta, cents) at creation time. This eliminates parameter passing overhead on every transposition operation.
-
-**Composability**: Transposer functions integrate seamlessly with Clojure's functional composition operators (`comp`, `partial`, threading macros), enabling complex musical transformations.
-
-**Performance**: Pre-configured functions eliminate runtime conditional branching. A diatonic transposer contains only diatonic logic, while a chromatic transposer contains only chromatic logic.
-
-### Musical Context
-
-Consider these distinct musical operations:
-- **"Up a major second diatonically"**: C## → D## (preserves letter relationship)
-- **"Up a major second chromatically"**: C## → E (frequency-based, canonical spelling)
-- **"Down a minor third with 25 cents"**: Microtonal operation with simple cent deviation
-
-Each represents a fundamentally different musical operation, despite similar mathematical foundations.
-
-### Technical Benefits
-
-**Clarity**: Single factory call `(make-transposer :diatonic :up 2)` creates a clear, reusable function rather than requiring repeated parameter passing to a generic operation.
-
-**Reuse**: Orchestra scores apply the same transposition to thousands of notes. Generated functions can be stored and reused across entire movements without reconfiguration overhead.
-
-**Caching**: Factory memoization ensures identical parameter sets reuse the same function object, eliminating redundant closure creation.
-
-**Instrument Integration**: Real instruments store transposition parameters directly (e.g., Bb clarinet: `:diatonic :up 2`). These parameters plug directly into the factory without transformation.
+---
 
 ## Detailed Design
 
-### String Format and Parsing
+### Pitch String Format & Normalization
 
-**Canonical Format**: `[A-G][accidentals][octave][cents]`
-- Letters: A-G (case insensitive, normalized to uppercase)
-- Accidentals: # (sharp), b (flat), multiple allowed (##, bbb)
-- Octave: Integer (C0 = 16.35 Hz, middle C = C4, A0 = lowest piano note at 27.5 Hz)
-- Cents: Optional +/- prefix with arbitrary range for microtonal precision
+`[A-G][accidentals][octave][±cents]`
+Examples: `"C4"`, `"F#3"`, `"Ebb5"`, `"G4+25"`, `"A3-50"`.
+Normalization constrains cent-offset to `[-99..99]` and yields sharp-canonical pitch class.
 
-**Normalization Process**:
-1. Parse components using regex pattern matching
-2. Validate ranges: octave -1 to 9, cents arbitrary range
-3. Canonical case conversion and format standardization
+### Transposition Lanes & Grammars
 
-### Conversion Operations
+* **Interval tokens:** `"M2+"`, `"m3-"`, `"A5+"`, `"d4-"`, `"AA1+"`, `"M9+"`, …
+  Case-sensitive quality; optional trailing direction.
 
-**MIDI Calculation**: 
-- Base semitone calculation from C4 = 60
-- Accidental contribution (sharp +1, flat -1 per symbol)
-- Cent offset normalization and addition
-- Memoized for performance on repeated conversions
+* **Fluid keywords:**
+  `:up | :down` + base quality `:perfect | :major | :minor` + ordinal
+  `:unison|:second|:third|:fourth|:fifth|:sixth|:seventh|:octave|:ninth`
+  with repeatable `:octave` and modifiers `:augmented` / `:diminished`.
+  Example equivalents:
 
-**Frequency Calculation**:
-- Equal temperament: 440 * 2^((midi - 69) / 12)
-- Supports arbitrary cent deviations for microtonal accuracy
+  ```clojure
+  (make-transposer :interval "M2+")        ; same as:
+  (make-transposer :up :major :second)
+  ```
 
-**Microtonal MIDI Support**:
-- Cent deviations enable precise microtonal playback unlike most notation programs
-- Implementation options: MIDI pitch bend messages (as used by Igor Engraver) or direct virtual instrument control
-- Maintains playback accuracy for composers working with quarter-tones, just intonation, or other microtonal systems
+* **Chromatic:** `(make-transposer :chromatic 3)` ⇒ up 3 semitones.
 
-### Sorting Implementation
+### Error Handling
 
-Frequency-based ordering provides musically intuitive results across enharmonic spellings. Implementation uses MIDI number comparison for efficiency while maintaining precise microtonal ordering.
+* **Conflicts** (both `:up` and `:down`) → `ExceptionInfo`.
+* **Invalid quality/degree pairs** (`:minor :fourth`, `:perfect :third`) → `ExceptionInfo`.
+* **Lane mixing** (`:interval` together with fluid keywords) → `ExceptionInfo`.
+* **Type errors** (`:cents` non-integer, chromatic semitones non-integer) → `ExceptionInfo`.
 
-### Enharmonic Equivalence
-
-Compares normalized frequency values, abstracting away spelling differences. Critical for finding tie endpoints for enharmonically identical notes, e.g. where a C# is tied to a Db.
-
-### Transposition Algorithms
-
-**Chromatic Mode**:
-1. Convert input pitch to MIDI + cents
-2. Apply semitone + cent delta
-3. Convert result to canonical sharp spelling
-4. Handle octave overflow and underflow
-
-**Diatonic Mode**:
-1. Calculate letter name advancement from semitone count
-2. Advance base letter by required steps
-3. Calculate chromatic target frequency  
-4. Add accidentals to reach target while preserving base letter
-5. Maintain exact spelling relationships
+---
 
 ## Challenges Addressed
 
-### Diatonic Transposition Complexity
+* **Diatonic spelling preservation:** letter-first logic with `(D,A,C)` yields exact spellings (double/triple accidentals allowed); **no enharmonic simplification**.
+* **Microtonal stability:** cents are applied after the semitone computation and preserved predictably.
+* **Round-trip guarantees:**
 
-Diatonic transposition must preserve letter-name relationships while reaching correct chromatic targets. Algorithm ensures C## + major second = D## (not E), maintaining harmonic analysis integrity.
+  * Diatonic: exact spelling round-trip (up then down with inverse `(D,A,C)` returns identical string).
+  * Chromatic: round-trip is **enharmonically equal** (canonical sharp spelling each hop).
 
-**Implementation Strategy**: Letter-first approach calculates letter advancement, then adds accidentals to reach chromatic target frequency.
-
-### Microtonal Consistency
-
-Arbitrary cent offsets must transpose predictably across all operations. System ensures +25 cent deviation transposed up one semitone consistently becomes +25 cents in the target pitch.
-
-### Round-Trip Guarantees
-
-**Diatonic Round-Trip**: Bijective on spelling preservation
-- Input: C##4 → Up major second → D##4 → Down major second → C##4
-- Guarantees exact spelling recovery
-
-**Chromatic Round-Trip**: Bijective on frequency (enharmonic equivalence)
-- Input: C##4 → Up major second → E4 → Down major second → D4  
-- Guarantees enharmonic equivalence of result
+---
 
 ## Caching Strategy
 
-Multi-layer caching system optimizes performance across different usage patterns:
+**Multi-layer caches:**
 
-### Primitive Operation Caches
-- **Pitch Decomposition**: Memoized parsing of string components
-- **Cents Conversion**: Cached cent-to-pitch calculations for common values
+1. **Primitive hot caches** (memoized): pitch decomposition and cents→pitch conversion.
+2. **Factory cache** keyed by the **raw arg vector** (not canonicalized):
 
-### Transposer Function Caches  
-Each generated transposer function maintains internal memoization of its outputs, optimizing repeated application to the same pitches.
+   * Interval lane: exact token string (case-sensitive).
+   * Fluid lane: exact keyword sequence (order preserved).
+   * Chromatic lane: `[:chromatic S :cents C]`.
+     This avoids parse-normalize overhead on cache hits.
+3. **Global output caches** for zero-work application:
 
-### Factory Cache
-Factory itself memoizes generated functions by parameter tuple `(mode, direction, delta, cents)`, ensuring identical configurations reuse existing function objects.
+   * **Diatonic:** key = `[D A C <pitch-str>]`
+   * **Chromatic:** key = `[S C <pitch-str>]`
+     Any transposer closure benefits; repeated inputs return instantly.
+4. **Per-closure output memo** (pitch→pitch) still present and tunable.
 
-### Cache Management
-`clear-transposition-caches!` utility provides explicit cache clearing for testing scenarios and memory management in long-running applications.
+`clear-transposition-caches!` clears factory, global, and primitive caches.
+
+---
 
 ## Instrument Integration
 
-Real-world instruments declare transpositions as parameter tuples that integrate directly with the factory system:
+Instrument definitions can use **interval tokens** or the **fluid lane**:
 
-Instrument definitions store transposition parameters as tuples that map directly to factory calls. Conceptually:
 ```clojure
-{:name "Bb Clarinet"
- :written-to-sounding [:diatonic :down 2]
- :sounding-to-written [:diatonic :up 2]}
+{:name "B♭ Clarinet"
+ :sounding->written [:interval "M2+"]
+ :written->sounding [:interval "M2-"]}
 
-{:name "French Horn in F"
- :written-to-sounding [:diatonic :down 7]
- :sounding-to-written [:diatonic :up 7]}
+{:name "A Clarinet"
+ :sounding->written [:interval "m3+"]
+ :written->sounding [:interval "m3-"]}
 
-{:name "Quarter-tone Trumpet" 
- :written-to-sounding [:chromatic :up 6 50]  ; Up tritone + 50 cents
- :sounding-to-written [:chromatic :down 6 50]}
+{:name "Horn in F"
+ :sounding->written [:up :perfect :fifth]
+ :written->sounding [:down :perfect :fifth]}
+
+{:name "Bass Clarinet in B♭"          ; sounding -> written: M9 up (M2 + octave)
+ :sounding->written [:up :major :ninth]
+ :written->sounding [:down :major :ninth]}
+
+{:name "Quarter-tone Trumpet"
+ :sounding->written [:chromatic 6 :cents 50]    ; up tritone + 50c
+ :written->sounding [:chromatic -6 :cents -50]}
 ```
 
-These parameter tuples apply directly to the factory via `(apply make-transposer params)`, enabling clean separation between instrument data and transposition logic.
+These vectors are applied as `(apply make-transposer params)`.
 
-This supports both transposing scores and parts, as well as MIDI playback.
+---
+
+## Performance
+
+On a **2017 MacBook Pro** (2.2 GHz 6-core Intel):
+
+* **1,000,000 transpositions in 5637.002775 ms**
+
+  * ≈ **177,500 ops/sec**
+  * ≈ **5.64 µs per transposition**
+
+This includes the global `(D,A,C,pitch)` / `(S,C,pitch)` caches and hot-path memoization. Throughput is sufficient for interactive editing, part extraction, and large batch processes.
+
+---
 
 ## Outcome
 
-The pitch representation and operations system provides:
+* **Minimal, expressive API:** string pitch format + single factory with three intuitive lanes.
+* **Musical correctness:** exact diatonic spelling, microtonal stability, no unwanted simplification.
+* **Scalable performance:** layered caching delivers sub-10 µs ops on older hardware.
+* **Extensible architecture:** supports extreme accidentals, compound intervals (e.g., `"M13+"`), and flexible UI (interval tokens or fluid dialogs).
 
-### Minimal API Surface
-Simple string format and single factory function reduce cognitive load for musicians and developers working with pitch operations.
-
-### Comprehensive Musical Expression  
-Supports traditional tonal music, contemporary atonal compositions, and microtonal works through unified interface without compromising any musical requirement.
-
-### Performance Optimization
-Multi-layer caching strategy scales efficiently from individual pitch operations to large orchestral score processing.
-
-### Musical Correctness
-Separation of chromatic (playback) and diatonic (notation) modes ensures both frequency accuracy and spelling preservation according to musical context.
-
-### Architectural Stability
-Factory-based design provides extensibility for future musical requirements while maintaining backward compatibility and clear separation of concerns.
-
-The system establishes pitch operations as a settled architectural component, enabling confident development of higher-level musical features without revisiting fundamental representation decisions.
+This ADR cements pitch operations as a stable, high-performance foundation for Ooloi’s higher-level notation and rendering features.
