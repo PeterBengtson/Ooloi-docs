@@ -30,7 +30,7 @@
 Ooloi needs pitch operations that are fast, notation-correct, and microtonal-aware:
 
 1. **Playback accuracy**: Precise frequency (Hz) and MIDI calculations (incl. cents).
-2. **Notation correctness**: Spelling preserved under diatonic transposition (double/triple accidentals allowed), microtonal cent offsets stable.
+2. **Notation correctness**: Spelling preserved under diatonic transposition (double/triple/quadruple/etc accidentals allowed), microtonal cent offsets stable.
 
 **Alternatives considered**
 - **Compound pitch objects** (e.g., Igor Engraver): semantically clear, but higher memory/CPU overhead in large scores.
@@ -152,8 +152,8 @@ Normalization constrains cent-offset to `[-99..99]` and yields sharp-canonical p
 (def major-third-up (make-transposer :up :major :third))
 (major-third-up "C4") ;=> "E4"
 
-(def minor-sixth-down (make-transposer :down :minor :sixth))
-(minor-sixth-down "A4") ;=> "C4"
+(def major-sixth-down (make-transposer :down :major :sixth))
+(major-sixth-down "A4") ;=> "C4"
 ```
 
 **Real-World Transposition Scenarios:**
@@ -227,7 +227,7 @@ Normalization constrains cent-offset to `[-99..99]` and yields sharp-canonical p
 
 ## Challenges Addressed
 
-* **Diatonic spelling preservation:** letter-first logic with `(D,A,C)` yields exact spellings (double/triple accidentals allowed); **no enharmonic simplification**.
+* **Diatonic spelling preservation:** letter-first logic with `(D,A,C)` yields exact spellings (double/triple/quadruple/etc accidentals allowed); **no enharmonic simplification**.
 * **Microtonal stability:** cents are applied after the semitone computation and preserved predictably.
 * **Round-trip guarantees:**
 
