@@ -389,7 +389,7 @@ The examples above demonstrate transducers in action. Here's what's happening:
 
 Transducers are efficient, composable data transformations. They process sequences without creating unnecessary intermediate collections - particularly useful for large musical scores.
 
-The musical context makes it natural because you're always doing multi-step processing: find the pitches, filter by range, transpose, convert to MIDI. Transducers just make this efficient and elegant.
+The musical context makes it natural because you're always doing multi-step processing: find the pitches, filter by range, apply transposers, convert to MIDI. Transducers just make this efficient and elegant.
 
 ```clojure
 ;; Same thing, but composed into a single transformation
@@ -486,12 +486,12 @@ Transducers become essential for:
 ;; Small chamber piece (1000 total elements) - either approach works fine
 (->> (timewalk string-quartet {:boundary-vpd []})
      (filter pitch??)
-     (map transpose))
+     (map (comp (make-transposer :up :major :second) item)))
 
-;; Large symphony (50,000+ total elements) - transducers prevent memory pressure  
+;; Large symphony (50,000+ total elements) - transducers prevent memory pressure
 (into []
       (comp (filter pitch??)
-            (map transpose))
+            (map (comp (make-transposer :up :major :second) item)))
       (timewalk symphony {:boundary-vpd []}))
 ```
 
@@ -685,12 +685,12 @@ For large orchestral scores, this is the difference between processing the entir
 ### Example 5: Transpose Pitches
 
 ```clojure
-;; Transpose all pitches up a major third (4 semitones)
+;; Transpose all pitches up a major third
 (->> (timewalk piece {:boundary-vpd voice-vpd})
      (filter pitch??)
-     (map (fn [result]
-            (let [transposed-pitch (transpose-pitch (item result) 4)]
-              [transposed-pitch (vpd result) (position result)]))))
+     (map (let [transposer (make-transposer :up :major :third)]
+            (fn [result]
+              [(transposer (item result)) (vpd result) (position result)])))
 ```
 
 ### Example 6: Prepare for MIDI Output
@@ -742,12 +742,10 @@ Here's the kind of chain mentioned - find pitches, filter range, transpose, send
      (filter pitch??)
      ;; 2. Filter away notes below C3 (MIDI 48)
      (filter #(>= (midi-number (:note (item %))) 48))
-     ;; 3. Transpose up a major third (4 semitones)
-     (map (fn [result]
-            (let [old-midi (midi-number (:note (item result)))
-                  new-midi (+ old-midi 4)
-                  new-note (midi-to-note new-midi)]
-              [new-note (vpd result) (position result)])))
+     ;; 3. Transpose up a major third
+     (map (let [transposer (make-transposer :up :major :third)]
+            (fn [result]
+              [(transposer (item result)) (vpd result) (position result)])))
      ;; 4. Convert to MIDI events
      (map (fn [[note vpd position]]
             {:note-on (midi-number note)
@@ -763,17 +761,17 @@ Here's the kind of chain mentioned - find pitches, filter range, transpose, send
 
 ```clojure
 ;; Apply to any number of pieces - same transformation, reusable
-(sequence (comp (timewalk {:boundary-vpd voice-vpd})
-                (filter pitch??)
-                (filter #(>= (midi-number (:note (item %))) 48))
-                absolute-time
-                (map (fn [[pitch vpd abs-time]]
-                       (let [old-midi (midi-number (:note pitch))
-                             new-midi (+ old-midi 4)]
-                         {:note-on new-midi
-                          :velocity 64
-                          :time abs-time
-                          :channel 0}))))
+(let [transposer (make-transposer :up :major :third)]
+  (sequence (comp (timewalk {:boundary-vpd voice-vpd})
+                  (filter pitch??)
+                  (filter #(>= (midi-number (:note (item %))) 48))
+                  absolute-time
+                  (map (fn [[pitch vpd abs-time]]
+                         (let [transposed-pitch (transposer pitch)]
+                           {:note-on (midi-number (:note transposed-pitch))
+                            :velocity 64
+                            :time abs-time
+                            :channel 0})))))
           [piece1 piece2 piece3])
 ```
 

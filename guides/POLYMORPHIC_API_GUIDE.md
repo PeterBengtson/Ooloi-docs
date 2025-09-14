@@ -80,7 +80,7 @@ Ooloi's polymorphic API represents a type-driven software architecture approach 
 
 **The API achieves musical abstraction by eliminating the gap between musical concepts and computational operations:**
 
-- **Musical vocabulary**: `add-musician`, `set-tempo`, `transpose-element` - functions use terms musicians understand
+- **Musical vocabulary**: `add-musician`, `set-tempo`, `(make-transposer :up :major :second)` - functions use terms musicians understand
 - **Musical hierarchy**: VPD paths like `[:musicians 0 :instruments 0 :staves 0]` mirror how musicians navigate scores  
 - **Musical operations**: Actions respect musical relationships and constraints automatically
 - **Musical predicates**: `pitch?`, `chord?`, `rhythmic-item?` enable musical reasoning in code
@@ -100,7 +100,7 @@ Ooloi's polymorphic API represents a type-driven software architecture approach 
 ;; Complex operations through simple composition
 (sequence (comp (timewalk {:boundary-vpd melody-voice})
                 (filter pitch??)
-                (map #(transpose-element (item %) 4)))
+                (map (comp (make-transposer :up :major :third) item)))
           [piece])                                  ; "Transpose melody up major third"
 ```
 
@@ -311,7 +311,7 @@ This function integrates with Ooloi's STM-gRPC system to provide distributed tra
 Ooloi's API operates as a platform by hiding implementation complexity while exposing musical capability:
 
 **What the API Brings (Musical Focus):**
-- Operations that mirror musical thinking: `add-musician`, `transpose-element`, `set-tempo`
+- Operations that mirror musical thinking: `add-musician`, `(make-transposer :down :perfect :fifth)`, `set-tempo`
 - Universal hierarchy navigation: same functions work at any structural level
 - Type-safe musical reasoning: `pitch?`, `rhythmic-item?`, `transposable?`
 - Automatic temporal coordination through timewalk
@@ -412,15 +412,15 @@ The `isa?` function enables hierarchical type checking:
 ;; Use standard predicate from core
 
 ;; Usage in musical operations
-(defn transpose-elements [elements semitones]
+(defn transpose-elements [elements transposer]
   "Transpose only elements that support transposition."
   (->> elements
        (filter transposable?)                     ; Only transposable elements
-       (map #(transpose-element % semitones))))   ; Apply transposition
+       (map transposer)))                         ; Apply transposition
 
 ;; Practical application
 (def mixed-elements [pitch1 chord1 rest1 tuplet1])
-(transpose-elements mixed-elements 4)  ; Only pitch1, chord1, tuplet1 affected
+(transpose-elements mixed-elements (make-transposer :chromatic 4))  ; Only pitch1, chord1, tuplet1 affected
 ```
 
 ## 🟢 The Canonical Example: VPD vs Object Dispatch
@@ -931,8 +931,8 @@ A key aspect is how **every operation** gets VPD capability automatically:
 (m/defmethod set-duration Ornament [ornament duration]
   (assoc ornament :duration duration))
 
-(m/defmethod transpose-element Ornament [ornament semitones]
-  (update ornament :base-note #(transpose-note % semitones)))
+(m/defmethod transpose-element Ornament [ornament transposer]
+  (update ornament :base-note transposer))
 
 (m/defmethod add-attachment Ornament [ornament attachment]
   (update ornament :attachments conj attachment))
@@ -953,12 +953,13 @@ A key aspect is how **every operation** gets VPD capability automatically:
               ornament-instance)  ; Works automatically
 
 ;; Trait-based operations work immediately
-(defn transpose-all-transposable [elements semitones]
+(defn transpose-all-transposable [elements transposer]
   (->> elements
        (filter transposable?)                      ; Includes new Ornament type!
-       (map #(transpose-element % semitones))))
+       (map #(transpose-element % transposer))))
 
-(transpose-all-transposable [pitch chord ornament] 4)  ; Ornament gets transposed too!
+(transpose-all-transposable [pitch chord ornament]
+                           (make-transposer :chromatic 4))  ; Ornament gets transposed too!
 ```
 
 ### Adding New Operations
@@ -1144,14 +1145,14 @@ Clojure's multimethod system enables uniform extensibility: define once, works e
 (find-transposable-containers mixed-elements)  ; => [tuplet tremolando]
 
 ;; Trait-based operation composition
-(defn transpose-containers-recursively [elements semitones]
+(defn transpose-containers-recursively [elements transposer]
   "Transpose containers and their contents."
   (->> elements
        find-transposable-containers
        (map (fn [container]
               (-> container
-                  (transpose-element semitones)              ; Transpose container
-                  (update-items #(transpose-element % semitones)))))))  ; Transpose contents
+                  (transpose-element transposer)              ; Transpose container
+                  (update-items #(transpose-element % transposer)))))))  ; Transpose contents
 ```
 
 ### Helper Functions for Trait Testing
@@ -1174,7 +1175,7 @@ Clojure's multimethod system enables uniform extensibility: define once, works e
 (sequence (comp (timewalk {:boundary-vpd voice-vpd})
                 (filter rhythmic-item??)      ; Only elements with duration
                 (filter transposable??)       ; Only transposable elements
-                (map #(transpose-element (item %) 4)))   ; Transpose up major third
+                (map (comp (make-transposer :up :major :third) item)))   ; Transpose up major third
           [piece])
 ```
 
@@ -1605,11 +1606,11 @@ Understanding when to use each dispatch mechanism:
 ### Pattern 1: Type-Safe Collection Operations
 
 ```clojure
-(defn transpose-compatible-elements [elements semitones]
+(defn transpose-compatible-elements [elements transposer]
   "Transpose only elements that support transposition."
   (->> elements
        (filter transposable?)
-       (map #(api/transpose-element % semitones))))
+       (map transposer)))
 
 (defn attach-to-compatible-elements [elements attachment]  
   "Attach to only elements that support attachments."
@@ -1659,7 +1660,7 @@ Understanding when to use each dispatch mechanism:
   ::Microtone
   [::h/Musical ::h/RhythmicItem ::h/Transposable]
   {get-duration (fn [microtone] (:duration microtone))
-   transpose-element (fn [microtone cents] (update microtone :pitch + cents))})
+   transpose-element (fn [microtone transposer] (update microtone :pitch transposer))})
 ```
 
 ## Troubleshooting
