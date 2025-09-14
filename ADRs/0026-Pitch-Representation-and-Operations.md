@@ -15,6 +15,7 @@
 - [Detailed Design](#detailed-design)
   - [Pitch String Format & Normalization](#pitch-string-format--normalization)
   - [Transposition Lanes & Grammars](#transposition-lanes--grammars)
+  - [Musical Examples](#musical-examples)
   - [Error Handling](#error-handling)
 - [Challenges Addressed](#challenges-addressed)
 - [Caching Strategy](#caching-strategy)
@@ -134,6 +135,85 @@ Normalization constrains cent-offset to `[-99..99]` and yields sharp-canonical p
   ```
 
 * **Chromatic:** `(make-transposer :chromatic 3)` ⇒ up 3 semitones.
+
+### Musical Examples
+
+**Common Musical Intervals:**
+
+```clojure
+;; Every musician intuitively understands these
+(def up-octave (make-transposer :up :octave))
+(up-octave "C4")  ;=> "C5"
+
+(def down-fifth (make-transposer :down :perfect :fifth))
+(down-fifth "G4") ;=> "C4"
+
+(def major-third-up (make-transposer :up :major :third))
+(major-third-up "C4") ;=> "E4"
+
+(def minor-sixth-down (make-transposer :down :minor :sixth))
+(minor-sixth-down "A4") ;=> "C4"
+```
+
+**Real-World Transposition Scenarios:**
+
+```clojure
+;; Transpose melody from C major to F major
+(def to-f-major (make-transposer :up :perfect :fourth))
+(map to-f-major ["C4" "D4" "E4" "F4" "G4"])
+;=> ["F4" "G4" "A4" "Bb4" "C5"]
+
+;; Move bass line down an octave
+(def bass-register (make-transposer :down :octave))
+(map bass-register ["G3" "F3" "E3" "D3"])
+;=> ["G2" "F2" "E2" "D2"]
+
+;; Jazz harmony - chromatic approach notes
+(def chromatic-up (make-transposer :chromatic 1))
+(chromatic-up "B3") ;=> "C4"  ; leading tone resolution
+
+;; Microtonal fine-tuning
+(def slightly-flat (make-transposer :up :perfect :unison :cents -10))
+(slightly-flat "A4") ;=> "A4-10"
+```
+
+**Advanced Musical Applications:**
+
+```clojure
+;; Modal interchange - borrow from parallel modes
+(def flatten-third (make-transposer :down :augmented :unison))  ; semitone down
+(flatten-third "E4") ;=> "Eb4"  ; major → minor third
+
+;; Compound intervals with threading
+(let [up-m7 (make-transposer :up :major :seventh)
+      up-m2 (make-transposer :up :major :second)]
+  (->> "C4"
+       up-m7      ; up M7
+       up-m2))    ; then up M2
+;=> "D5"  ; net result: major ninth up
+
+;; Efficient bulk transposition with transducers
+(into []
+      (map (make-transposer :up :perfect :fourth))
+      ["C4" "D4" "E4" "F4" "G4"])
+;=> ["F4" "G4" "A4" "Bb4" "C5"]  ; to F major
+```
+
+**Three Lanes for Different Contexts:**
+
+```clojure
+;; Interval strings - compact, precise
+(def tritone-up (make-transposer :interval "A4+"))
+(def diminished-seventh-down (make-transposer :interval "d7-"))
+
+;; Fluid keywords - crystal clear for UI/dialogue
+(def augmented-sixth-up (make-transposer :up :augmented :sixth))
+(def minor-tenth-down (make-transposer :down :minor :third :octave))
+
+;; Chromatic - direct for MIDI/playback
+(def whole-step-up (make-transposer :chromatic 2))
+(def quarter-tone-sharp (make-transposer :chromatic 0 :cents 50))
+```
 
 ### Error Handling
 
