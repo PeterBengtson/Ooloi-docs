@@ -438,11 +438,11 @@ For interval string and fluid keyword lanes, the system uses an internal `(D,A,C
    - Diatonic: `[D A C pitch-str]` → output
    - Chromatic: `[S C pitch-str]` → output  
 3. **Primitive hot caches**: Pitch decomposition and conversion (memoized)
-4. **Per-closure memo**: Individual transposer functions maintain their own cache
+4. **Shared global access**: Individual transposer functions delegate to shared global caches using their configuration parameters as part of the cache key
 
 **Cache keys:**
-- Diatonic: `[D A C pitch-str]`
-- Chromatic: `[S C pitch-str]`
+- Diatonic global cache: `[D A C pitch-str]` (shared by all diatonic transposers)
+- Chromatic global cache: `[S C pitch-str]` (shared by all chromatic transposers)  
 - Factory cache: raw argument vector
 - Conversion cache: pitch string
 
