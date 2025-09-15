@@ -42,10 +42,20 @@
 
 Ooloi requires pitch operations that are fast, notation-correct, and microtonal-aware:
 
-1. **Playback accuracy**: Precise frequency (Hz) and MIDI calculations including microtonal cent offsets
+1. **Playback accuracy**: Precise frequency (Hz) calculations including microtonal cent offsets
 2. **Notation correctness**: Spelling preserved under diatonic transposition with support for multiple accidentals
 3. **Performance**: Efficient operations for large orchestral scores
 4. **Integration**: Seamless interaction with parsers, serializers, and caching systems
+
+**Note on audio architecture**: As established in [ADR-0027 Plugin-Based Audio Architecture](0027-Plugin-Based-Audio-Architecture.md), Ooloi core provides no audio or MIDI functionality. All audio processing occurs in frontend plugins. The MIDI calculations in this ADR serve computational purposes (frequency conversion reference) rather than direct MIDI output.
+
+**Historical note on A4 = 440 Hz standard**: The A4 = 440 Hz reference significantly predates MIDI (1834 Scheibler recommendation, 1955 ISO standardization vs. early 1980s MIDI development). Scientific pitch notation with A4 designation also predates MIDI by decades. MIDI adopted these existing musical conventions rather than establishing them. The A4 reference in frequency calculations reflects fundamental musical mathematics, not MIDI dependency.
+
+**Future API evolution**: The `ops.pitches` namespace serves both backend (Hz calculations) and frontend (MIDI input device handling). The current `convert` function calculates both `:hz` and `:midi` values, but this conflates concerns. **MIDI number calculations are vestigial and will be removed from backend operations** as the backend never touches MIDI. Future refinement will separate these:
+- Backend-focused conversion: pitch string → Hz only  
+- Frontend helper function: Hz → MIDI number + cent offset for MIDI plugins
+
+This would align with the strict frontend-backend separation whilst maintaining shared pitch representation.
 
 **Alternatives considered:**
 - **Compound pitch objects** (e.g., Igor Engraver style): semantically clear but higher memory/CPU overhead
@@ -127,6 +137,8 @@ cents       ::= [+-]\d+         // Optional cent offset
 3. **Octave adjustment**: Large cent offsets adjust octave accordingly
 4. **No mixed accidentals**: Sharps and flats cannot be combined (validation error)
 
+Canonicalisation (sharp-only) is applied in conversion, sorting, and chromatic transposition. Diatonic transposition never simplifies spelling — double/triple accidentals are preserved exactly.
+
 ### Examples of Normalisation
 ```clojure
 "Dbb3"     => {:pitch "C", :octave 3, :cent-offset 0}
@@ -157,6 +169,8 @@ cents       ::= [+-]\d+         // Optional cent offset
 (convert "G9")
 => {:pitch "G", :octave 9, :cent-offset 0, :midi 127, :hz 12543.85}
 ```
+
+**Note**: `:midi` values in these examples are vestigial and will be removed from backend calculations. A separate frontend helper function will convert Hz values to MIDI number + cent offset for MIDI plugins that require this conversion.
 
 **Design benefits:**
 - Results memoized with LRU cache (10,000 entries) for performance
@@ -298,6 +312,12 @@ The transposer factory provides three distinct input methods for different conte
 - **Modifiers**: `:augmented`, `:diminished` (repeatable)
 - **Cents**: `:cents <integer>`
 
+**Validation:**
+- Exactly one ordinal must be present
+- Base quality must match the degree (1/4/5 → `:perfect`; 2/3/6/7 → `:major` | `:minor`)
+- `:augmented` / `:diminished` are additive and repeatable
+- Reject lane mixing and duplicate/conflicting directions
+
 #### Lane 3: Chromatic (Semitone-Based)
 **Direct semitone transposition with canonical spelling:**
 
@@ -420,11 +440,28 @@ For interval string and fluid keyword lanes, the system uses an internal `(D,A,C
 3. **Primitive hot caches**: Pitch decomposition and conversion (memoized)
 4. **Per-closure memo**: Individual transposer functions maintain their own cache
 
+**Cache keys:**
+- Diatonic: `[D A C pitch-str]`
+- Chromatic: `[S C pitch-str]`
+- Factory cache: raw argument vector
+- Conversion cache: pitch string
+
 **Cache management:**
 ```clojure
 (clear-transposition-caches!)  ; Clears all transposition-related caches
 (clear-convert-cache!)         ; Clears pitch conversion cache
 ```
+
+### Why a Factory
+
+* **Higher-order closures** capture configuration once; application cost is minimal.
+* **Composability** with `comp`, threading, etc.
+* **Separation of concerns:** interval-string lane (UI-friendly), fluid lane (dialog-friendly), and chromatic lane (playback/MIDI).
+
+**Benefits:**
+- Closures capture configuration once → minimal per-call cost
+- Naturally composable with `comp`, threading, transducers
+- Supports multiple syntaxes (interval strings, keywords, chromatic) without duplicating logic
 
 ### Performance Benchmarks
 
