@@ -14,7 +14,7 @@
   - [Raw vs. Derived Statistics Architecture](#raw-vs-derived-statistics-architecture)
   - [Statistics Collection Points](#statistics-collection-points)
   - [Statistics Collection Implementation](#statistics-collection-implementation)
-    - [Direct Increment Architecture](#direct-increment-architecture)
+    - [Helper Function Architecture](#helper-function-architecture)
     - [Performance Characteristics](#performance-characteristics)
     - [Zero-Cost Collection Principle](#zero-cost-collection-principle)
 - [Health Monitoring Integration](#health-monitoring-integration)
@@ -300,7 +300,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 ### Statistics Collection Points
 
-**Implementation Pattern**: All statistics collection uses direct LongAdder increments at integration points. Statistics helper functions extract raw operational data and directly increment the appropriate LongAdder counters.
+**Implementation Pattern**: All statistics collection uses helper functions at integration points. Statistics helper functions extract raw operational data and increment the appropriate LongAdder counters using direct `.add()` calls internally.
 
 **🔑 Key Architectural Benefit**: These integration point functions remain **completely stable** when adding or removing statistics. All statistics complexity is abstracted into helper functions, so integration points never need to change when the statistics requirements evolve.
 
@@ -315,7 +315,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
       (let [result (execute-api-method method-name protobuf-request)
             end-time (System/currentTimeMillis)]
             
-        ;; Clean abstraction - direct LongAdder increments
+        ;; Clean abstraction - helper functions handle LongAdder increments
         (increment-api-stats server-component client-id 
                            {:start-time start-time
                             :end-time end-time
@@ -351,7 +351,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
         queue (get-client-queue client-id)
         offer-success (.offer queue event-message)]
         
-    ;; Clean abstraction - direct LongAdder increments
+    ;; Clean abstraction - helper functions handle LongAdder increments
     (increment-event-stats server-component client-id
                          {:event-type (:type event-message)
                           :event-bytes event-bytes
@@ -373,7 +373,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
       {:metadata {:connected-ns connect-time-ns
                   :connected-at (/ (System/currentTimeMillis) 1000.0)}})
     
-    ;; Clean abstraction - direct LongAdder increments
+    ;; Clean abstraction - helper functions handle LongAdder increments
     (increment-connection-stats server-component client-id
                               {:event-type :connect})
     client-id))
@@ -387,7 +387,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
     ;; Remove client from system
     (unregister-client client-id)
     
-    ;; Clean abstraction - direct LongAdder increments
+    ;; Clean abstraction - helper functions handle LongAdder increments
     (increment-connection-stats server-component client-id
                               {:event-type :disconnect
                                :connect-time connect-time-ns
@@ -397,14 +397,19 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 ### Statistics Collection Implementation
 
-#### Direct Increment Architecture
+#### Helper Function Architecture
 
-Statistics collection uses direct LongAdder increments at integration points for maximum performance:
+Statistics collection uses helper functions at integration points for maximum performance, with direct LongAdder increments handled internally:
+
+**Architectural Layers**:
+- **Integration Points**: Use high-level helper functions (`increment-api-stats`, `increment-event-stats`)
+- **Helper Functions**: Use basic statistics API (`inc-server-stat!`, `inc-client-stat!`)
+- **Basic API**: Uses direct LongAdder `.add()` calls for maximum performance
 
 **Note**: The increment functions below will be implemented in `backend/src/main/clojure/ooloi/backend/grpc/stats.clj` to separate statistics concerns from gRPC business logic.
 
 ```clojure
-;; Direct increment helper functions using basic statistics API
+;; Integration helper functions using basic statistics API
 (defn increment-api-stats 
   "Increment API call statistics for both server and client.
    
@@ -548,7 +553,7 @@ Statistics collection uses direct LongAdder increments at integration points for
 **Architecture Benefits**:
 - **Server statistics**: LongAdders eliminate all contention between operations
 - **Client statistics**: Individual LongAdders within connection registry, zero inter-client contention
-- **No queues needed**: Direct `.add()` calls scale near-linearly without blocking
+- **No queues needed**: Helper functions use direct `.add()` calls internally, scaling near-linearly without blocking
 
 #### Zero-Cost Collection Principle
 
