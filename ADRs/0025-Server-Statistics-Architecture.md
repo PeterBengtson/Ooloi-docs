@@ -224,9 +224,10 @@ Extend existing connection registry with separate top-level `:client-statistics`
    ;; ERROR TRACKING COUNTERS
    ;; ==========================================
    :network-errors (LongAdder.)              ; Network-level failures
-   :serialization-errors (LongAdder.)        ; Protobuf conversion failures  
+   :serialization-errors (LongAdder.)        ; Protobuf conversion failures
    :conversion-errors (LongAdder.)           ; Clojure<->Protobuf failures
    :timeout-errors (LongAdder.)              ; Request timeout failures
+   :internal-errors (LongAdder.)             ; Unexpected server errors affecting this client
 
    ;; ==========================================
    ;; SUBSCRIPTION COUNTERS
