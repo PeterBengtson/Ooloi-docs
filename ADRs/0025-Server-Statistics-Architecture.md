@@ -442,7 +442,7 @@ Statistics collection uses helper functions at integration points for maximum pe
    Args:
      sc: Server component with statistics  
      client-id: String identifying the client
-     options: Map with :event-type (:server/:piece/:client-connected/:client-disconnected), 
+     options: Map with :event-type (:server/:piece/:server-client-connected/:server-client-disconnected/:client-registration-confirmed),
               :offer-success (boolean), :event-bytes (long)"
   [sc client-id {:keys [event-type offer-success event-bytes]}]
   ;; Server statistics - shared counters
@@ -455,8 +455,9 @@ Statistics collection uses helper functions at integration points for maximum pe
         (case event-type
           :server (inc-server-stat! sc :server-events-sent)
           :piece (inc-server-stat! sc :piece-events-sent)
-          :client-connected (inc-server-stat! sc :connect-events-sent)
-          :client-disconnected (inc-server-stat! sc :disconnect-events-sent)
+          :server-client-connected (inc-server-stat! sc :connect-events-sent)
+          :server-client-disconnected (inc-server-stat! sc :disconnect-events-sent)
+          :client-registration-confirmed (inc-server-stat! sc :connect-events-sent)
           nil))
     (do (inc-server-stat! sc :events-dropped-total)
         (inc-server-stat! sc :event-queues-overflow-total)
@@ -464,8 +465,9 @@ Statistics collection uses helper functions at integration points for maximum pe
         (case event-type
           :server (inc-server-stat! sc :server-events-dropped-total)
           :piece (inc-server-stat! sc :piece-events-dropped-total)
-          :client-connected (inc-server-stat! sc :connect-events-dropped-total)
-          :client-disconnected (inc-server-stat! sc :disconnect-events-dropped-total)
+          :server-client-connected (inc-server-stat! sc :connect-events-dropped-total)
+          :server-client-disconnected (inc-server-stat! sc :disconnect-events-dropped-total)
+          :client-registration-confirmed (inc-server-stat! sc :connect-events-dropped-total)
           nil)))
   
   ;; Client statistics - individual counters
