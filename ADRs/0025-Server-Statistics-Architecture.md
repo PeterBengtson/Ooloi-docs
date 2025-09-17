@@ -151,10 +151,24 @@ Add new `server-statistics` component field containing a map of thread-safe Long
  :conversion-errors-total (LongAdder.)         ; Protobuf conversion failures
  :serialization-errors-total (LongAdder.)     ; Data serialization failures
  :network-errors-total (LongAdder.)           ; Network-level errors
- :internal-errors-total (LongAdder.)          ; Unexpected server errors  
+ :internal-errors-total (LongAdder.)          ; Unexpected server errors
  :timeout-errors-total (LongAdder.)           ; Request timeout failures
  :client-errors-total (LongAdder.)            ; Client-side error responses
  :server-errors-total (LongAdder.)            ; Server-side error responses
+
+ ;; DUAL-TRACKING ARCHITECTURE: Most statistics have BOTH server total
+ ;; counters AND individual client counters. Server totals (suffix -total)
+ ;; aggregate across all clients, while client counters track per-connection
+ ;; metrics. This applies to API calls, byte counts, event delivery, and
+ ;; all technical error types. Server totals persist across client connections;
+ ;; client counters reset when clients disconnect.
+ ;;
+ ;; ERROR CATEGORY DEFINITIONS:
+ ;; :conversion - Logical data transformation failures (type mismatches, unsupported types, schema violations)
+ ;; :serialization - Physical encoding/decoding failures (malformed binary, wire format corruption)
+ ;; :network - Network transport failures (connection drops, timeouts, protocol errors)
+ ;; :internal - Unexpected server failures (bugs, resource exhaustion, system errors)
+ ;; :timeout - Request timeout failures (deadline exceeded, processing too slow)
 
  ;; ==========================================
  ;; COLLABORATIVE EDITING COUNTERS
