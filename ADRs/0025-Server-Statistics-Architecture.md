@@ -635,6 +635,164 @@ The HTTP endpoint **builds on** the gRPC health service:
 
 This ensures **consistent health status** across both protocols while providing different access patterns for different use cases.
 
+### Foundational Computed Statistics Implementation
+
+**Status**: ✅ **Implemented** - Basic computed statistics with proper time unit conversions
+
+The foundational layer provides essential computed statistics that support comprehensive server monitoring. This provides the architectural foundation for startup time tracking, time unit standardization, and content negotiation patterns.
+
+#### Current Basic Health Endpoint (`/health`)
+
+**Implementation**: `backend/src/main/clojure/ooloi/backend/components/http_server.clj`
+
+**Content Negotiation**: Full ADR-0025 architecture implemented
+- **Default JSON format**: `GET /health` returns JSON with underscored field names
+- **Prometheus text format**: `Accept: text/plain` or `User-Agent: Prometheus/*` triggers Prometheus exposition format
+- **Query parameter override**: `?format=prom` forces Prometheus text, `?format=json` forces JSON
+
+#### Foundational JSON Response Structure
+
+```json
+{
+  "status": "SERVING",
+  "timestamp_unix_seconds": 1758127610.882,
+  "server": {
+    "uptime_seconds": 47.335938085,
+    "memory": {
+      "max_bytes": 4294967296,
+      "total_bytes": 161480704,
+      "used_bytes": 62730368,
+      "free_bytes": 98750336,
+      "usage_ratio": 0.01460555195808411
+    },
+    "garbage_collection": [
+      {
+        "name": "G1 Young Generation",
+        "collection_count": 26,
+        "collection_time_seconds": 0.154
+      },
+      {
+        "name": "G1 Concurrent GC",
+        "collection_count": 6,
+        "collection_time_seconds": 0.011
+      },
+      {
+        "name": "G1 Old Generation",
+        "collection_count": 0,
+        "collection_time_seconds": 0
+      }
+    ]
+  },
+  "clients": []
+}
+```
+
+#### Foundational Prometheus Response Format
+
+```
+# HELP ooloi_server_serving Server health status (1=serving, 0=not_serving)
+# TYPE ooloi_server_serving gauge
+ooloi_server_serving 1
+
+# HELP ooloi_server_uptime_seconds Server uptime in seconds
+# TYPE ooloi_server_uptime_seconds counter
+ooloi_server_uptime_seconds 5.157864444
+
+# HELP ooloi_server_timestamp_unix_seconds Current UNIX timestamp in seconds
+# TYPE ooloi_server_timestamp_unix_seconds gauge
+ooloi_server_timestamp_unix_seconds 1.758128012992E9
+
+# HELP ooloi_jvm_memory_max_bytes Maximum JVM memory in bytes
+# TYPE ooloi_jvm_memory_max_bytes gauge
+ooloi_jvm_memory_max_bytes 4294967296
+
+# HELP ooloi_jvm_memory_used_bytes Used JVM memory in bytes
+# TYPE ooloi_jvm_memory_used_bytes gauge
+ooloi_jvm_memory_used_bytes 56486080
+
+# HELP ooloi_jvm_memory_usage_ratio JVM memory usage ratio (0-1)
+# TYPE ooloi_jvm_memory_usage_ratio gauge
+ooloi_jvm_memory_usage_ratio 0.01315169036388397
+
+# HELP ooloi_jvm_gc_collections_total Total GC collections
+# TYPE ooloi_jvm_gc_collections_total counter
+ooloi_jvm_gc_collections_total{name="G1 Young Generation"} 27
+
+# HELP ooloi_jvm_gc_time_seconds_total Total GC time in seconds
+# TYPE ooloi_jvm_gc_time_seconds_total counter
+ooloi_jvm_gc_time_seconds_total{name="G1 Young Generation"} 0.159
+
+# HELP ooloi_jvm_gc_collections_total Total GC collections
+# TYPE ooloi_jvm_gc_collections_total counter
+ooloi_jvm_gc_collections_total{name="G1 Concurrent GC"} 6
+
+# HELP ooloi_jvm_gc_time_seconds_total Total GC time in seconds
+# TYPE ooloi_jvm_gc_time_seconds_total counter
+ooloi_jvm_gc_time_seconds_total{name="G1 Concurrent GC"} 0.012
+
+# HELP ooloi_jvm_gc_collections_total Total GC collections
+# TYPE ooloi_jvm_gc_collections_total counter
+ooloi_jvm_gc_collections_total{name="G1 Old Generation"} 0
+
+# HELP ooloi_jvm_gc_time_seconds_total Total GC time in seconds
+# TYPE ooloi_jvm_gc_time_seconds_total counter
+ooloi_jvm_gc_time_seconds_total{name="G1 Old Generation"} 0.0
+```
+
+#### Time Unit Conversion Architecture
+
+**Design Principle**: Nanoseconds internal precision, seconds external exposure
+
+1. **Server Startup Tracking**:
+   - **Internal**: `(System/nanoTime)` stored as `:started-at-ns` in gRPC server component
+   - **External**: `uptime_seconds = (current-nanos - started-at-ns) / 1.0e9`
+
+2. **UNIX Timestamps**:
+   - **Internal**: `(System/currentTimeMillis)` - milliseconds from JVM API
+   - **External**: `timestamp_unix_seconds = timestamp-ms / 1000.0`
+
+3. **Garbage Collection Time**:
+   - **Internal**: `.getCollectionTime()` returns milliseconds from JVM
+   - **External**: `collection_time_seconds = collection-time-ms / 1000.0`
+
+#### Field Naming Convention
+
+**HTTP Boundary Transformation**: Internal hyphenated names → External underscored names
+- **Purpose**: Universal compatibility with monitoring tools and JSON consumers
+- **Implementation**: Direct field naming at serialization boundary
+- **Examples**:
+  - Internal: `:started-at-ns`, `:uptime-seconds` (planned)
+  - External: `"timestamp_unix_seconds"`, `"uptime_seconds"`, `"collection_time_seconds"`
+
+#### Integration with gRPC Server Component
+
+**Dependency Architecture**: HTTP server depends on gRPC server component for startup timing
+```clojure
+;; gRPC server component initialization
+(let [started-at-ns (System/nanoTime)]
+  {:started-at-ns started-at-ns
+   ;; ... other component data
+   })
+
+;; HTTP server accesses startup time for uptime calculation
+(let [started-at-ns (:started-at-ns grpc-server)
+      current-ns (System/nanoTime)
+      uptime-seconds (/ (- current-ns started-at-ns) 1.0e9)]
+  ;; Use in both JSON and Prometheus responses
+  )
+```
+
+#### Foundation for Comprehensive Statistics Extension
+
+This foundational layer establishes:
+- ✅ **Content negotiation architecture** - JSON/Prometheus format detection
+- ✅ **Time unit conversion patterns** - Internal precision, external seconds
+- ✅ **Field naming conventions** - Underscored HTTP boundary naming
+- ✅ **Component integration** - gRPC server ↔ HTTP server dependency injection
+- ✅ **Startup time tracking** - Real uptime vs epoch timestamp calculation
+
+**Comprehensive Statistics Architecture**: The production monitoring system provides 57 LongAdder-based statistics fields built upon this foundational computed statistics architecture.
+
 ### HTTP Statistics Endpoints - Content Negotiation Architecture
 
 **Enterprise-grade content negotiation** serving multiple formats from single URLs:
@@ -735,6 +893,7 @@ GET /health/resources          # Memory, threads, queue usage
       "bytes_api_requests": 93456,
       "bytes_api_responses": 51234,
       "network_errors": 0,
+      "internal_errors": 0,
       "serialization_errors": 0,
       "conversion_errors": 0,
       "timeout_errors": 0,
