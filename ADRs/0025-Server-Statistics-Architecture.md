@@ -682,8 +682,7 @@ The foundational layer provides essential computed statistics that support compr
         "collection_time_seconds": 0
       }
     ]
-  },
-  "clients": []
+  }
 }
 ```
 
@@ -798,14 +797,32 @@ This foundational layer establishes:
 **Enterprise-grade content negotiation** serving multiple formats from single URLs:
 
 ```http
-GET /health                    # Basic health status (existing)
-GET /health/server             # Server-wide aggregate metrics
-GET /health/clients            # Per-client metrics summary  
-GET /health/clients/{id}       # Specific client detailed metrics
-GET /health/performance        # Throughput and ratios derived from counters
-GET /health/errors             # Error rates and categorization
-GET /health/resources          # Memory, threads, queue usage
+GET /health                    # Standard health check + operational context (uptime, memory, GC)
+GET /health/server             # Comprehensive server statistics + thread info + client IDs
+GET /health/clients            # All client statistics with queue information
+GET /health/clients/{id}       # Individual client detailed metrics
 ```
+
+**Endpoint Purpose & Design:**
+
+- **`/health`**: Industry-standard health endpoint providing immediate operational context
+  - **Primary**: Health status for load balancers, Kubernetes probes, service discovery
+  - **Secondary**: Essential operational metrics (uptime, memory, GC) for development and basic monitoring
+  - **Performance**: Lightweight, < 1ms response time
+  - **Content**: Status + computed statistics only (no LongAdder-based metrics)
+
+- **`/health/server`**: Complete server operational dashboard
+  - **Primary**: Production monitoring with full 57-field LongAdder statistics
+  - **Content**: All server metrics + thread information + client ID references
+  - **Use Case**: Prometheus scraping, operational dashboards, capacity planning
+
+- **`/health/clients`**: Client operational overview
+  - **Content**: Per-client statistics including queue metrics and connection state
+  - **Use Case**: Client monitoring dashboards, performance analysis
+
+- **`/health/clients/{id}`**: Individual client deep-dive
+  - **Content**: Complete client statistics and queue state for debugging
+  - **Use Case**: Troubleshooting specific client issues
 
 #### Content Negotiation Contract
 
