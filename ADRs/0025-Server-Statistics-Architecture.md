@@ -681,7 +681,15 @@ The foundational layer provides essential computed statistics that support compr
         "collection_count": 0,
         "collection_time_seconds": 0
       }
-    ]
+    ],
+    "threads": {
+      "count_current": 24,
+      "count_peak": 28,
+      "count_daemon": 21,
+      "count_started_total": 31,
+      "cpu_time_seconds": 0.234567,
+      "user_time_seconds": 0.198432
+    }
   }
 }
 ```
@@ -736,6 +744,30 @@ ooloi_jvm_gc_collections_total{name="G1 Old Generation"} 0
 # HELP ooloi_jvm_gc_time_seconds_total Total GC time in seconds
 # TYPE ooloi_jvm_gc_time_seconds_total counter
 ooloi_jvm_gc_time_seconds_total{name="G1 Old Generation"} 0.0
+
+# HELP ooloi_jvm_threads_current Current number of threads
+# TYPE ooloi_jvm_threads_current gauge
+ooloi_jvm_threads_current 24
+
+# HELP ooloi_jvm_threads_peak Peak number of threads
+# TYPE ooloi_jvm_threads_peak gauge
+ooloi_jvm_threads_peak 28
+
+# HELP ooloi_jvm_threads_daemon Number of daemon threads
+# TYPE ooloi_jvm_threads_daemon gauge
+ooloi_jvm_threads_daemon 21
+
+# HELP ooloi_jvm_threads_started_total Total threads started
+# TYPE ooloi_jvm_threads_started_total counter
+ooloi_jvm_threads_started_total 31
+
+# HELP ooloi_jvm_thread_cpu_seconds_total Current thread CPU time in seconds
+# TYPE ooloi_jvm_thread_cpu_seconds_total counter
+ooloi_jvm_thread_cpu_seconds_total 0.234567
+
+# HELP ooloi_jvm_thread_user_seconds_total Current thread user time in seconds
+# TYPE ooloi_jvm_thread_user_seconds_total counter
+ooloi_jvm_thread_user_seconds_total 0.198432
 ```
 
 #### Time Unit Conversion Architecture
