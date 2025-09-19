@@ -650,125 +650,20 @@ The foundational layer provides essential computed statistics that support compr
 - **Prometheus text format**: `Accept: text/plain` or `User-Agent: Prometheus/*` triggers Prometheus exposition format
 - **Query parameter override**: `?format=prom` forces Prometheus text, `?format=json` forces JSON
 
-#### Foundational JSON Response Structure
+#### Response Structure
 
-```json
-{
-  "status": "SERVING",
-  "timestamp_unix_seconds": 1758127610.882,
-  "server": {
-    "uptime_seconds": 47.335938085,
-    "memory": {
-      "max_bytes": 4294967296,
-      "total_bytes": 161480704,
-      "used_bytes": 62730368,
-      "free_bytes": 98750336,
-      "usage_ratio": 0.01460555195808411
-    },
-    "garbage_collection": [
-      {
-        "name": "G1 Young Generation",
-        "collection_count": 26,
-        "collection_time_seconds": 0.154
-      },
-      {
-        "name": "G1 Concurrent GC",
-        "collection_count": 6,
-        "collection_time_seconds": 0.011
-      },
-      {
-        "name": "G1 Old Generation",
-        "collection_count": 0,
-        "collection_time_seconds": 0
-      }
-    ],
-    "threads": {
-      "count_current": 24,
-      "count_peak": 28,
-      "count_daemon": 21,
-      "count_started_total": 31,
-      "cpu_time_seconds": 0.234567,
-      "user_time_seconds": 0.198432
-    }
-  }
-}
-```
+**JSON Format** (`curl localhost:10701/health`):
+- **Root level**: `status`, `timestamp_unix_seconds`
+- **Server section**: `uptime_seconds`, `started_at_unix_seconds`, `clients_connected_current`
+- **Computed statistics**: Memory usage, garbage collection, thread metrics
+- **Field naming**: Underscored format following JSON conventions
 
-#### Foundational Prometheus Response Format
-
-```
-# HELP ooloi_server_serving Server health status (1=serving, 0=not_serving)
-# TYPE ooloi_server_serving gauge
-ooloi_server_serving 1
-
-# HELP ooloi_server_uptime_seconds Server uptime in seconds
-# TYPE ooloi_server_uptime_seconds counter
-ooloi_server_uptime_seconds 5.157864444
-
-# HELP ooloi_server_timestamp_unix_seconds Current UNIX timestamp in seconds
-# TYPE ooloi_server_timestamp_unix_seconds gauge
-ooloi_server_timestamp_unix_seconds 1.758128012992E9
-
-# HELP ooloi_jvm_memory_max_bytes Maximum JVM memory in bytes
-# TYPE ooloi_jvm_memory_max_bytes gauge
-ooloi_jvm_memory_max_bytes 4294967296
-
-# HELP ooloi_jvm_memory_used_bytes Used JVM memory in bytes
-# TYPE ooloi_jvm_memory_used_bytes gauge
-ooloi_jvm_memory_used_bytes 56486080
-
-# HELP ooloi_jvm_memory_usage_ratio JVM memory usage ratio (0-1)
-# TYPE ooloi_jvm_memory_usage_ratio gauge
-ooloi_jvm_memory_usage_ratio 0.01315169036388397
-
-# HELP ooloi_jvm_gc_collections_total Total GC collections
-# TYPE ooloi_jvm_gc_collections_total counter
-ooloi_jvm_gc_collections_total{name="G1 Young Generation"} 27
-
-# HELP ooloi_jvm_gc_time_seconds_total Total GC time in seconds
-# TYPE ooloi_jvm_gc_time_seconds_total counter
-ooloi_jvm_gc_time_seconds_total{name="G1 Young Generation"} 0.159
-
-# HELP ooloi_jvm_gc_collections_total Total GC collections
-# TYPE ooloi_jvm_gc_collections_total counter
-ooloi_jvm_gc_collections_total{name="G1 Concurrent GC"} 6
-
-# HELP ooloi_jvm_gc_time_seconds_total Total GC time in seconds
-# TYPE ooloi_jvm_gc_time_seconds_total counter
-ooloi_jvm_gc_time_seconds_total{name="G1 Concurrent GC"} 0.012
-
-# HELP ooloi_jvm_gc_collections_total Total GC collections
-# TYPE ooloi_jvm_gc_collections_total counter
-ooloi_jvm_gc_collections_total{name="G1 Old Generation"} 0
-
-# HELP ooloi_jvm_gc_time_seconds_total Total GC time in seconds
-# TYPE ooloi_jvm_gc_time_seconds_total counter
-ooloi_jvm_gc_time_seconds_total{name="G1 Old Generation"} 0.0
-
-# HELP ooloi_jvm_threads_current Current number of threads
-# TYPE ooloi_jvm_threads_current gauge
-ooloi_jvm_threads_current 24
-
-# HELP ooloi_jvm_threads_peak Peak number of threads
-# TYPE ooloi_jvm_threads_peak gauge
-ooloi_jvm_threads_peak 28
-
-# HELP ooloi_jvm_threads_daemon Number of daemon threads
-# TYPE ooloi_jvm_threads_daemon gauge
-ooloi_jvm_threads_daemon 21
-
-# HELP ooloi_jvm_threads_started_total Total threads started
-# TYPE ooloi_jvm_threads_started_total counter
-ooloi_jvm_threads_started_total 31
-
-# HELP ooloi_jvm_thread_cpu_seconds_total Current thread CPU time in seconds
-# TYPE ooloi_jvm_thread_cpu_seconds_total counter
-ooloi_jvm_thread_cpu_seconds_total 0.234567
-
-# HELP ooloi_jvm_thread_user_seconds_total Current thread user time in seconds
-# TYPE ooloi_jvm_thread_user_seconds_total counter
-ooloi_jvm_thread_user_seconds_total 0.198432
-```
+**Prometheus Format** (`curl -H "Accept: text/plain" localhost:10701/health`):
+- **Server metrics**: `ooloi_server_*` (serving status, uptime, start_time, clients_connected, timestamp)
+- **JVM metrics**: `ooloi_jvm_*` (memory usage, garbage collection, thread statistics)
+- **Metric types**: Gauges for current state, counters for cumulative values
+- **Labels**: GC collector names, thread types (where applicable)
+- **Naming**: Underscored format following Prometheus conventions
 
 #### Time Unit Conversion Architecture
 
@@ -779,12 +674,33 @@ ooloi_jvm_thread_user_seconds_total 0.198432
    - **External**: `uptime_seconds = (current-nanos - started-at-ns) / 1.0e9`
 
 2. **UNIX Timestamps**:
+   - **Internal**: `(System/currentTimeMillis)` stored as `:started-at-ms` in gRPC server component
+   - **External**: `started_at_unix_seconds = started-at-ms / 1000.0`
+
+3. **Current Timestamps**:
    - **Internal**: `(System/currentTimeMillis)` - milliseconds from JVM API
    - **External**: `timestamp_unix_seconds = timestamp-ms / 1000.0`
 
-3. **Garbage Collection Time**:
+4. **Garbage Collection Time**:
    - **Internal**: `.getCollectionTime()` returns milliseconds from JVM
    - **External**: `collection_time_seconds = collection-time-ms / 1000.0`
+
+#### Computed Statistics Architecture
+
+**Design Principle**: Derive operational insights from existing LongAdder counters without additional overhead
+
+**Current Client Connections**:
+- **Source**: LongAdder counters `:clients-connected-total` and `:clients-disconnected-total`
+- **Computation**: `current-clients = max(0, connected-total - disconnected-total)`
+- **JSON Field**: `clients_connected_current`
+- **Prometheus Metric**: `ooloi_server_clients_connected`
+- **Type**: Gauge (current state, can go up or down)
+
+**Benefits**:
+- **Zero additional cost**: Uses existing counters, no new tracking required
+- **Real-time accuracy**: Computed fresh on each request
+- **Monitoring friendly**: Direct gauge metric for alerting and dashboards
+- **Consistent calculation**: Same computation logic for both JSON and Prometheus formats
 
 #### Field Naming Convention
 
