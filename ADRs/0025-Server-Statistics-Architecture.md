@@ -120,6 +120,7 @@ Add new `server-statistics` component field containing a map of thread-safe Long
  :api-calls-total (LongAdder.)                 ; Total API calls processed
  :api-calls-success (LongAdder.)               ; Successful API calls
  :api-calls-failure (LongAdder.)               ; Failed API calls
+ :api-calls-success-duration-nanos-total (LongAdder.) ; Total nanoseconds spent in successful API calls
 
  ;; ==========================================
  ;; EVENT STREAMING COUNTERS
@@ -695,6 +696,13 @@ The foundational layer provides essential computed statistics that support compr
 - **JSON Field**: `clients_connected_current`
 - **Prometheus Metric**: `ooloi_server_clients_connected`
 - **Type**: Gauge (current state, can go up or down)
+
+**Average API Call Duration**:
+- **Source**: LongAdder counters `:api-calls-success-duration-nanos-total` and `:api-calls-success`
+- **Computation**: `avg-duration = success > 0 ? total-duration-nanos / success : 0.0`
+- **JSON Field**: `api_success_duration_avg_nanos`
+- **Prometheus Metric**: `ooloi_server_api_success_duration_avg_nanos`
+- **Type**: Gauge (computed average performance metric)
 
 **Benefits**:
 - **Zero additional cost**: Uses existing counters, no new tracking required
