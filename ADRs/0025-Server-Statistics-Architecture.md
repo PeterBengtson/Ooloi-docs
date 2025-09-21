@@ -1,5 +1,7 @@
 # ADR-0025: Server Statistics Architecture
 
+![Server Dashboard](../img/server-dashboard.png)
+
 ## Table of Contents
 
 - [Status](#status)
