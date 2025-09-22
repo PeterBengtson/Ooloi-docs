@@ -478,11 +478,12 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                   (if (some #{::cancelled} rhythmic-results)
                     piece
 
-                    ;; Stage 3: System Breaking (parallel per system)
+                    ;; Stage 3: System Breaking with Discomfort Optimization (parallel per system)
                     (let [system-results (cp/pmap cpu-pool
                                                   (fn [system-data]
                                                     (with-cancellation
-                                                      (calculate-system-breaks piece system-data)))
+                                                      (enhanced-system-breaking-with-optimization!
+                                                        renderer piece-ref system-data operation-id)))
                                                   (group-into-systems rhythmic-results))]
 
                       (if (some #{::cancelled} system-results)
@@ -511,74 +512,243 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 - **Progressive computation**: Each stage builds on results from previous stages
 - **Atomic updates**: Either entire pipeline succeeds or piece remains unchanged
 
-### Musical Priority Scheduling
+### Discomfort-Driven Iterative Optimization
 
-Layout changes propagate through musical structure in predictable patterns. Priority scheduling leverages these patterns to maintain musical consistency while minimizing unnecessary recalculation.
+Musical notation layout quality is maintained through an iterative discomfort minimization algorithm that automatically reorganizes measures, systems, and pages to achieve optimal spacing while respecting musical and user-imposed constraints.
 
-### Measure-Stack Priority Strategy
+### Core Discomfort Algorithm
 
-When layout changes occur, musical consistency requires processing related measures in priority order:
+The layout engine continuously measures and minimizes "discomfort" - the deviation of each layout element from its ideal proportions:
 
 ```clojure
-(defn calculate-measure-stack-priority [changed-measure-positions]
-  "Calculate priority based on musical structure dependencies"
-  (let [measure-numbers (map :measure-number changed-measure-positions)]
-    {:immediate    ;; Changed measure stacks - vertical consistency critical
-     (find-all-measures-with-numbers measure-numbers)
+(defn calculate-total-discomfort [piece]
+  "Calculate system-wide layout discomfort"
+  (+ (measure-stack-discomfort piece)
+     (system-spacing-discomfort piece)
+     (page-density-discomfort piece)))
 
-     :dependent    ;; Adjacent measures that might need width adjustments
-     (find-adjacent-measures-requiring-reflow measure-numbers)
+(defn measure-stack-discomfort [piece]
+  "Sum of width deviations from ideal for all measure stacks"
+  (->> (get-all-measure-stacks piece)
+       (map (fn [stack]
+              (Math/abs (- (actual-width stack)
+                          (ideal-width stack)))))
+       (reduce +)))
 
-     :cascading    ;; Systems/pages that might need restructuring
-     (find-systems-requiring-rebreak measure-numbers)
+(defn run-discomfort-optimization! [renderer piece-ref operation-id optimization-plugins]
+  "Iterative discomfort minimization with plugin-driven strategies"
+  (let [{:keys [cpu-pool]} renderer
+        acceptable-discomfort (get-discomfort-threshold piece-ref)
+        max-iterations (get-max-optimization-iterations piece-ref)]
 
-     :deferred     ;; Unaffected measures
-     (find-unaffected-measures measure-numbers)}))
+    (loop [iteration 0
+           current-discomfort (calculate-total-discomfort @piece-ref)
+           affected-region (get-initially-affected-measures @piece-ref)]
 
-(defn execute-musical-priority-waves! [renderer piece-ref priority-sets operation-id]
-  "Execute musical priority waves based on structural dependencies"
-  (let [cpu  (:cpu-pool renderer)
-        prio (or (:priority-pool renderer) cpu)]
+      (cond
+        ;; Success: Acceptable quality achieved
+        (<= current-discomfort acceptable-discomfort)
+        {:result :converged :iterations iteration :final-discomfort current-discomfort}
 
-    (binding [*current-operation* operation-id]
-      ;; Wave 1: Immediate - same measure number across all staves
-      (let [immediate-results
-            (when (seq (:immediate priority-sets))
-              (cp/pmap prio
-                       (fn [measure-stack]
-                         (with-cancellation
-                           (format-measure-stack-for-vertical-alignment measure-stack)))
-                       (:immediate priority-sets)))]
+        ;; Hard stop: Maximum iterations reached
+        (>= iteration max-iterations)
+        {:result :max-iterations :iterations iteration :final-discomfort current-discomfort}
 
-        (if (some #{::cancelled} immediate-results)
-          ::cancelled
-          ;; Wave 2: Dependent - measures requiring width/spacing adjustments
-          (let [dependent-results
-                (when (seq (:dependent priority-sets))
-                  (cp/pmap cpu
-                           (fn [measure]
-                             (with-cancellation
-                               (recalculate-measure-with-new-spacing measure immediate-results)))
-                           (:dependent priority-sets)))]
-            ;; Continue with cascading and deferred waves...
-            ))))))
+        ;; Continue: Try optimization strategies
+        :else
+        (let [optimization-result
+              (dosync
+                (alter piece-ref
+                  (fn [piece]
+                    (binding [*current-operation* operation-id]
+                      ;; Try plugin-driven optimization strategies in parallel
+                      (let [strategy-results
+                            (cp/pmap cpu-pool
+                                     (fn [plugin]
+                                       (with-cancellation
+                                         (apply-optimization-strategy plugin piece affected-region)))
+                                     optimization-plugins)
+
+                            ;; Select best strategy result (lowest discomfort)
+                            best-strategy (apply min-key :resulting-discomfort strategy-results)]
+
+                        (if (= (:resulting-discomfort best-strategy) ::cancelled)
+                          piece  ; Return unchanged if cancelled
+                          ;; Apply best optimization and expand affected region
+                          (-> piece
+                              (apply-layout-changes (:layout-changes best-strategy))
+                              (track-expanded-affected-region (:expanded-region best-strategy))))))))
+
+              new-discomfort (calculate-total-discomfort @piece-ref)
+              expanded-region (get-current-affected-region @piece-ref)]
+
+          ;; Check for hard constraint boundaries that stop expansion
+          (if (reached-hard-constraint-boundary? @piece-ref expanded-region)
+            {:result :constraint-boundary :iterations iteration :final-discomfort new-discomfort}
+            ;; Continue optimization with expanded region
+            (recur (inc iteration) new-discomfort expanded-region)))))))
 ```
 
-**Measure-Stack Consistency**: When a measure changes, all measures with the same measure number across all staves receive immediate priority to maintain vertical alignment - a fundamental musical layout requirement.
+### Discomfort Optimization Convergence Process
 
-**Width Ripple Management**: Measures whose width requirements change due to the initial formatting receive secondary priority, as their spacing adjustments may affect neighboring measures.
+```mermaid
+flowchart TD
+    A[Initial Layout Change] --> B[Calculate Current Discomfort]
+    B --> C{Discomfort ≤ Acceptable Threshold?}
+    C -->|Yes| D[✅ Converged - Layout Complete]
+    C -->|No| E[Apply Optimization Strategies in Parallel]
 
-**Hierarchical Invalidation**: Changes propagate up the musical hierarchy (measures → systems → pages → full layout) with processing priority reflecting the scope of required recalculation.
+    E --> F[Strategy 1: Measure Reflow<br/>Redistribute measures across systems]
+    E --> G[Strategy 2: System Rebreak<br/>Rebreak systems across pages]
+    E --> H[Strategy 3: Vertical Spacing<br/>Adjust staff spacing]
+    E --> I[Strategy 4: Page Margins<br/>Adjust margins and scaling]
 
-**Structural Dependency Tracking**: Priority calculation considers musical structure dependencies rather than UI visibility, as the backend has no knowledge of client display state.
+    F --> J[Select Best Strategy Result<br/>Lowest resulting discomfort]
+    G --> J
+    H --> J
+    I --> J
 
-**Discomfort-Based Recalculation Priorities**: For each measure stack, system, and page, we track a "discomfort" value measuring the absolute deviation from its ideal width. When discomfort exceeds architectural thresholds, hierarchical recalculation cascades upward: uncomfortable measure stacks trigger system-level rebreaking, uncomfortable systems trigger page-level restructuring. This architectural pattern ensures that layout quality degrades gracefully under constraint pressure while triggering comprehensive recalculation only when musically necessary.
+    J --> K[Apply Best Layout Changes]
+    K --> L[Expand Affected Region]
+    L --> M{Reached Hard Constraint Boundary?}
+
+    M -->|Yes - Manual Page Break| N[🛑 Constraint Boundary Stop]
+    M -->|Yes - Movement Boundary| N
+    M -->|Yes - Performance Directive| N
+    M -->|No| O{Max Iterations Reached?}
+
+    O -->|Yes| P[⏱️ Max Iterations Stop]
+    O -->|No| Q[Calculate New Discomfort]
+    Q --> R[Increment Iteration Count]
+    R --> C
+
+    style A fill:#ffcdd2,color:#000
+    style B fill:#fff3e0,color:#000
+    style C fill:#e8f5e8,color:#000
+    style D fill:#c8e6c9,color:#000
+    style E fill:#e3f2fd,color:#000
+    style J fill:#f3e5f5,color:#000
+    style M fill:#fff8e1,color:#000
+    style N fill:#ffcdd2,color:#000
+    style P fill:#ffcdd2,color:#000
+```
+
+**Convergence Characteristics:**
+- **Guaranteed Termination**: Process always stops through acceptable discomfort, constraint boundaries, or iteration limits
+- **Progressive Improvement**: Each iteration reduces total layout discomfort through best-strategy selection
+- **Automatic Scope Expansion**: Affected region grows organically until optimization boundaries are reached
+- **Constraint Respect**: Hard boundaries (manual breaks, movement divisions) prevent inappropriate cross-boundary optimization
+- **Plugin Extensibility**: Custom optimization strategies can be added for domain-specific layout intelligence
+
+### Plugin-Driven Optimization Strategies
+
+Optimization strategies are implemented as plugins, enabling domain-specific layout intelligence and user customization:
+
+```clojure
+(defprotocol OptimizationStrategy
+  "Plugin interface for layout optimization strategies"
+  (analyze-discomfort [strategy piece affected-region]
+    "Analyze current discomfort and propose optimization approach")
+  (apply-optimization [strategy piece region-analysis]
+    "Apply optimization changes and return updated piece with expanded affected region"))
+
+;; Built-in optimization strategies
+(def default-optimization-strategies
+  [(->MeasureReflowStrategy)      ; Redistribute measures across systems
+   (->SystemRebreakStrategy)      ; Rebreak systems across pages
+   (->VerticalSpacingStrategy)    ; Adjust staff spacing within systems
+   (->PageMarginStrategy)])       ; Adjust page margins and scaling
+
+(defn apply-optimization-strategy [strategy piece affected-region]
+  "Execute a single optimization strategy"
+  (let [analysis (analyze-discomfort strategy piece affected-region)
+        result (apply-optimization strategy piece analysis)]
+    {:layout-changes (:changes result)
+     :expanded-region (:new-affected-region result)
+     :resulting-discomfort (calculate-total-discomfort (:updated-piece result))}))
+```
+
+### Outward Rippling and Constraint Boundaries
+
+Optimization automatically expands its scope until discomfort is minimized or hard constraints prevent further expansion:
+
+**Ripple Expansion Pattern:**
+1. **Local Adjustment**: Initially optimize only directly affected measures
+2. **System Expansion**: If local changes create system-level discomfort, expand to full system optimization
+3. **Page Expansion**: If system changes create page-level discomfort, expand to page-level rebreaking
+4. **Cross-Page Expansion**: If necessary, optimize across multiple pages until discomfort is acceptable
+
+**Hard Constraint Boundaries (Optimization Stops):**
+- **Manual Page Breaks**: User-inserted page breaks cannot be crossed during optimization
+- **Manual System Breaks**: User-inserted system breaks constrain measure redistribution
+- **Movement Boundaries**: Optimization cannot move measures across movement or section boundaries
+- **Performance Directives**: Tempo changes, rehearsal marks, and other performance indicators create layout boundaries
+
+```clojure
+(defn reached-hard-constraint-boundary? [piece affected-region]
+  "Check if optimization has reached uncrossable layout boundaries"
+  (or (contains-manual-page-breaks? piece affected-region)
+      (spans-movement-boundaries? piece affected-region)
+      (conflicts-with-performance-directives? piece affected-region)
+      (exceeds-maximum-optimization-scope? piece affected-region)))
+
+(defn get-constraint-boundaries [piece starting-region]
+  "Identify hard boundaries that limit optimization scope expansion"
+  {:manual-breaks (find-manual-breaks-near piece starting-region)
+   :movement-boundaries (find-movement-boundaries piece starting-region)
+   :performance-directives (find-performance-directives piece starting-region)
+   :scope-limits (calculate-maximum-reasonable-scope piece starting-region)})
+```
+
+### Integration with Pipeline Processing
+
+Discomfort optimization integrates with the four-stage pipeline, running after initial layout calculation to refine results:
+
+**Stage 3 Enhancement**: System Breaking stage now includes iterative optimization:
+
+```clojure
+(defn enhanced-system-breaking-with-optimization! [renderer piece-ref system-data operation-id]
+  "System breaking with integrated discomfort optimization"
+  (binding [*current-operation* operation-id]
+    ;; Initial system breaking (existing logic)
+    (let [initial-systems (calculate-initial-system-breaks piece-ref system-data)
+          initial-discomfort (calculate-total-discomfort @piece-ref)]
+
+      ;; Apply discomfort optimization if threshold exceeded
+      (if (> initial-discomfort (get-discomfort-threshold @piece-ref))
+        (let [optimization-result
+              (run-discomfort-optimization! renderer piece-ref operation-id
+                                          (get-active-optimization-plugins @piece-ref))]
+          ;; Return enhanced system breaking with optimization results
+          (merge initial-systems optimization-result))
+        ;; Return initial systems if discomfort acceptable
+        {:systems initial-systems :optimization-result :not-needed}))))
+```
+
+**Optimization Plugin Registry:**
+
+```clojure
+(defn register-optimization-plugin! [plugin-registry strategy-impl]
+  "Register custom optimization strategy"
+  (swap! plugin-registry conj strategy-impl))
+
+;; Enable user and domain-specific optimization strategies
+(register-optimization-plugin! optimization-plugins (->CustomChoralSpacingStrategy))
+(register-optimization-plugin! optimization-plugins (->UserPreferenceStrategy user-prefs))
+```
+
+**Algorithmic Characteristics:**
+- **Convergent**: Always terminates through discomfort thresholds, iteration limits, or constraint boundaries
+- **Plugin-Extensible**: Optimization strategies can be replaced or supplemented with domain-specific logic
+- **Constraint-Aware**: Respects user layout intentions while optimizing within allowable boundaries
+- **Parallel**: Multiple optimization strategies execute concurrently with best-result selection
+- **Cancellable**: Integrates with cooperative cancellation for responsive editing during long optimizations
 
 ### Architectural Benefits Summary
 
-The Claypoole integration with single-operation coordination provides several critical advantages:
+The Claypoole integration with discomfort-driven optimization provides several critical advantages:
 
-**Responsive Musical Processing**: Priority scheduling ensures that musical structure changes receive appropriate processing attention based on their structural impact, maintaining musical consistency during complex score manipulation.
+**Responsive Musical Processing**: Iterative optimization ensures that layout changes automatically achieve optimal musical spacing within user-defined constraints, maintaining professional engraving quality during complex score manipulation.
 
 **Resource Predictability**: Explicit threadpool management provides deterministic resource usage patterns, essential for professional audio workstation integration where resource conflicts must be avoided.
 
