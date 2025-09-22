@@ -149,9 +149,12 @@ Two-phase process: parallel calculation followed by integration:
 
 **Phase B - Integration via Measure Stack Formatter:**
 - **Stack formatter consolidation**: Integrates all individual measure minimums from the timewalker
+- **Ideal width caching**: Measure stack formatter caches its own ideal width for efficient discomfort calculation
+- **Discomfort value calculation**: Calculates and stores discomfort value for the measure stack based on actual vs ideal width
 - **Proportionality algorithm application**: Applies pluggable proportionality algorithms to rational rhythmic positions
 - **Result raster creation**: Generates positioning data in staff spaces for each rhythmic position
 - **Raster distribution**: Makes formatted raster available to measures for paint list preparation
+- **Quick recalculation support**: Cached ideal width enables fast discomfort evaluation for proposed new widths
 
 ### Pipeline Stage 3: Paint List Preparation
 Parallel phase where measures apply raster positioning and prepare visual output:
