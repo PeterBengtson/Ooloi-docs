@@ -149,10 +149,13 @@ Measure streams are organized into visual layouts with full hierarchical cascade
 - **Hierarchical cascade detection**: Automatically determines when system changes require page recalculation, and when page changes require full layout restructuring
 
 ### Pipeline Stage 4: Visual Element Generation
-With final positioning established, measures generate their visual output:
+With final positioning established, measures generate their visual output using timewalker sequential processing:
 - **Coordinate finalisation**: Combines positioning data with spatial measurements from earlier stages
+- **Cross-measure element coordination**: Timewalker processes measure stacks sequentially, enabling originating measures to directly format elements (ties, slurs, beams, glissandos) spanning to subsequent measures
 - **Visual element assembly**: Creates rendering instructions for glyphs, curves, and text elements
 - **Layout-specific adjustments**: Applies zoom levels, display preferences, and viewport optimisations
+
+**Sequential Processing Architecture**: The timewalker ensures measure stacks are processed in musical order, allowing cross-measure elements to be handled naturally without complex coordination mechanisms. Each originating measure formats its spanning elements directly into target measures as they are encountered in sequence.
 
 ### Plugin Architecture Integration
 
@@ -218,7 +221,7 @@ sequenceDiagram
     P->>P: Stage 1: Engraving atom formation<br/>(plugin spacing hooks fire)
     P->>P: Stage 2: Atom repositioning<br/>(cached atoms moved horizontally)
     P->>P: Stage 3: System/page breaking<br/>(if measure width changed)
-    P->>P: Stage 4: Visual element generation<br/>(plugin paint hooks fire)
+    P->>P: Stage 4: Visual element generation<br/>(cross-measure elements + plugin paint hooks fire)
     P->>B: Updated MeasureView{glyphs, curves}
 
     Note over U,C2: Phase 4: Event Broadcasting & Cache Invalidation
@@ -721,7 +724,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                                        previous-discomfort discomfort-history)]
 
           (if convergence-needed?
-            ;; Continue iteration - recalculate rhythmic distribution
+            ;; Continue iteration - recalculate rhythmic distribution with updated collision boundaries
             (let [updated-rhythmic-results
                   (run-stage-2-iteration! cpu-pool @piece-ref (keys current-rhythmic-results)
                                         current-rhythmic-results system-results)]
@@ -772,7 +775,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
   PERFORMANCE: Conditional execution minimizes work, parallel page processing when needed"
   (let [page-recalc-needed? (system-changes-affect-pagination? piece system-results)
 
-        ;; Stage 3b: Page Breaking (conditional)
+        ;; Stage 3b: Page Breaking (conditional) - uses system absolute dimensions
         page-results (if page-recalc-needed?
                        (cp/pmap cpu-pool
                                (fn [page-data]
@@ -799,7 +802,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
            :layout-results layout-results})))))
 
 (defn run-stage-4-visual-generation! [cpu-pool piece layout-results]
-  "Stage 4: Visual element generation with finalized positioning.
+  "Stage 4: Visual element generation with finalized positioning and timewalker sequential processing.
 
   GOAL: Generate final visual output elements using completed layout positioning
   from all previous stages with established measure widths, system organization,
@@ -808,8 +811,15 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
   APPROACH:
   - Use finalized positioning data from hierarchical layout optimization
   - Generate visual elements (noteheads, stems, beams, slurs, text) at precise coordinates
-  - Combine cached spatial measurements with final layout positioning
+  - Apply hierarchical scaling factors to convert staff spaces to absolute coordinates
+  - Combine atomic measurements with final layout positioning and scale contexts
   - Apply visual refinements (collision avoidance, aesthetic adjustments)
+
+  CROSS-MEASURE ELEMENT HANDLING:
+  - Sequential processing via timewalker enables natural cross-measure coordination
+  - Originating measures directly format elements spanning to subsequent measures
+  - Ties, slurs, beams, glissandos handled by source measure during its processing
+  - No separate resolution stage needed - elements format themselves in sequence
 
   HIERARCHICAL DISCOMFORT TARGET: Visual quality optimization
   - No layout changes at this stage - positioning is finalized
@@ -818,19 +828,22 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 
   VISUAL GENERATION PROCESS:
   - Flatten all hierarchical layout results into measure-level visual specifications
-  - Generate visual elements in parallel across all finalized measure layouts
-  - Apply visual collision detection and aesthetic adjustments
+  - Apply scale contexts to convert atomic measurements from staff spaces to absolute coordinates
+  - Process measure stacks sequentially via timewalker to enable cross-measure coordination
+  - Generate visual elements in parallel within each measure stack
+  - Apply visual collision detection using absolute coordinate collision boundaries
   - Produce final renderable output for client display
 
-  INPUT: Complete hierarchical layout results (measures, systems, pages, layout structure)
+  INPUT: Complete hierarchical layout results
   OUTPUT: Final visual elements ready for client rendering
 
-  PERFORMANCE: Fully parallelizable across measures - no interdependencies at visual stage"
+  PERFORMANCE: Parallelizable within measure stacks, sequential between stacks for cross-measure elements"
+  ;; Process measure stacks sequentially via timewalker for cross-measure coordination
   (cp/pmap cpu-pool
-           (fn [measure-layout]
+           (fn [measure-stack-layout]
              (with-cancellation
-               (generate-visual-elements-with-final-positioning piece measure-layout)))
-           (flatten-all-layouts layout-results)))
+               (generate-visual-elements-with-timewalker-sequence piece measure-stack-layout)))
+           (group-layouts-by-timewalker-sequence layout-results)))
 
 (defn run-complete-pipeline! [renderer piece-ref measure-ids]
   "Complete four-stage hierarchical rendering pipeline with integrated optimization.
@@ -839,15 +852,15 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
   data into optimized visual layout using hierarchical discomfort minimization.
 
   HIERARCHICAL PIPELINE STAGES:
-  1. STAGE 1 (Measure-level): Spatial analysis with ideal width caching
-  2. STAGE 2 (System-level): Rhythmic distribution targeting cached ideals
+  1. STAGE 1 (Measure-level): Spatial analysis with atomic measurement caching
+  2. STAGE 2 (System-level): Rhythmic distribution using collision boundaries
   3. STAGE 3 (System/Page/Layout): Hierarchical optimization with measure movement
-  4. STAGE 4 (Visual): Final visual generation with optimized positioning
+  4. STAGE 4 (Visual): Final visual generation with hierarchical scaling and timewalker sequencing
 
   HIERARCHICAL DISCOMFORT OPTIMIZATION:
   - Each stage targets specific levels of the discomfort hierarchy
   - Multiplicative discomfort calculation creates sophisticated level interactions
-  - Cached ideal widths enable fast discomfort evaluation across stages
+  - Cached collision boundaries enable fast discomfort evaluation across stages
   - Quality-based convergence ensures optimization stops at appropriate quality level
 
   STM TRANSACTION ARCHITECTURE:
@@ -904,12 +917,12 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                                   :success
                                   (let [{:keys [page-results layout-results]} hierarchical-result
 
-                                        ;; Stage 4: Visual Generation
+                                        ;; Stage 4: Visual Generation with Timewalker Sequencing
                                         visual-results (run-stage-4-visual-generation! cpu-pool piece layout-results)]
 
                                     (if (some #{::cancelled} visual-results)
                                       piece
-                                      ;; All stages completed successfully
+                                      ;; All stages completed successfully - apply hierarchical updates with scaling
                                       (apply-all-hierarchical-updates piece spatial-results rhythmic-results
                                                                      system-results page-results layout-results visual-results)))))))))))))]
 
@@ -932,7 +945,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
     (distinct (concat (vals prev-mapping) (vals curr-mapping)))))
 
 (defn recalculate-rhythmic-distribution-for-new-system [piece measure-id system-results]
-  "Recalculate rhythmic distribution when measure moves to different system"
+  "Recalculate rhythmic distribution when measure moves to different system using collision boundaries"
   (let [new-system-context (find-system-containing-measure system-results measure-id)
         new-width-constraints (calculate-system-width-constraints new-system-context)]
     (calculate-rhythmic-distribution piece measure-id
@@ -989,26 +1002,189 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 
 Musical notation layout quality is maintained through an iterative discomfort minimization algorithm that automatically reorganizes measures, systems, and pages to achieve optimal spacing while respecting musical and user-imposed constraints.
 
+
 ### Core Discomfort Algorithm
 
 The layout engine continuously measures and minimizes "discomfort" - the deviation of each layout element from its ideal proportions:
 
 ```clojure
 (defn calculate-total-discomfort [piece]
-  "Calculate system-wide layout discomfort across all hierarchical levels"
+  "Calculate system-wide layout discomfort across all hierarchical levels using collision boundaries"
   ;; Multiply normalized discomfort values (0.0-1.0) for sophisticated interaction
-  (* (normalize-measure-stack-discomfort piece)      ; Individual measures vs ideal widths
-     (normalize-system-spacing-discomfort piece)     ; Systems vs optimal measure distribution
+  (* (normalize-measure-stack-discomfort piece)      ; Measure stacks vs collision boundaries
+     (normalize-system-spacing-discomfort piece)     ; Systems vs optimal atom distribution
      (normalize-page-density-discomfort piece)       ; Pages vs desired fullness
      (normalize-layout-structure-discomfort piece))) ; Layout vs optimal page count
 
 (defn measure-stack-discomfort [piece]
-  "Sum of width deviations from ideal for all measure stacks"
+  "Calculate measure stack discomfort using collision boundaries and formatter-determined widths"
   (->> (get-all-measure-stacks piece)
        (map (fn [stack]
-              (Math/abs (- (actual-width stack)
-                          (ideal-width stack)))))
+              (let [actual-width (get-actual-width stack)
+                    ideal-width (get-stack-ideal-width stack)        ; From measure stack formatter
+                    minimum-width (get-stack-minimum-width stack)    ; Sum of atom minimums + spacing
+                    available-range (- ideal-width minimum-width)]
+                ;; Discomfort when compressed below ideal toward minimum collision boundary
+                (if (< actual-width ideal-width)
+                  (/ (- ideal-width actual-width) available-range)   ; 0.0 to 1.0 as approaches minimum
+                  0.0))))                                           ; No discomfort when at or above ideal
        (reduce +)))
+
+;; Atomic measurement architecture - all measurements in staff spaces
+(defrecord MeasureAtom [content            ; Musical content (note, rest, accidental, etc.)
+                        minimum-width      ; Collision boundary width in staff spaces
+                        minimum-height     ; Collision boundary height in staff spaces
+                        default-spacing    ; Standard gap after this atom in staff spaces
+                        scale-factor])     ; Local scale factor (default 1.0)
+
+(defn create-measure-atom [content width height spacing]
+  "Create measure atom with collision boundaries in staff spaces"
+  (->MeasureAtom content width height spacing 1.0))
+
+(defn get-effective-atom-width [atom cumulative-scale]
+  "Calculate effective atom width with all scale factors applied"
+  (* (:minimum-width atom) (:scale-factor atom) cumulative-scale))
+
+(defn get-effective-atom-height [atom cumulative-scale]
+  "Calculate effective atom height with all scale factors applied"
+  (* (:minimum-height atom) (:scale-factor atom) cumulative-scale))
+
+(defn calculate-measure-minimum-width [measure]
+  "Calculate absolute minimum width before collisions (sum of atoms + spacing)"
+  (->> (:atoms measure)
+       (map #(+ (:minimum-width %) (:default-spacing %)))
+       (reduce +)))
+
+(defn calculate-measure-minimum-height [measure]
+  "Calculate absolute minimum height before collisions (max of atoms)"
+  (->> (:atoms measure)
+       (map :minimum-height)
+       (apply max 0)))
+
+;; Measure stack formatting with result raster approach
+(defrecord ResultRaster [rhythmic-positions   ; Vector of rational rhythmic positions [0, 1/4, 1/2, 3/4, 1, 5/4, ...] (includes tuplets)
+                        total-width          ; Total width allocated to this measure stack
+                        spacing-adjustments]) ; Per-position spacing adjustments
+
+(defn create-result-raster [positions width adjustments]
+  "Create result raster for measure stack formatting.
+
+  RATIONAL RHYTHMIC POSITIONS: Positions are rational numbers reduced to standard form.
+  This covers all rhythmic scenarios including tuplets (e.g., triplets produce 1/3, 2/3).
+  The stack formatter uses these rationals with minimum atom positioning data to apply
+  any non-linear ideal placement spacing in the allocated staff space raster."
+  (->ResultRaster positions width adjustments))
+
+(defn format-measure-stack! [measure-stack]
+  "Format measure stack to determine ideal width and create result raster.
+
+  This is extremely fast - may not need parallelization.
+
+  PROCESS:
+  1. Calculate minimum width from all measures' atom collision boundaries
+  2. Determine ideal width based on rhythmic content and spacing preferences
+  3. Create result raster with rational rhythmic positions across all measures
+  4. Store both minimum and ideal widths in measure stack
+  5. Return raster enabling non-linear ideal placement spacing in staff space allocation
+
+  RATIONAL POSITIONING: All rhythmic positions are reduced to rational form.
+  This includes tuplet rationals (triplets: 1/3, 2/3; quintuplets: 1/5, 2/5, etc.).
+  Stack formatter combines these rationals with minimum atom positioning data
+  to enable sophisticated non-linear spacing algorithms within allocated space."
+
+  (let [measures (get-measures-in-stack measure-stack)
+
+        ;; Calculate absolute minimum before collisions
+        stack-minimum-width (->> measures
+                               (map calculate-measure-minimum-width)
+                               (apply max))  ; Stack minimum = widest measure minimum
+
+        ;; Determine ideal width from rhythmic content analysis
+        rhythmic-density (analyze-rhythmic-density measures)
+        spacing-preferences (analyze-spacing-preferences measures)
+        stack-ideal-width (calculate-stack-ideal-width rhythmic-density spacing-preferences stack-minimum-width)
+
+        ;; Create result raster with rational rhythmic positions
+        unified-positions (unite-rational-rhythmic-positions measures)
+        raster (create-result-raster unified-positions stack-ideal-width spacing-preferences)]
+
+    ;; Store measurements in measure stack
+    (assoc! measure-stack
+            :minimum-width stack-minimum-width
+            :ideal-width stack-ideal-width
+            :result-raster raster)
+
+    raster))
+
+(defn apply-raster-to-measure! [measure result-raster]
+  "Apply result raster to individual measure atoms - extremely fast operation.
+
+  RATIONAL TO SPATIAL CONVERSION: Uses rational rhythmic positions combined with
+  minimum atom positioning data to apply non-linear ideal placement spacing
+  within the allocated staff space raster."
+  (let [positions (:rhythmic-positions result-raster)  ; Vector of rationals [0, 1/4, 1/2, ...]
+        total-width (:total-width result-raster)
+        adjustments (:spacing-adjustments result-raster)]
+
+    ;; Apply raster positions to measure atoms
+    (doseq [[atom position] (map vector (:atoms measure) positions)]
+      (set-atom-x-position! atom (* position total-width)))))
+
+;; Hierarchical scaling system - scales cascade down through levels
+(defrecord ScaleContext [page-scale     ; Page-level scaling (excludes headers/footers)
+                        system-scale   ; System-level scaling
+                        staff-scale    ; Staff-level scaling
+                        atom-scale])   ; Individual atom scaling
+
+(defn create-scale-context
+  ([] (->ScaleContext 1.0 1.0 1.0 1.0))
+  ([page sys staff atom] (->ScaleContext page sys staff atom)))
+
+(defn calculate-cumulative-scale [scale-context]
+  "Calculate total scale factor from all hierarchical levels"
+  (* (:page-scale scale-context)
+     (:system-scale scale-context)
+     (:staff-scale scale-context)
+     (:atom-scale scale-context)))
+
+(defn get-effective-measurement [base-measurement scale-context]
+  "Apply hierarchical scaling to base measurement in staff spaces"
+  (* base-measurement (calculate-cumulative-scale scale-context)))
+
+;; System absolute dimensions for page layout
+(defrecord SystemDimensions [absolute-width    ; Total horizontal space system occupies on page
+                            absolute-height   ; Total vertical space system occupies on page
+                            scale-context])   ; System's scaling context
+
+(defn calculate-system-absolute-width [system]
+  "Calculate system's absolute width for page distribution - external dimension only"
+  (let [measure-stacks (get-measure-stacks-in-system system)
+        total-stack-widths (->> measure-stacks
+                              (map :ideal-width)  ; Use ideal widths from measure stack formatter
+                              (reduce +))
+        system-margins (get-system-horizontal-margins system)]
+    (+ total-stack-widths system-margins)))
+
+(defn calculate-system-absolute-height [system]
+  "Calculate system's absolute height for page distribution - external dimension only"
+  (let [staves (get-staves-in-system system)
+        ;; Calculate total staff heights using maximum atom heights per staff
+        staff-heights (->> staves
+                         (map (fn [staff]
+                                (->> (get-measures-in-staff staff)
+                                     (mapcat :atoms)
+                                     (map :minimum-height)
+                                     (apply max 0))))
+                         (reduce +))
+        system-vertical-margins (get-system-vertical-margins system)]
+    (+ staff-heights system-vertical-margins)))
+
+(defn create-system-dimensions [system]
+  "Create system dimensions record for page distribution"
+  (->SystemDimensions
+    (calculate-system-absolute-width system)
+    (calculate-system-absolute-height system)
+    (get-system-scale-context system)))
 
 (defn system-spacing-discomfort [piece]
   "Combined discomfort of component measures within each system"
@@ -1023,16 +1199,29 @@ The layout engine continuously measures and minimizes "discomfort" - the deviati
        (reduce +)))
 
 (defn page-density-discomfort [piece]
-  "Page discomfort based on deviation from desired fullness"
+  "Page discomfort based on system height utilization - pages want to be filled"
   (->> (get-all-pages piece)
        (map (fn [page]
-              (let [current-fullness (calculate-page-fullness page)
-                    ;; Pages want to be filled - empty pages have high discomfort
-                    ideal-fullness (get-ideal-page-fullness page)
-                    fullness-gap (Math/abs (- ideal-fullness current-fullness))
-                    ;; Weight heavily against underfilled pages in publication contexts
-                    underfill-penalty (if (< current-fullness 0.7) (* 2 fullness-gap) fullness-gap)]
-                underfill-penalty)))
+              (cond
+                ;; Deliberately inserted empty pages have no discomfort
+                (page-marked-as-deliberate? page) 0.0
+
+                ;; Regular pages: discomfort based on unfilled space
+                :else
+                (let [available-page-height (get-page-content-height page)  ; Excludes headers/footers
+                      systems-on-page (get-systems-on-page page)
+
+                      ;; Calculate total height using system absolute dimensions
+                      total-system-height (->> systems-on-page
+                                             (map calculate-system-absolute-height)
+                                             (reduce +))
+
+                      page-fullness (/ total-system-height available-page-height)
+
+                      ;; Full page = 0.0 discomfort, empty page = 1.0 discomfort
+                      page-discomfort (- 1.0 (min 1.0 page-fullness))]
+
+                  page-discomfort))))
        (reduce +)))
 
 (defn layout-structure-discomfort [piece]
