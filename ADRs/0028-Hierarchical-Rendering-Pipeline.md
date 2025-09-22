@@ -451,8 +451,123 @@ The rendering pipeline coordinates Claypoole parallel processing within STM tran
 Each pipeline stage uses Claypoole for parallel processing within the STM transaction:
 
 ```clojure
+(defn run-stage-1-spatial-analysis! [cpu-pool piece measure-ids]
+  "Stage 1: Parallel spatial analysis of measures"
+  (cp/pmap cpu-pool
+           (fn [measure-id]
+             (with-cancellation
+               (analyze-spatial-requirements piece measure-id)))
+           measure-ids))
+
+(defn run-stage-2-rhythmic-distribution! [cpu-pool piece measure-ids spatial-results]
+  "Stage 2: Parallel rhythmic distribution calculation"
+  (cp/pmap cpu-pool
+           (fn [[measure-id spatial-data]]
+             (with-cancellation
+               (calculate-rhythmic-distribution piece measure-id spatial-data)))
+           (map vector measure-ids spatial-results)))
+
+(defn run-stage-2-iteration! [cpu-pool piece measure-ids current-rhythmic system-results]
+  "Stage 2 Iteration: Recalculate rhythmic distribution for moved measures"
+  (let [affected-systems (find-systems-with-moved-measures current-rhythmic system-results)
+        affected-measures (get-all-measures-in-systems affected-systems)]
+
+    (cp/pmap cpu-pool
+             (fn [measure-id]
+               (if (contains? affected-measures measure-id)
+                 (with-cancellation
+                   (recalculate-rhythmic-distribution-for-new-system piece measure-id system-results))
+                 (get-rhythmic-result current-rhythmic measure-id)))
+             measure-ids)))
+
+(defn check-stage-3-convergence [current-rhythmic system-results piece-ref iteration max-iterations previous-discomfort]
+  "Check if Stage 3 iteration should continue or converge"
+  (let [measures-moved? (measures-changed-systems? current-rhythmic system-results)
+        current-discomfort (calculate-total-discomfort @piece-ref)
+        discomfort-converged? (and previous-discomfort
+                                  (<= (Math/abs (- current-discomfort previous-discomfort))
+                                     (get-convergence-tolerance @piece-ref)))
+        max-iterations-reached? (>= iteration max-iterations)]
+
+    {:convergence-needed? (and measures-moved? (not discomfort-converged?) (not max-iterations-reached?))
+     :current-discomfort current-discomfort}))
+
+(defn run-stage-3-iterative-system-breaking! [cpu-pool renderer piece-ref operation-id rhythmic-results]
+  "Stage 3: Iterative system breaking with width convergence"
+  (loop [current-rhythmic-results rhythmic-results
+         iteration 0
+         max-iterations 5
+         previous-discomfort nil]
+
+    (let [system-results (cp/pmap cpu-pool
+                                  (fn [system-data]
+                                    (with-cancellation
+                                      (enhanced-system-breaking-with-optimization!
+                                        renderer piece-ref system-data operation-id)))
+                                  (group-into-systems current-rhythmic-results))]
+
+      (if (some #{::cancelled} system-results)
+        {:result ::cancelled}
+
+        (let [{:keys [convergence-needed? current-discomfort]}
+              (check-stage-3-convergence current-rhythmic-results system-results piece-ref
+                                       iteration max-iterations previous-discomfort)]
+
+          (if convergence-needed?
+            ;; Continue iteration - recalculate rhythmic distribution
+            (let [updated-rhythmic-results
+                  (run-stage-2-iteration! cpu-pool @piece-ref (keys current-rhythmic-results)
+                                        current-rhythmic-results system-results)]
+
+              (if (some #{::cancelled} updated-rhythmic-results)
+                {:result ::cancelled}
+                (recur updated-rhythmic-results (inc iteration) max-iterations current-discomfort)))
+
+            ;; Convergence achieved - return final system results
+            {:result :converged
+             :system-results system-results
+             :rhythmic-results current-rhythmic-results}))))))
+
+(defn run-stage-3-hierarchical-layout! [cpu-pool piece system-results]
+  "Stage 3b & 3c: Hierarchical page breaking and layout restructuring"
+  (let [page-recalc-needed? (system-changes-affect-pagination? piece system-results)
+
+        ;; Stage 3b: Page Breaking (conditional)
+        page-results (if page-recalc-needed?
+                       (cp/pmap cpu-pool
+                               (fn [page-data]
+                                 (with-cancellation
+                                   (recalculate-page-layout piece page-data system-results)))
+                               (group-into-pages system-results))
+                       (preserve-existing-page-structure piece system-results))]
+
+    (if (some #{::cancelled} page-results)
+      {:result ::cancelled}
+
+      (let [layout-recalc-needed? (page-changes-affect-full-layout? piece page-results)
+
+            ;; Stage 3c: Full Layout Restructuring (conditional)
+            layout-results (if layout-recalc-needed?
+                            (with-cancellation
+                              (restructure-full-layout piece page-results))
+                            page-results)]
+
+        (if (= layout-results ::cancelled)
+          {:result ::cancelled}
+          {:result :success
+           :page-results page-results
+           :layout-results layout-results})))))
+
+(defn run-stage-4-visual-generation! [cpu-pool piece layout-results]
+  "Stage 4: Parallel visual element generation"
+  (cp/pmap cpu-pool
+           (fn [measure-layout]
+             (with-cancellation
+               (generate-visual-elements piece measure-layout)))
+           (flatten-all-layouts layout-results)))
+
 (defn run-complete-pipeline! [renderer piece-ref measure-ids]
-  "Four-stage rendering pipeline with integrated cancellation"
+  "Four-stage rendering pipeline with integrated cancellation and hierarchical cascade"
   (let [operation-id (java.util.UUID/randomUUID)
         {:keys [cpu-pool]} renderer]
 
@@ -466,119 +581,41 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
               (fn [piece]
                 (binding [*current-operation* operation-id]
 
-                  ;; Stage 1: Spatial Analysis (parallel per measure)
-                  (let [spatial-results (cp/pmap cpu-pool
-                                                (fn [measure-id]
-                                                  (with-cancellation
-                                                    (analyze-spatial-requirements piece measure-id)))
-                                                measure-ids)]
-
+                  ;; Stage 1: Spatial Analysis
+                  (let [spatial-results (run-stage-1-spatial-analysis! cpu-pool piece measure-ids)]
                     (if (some #{::cancelled} spatial-results)
                       piece
 
-                      ;; Stage 2: Rhythmic Distribution (parallel per measure)
-                      (let [rhythmic-results (cp/pmap cpu-pool
-                                                     (fn [[measure-id spatial-data]]
-                                                       (with-cancellation
-                                                         (calculate-rhythmic-distribution piece measure-id spatial-data)))
-                                                     (map vector measure-ids spatial-results))]
-
+                      ;; Stage 2: Rhythmic Distribution
+                      (let [rhythmic-results (run-stage-2-rhythmic-distribution! cpu-pool piece measure-ids spatial-results)]
                         (if (some #{::cancelled} rhythmic-results)
                           piece
 
                           ;; Stage 3: Iterative System Breaking with Width Convergence
-                          (loop [current-rhythmic-results rhythmic-results
-                                 iteration 0
-                                 max-iterations 5 ; Prevent infinite loops
-                                 previous-discomfort nil] ; Track convergence
+                          (let [stage-3-result (run-stage-3-iterative-system-breaking! cpu-pool renderer piece-ref operation-id rhythmic-results)]
+                            (case (:result stage-3-result)
+                              ::cancelled piece
 
-                            (let [system-results (cp/pmap cpu-pool
-                                                          (fn [system-data]
-                                                            (with-cancellation
-                                                              (enhanced-system-breaking-with-optimization!
-                                                                renderer piece-ref system-data operation-id)))
-                                                          (group-into-systems current-rhythmic-results))
+                              :converged
+                              (let [{:keys [system-results rhythmic-results]} stage-3-result
 
-                                  current-discomfort (calculate-total-discomfort @piece-ref)]
+                                    ;; Stage 3b & 3c: Hierarchical Layout Organization
+                                    hierarchical-result (run-stage-3-hierarchical-layout! cpu-pool piece system-results)]
 
-                              (if (some #{::cancelled} system-results)
-                                piece
+                                (case (:result hierarchical-result)
+                                  ::cancelled piece
 
-                                ;; Check convergence conditions
-                                (let [measures-moved? (measures-changed-systems? current-rhythmic-results system-results)
-                                      discomfort-converged? (and previous-discomfort
-                                                                (<= (Math/abs (- current-discomfort previous-discomfort))
-                                                                   (get-convergence-tolerance @piece-ref)))
-                                      max-iterations-reached? (>= iteration max-iterations)
-                                      convergence-needed? (and measures-moved?
-                                                              (not discomfort-converged?)
-                                                              (not max-iterations-reached?))]
+                                  :success
+                                  (let [{:keys [page-results layout-results]} hierarchical-result
 
-                                  (if convergence-needed?
-                                    ;; Stage 2 Iteration: Recalculate rhythmic distribution for affected systems
-                                    (let [affected-systems (find-systems-with-moved-measures current-rhythmic-results system-results)
-                                          affected-measures (get-all-measures-in-systems affected-systems)
+                                        ;; Stage 4: Visual Generation
+                                        visual-results (run-stage-4-visual-generation! cpu-pool piece layout-results)]
 
-                                          ;; Recalculate Stage 2 for measures with new system context
-                                          updated-rhythmic-results
-                                          (cp/pmap cpu-pool
-                                                   (fn [measure-id]
-                                                     (if (contains? affected-measures measure-id)
-                                                       ;; Recalculate rhythmic distribution with new system constraints
-                                                       (with-cancellation
-                                                         (recalculate-rhythmic-distribution-for-new-system
-                                                           piece measure-id system-results))
-                                                       ;; Keep existing rhythmic result for unchanged measures
-                                                       (get-rhythmic-result current-rhythmic-results measure-id)))
-                                                   measure-ids)]
-
-                                      (if (some #{::cancelled} updated-rhythmic-results)
-                                        piece
-                                        ;; Continue iteration with updated rhythmic results and discomfort tracking
-                                        (recur updated-rhythmic-results (inc iteration) max-iterations current-discomfort)))
-
-                                    ;; Convergence achieved or max iterations reached - proceed to page breaking
-                                    (let [final-system-results system-results
-                                          page-recalc-needed? (system-changes-affect-pagination? piece final-system-results)
-
-                                          ;; Stage 3b: Page Breaking (if system changes affect pagination)
-                                          page-results (if page-recalc-needed?
-                                                         (cp/pmap cpu-pool
-                                                                 (fn [page-data]
-                                                                   (with-cancellation
-                                                                     (recalculate-page-layout piece page-data final-system-results)))
-                                                                 (group-into-pages final-system-results))
-                                                         ;; No page recalc needed, use existing page structure
-                                                         (preserve-existing-page-structure piece final-system-results))]
-
-                                      (if (some #{::cancelled} page-results)
-                                        piece
-
-                                        ;; Check if page changes require full layout restructuring
-                                        (let [layout-recalc-needed? (page-changes-affect-full-layout? piece page-results)
-
-                                              ;; Stage 3c: Full Layout Restructuring (if pages added/removed)
-                                              layout-results (if layout-recalc-needed?
-                                                               (with-cancellation
-                                                                 (restructure-full-layout piece page-results))
-                                                               ;; No layout restructuring needed
-                                                               page-results)]
-
-                                          (if (= layout-results ::cancelled)
-                                            piece
-
-                                            ;; Stage 4: Visual Generation (parallel per measure)
-                                            (let [visual-results (cp/pmap cpu-pool
-                                                                         (fn [measure-layout]
-                                                                           (with-cancellation
-                                                                             (generate-visual-elements piece measure-layout)))
-                                                                         (flatten-all-layouts layout-results))]
-
-                                        (if (some #{::cancelled} visual-results)
-                                          piece
-                                          ;; All stages completed successfully - return updated piece
-                                          (apply-all-hierarchical-updates piece spatial-results rhythmic-results
-                                                                         system-results page-results layout-results visual-results)))))))))))))))]
+                                    (if (some #{::cancelled} visual-results)
+                                      piece
+                                      ;; All stages completed successfully
+                                      (apply-all-hierarchical-updates piece spatial-results rhythmic-results
+                                                                     system-results page-results layout-results visual-results)))))))))))))]
 
       ;; Send invalidation events AFTER STM transaction completes (side effect)
       (when (not= pipeline-result ::cancelled)
