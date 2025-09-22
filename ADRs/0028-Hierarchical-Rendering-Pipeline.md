@@ -36,7 +36,7 @@ Ooloi implements a **four-stage hierarchical rendering pipeline** with comprehen
 - [Decision](#decision)
 - [Four-Stage Pipeline Architecture](#four-stage-pipeline-architecture)
   - [Stage 1: Spatial Analysis](#stage-1-spatial-analysis)
-  - [Stage 2: Rhythmic Distribution](#stage-2-rhythmic-distribution)
+  - [Stage 2: Collision Boundary Calculation and Rhythmic Distribution](#stage-2-collision-boundary-calculation-and-rhythmic-distribution)
   - [Stage 3: Hierarchical Layout Organization](#stage-3-hierarchical-layout-organization)
   - [Stage 4: Visual Generation](#stage-4-visual-generation)
 - [Plugin Integration Architecture](#plugin-integration-architecture)
@@ -71,7 +71,7 @@ Ooloi implements a **four-stage hierarchical rendering pipeline** with comprehen
 ```mermaid
 flowchart TD
     A[Musical Content Changes] --> B[Stage 1: Musical Logic & Spatial Analysis]
-    B --> C[Stage 2: Rhythmic Proportional Distribution]
+    B --> C[Stage 2: Collision Boundaries & Rhythmic Distribution]
     C --> D[Stage 3: System & Page Breaking]
     D --> E[Stage 4: Visual Element Generation]
     E --> F[Client Invalidation Events]
@@ -102,7 +102,7 @@ flowchart TD
 ```mermaid
 flowchart LR
     A[Measure<br/>Changes] --> B[Stage 1<br/>Spatial Analysis]
-    B --> C[Stage 2<br/>Rhythmic Distribution]
+    B --> C[Stage 2<br/>Collision Boundaries &<br/>Rhythmic Distribution]
     C --> D[Stage 3<br/>System Breaking]
     D --> E[Stage 4<br/>Visual Generation]
     
@@ -134,12 +134,20 @@ Individual measures process their internal musical content independently:
 - **Plugin Hook Integration**: Spacing hooks fire for each notational element, contributing spatial requirements to atom formation
 - **Atom Dimension Caching**: Once calculated for a rhythmic configuration, engraving atoms remain **immutable** until measure content changes, enabling efficient repositioning without recomputation
 
-### Pipeline Stage 2: Rhythmic Proportional Distribution
-Measures coordinate optimal spacing using pre-computed engraving atoms:
-- **Atom Repositioning**: Pre-computed engraving atoms moved horizontally for optimal rhythmic alignment - no internal atom recalculation required
-- **Rhythmic proportion calculation**: Distributes space according to rhythmic relationships - longer note values receive proportionally more horizontal space
-- **Cross-staff synchronisation**: Ensures consistent rhythmic spacing across all staves within each measure number
-- **Computational Efficiency**: Much faster than Stage 1 since atom dimensions are cached - only atom positioning changes
+### Pipeline Stage 2: Collision Boundary Calculation and Rhythmic Distribution
+Two-phase process establishing minimum spacing requirements followed by proportional distribution:
+
+**Phase 2a - Absolute Minimum Calculation (First Sync):**
+- **Collision boundary detection**: Calculate absolute minimum widths required to prevent element overlap
+- **Atomic measurement consolidation**: Determine minimum collision boundaries using cached atomic measurements from Stage 1
+- **Cross-staff minimum coordination**: Establish minimum spacing requirements across all staves within each measure
+- **No proportionality yet**: Pure collision avoidance without rhythmic proportion considerations
+
+**Phase 2b - Rhythmic Proportional Distribution (Second Phase):**
+- **Atom repositioning**: Move pre-computed engraving atoms horizontally based on established minimums
+- **Rhythmic proportion application**: Apply proportional distribution above minimum thresholds - longer note values receive proportionally more space
+- **Cross-staff synchronisation**: Ensure consistent rhythmic spacing across all staves while respecting collision boundaries
+- **Computational efficiency**: Fast repositioning since atomic dimensions and minimums are already established
 
 ### Pipeline Stage 3: Hierarchical Layout Organization
 Measure streams are organized into visual layouts with full hierarchical cascade awareness:
@@ -220,7 +228,8 @@ sequenceDiagram
     Note over U,C2: Phase 3: Asynchronous Pipeline Processing (100ms batch)
     B->>P: Queue affected elements for raster
     P->>P: Stage 1: Engraving atom formation<br/>(plugin spacing hooks fire)
-    P->>P: Stage 2: Atom repositioning<br/>(cached atoms moved horizontally)
+    P->>P: Stage 2a: Collision boundary calculation<br/>(absolute minimums without proportionality)
+    P->>P: Stage 2b: Rhythmic proportional distribution<br/>(cached atoms moved horizontally)
     P->>P: Stage 3: System/page breaking<br/>(if measure width changed)
     P->>P: Stage 4: Visual element generation<br/>(cross-measure elements + plugin paint hooks fire)
     P->>B: Updated MeasureView{glyphs, curves}
@@ -825,7 +834,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 
   HIERARCHICAL PIPELINE STAGES:
   1. STAGE 1 (Measure-level): Spatial analysis with atomic measurement caching
-  2. STAGE 2 (System-level): Rhythmic distribution using collision boundaries
+  2. STAGE 2 (System-level): Collision boundary calculation and rhythmic distribution
   3. STAGE 3 (System/Page/Layout): Hierarchical optimization with measure movement
   4. STAGE 4 (Visual): Final visual generation with hierarchical scaling and timewalker sequencing
 
