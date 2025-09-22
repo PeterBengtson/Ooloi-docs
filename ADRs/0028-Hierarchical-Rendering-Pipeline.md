@@ -478,51 +478,66 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 - **Progressive computation**: Each stage builds on results from previous stages
 - **Atomic updates**: Either entire pipeline succeeds or piece remains unchanged
 
-### Priority Scheduling Architecture
+### Musical Priority Scheduling
 
-User experience requires that visible measures receive priority processing over off-screen content. This creates a two-tier processing model where UI responsiveness takes precedence over computational efficiency.
+Layout changes propagate through musical structure in predictable patterns. Priority scheduling leverages these patterns to maintain musical consistency while minimizing unnecessary recalculation.
 
-### Priority Wave Implementation
+### Measure-Stack Priority Strategy
+
+When layout changes occur, musical consistency requires processing related measures in priority order:
 
 ```clojure
-(defn execute-priority-waves! [renderer work-sets operation-id]
-  "Execute priority measures first for UI responsiveness"
+(defn calculate-measure-stack-priority [changed-measure-positions]
+  "Calculate priority based on musical structure dependencies"
+  (let [measure-numbers (map :measure-number changed-measure-positions)]
+    {:immediate    ;; Changed measure stacks - vertical consistency critical
+     (find-all-measures-with-numbers measure-numbers)
+
+     :dependent    ;; Adjacent measures that might need width adjustments
+     (find-adjacent-measures-requiring-reflow measure-numbers)
+
+     :cascading    ;; Systems/pages that might need restructuring
+     (find-systems-requiring-rebreak measure-numbers)
+
+     :deferred     ;; Unaffected measures
+     (find-unaffected-measures measure-numbers)}))
+
+(defn execute-musical-priority-waves! [renderer piece-ref priority-sets operation-id]
+  "Execute musical priority waves based on structural dependencies"
   (let [cpu  (:cpu-pool renderer)
-        prio (or (:priority-pool renderer) cpu)
-        {:keys [priority normal]} work-sets]
+        prio (or (:priority-pool renderer) cpu)]
 
     (binding [*current-operation* operation-id]
-      ;; Wave 1: Priority measures (visible + dependencies)
-      (let [priority-results
-            (when (seq priority)
+      ;; Wave 1: Immediate - same measure number across all staves
+      (let [immediate-results
+            (when (seq (:immediate priority-sets))
               (cp/pmap prio
-                       (fn [measure-data]
+                       (fn [measure-stack]
                          (with-cancellation
-                           (analyze-priority-measure measure-data)))
-                       priority))]
+                           (format-measure-stack-for-vertical-alignment measure-stack)))
+                       (:immediate priority-sets)))]
 
-        (if (some #{::cancelled} priority-results)
+        (if (some #{::cancelled} immediate-results)
           ::cancelled
-          ;; Wave 2: Remaining measures
-          (let [normal-results
-                (when (seq normal)
+          ;; Wave 2: Dependent - measures requiring width/spacing adjustments
+          (let [dependent-results
+                (when (seq (:dependent priority-sets))
                   (cp/pmap cpu
-                           (fn [measure-data]
+                           (fn [measure]
                              (with-cancellation
-                               (analyze-normal-measure measure-data)))
-                           normal))]
-            (if (some #{::cancelled} normal-results)
-              ::cancelled
-              (concat priority-results normal-results))))))))
+                               (recalculate-measure-with-new-spacing measure immediate-results)))
+                           (:dependent priority-sets)))]
+            ;; Continue with cascading and deferred waves...
+            ))))))
 ```
 
-**Two-Wave Processing Strategy**: Priority measures (visible to the user plus their dependencies) process first using the priority threadpool, followed by remaining measures on the standard pool. This ensures UI updates occur quickly even during large score processing.
+**Measure-Stack Consistency**: When a measure changes, all measures with the same measure number across all staves receive immediate priority to maintain vertical alignment - a fundamental musical layout requirement.
 
-**Dependency Closure Calculation**: Priority sets include not just visible measures but their dependency closure (measures affecting key signatures, time signatures, cross-measure elements). This prevents visual inconsistencies where visible measures render without their required context.
+**Width Ripple Management**: Measures whose width requirements change due to the initial formatting receive secondary priority, as their spacing adjustments may affect neighboring measures.
 
-**Resource Pool Flexibility**: The system gracefully degrades to a single pool if no priority pool is configured, maintaining functionality while losing priority scheduling benefits. This supports deployment flexibility and testing scenarios.
+**Hierarchical Invalidation**: Changes propagate up the musical hierarchy (measures → systems → pages → full layout) with processing priority reflecting the scope of required recalculation.
 
-**Result Composition**: Both waves' results concatenate into a single result set, maintaining the abstraction that priority scheduling is an optimization rather than a fundamental architectural change.
+**Structural Dependency Tracking**: Priority calculation considers musical structure dependencies rather than UI visibility, as the backend has no knowledge of client display state.
 
 ### Architectural Benefits Summary
 
