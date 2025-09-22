@@ -932,6 +932,27 @@ Optimization strategies are implemented as plugins, enabling domain-specific lay
         ;; Default: Fast iterative adjustment toward cached ideal widths
         (apply-width-adjustments-toward-ideal system-data cached-ideal-widths)))))
 
+(defn evaluate-alternatives-in-parallel [system-data cached-ideal-widths]
+  "Parallel evaluation of layout alternatives for critical sections"
+  (let [cpu-pool (get-cpu-pool)
+        ;; Generate reasonable alternatives for this specific system
+        width-alternatives (generate-width-alternatives system-data cached-ideal-widths)
+        measure-alternatives (generate-measure-grouping-alternatives system-data)
+
+        ;; Evaluate all combinations in parallel
+        evaluated-alternatives
+        (cp/pmap cpu-pool
+                 (fn [alternative]
+                   (let [trial-layout (apply-alternative system-data alternative)
+                         trial-discomfort (calculate-system-discomfort trial-layout)]
+                     {:alternative alternative
+                      :layout trial-layout
+                      :discomfort trial-discomfort}))
+                 (combine-alternatives width-alternatives measure-alternatives))]
+
+    ;; Select minimum discomfort solution
+    (:layout (apply min-key :discomfort evaluated-alternatives))))
+
 (defn run-stage-2-iteration-fast! [cpu-pool piece measure-ids current-rhythmic system-results]
   "Fast Stage 2 iteration using cached ideal widths"
   (let [affected-systems (find-systems-with-moved-measures current-rhythmic system-results)
@@ -946,6 +967,106 @@ Optimization strategies are implemented as plugins, enabling domain-specific lay
                  ;; Keep existing result
                  (get-rhythmic-result current-rhythmic measure-id)))
              measure-ids)))
+
+;; Practical examples of when to use parallel evaluation
+(defn enable-parallel-evaluation? [piece-ref]
+  "Determine when parallel evaluation is beneficial"
+  (or (title-page-formatting? piece-ref)
+      (first-page-of-movement? piece-ref)
+      (final-publication-mode? piece-ref)
+      (user-requested-perfect-layout? piece-ref)))
+
+(defn small-solution-space? [measures-in-system]
+  "Check if solution space is small enough for parallel evaluation"
+  (and (<= (count measures-in-system) 8)  ; Small number of measures
+       (no-complex-cross-staff-elements? measures-in-system)))  ; No complex interactions
+```
+
+## Practical Parallel Evaluation Examples
+
+### Example 1: Title Page Optimization
+```clojure
+;; When formatting the title page of a symphony
+(defn format-title-page! [piece-ref]
+  "Title pages justify parallel evaluation for perfect layout"
+  (binding [*enable-parallel-evaluation* true]
+    (run-stage-3-system-breaking! cpu-pool renderer piece-ref operation-id title-measures)))
+
+;; Generates alternatives like:
+;; - Different composer name positioning (left, center, right)
+;; - Various title font sizes that fit available space
+;; - Alternative dedication placement options
+;; Evaluates all combinations in parallel, selects optimal layout
+```
+
+### Example 2: First System of Movement
+```clojure
+;; First system of each movement gets special treatment
+(defn format-movement-opening! [piece-ref movement-number]
+  "Movement openings benefit from perfect layout optimization"
+  (let [first-system-measures (get-first-system-measures piece-ref movement-number)]
+    (if (and (<= (count first-system-measures) 6)  ; Small enough for parallel eval
+             (important-movement? movement-number))    ; Worth the extra computation
+      ;; Parallel evaluation: try different measure groupings and spacing
+      (evaluate-alternatives-in-parallel
+        {:width-distributions [{:measures [1 2] :ratio 0.4}
+                              {:measures [3 4 5] :ratio 0.6}]
+         :tempo-marking-positions [:above-staff :between-staves :left-margin]
+         :key-signature-spacing [:tight :normal :spacious]})
+      ;; Default: fast cached-width adjustment
+      (apply-width-adjustments-toward-ideal first-system-measures))))
+```
+
+### Example 3: Complex Orchestral Passage
+```clojure
+;; Dense orchestral writing with many cross-staff elements
+(defn format-complex-orchestral-passage! [piece-ref measures]
+  "Complex passages may benefit from parallel evaluation when user requests it"
+  (when (user-enabled-perfect-mode?)
+    (let [alternatives [{:beam-breaking :conservative :stem-direction :auto}
+                       {:beam-breaking :aggressive :stem-direction :forced-up}
+                       {:beam-breaking :minimal :stem-direction :forced-down}]]
+
+      ;; Evaluate each approach in parallel
+      (cp/pmap cpu-pool
+               (fn [approach]
+                 (let [trial-formatting (apply-formatting-approach measures approach)]
+                   {:approach approach
+                    :collision-count (count-collisions trial-formatting)
+                    :readability-score (calculate-readability trial-formatting)}))
+               alternatives))))
+```
+
+### Example 4: Publication-Quality Final Pass
+```clojure
+;; Final publication pass - parallel evaluation for entire score sections
+(defn run-publication-quality-pass! [piece-ref]
+  "Final pass uses parallel evaluation for publication-quality optimization"
+  (doseq [page-number (range 1 (inc (get-page-count piece-ref)))]
+    (let [page-measures (get-measures-on-page piece-ref page-number)]
+
+      ;; For each page, evaluate different layout strategies in parallel
+      (when (enable-publication-optimization?)
+        (cp/pmap cpu-pool
+                 (fn [layout-strategy]
+                   (optimize-page-with-strategy page-measures layout-strategy))
+                 [:compact :spacious :balanced :traditional])))))
+```
+
+### When NOT to Use Parallel Evaluation
+```clojure
+;; Normal editing scenarios - use fast cached approach
+(defn format-during-editing! [piece-ref changed-measures]
+  "Normal editing uses fast cached-width approach for immediate response"
+  ;; These scenarios prioritize speed over perfection:
+  ;; - User adding/deleting notes during composition
+  ;; - Transposing passages
+  ;; - Adding dynamics and articulations
+  ;; - Adjusting rhythms
+
+  (let [cached-ideals (map #(get-cached-ideal-width piece-ref %) changed-measures)]
+    ;; Fast adjustment toward cached ideal widths
+    (apply-width-adjustments-toward-ideal changed-measures cached-ideals)))
 ```
 
 ### Outward Rippling and Constraint Boundaries
