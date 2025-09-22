@@ -281,10 +281,10 @@ Within Claypoole's API, `cp/pmap` provides the best fit for musical notation pro
 The Claypoole integration follows a strict separation of concerns that prevents architectural conflation:
 
 * **Claypoole handles execution substrate**: threadpool management, bounded parallelism, resource lifecycle, and backpressure control
-* **Domain scheduler handles musical coordination**: generation tracking, STM barriers, transaction commits, and cooperative cancellation
+* **Domain scheduler handles musical coordination**: operation tracking, STM transactions, and cooperative cancellation
 * **Clean separation prevents complexity explosion**: execution primitives never mix with musical business logic
 
-This separation is critical because musical notation rendering has sophisticated coordination requirements (generation-based cancellation, STM transaction management, hierarchical invalidation) that generic parallel processing libraries cannot and should not address. Claypoole provides the execution foundation while Ooloi's domain logic maintains complete control over coordination semantics.
+This separation is critical because musical notation rendering has sophisticated coordination requirements (operation-based cancellation, STM transaction management, hierarchical invalidation) that generic parallel processing libraries cannot and should not address. Claypoole provides the execution foundation while Ooloi's domain logic maintains complete control over coordination semantics.
 
 ### Resource Lifecycle Management
 
@@ -312,75 +312,6 @@ Musical notation software requires deterministic resource management because lay
 
 **Thread Count Configuration**: Pool sizing defaults to physical CPU cores, optimizing for CPU-bound layout calculations. This prevents thread oversubscription and context switching overhead.
 
-### Generation-Based Cancellation Architecture
-
-Musical notation editing requires sophisticated cancellation semantics because users frequently trigger overlapping layout operations through rapid editing. Traditional thread interruption is insufficient because layout calculations involve complex musical logic that must complete atomically or not at all.
-
-### Cooperative Cancellation Implementation
-
-Since Claypoole lacks native cancellation, we implement cooperative cancellation through generation checking:
-
-```clojure
-;; Dynamic context for cancellation
-(def ^:dynamic *renderer* nil)
-(def ^:dynamic *run-id* nil)
-
-(defn canceled? []
-  "Fast cancellation check"
-  (not= *run-id* @(:current-run-id *renderer*)))
-
-(defmacro with-cancel [& body]
-  "Execute body only if run is still active"
-  `(if (canceled?) ::cancelled (do ~@body)))
-
-(defn next-run-id! [renderer]
-  (let [new-id (swap! (:run-counter renderer) inc)]
-    (vreset! (:current-run-id renderer) new-id)
-    new-id))
-```
-
-**Generation Tracking Rationale**: Each rendering run receives a unique generation ID. When new edits arrive, the system increments the current generation, immediately invalidating all previous runs. This provides clean cancellation semantics without thread interruption complexity.
-
-**Dynamic Variable Strategy**: The `*renderer*` and `*run-id*` dynamic variables convey cancellation context across thread boundaries. Dynamic variables are essential because layout calculations may involve deep call stacks where passing context explicitly would create API pollution.
-
-**Cooperative Cancellation Philosophy**: The `with-cancel` macro implements cooperative cancellation by checking generation validity at strategic points. Tasks voluntarily yield when their generation becomes obsolete. This prevents partial state corruption that could occur with forced thread termination.
-
-**Performance Considerations**: Generation checking adds minimal overhead (~1-2 nanoseconds per check) but enables responsive cancellation. The `volatile!` used for current-run-id provides faster reads than atoms since cancellation checking is purely read-heavy.
-
-### Cross-Thread Context Management
-
-Claypoole executes tasks on threadpool threads that don't inherit dynamic variable bindings from the calling thread. Musical notation rendering requires consistent context (renderer instance, run generation, musical settings) across all parallel tasks.
-
-### Binding Conveyance Implementation
-
-```clojure
-(defn submit-batch! [pool run-id task xs]
-  "Submit tasks to pool with run-id context and proper binding conveyance"
-  (let [current-renderer *renderer*]  ; Capture binding
-    (mapv (fn [x]
-            (cp/future pool
-              (binding [*run-id* run-id *renderer* current-renderer]
-                (try
-                  (task x)
-                  (catch Exception e
-                    (throw (ex-info "Task failed" {:item x} e)))))))
-          xs)))
-
-(defn par-mapv! [pool renderer run-id f xs]
-  "Parallel mapv with cancellation support"
-  (binding [*renderer* renderer *run-id* run-id]
-    (if (not= run-id @(:current-run-id renderer))
-      ::cancelled
-      (let [futs (submit-batch! pool run-id f xs)
-            res  (await-batch! futs)]
-        (if (not= run-id @(:current-run-id renderer)) ::cancelled res)))))
-```
-
-**Explicit Binding Capture**: The `current-renderer` local variable explicitly captures the dynamic binding before task submission. This is crucial because dynamic variables are thread-local - without explicit capture, threadpool workers would see `nil` for `*renderer*`.
-
-**Generation Fencing**: Double-checking the run generation (before task submission and after result collection) prevents race conditions where tasks complete successfully but their results become obsolete during processing. This fencing ensures only current-generation results affect the STM transaction.
-
-**Exception Context Preservation**: Task failures include ex-info context to maintain debugging information across thread boundaries. This is critical for diagnosing layout calculation failures in complex musical scenarios.
 
 ### STM Integration with Cooperative Cancellation
 
@@ -533,28 +464,35 @@ User experience requires that visible measures receive priority processing over 
 ### Priority Wave Implementation
 
 ```clojure
-(defn execute-priority-waves! [renderer snapshot work-sets run-id]
+(defn execute-priority-waves! [renderer work-sets operation-id]
   "Execute priority measures first for UI responsiveness"
   (let [cpu  (:cpu-pool renderer)
         prio (or (:priority-pool renderer) cpu)
         {:keys [priority normal]} work-sets]
 
-    ;; Wave 1: Priority measures (visible + dependencies)
-    (let [priority-results
-          (when (seq priority)
-            (par-mapv! prio renderer run-id
-                       #(analyze-measure-with-cancellation snapshot %)
+    (binding [*current-operation* operation-id]
+      ;; Wave 1: Priority measures (visible + dependencies)
+      (let [priority-results
+            (when (seq priority)
+              (cp/pmap prio
+                       (fn [measure-data]
+                         (with-cancellation
+                           (analyze-priority-measure measure-data)))
                        priority))]
 
-      (when-not (= priority-results ::cancelled)
-        ;; Wave 2: Remaining measures
-        (let [normal-results
-              (when (seq normal)
-                (par-mapv! cpu renderer run-id
-                           #(analyze-measure-with-cancellation snapshot %)
+        (if (some #{::cancelled} priority-results)
+          ::cancelled
+          ;; Wave 2: Remaining measures
+          (let [normal-results
+                (when (seq normal)
+                  (cp/pmap cpu
+                           (fn [measure-data]
+                             (with-cancellation
+                               (analyze-normal-measure measure-data)))
                            normal))]
-          (when-not (= normal-results ::cancelled)
-            (concat priority-results normal-results)))))))
+            (if (some #{::cancelled} normal-results)
+              ::cancelled
+              (concat priority-results normal-results))))))))
 ```
 
 **Two-Wave Processing Strategy**: Priority measures (visible to the user plus their dependencies) process first using the priority threadpool, followed by remaining measures on the standard pool. This ensures UI updates occur quickly even during large score processing.
@@ -587,7 +525,7 @@ The Claypoole integration with single-operation coordination provides several cr
 - **Near-linear scaling** up to available CPU cores (3.5-3.8x speedup on 4-core systems)
 - **Controlled memory overhead**: Buffer size scales as `2 × pool_size` (eager) or `1 × pool_size` (lazy)
 - **STM automatic conflict handling**: Transactions retry with fresh data when conflicts occur
-- **Cooperative cancellation** with responsive abort behavior through generation checking
+- **Cooperative cancellation** with responsive abort behavior through operation tracking
 
 ## Caching and Incremental Processing
 
