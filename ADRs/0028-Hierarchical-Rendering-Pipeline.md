@@ -140,12 +140,13 @@ Measures coordinate optimal spacing using pre-computed engraving atoms:
 - **Cross-staff synchronisation**: Ensures consistent rhythmic spacing across all staves within each measure number
 - **Computational Efficiency**: Much faster than Stage 1 since atom dimensions are cached - only atom positioning changes
 
-### Pipeline Stage 3: System and Page Breaking
-Measure streams are organised into visual layouts:
-- **System break determination**: Groups measures into horizontal systems based on available width
-- **Page layout calculation**: Arranges systems vertically within page boundaries
-- **Cross-system element coordination**: Manages ties, slurs, and other elements spanning system breaks
-- **Vertical refinement**: SystemView adjusts vertical spacing using indicative heights from Stage 1
+### Pipeline Stage 3: Hierarchical Layout Organization
+Measure streams are organized into visual layouts with full hierarchical cascade awareness:
+- **Stage 3a - System Breaking**: Groups measures into horizontal systems based on available width and discomfort optimization
+- **Stage 3b - Page Breaking** (conditional): Arranges systems vertically within page boundaries when system changes affect pagination
+- **Stage 3c - Layout Restructuring** (conditional): Full layout reorganization when page changes require adding/removing pages or cross-movement adjustments
+- **Cross-hierarchy element coordination**: Manages ties, slurs, and other elements spanning system and page breaks
+- **Hierarchical cascade detection**: Automatically determines when system changes require page recalculation, and when page changes require full layout restructuring
 
 ### Pipeline Stage 4: Visual Element Generation
 With final positioning established, measures generate their visual output:
@@ -496,33 +497,89 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                             (if (some #{::cancelled} system-results)
                               piece
 
-                              ;; Stage 4: Visual Generation (parallel per measure)
-                              (let [visual-results (cp/pmap cpu-pool
-                                                           (fn [measure-layout]
-                                                             (with-cancellation
-                                                               (generate-visual-elements piece measure-layout)))
-                                                           (flatten-system-layouts system-results))]
+                              ;; Check if system changes require page-level recalculation
+                              (let [page-recalc-needed? (system-changes-affect-pagination? piece system-results)
 
-                                (if (some #{::cancelled} visual-results)
+                                    ;; Stage 3b: Page Breaking (if system changes affect pagination)
+                                    page-results (if page-recalc-needed?
+                                                   (cp/pmap cpu-pool
+                                                           (fn [page-data]
+                                                             (with-cancellation
+                                                               (recalculate-page-layout piece page-data system-results)))
+                                                           (group-into-pages system-results))
+                                                   ;; No page recalc needed, use existing page structure
+                                                   (preserve-existing-page-structure piece system-results))]
+
+                                (if (some #{::cancelled} page-results)
                                   piece
-                                  ;; All stages completed successfully - return updated piece
-                                  (apply-all-updates piece spatial-results rhythmic-results
-                                                   system-results visual-results))))))))))))]
+
+                                  ;; Check if page changes require full layout restructuring
+                                  (let [layout-recalc-needed? (page-changes-affect-full-layout? piece page-results)
+
+                                        ;; Stage 3c: Full Layout Restructuring (if pages added/removed)
+                                        layout-results (if layout-recalc-needed?
+                                                         (with-cancellation
+                                                           (restructure-full-layout piece page-results))
+                                                         ;; No layout restructuring needed
+                                                         page-results)]
+
+                                    (if (= layout-results ::cancelled)
+                                      piece
+
+                                      ;; Stage 4: Visual Generation (parallel per measure)
+                                      (let [visual-results (cp/pmap cpu-pool
+                                                                   (fn [measure-layout]
+                                                                     (with-cancellation
+                                                                       (generate-visual-elements piece measure-layout)))
+                                                                   (flatten-all-layouts layout-results))]
+
+                                        (if (some #{::cancelled} visual-results)
+                                          piece
+                                          ;; All stages completed successfully - return updated piece
+                                          (apply-all-hierarchical-updates piece spatial-results rhythmic-results
+                                                                         system-results page-results layout-results visual-results)))))))))))))))]
 
       ;; Send invalidation events AFTER STM transaction completes (side effect)
       (when (not= pipeline-result ::cancelled)
         (send-invalidation-events! renderer measure-ids pipeline-result))
 
       pipeline-result)))
+
+;; Hierarchical cascade decision functions
+(defn system-changes-affect-pagination? [piece system-results]
+  "Determine if system changes require page-level recalculation"
+  (or (system-heights-changed-significantly? piece system-results)
+      (system-count-per-page-changed? piece system-results)
+      (cross-page-elements-affected? piece system-results)))
+
+(defn page-changes-affect-full-layout? [piece page-results]
+  "Determine if page changes require full layout restructuring"
+  (or (page-count-changed? piece page-results)
+      (page-scaling-changed? piece page-results)
+      (cross-movement-boundaries-affected? piece page-results)
+      (table-of-contents-affected? piece page-results)))
+
+(defn apply-all-hierarchical-updates [piece spatial rhythmic system page layout visual]
+  "Apply updates from all pipeline stages with proper hierarchical integration"
+  (-> piece
+      (integrate-spatial-analysis spatial)
+      (integrate-rhythmic-distribution rhythmic)
+      (integrate-system-layout system)
+      (integrate-page-layout page)
+      (integrate-layout-restructuring layout)
+      (integrate-visual-elements visual)
+      (validate-hierarchical-consistency)))
 ```
 
 **Pipeline Characteristics:**
 - **Single STM transaction**: All stages execute within one `dosync` block with no side effects
+- **Hierarchical cascade handling**: System changes trigger page recalculation; page changes trigger full layout restructuring
+- **Conditional stage execution**: Page breaking and layout restructuring execute only when system/page changes require them
 - **Post-transaction events**: Invalidation events sent after STM transaction completes successfully
 - **Cancellation at each stage**: Any stage can abort cleanly if new edits arrive
-- **Claypoole parallelism**: Each stage uses `cp/pmap` for parallel processing
-- **Progressive computation**: Each stage builds on results from previous stages
-- **Atomic updates**: Either entire pipeline succeeds or piece remains unchanged
+- **Claypoole parallelism**: Each stage uses `cp/pmap` for parallel processing where applicable
+- **Progressive computation**: Each stage builds on results from previous stages with hierarchical dependency awareness
+- **Atomic updates**: Either entire hierarchical pipeline succeeds or piece remains unchanged
 
 ### Discomfort-Driven Iterative Optimization
 
