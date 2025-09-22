@@ -312,6 +312,27 @@ Musical notation software requires deterministic resource management because lay
 
 **Thread Count Configuration**: Pool sizing defaults to physical CPU cores, optimizing for CPU-bound layout calculations. This prevents thread oversubscription and context switching overhead.
 
+### Cross-Thread Context Management
+
+Claypoole executes tasks on threadpool threads that don't inherit dynamic variable bindings from the calling thread. Musical notation rendering requires consistent context (operation tracking, musical settings) across all parallel tasks.
+
+**Binding Conveyance with `cp/pmap`**: Claypoole automatically handles binding conveyance for dynamic variables, ensuring that `*current-operation*` is available to all parallel tasks without explicit capture.
+
+**Exception Context Preservation**: Task failures need to maintain debugging information across thread boundaries. This is critical for diagnosing layout calculation failures in complex musical scenarios:
+
+```clojure
+(cp/pmap cpu-pool
+  (fn [measure-id]
+    (try
+      (with-cancellation
+        (analyze-measure piece measure-id))
+      (catch Exception e
+        (throw (ex-info "Layout calculation failed"
+                        {:measure-id measure-id
+                         :operation-id *current-operation*}
+                        e)))))
+  measure-ids)
+```
 
 ### STM Integration with Cooperative Cancellation
 
