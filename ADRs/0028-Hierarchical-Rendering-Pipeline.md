@@ -403,42 +403,7 @@ The rendering pipeline coordinates Claypoole parallel processing within STM tran
 
 ### Integrated STM and Claypoole Implementation
 
-```clojure
-(defn run-formatting-pipeline! [renderer piece-ref measure-ids]
-  "Complete formatting pipeline with Claypoole and STM integration"
-  (let [operation-id (java.util.UUID/randomUUID)
-        {:keys [cpu-pool]} renderer]
-
-    ;; Set current operation (outside STM)
-    (reset! current-formatting-operation operation-id)
-
-    ;; Execute pipeline within STM transaction (no side effects)
-    (let [pipeline-result
-          (dosync
-            (alter piece-ref
-              (fn [piece]
-                (binding [*current-operation* operation-id]
-                  ;; Stage 1: Parallel spatial analysis
-                  (let [stage1-results (cp/pmap cpu-pool
-                                                (fn [measure-id]
-                                                  (with-cancellation
-                                                    (analyze-measure piece measure-id)))
-                                                measure-ids)]
-
-                    (if (some #{::cancelled} stage1-results)
-                      piece  ; Return unchanged if cancelled
-                      ;; Continue with remaining stages
-                      (-> piece
-                          (apply-rhythmic-distribution stage1-results)
-                          (apply-system-breaking)
-                          (generate-visual-elements))))))))]
-
-      ;; Send invalidation events AFTER STM transaction completes (side effect)
-      (when (not= pipeline-result ::cancelled)
-        (generate-invalidation-events renderer measure-ids pipeline-result))
-
-      pipeline-result))))
-```
+The complete pipeline implementation is detailed in the [Four-Stage Pipeline Implementation](#four-stage-pipeline-implementation) section below, demonstrating full integration of STM transactions with Claypoole parallel processing and proper side effect handling.
 
 ### Cancellation Flow
 
