@@ -37,7 +37,7 @@ Ooloi implements a **four-stage hierarchical rendering pipeline** with comprehen
 - [Four-Stage Pipeline Architecture](#four-stage-pipeline-architecture)
   - [Stage 1: Spatial Analysis](#stage-1-spatial-analysis)
   - [Stage 2: Rhythmic Distribution](#stage-2-rhythmic-distribution)
-  - [Stage 3: System Breaking](#stage-3-system-breaking)
+  - [Stage 3: Hierarchical Layout Organization](#stage-3-hierarchical-layout-organization)
   - [Stage 4: Visual Generation](#stage-4-visual-generation)
 - [Plugin Integration Architecture](#plugin-integration-architecture)
   - [Spacing Hooks](#spacing-hooks)
