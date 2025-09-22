@@ -305,7 +305,7 @@ Within Claypoole's API, `cp/pmap` provides the best fit for musical notation pro
 - More natural than `cp/pfor` for functional processing patterns
 
 **Resource Control:**
-- Explicit threadpool specification enables priority scheduling (visible vs off-screen measures)
+- Explicit threadpool specification enables priority scheduling based on musical structure dependencies
 - Controlled memory overhead through threadpool sizing
 - Clean integration with Integrant component lifecycle
 
@@ -571,6 +571,8 @@ When layout changes occur, musical consistency requires processing related measu
 **Hierarchical Invalidation**: Changes propagate up the musical hierarchy (measures → systems → pages → full layout) with processing priority reflecting the scope of required recalculation.
 
 **Structural Dependency Tracking**: Priority calculation considers musical structure dependencies rather than UI visibility, as the backend has no knowledge of client display state.
+
+**Discomfort-Based Recalculation Priorities**: For each measure stack, system, and page, we track a "discomfort" value measuring the absolute deviation from its ideal width. When discomfort exceeds architectural thresholds, hierarchical recalculation cascades upward: uncomfortable measure stacks trigger system-level rebreaking, uncomfortable systems trigger page-level restructuring. This architectural pattern ensures that layout quality degrades gracefully under constraint pressure while triggering comprehensive recalculation only when musically necessary.
 
 ### Architectural Benefits Summary
 
