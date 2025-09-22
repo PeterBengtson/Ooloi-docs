@@ -7,9 +7,23 @@
 
 Musical notation software faces computational challenges when handling large orchestral scores containing hundreds of thousands of individual musical elements. The fundamental problem involves coordinating distinct concerns: musical logic resolution, spatial arrangement calculations, and visual rendering - each with different computational characteristics and parallelisation opportunities.
 
+**Real-World Scalability Challenge**: Traditional notation software famously struggles with large complex scores such as Strauss's Elektra recognition scene - dense orchestral passages with intricate notation that cause performance degradation, memory exhaustion, and unresponsive editing. These scenarios expose the limitations of eager computation approaches that attempt to process entire scores regardless of user viewport or editing context.
+
 Additionally, notation software requires extensibility for contemporary notational techniques and experimental approaches. The challenge lies in providing a unified architecture that supports both traditional notation and innovative extensions without compromising performance or architectural consistency.
 
-Ooloi requires an architecture that maintains responsive editing performance with large symphonic works whilst enabling comprehensive notational extensibility through a plugin system.
+Ooloi requires an architecture that maintains responsive editing performance with the most demanding symphonic works whilst enabling comprehensive notational extensibility through a plugin system.
+
+### Architectural Foundation: Frontend-Backend Separation
+
+Ooloi's [frontend-backend separation](0001-Frontend-Backend-Separation.md) provides multiple architectural advantages that directly inform the rendering pipeline design:
+
+**Separation of Concerns**: Frontend remains pure UI/rendering while backend handles musical logic and computation, preventing architectural conflation and maintaining clean cognitive boundaries.
+
+**Collaboration as Consequence**: Standalone applications operate as "collaboration groups of 1" - the same architectural patterns scale naturally to multi-user scenarios without special collaborative features.
+
+**Performance Without Compromise**: In-process gRPC transport eliminates 99% of network overhead (36μs roundtrip measured on 2017 MacBook Pro), proving separation costs nothing performance-wise whilst enabling optimal lazy evaluation patterns.
+
+**Type Fidelity Preservation**: Clojure defrecord instances (`Tuplet`, `Pitch`, etc.) maintain identical structure across gRPC boundaries, eliminating serialization impedance mismatch and enabling plugins to operate identically in local or distributed modes.
 
 ## Decision
 
@@ -74,18 +88,19 @@ flowchart LR
 ### Pipeline Stage 1: Musical Logic Resolution and Spatial Analysis
 Individual measures process their internal musical content independently:
 - Note transpositions and pitch calculations
-- Effective accidental determination based on key signatures and measure context  
+- Effective accidental determination based on key signatures and measure context
 - Tie, slur, and beam resolution
 - Key signature and time signature propagation
-- **Element spatial analysis**: Each notational element determines its spatial requirements, outputting both width and indicative height measurements
-- **Minimum spacing calculation**: Determines absolute minimum space required for each measure's content
+- **Engraving Atom Formation**: Each rhythmic position calculates its complete spatial unit - noteheads, stems, accidentals, articulations positioned relative to each other as an indivisible "engraving atom"
+- **Plugin Hook Integration**: Spacing hooks fire for each notational element, contributing spatial requirements to atom formation
+- **Atom Dimension Caching**: Once calculated for a rhythmic configuration, engraving atoms remain **immutable** until measure content changes, enabling efficient repositioning without recomputation
 
 ### Pipeline Stage 2: Rhythmic Proportional Distribution
-Measures coordinate optimal spacing using collected spatial requirements:
+Measures coordinate optimal spacing using pre-computed engraving atoms:
+- **Atom Repositioning**: Pre-computed engraving atoms moved horizontally for optimal rhythmic alignment - no internal atom recalculation required
 - **Rhythmic proportion calculation**: Distributes space according to rhythmic relationships - longer note values receive proportionally more horizontal space
-- **Spatial requirement integration**: Considers the spacing needs calculated in Stage 1 for each rhythmic event
 - **Cross-staff synchronisation**: Ensures consistent rhythmic spacing across all staves within each measure number
-- **Final positioning determination**: Calculates definitive coordinates for each rhythmic event
+- **Computational Efficiency**: Much faster than Stage 1 since atom dimensions are cached - only atom positioning changes
 
 ### Pipeline Stage 3: System and Page Breaking
 Measure streams are organised into visual layouts:
@@ -137,13 +152,82 @@ Plugins generate visual rendering instructions:
 
 **Registry-Based Discovery**: The plugin registry maintains mappings between musical elements and their formatters, enabling runtime composition and replacement of notational elements.
 
+## User Interaction Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant B as Backend
+    participant P as Pipeline
+    participant C1 as Client 1
+    participant C2 as Client 2
+
+    Note over U,C2: Phase 1: User Interaction & Frontend Processing
+    U->>F: Click on staff location
+    F->>F: Hit-testing & VPD resolution
+    F->>B: add-note(measure-vpd, piece-id, note-data)
+
+    Note over U,C2: Phase 2: Backend STM Transaction (36μs roundtrip)
+    B->>B: STM transaction begins
+    B->>B: Musical data updated (types preserved)
+    B->>B: STM transaction commits
+    B->>F: API response confirmation
+
+    Note over U,C2: Phase 3: Asynchronous Pipeline Processing (100ms batch)
+    B->>P: Queue affected elements for raster
+    P->>P: Stage 1: Engraving atom formation<br/>(plugin spacing hooks fire)
+    P->>P: Stage 2: Atom repositioning<br/>(cached atoms moved horizontally)
+    P->>P: Stage 3: System/page breaking<br/>(if measure width changed)
+    P->>P: Stage 4: Visual element generation<br/>(plugin paint hooks fire)
+    P->>B: Updated MeasureView{glyphs, curves}
+
+    Note over U,C2: Phase 4: Event Broadcasting & Cache Invalidation
+    B->>F: Event: measures-invalidated [127]
+    B->>C1: Event: measures-invalidated [127]
+    B->>C2: Event: measures-invalidated [127]
+
+    F->>F: Mark measure 127 cache dirty
+    C1->>C1: Mark measure 127 cache dirty
+    C2->>C2: Mark measure 127 cache dirty
+
+    Note over U,C2: Phase 5: Lazy Visual Refresh (viewport-aware)
+    alt Measure 127 visible in viewport
+        F->>B: Request fresh MeasureView(127)
+        B->>F: Updated paintlist data
+        F->>F: Update local cache
+        F->>F: Skija rendering: paintlist → pixels
+        F->>U: Visual refresh (note appears)
+    else Measure 127 not visible
+        F->>F: Keep cache dirty, defer until navigation
+    end
+
+    alt Client 1 viewing measure 127
+        C1->>B: Request fresh MeasureView(127)
+        B->>C1: Same updated paintlist (shared computation)
+        C1->>C1: Render updated view
+    end
+
+    alt Client 2 not viewing measure 127
+        Note over C2: Cache stays dirty until user navigates there
+    end
+```
+
+This sequence illustrates the complete system flow when a user adds a note, demonstrating the pipeline's lazy evaluation characteristics, asynchronous batching, collaborative event distribution, and viewport-aware client responses.
+
 ## Computational Scaling Characteristics
 
 Independent measure analysis can run in parallel during Stage 1. System chunks can also be parallelised during Stage 3 processing. Pipeline stages naturally separate concerns, enabling different parallelisation strategies for each computational phase.
 
+**Engraving Atom Efficiency**: The two-phase spatial computation (atom formation + positioning) provides intelligent caching granularity:
+- Adding notes to existing rhythmic positions → atom recalculation + positioning
+- Changing note spacing → positioning only (atoms unchanged)
+- Adding accidentals → atom recalculation + positioning
+- Changing time signatures → positioning only (atoms unchanged)
+
 Memory access patterns prove favourable as each processing unit operates on distinct memory regions during parallel operations, minimising cache conflicts and false sharing between processors.
 
-The 100-millisecond batching interval amplifies computational efficiency by amortising processing costs across multiple edits, accumulating changes and processing them in optimally-sized batches.
+The 100-millisecond **asynchronous** batching interval amplifies computational efficiency by amortising processing costs across multiple edits, accumulating changes and processing them in optimally-sized batches. Crucially, mutating API calls return immediately without waiting for batch processing.
 
 ## Parallelism Implementation Options
 
@@ -212,6 +296,8 @@ Clients receive optimised invalidation notifications that respect the visual hie
 #### Lazy Visual Realisation
 Clients implement demand-driven rendering data fetching. Open layouts immediately request updated rendering instructions, whilst closed layouts mark invalidated elements for cleanup and fetch data only when subsequently opened.
 
+**Collaborative Data Sharing**: Multiple clients requesting identical updated data receive shared computation results without triggering redundant backend processing, as all clients typically fetch identical MeasureView paintlists.
+
 ## Rationale
 
 ### Positive Aspects
@@ -225,6 +311,10 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 4. **Musical Accuracy**: Pipeline separation ensures that musical logic resolution occurs independently of spatial concerns, preventing layout constraints from corrupting musical meaning.
 
 5. **Incremental Processing**: Comprehensive caching with hierarchical invalidation provides dramatic performance improvements for typical editing scenarios.
+
+6. **Transparent Distribution**: Type fidelity across gRPC boundaries eliminates serialization impedance, enabling plugins and musical logic to operate identically in local or distributed modes.
+
+7. **Efficient Spatial Computation**: Engraving atom caching prevents unnecessary recomputation - most changes only require fast atom repositioning rather than expensive dimension recalculation.
 
 ### Negative Aspects
 
@@ -264,13 +354,14 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 ### Related ADRs
 - [ADR-0000: Clojure](0000-Clojure.md) - Language providing parallel processing capabilities essential for pipeline stages
-- [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural boundaries enabling client-server event coordination
-- [ADR-0002: gRPC Communication](0002-gRPC.md) - Communication protocol supporting efficient invalidation event transmission
+- [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural foundation enabling clean separation with transparent distribution
+- [ADR-0002: gRPC Communication](0002-gRPC.md) - Communication protocol supporting efficient invalidation event transmission with type fidelity
 - [ADR-0003: Plugins](0003-Plugins.md) - Plugin architecture foundation extended by mandatory two-stage compliance
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model supporting coordinated multi-stage updates
 - [ADR-0005: JavaFX and Skija](0005-JavaFX-and-Skija.md) - Client rendering technology consuming generated rendering instructions
 - [ADR-0006: SMuFL](0006-SMuFL.md) - Standardised music font providing glyph metadata for spatial calculations
 - [ADR-0008: VPDs](0008-VPDs.md) - Vector Path Descriptors enabling hierarchical element addressing in invalidation events
+- [ADR-0022: Lazy Frontend-Backend Architecture](0022-Lazy-Frontend-Backend-Architecture.md) - Event-driven client synchronization patterns underlying the rendering pipeline
 
 ### Technical Dependencies
 - **Clojure STM**: Transaction system coordinating multi-stage updates
@@ -280,9 +371,11 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 - **Skija Graphics**: High-performance graphics rendering for complex musical elements
 
 ### Performance Characteristics
-- **Batching Interval**: 100ms provides optimal balance between responsiveness and computational efficiency
+- **Batching Interval**: 100ms asynchronous processing provides optimal balance between responsiveness and computational efficiency
+- **API Responsiveness**: 36μs roundtrip measured on 2017 MacBook Pro proves gRPC separation adds negligible latency
 - **Memory Efficiency**: Lazy rendering data generation reduces memory footprint for large scores
 - **Parallel Scaling**: Linear performance improvement with available CPU cores during formatting stages
+- **Engraving Atom Efficiency**: Two-phase spatial computation minimizes redundant calculations through intelligent caching
 
 ## Notes
 
