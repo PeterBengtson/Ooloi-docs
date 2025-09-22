@@ -513,10 +513,32 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                           plateau-reached? :plateau
                           :else :continuing)}))
 
-(defn run-stage-3-iterative-system-breaking! [cpu-pool renderer piece-ref operation-id rhythmic-results]
-  "Stage 3: Iterative system breaking with width convergence"
+(defn run-stage-3-system-breaking! [cpu-pool renderer piece-ref operation-id rhythmic-results]
+  "Stage 3: System breaking with optimal solution finding"
+  (let [affected-measures (extract-affected-measures rhythmic-results)
+        solution-space-size (estimate-solution-space-size @piece-ref affected-measures)]
+
+    (cond
+      ;; Small solution space - use exhaustive parallel evaluation for guaranteed optimum
+      (<= solution-space-size (* 8 (.availableProcessors (Runtime/getRuntime))))
+      (binding [*current-operation* operation-id]
+        (with-cancellation
+          (run-parallel-solution-optimization! cpu-pool @piece-ref affected-measures rhythmic-results)))
+
+      ;; Medium solution space - use batched parallel evaluation
+      (<= solution-space-size (* 32 (.availableProcessors (Runtime/getRuntime))))
+      (binding [*current-operation* operation-id]
+        (with-cancellation
+          (run-parallel-solution-optimization! cpu-pool @piece-ref affected-measures rhythmic-results)))
+
+      ;; Large solution space - fall back to iterative convergence with quality-based stopping
+      :else
+      (run-stage-3-iterative-convergence! cpu-pool renderer piece-ref operation-id rhythmic-results))))
+
+(defn run-stage-3-iterative-convergence! [cpu-pool renderer piece-ref operation-id rhythmic-results]
+  "Stage 3: Iterative convergence for large solution spaces"
   (loop [current-rhythmic-results rhythmic-results
-         iteration 0  ; Keep for debugging/metrics
+         iteration 0
          previous-discomfort nil
          discomfort-history []]
 
@@ -544,13 +566,14 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                 {:result ::cancelled}
                 (recur updated-rhythmic-results (inc iteration) current-discomfort discomfort-history)))
 
-            ;; Convergence achieved - return final system results with reason
+            ;; Convergence achieved - return final system results
             {:result :converged
              :system-results system-results
              :rhythmic-results current-rhythmic-results
              :convergence-reason convergence-reason
+             :convergence-method :iterative
              :final-discomfort current-discomfort
-             :iterations iteration}))))))
+             :iterations iteration})))))))
 
 (defn run-stage-3-hierarchical-layout! [cpu-pool piece system-results]
   "Stage 3b & 3c: Hierarchical page breaking and layout restructuring"
@@ -615,12 +638,12 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                         (if (some #{::cancelled} rhythmic-results)
                           piece
 
-                          ;; Stage 3: Iterative System Breaking with Width Convergence
-                          (let [stage-3-result (run-stage-3-iterative-system-breaking! cpu-pool renderer piece-ref operation-id rhythmic-results)]
+                          ;; Stage 3: System Breaking with Adaptive Optimization Strategy
+                          (let [stage-3-result (run-stage-3-system-breaking! cpu-pool renderer piece-ref operation-id rhythmic-results)]
                             (case (:result stage-3-result)
                               ::cancelled piece
 
-                              :converged
+                              (:converged :optimal-found)
                               (let [{:keys [system-results rhythmic-results]} stage-3-result
 
                                     ;; Stage 3b & 3c: Hierarchical Layout Organization
@@ -703,8 +726,9 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 - **Iterative Stage 3 ↔ Stage 2 convergence**: When system optimization moves measures, rhythmic distribution recalculates for affected systems until width requirements stabilize
 - **Hierarchical cascade handling**: System changes trigger page recalculation; page changes trigger full layout restructuring
 - **Conditional stage execution**: Page breaking and layout restructuring execute only when system/page changes require them
-- **Quality-based convergence**: Local minimum detection, plateau detection, and tolerance threshold ensure optimization stops when truly optimal layout is found
-- **Parallel alternative evaluation**: Width configurations and layout alternatives evaluated concurrently to find deterministic optimal solutions
+- **Adaptive optimization strategy**: Small solution spaces use exhaustive parallel evaluation for guaranteed optimum; large spaces use iterative convergence
+- **Parallel solution space evaluation**: Complete set of reasonable solutions evaluated concurrently when computationally feasible
+- **Quality-based convergence**: Local minimum detection, plateau detection, and tolerance threshold for iterative cases
 - **Post-transaction events**: Invalidation events sent after STM transaction completes successfully
 - **Cancellation at each stage**: Any stage can abort cleanly if new edits arrive, including during iterative convergence
 - **Claypoole parallelism**: Each stage uses `cp/pmap` for parallel processing where applicable
@@ -866,33 +890,72 @@ Optimization strategies are implemented as plugins, enabling domain-specific lay
      :expanded-region (:new-affected-region result)
      :resulting-discomfort (calculate-total-discomfort (:updated-piece result))}))
 
-;; Enhanced optimization with parallel alternative evaluation
-(defn evaluate-measure-width-alternatives [piece system affected-measures]
-  "Evaluate different measure width configurations in parallel to find optimal solution"
-  (let [width-alternatives (generate-width-alternatives system affected-measures)]
-    (cp/pmap (get-cpu-pool)
-             (fn [width-config]
-               (let [adjusted-system (apply-measure-widths system width-config)
-                     resulting-discomfort (calculate-system-discomfort piece adjusted-system)]
-                 {:width-config width-config
-                  :resulting-discomfort resulting-discomfort
-                  :system adjusted-system}))
-             width-alternatives)))
+;; Parallel solution space evaluation
+(defn evaluate-complete-solution-space [cpu-pool piece affected-measures current-rhythmic]
+  "Evaluate all reasonable layout solutions in parallel and select optimal"
+  (let [;; Generate complete set of reasonable solutions
+        solution-candidates (generate-all-reasonable-solutions piece affected-measures current-rhythmic)
 
-(defn find-deterministic-optimal-layout [piece affected-region optimization-strategies]
-  "Find optimal layout through exhaustive evaluation of reasonable alternatives"
-  (let [layout-alternatives (generate-reasonable-layout-alternatives piece affected-region)]
+        ;; Evaluate all solutions in parallel across available CPU cores
+        evaluated-solutions (cp/pmap cpu-pool
+                                    (fn [solution-candidate]
+                                      (let [trial-piece (apply-solution-changes piece solution-candidate)
+                                            trial-discomfort (calculate-total-discomfort trial-piece)
+                                            trial-rhythmic (extract-rhythmic-results trial-piece)]
+                                        {:solution solution-candidate
+                                         :piece trial-piece
+                                         :discomfort trial-discomfort
+                                         :rhythmic-results trial-rhythmic
+                                         :convergence-score (calculate-convergence-quality trial-piece)}))
+                                    solution-candidates)]
 
-    ;; Evaluate all alternatives in parallel
-    (->> layout-alternatives
-         (cp/pmap (get-cpu-pool)
-                  (fn [layout-alternative]
-                    (let [trial-piece (apply-layout-changes piece layout-alternative)]
-                      {:layout layout-alternative
-                       :discomfort (calculate-total-discomfort trial-piece)
-                       :piece trial-piece})))
-         ;; Select minimum discomfort solution
-         (apply min-key :discomfort))))
+    ;; Select optimal solution (minimum discomfort with best convergence properties)
+    (apply min-key (juxt :discomfort :convergence-score) evaluated-solutions)))
+
+(defn run-parallel-solution-optimization! [cpu-pool piece affected-measures current-rhythmic]
+  "Replace iterative convergence with parallel evaluation of complete solution space"
+  (if (solution-space-manageable? affected-measures)
+    ;; Solution space small enough for exhaustive parallel evaluation
+    (let [optimal-solution (evaluate-complete-solution-space cpu-pool piece affected-measures current-rhythmic)]
+      {:result :optimal-found
+       :solution optimal-solution
+       :convergence-method :exhaustive-parallel})
+
+    ;; Solution space too large - use hybrid approach with parallel batches
+    (let [solution-batches (partition-solution-space affected-measures)
+          batch-results (cp/pmap cpu-pool
+                                (fn [solution-batch]
+                                  (evaluate-complete-solution-space cpu-pool piece
+                                                                   solution-batch current-rhythmic))
+                                solution-batches)
+          optimal-solution (apply min-key (juxt :discomfort :convergence-score) batch-results)]
+      {:result :optimal-found
+       :solution optimal-solution
+       :convergence-method :batched-parallel})))
+
+(defn generate-all-reasonable-solutions [piece affected-measures current-rhythmic]
+  "Generate complete set of reasonable layout solutions for parallel evaluation"
+  (let [;; Different measure placement strategies
+        placement-alternatives (generate-measure-placement-alternatives affected-measures)
+
+        ;; Different width distribution strategies
+        width-alternatives (generate-width-distribution-alternatives affected-measures)
+
+        ;; Different system breaking strategies
+        system-break-alternatives (generate-system-break-alternatives piece affected-measures)
+
+        ;; Cross-product of all reasonable combinations
+        solution-combinations (for [placement placement-alternatives
+                                  width width-alternatives
+                                  breaks system-break-alternatives
+                                  :when (valid-solution-combination? placement width breaks)]
+                              {:placement placement
+                               :widths width
+                               :system-breaks breaks})]
+
+    ;; Filter to manageable set of most promising solutions
+    (take-most-promising-solutions solution-combinations
+                                 (* 4 (.availableProcessors (Runtime/getRuntime))))))
 ```
 
 ### Outward Rippling and Constraint Boundaries
