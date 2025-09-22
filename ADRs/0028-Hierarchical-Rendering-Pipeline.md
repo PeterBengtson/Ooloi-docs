@@ -27,18 +27,19 @@ Ooloi's [frontend-backend separation](0001-Frontend-Backend-Separation.md) provi
 
 ## Decision
 
-Ooloi implements a **four-stage hierarchical rendering pipeline** with comprehensive plugin integration and intelligent client-server coordination:
+Ooloi implements a **five-stage hierarchical rendering pipeline** with comprehensive plugin integration and intelligent client-server coordination:
 
 ## Table of Contents
 
 - [Context](#context)
   - [Architectural Foundation: Frontend-Backend Separation](#architectural-foundation-frontend-backend-separation)
 - [Decision](#decision)
-- [Four-Stage Pipeline Architecture](#four-stage-pipeline-architecture)
+- [Five-Stage Pipeline Architecture](#five-stage-pipeline-architecture)
   - [Stage 1: Spatial Analysis](#stage-1-spatial-analysis)
-  - [Stage 2: Collision Boundary Calculation and Rhythmic Distribution](#stage-2-collision-boundary-calculation-and-rhythmic-distribution)
-  - [Stage 3: Hierarchical Layout Organization](#stage-3-hierarchical-layout-organization)
-  - [Stage 4: Visual Generation](#stage-4-visual-generation)
+  - [Stage 2: Measure Stack Minimum Calculation](#stage-2-measure-stack-minimum-calculation)
+  - [Stage 3: Rhythmic Proportional Distribution](#stage-3-rhythmic-proportional-distribution)
+  - [Stage 4: System Breaking and Hierarchical Layout](#stage-4-system-breaking-and-hierarchical-layout)
+  - [Stage 5: Visual Generation](#stage-5-visual-generation)
 - [Plugin Integration Architecture](#plugin-integration-architecture)
   - [Spacing Hooks](#spacing-hooks)
   - [Paint Hooks](#paint-hooks)
@@ -54,7 +55,7 @@ Ooloi implements a **four-stage hierarchical rendering pipeline** with comprehen
   - [Cross-Thread Context Management](#cross-thread-context-management)
   - [STM Integration with Cooperative Cancellation](#stm-integration-with-cooperative-cancellation)
   - [Integrated STM and Claypoole Implementation](#integrated-stm-and-claypoole-implementation)
-  - [Four-Stage Pipeline Implementation](#four-stage-pipeline-implementation)
+  - [Five-Stage Pipeline Implementation](#five-stage-pipeline-implementation)
   - [Discomfort-Driven Iterative Optimization](#discomfort-driven-iterative-optimization)
   - [Core Discomfort Algorithm](#core-discomfort-algorithm)
   - [Discomfort Optimization Convergence Process](#discomfort-optimization-convergence-process)
@@ -71,13 +72,15 @@ Ooloi implements a **four-stage hierarchical rendering pipeline** with comprehen
 ```mermaid
 flowchart TD
     A[Musical Content Changes] --> B[Stage 1: Musical Logic & Spatial Analysis]
-    B --> C[Stage 2: Collision Boundaries & Rhythmic Distribution]
-    C --> D[Stage 3: System & Page Breaking]
-    D --> E[Stage 4: Visual Element Generation]
-    E --> F[Client Invalidation Events]
+    B --> C[Stage 2: Measure Stack Minimum Calculation]
+    C --> D[Stage 3: Rhythmic Proportional Distribution]
+    D --> E[Stage 4: System & Page Breaking]
+    E --> F[Stage 5: Visual Element Generation]
+    F --> G[Client Invalidation Events]
     
     B -.-> B1[Parallel Processing<br/>Per Measure]
-    D -.-> D1[Parallel Processing<br/>Per System/Page]
+    C -.-> C1[Parallel Processing<br/>Per Measure Stack]
+    E -.-> E1[Parallel Processing<br/>Per System/Page]
     
     B --> Cache1[(Stage 1 Cache)]
     C --> Cache2[(Stage 2 Cache)]
@@ -102,9 +105,10 @@ flowchart TD
 ```mermaid
 flowchart LR
     A[Measure<br/>Changes] --> B[Stage 1<br/>Spatial Analysis]
-    B --> C[Stage 2<br/>Collision Boundaries &<br/>Rhythmic Distribution]
-    C --> D[Stage 3<br/>System Breaking]
-    D --> E[Stage 4<br/>Visual Generation]
+    B --> C[Stage 2<br/>Measure Stack<br/>Minimum Calculation]
+    C --> D[Stage 3<br/>Rhythmic<br/>Proportional Distribution]
+    D --> E[Stage 4<br/>System Breaking]
+    E --> F[Stage 5<br/>Visual Generation]
     
     B1[Width Requirements<br/>Height Indicators<br/>Collision Bounds] --> B
     B --> B2[Minimum Spacing<br/>Element Positions]
@@ -134,30 +138,36 @@ Individual measures process their internal musical content independently:
 - **Plugin Hook Integration**: Spacing hooks fire for each notational element, contributing spatial requirements to atom formation
 - **Atom Dimension Caching**: Once calculated for a rhythmic configuration, engraving atoms remain **immutable** until measure content changes, enabling efficient repositioning without recomputation
 
-### Pipeline Stage 2: Collision Boundary Calculation and Rhythmic Distribution
-Two-phase process establishing minimum spacing requirements followed by proportional distribution:
+### Pipeline Stage 2: Measure Stack Minimum Calculation
+Parallel computation of collision boundaries across measure stacks:
 
-**Phase 2a - Absolute Minimum Calculation (First Sync):**
-- **Collision boundary detection**: Calculate absolute minimum widths required to prevent element overlap
-- **Atomic measurement consolidation**: Determine minimum collision boundaries using cached atomic measurements from Stage 1
-- **Cross-staff minimum coordination**: Establish minimum spacing requirements across all staves within each measure
-- **No proportionality yet**: Pure collision avoidance without rhythmic proportion considerations
+- **Parallel measure processing**: All measures in each stack compute their minimums simultaneously
+- **Minimum width calculation**: Each measure determines absolute minimum width before collisions occur (measured in staff spaces)
+- **Minimum height calculation**: Each measure determines minimum height requirements (measured in staff spaces)
+- **Standard following distance**: Each measure calculates required spacing after its content (measured in staff spaces)
+- **Measure stack consolidation**: Stack formatter consolidates individual measure minimums into unified stack requirements
+- **Result raster preparation**: Creates rational rhythmic position framework for subsequent distribution
+- **No proportionality applied**: Pure collision avoidance - musical spacing comes in Stage 3
 
-**Phase 2b - Rhythmic Proportional Distribution (Second Phase):**
-- **Atom repositioning**: Move pre-computed engraving atoms horizontally based on established minimums
-- **Rhythmic proportion application**: Apply proportional distribution above minimum thresholds - longer note values receive proportionally more space
-- **Cross-staff synchronisation**: Ensure consistent rhythmic spacing across all staves while respecting collision boundaries
-- **Computational efficiency**: Fast repositioning since atomic dimensions and minimums are already established
+### Pipeline Stage 3: Rhythmic Proportional Distribution
+Musical spacing applied above established collision boundaries:
 
-### Pipeline Stage 3: Hierarchical Layout Organization
+- **Minimum boundary respect**: All distribution respects the collision boundaries established in Stage 2
+- **Rhythmic proportion calculation**: Longer note values receive proportionally more horizontal space
+- **Atom repositioning**: Pre-computed engraving atoms moved horizontally for optimal rhythmic alignment
+- **Cross-staff synchronisation**: Ensure consistent rhythmic spacing across all staves within each measure stack
+- **Result raster application**: Apply rational rhythmic positions to actual spacing using measure stack formatter output
+- **Computational efficiency**: Fast since atomic dimensions and minimums are pre-calculated - only positioning changes
+
+### Pipeline Stage 4: System Breaking and Hierarchical Layout Organization
 Measure streams are organized into visual layouts with full hierarchical cascade awareness:
-- **Stage 3a - System Breaking**: Groups measures into horizontal systems based on available width and discomfort optimization
-- **Stage 3b - Page Breaking** (conditional): Arranges systems vertically within page boundaries when system changes affect pagination
-- **Stage 3c - Layout Restructuring** (conditional): Full layout reorganization when page changes require adding/removing pages or cross-movement adjustments
+- **Stage 4a - System Breaking**: Groups measures into horizontal systems based on available width and discomfort optimization
+- **Stage 4b - Page Breaking** (conditional): Arranges systems vertically within page boundaries when system changes affect pagination
+- **Stage 4c - Layout Restructuring** (conditional): Full layout reorganization when page changes require adding/removing pages or cross-movement adjustments
 - **Cross-hierarchy element coordination**: Manages ties, slurs, and other elements spanning system and page breaks
 - **Hierarchical cascade detection**: Automatically determines when system changes require page recalculation, and when page changes require full layout restructuring
 
-### Pipeline Stage 4: Visual Element Generation
+### Pipeline Stage 5: Visual Element Generation
 With final positioning established, measures generate their visual output using timewalker sequential processing:
 - **Coordinate finalisation**: Combines positioning data with spatial measurements from earlier stages
 - **Cross-measure element coordination**: Timewalker processes measure stacks sequentially, enabling originating measures to directly format elements (ties, slurs, beams, glissandos) spanning to subsequent measures
@@ -228,10 +238,10 @@ sequenceDiagram
     Note over U,C2: Phase 3: Asynchronous Pipeline Processing (100ms batch)
     B->>P: Queue affected elements for raster
     P->>P: Stage 1: Engraving atom formation<br/>(plugin spacing hooks fire)
-    P->>P: Stage 2a: Collision boundary calculation<br/>(absolute minimums without proportionality)
-    P->>P: Stage 2b: Rhythmic proportional distribution<br/>(cached atoms moved horizontally)
-    P->>P: Stage 3: System/page breaking<br/>(if measure width changed)
-    P->>P: Stage 4: Visual element generation<br/>(cross-measure elements + plugin paint hooks fire)
+    P->>P: Stage 2: Measure stack minimum calculation<br/>(parallel collision boundary computation)
+    P->>P: Stage 3: Rhythmic proportional distribution<br/>(cached atoms moved horizontally)
+    P->>P: Stage 4: System/page breaking<br/>(if measure width changed)
+    P->>P: Stage 5: Visual element generation<br/>(cross-measure elements + plugin paint hooks fire)
     P->>B: Updated MeasureView{glyphs, curves}
 
     Note over U,C2: Phase 4: Event Broadcasting & Cache Invalidation
@@ -430,7 +440,7 @@ The complete pipeline implementation is detailed in the [Four-Stage Pipeline Imp
 - **Responsive editing**: Long-running calculations abort quickly when new edits arrive
 - **Clean state**: Cancelled operations leave no partial modifications
 
-### Four-Stage Pipeline Implementation
+### Five-Stage Pipeline Implementation
 
 Each pipeline stage uses Claypoole for parallel processing within the STM transaction:
 
@@ -827,16 +837,17 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
            (group-layouts-by-timewalker-sequence layout-results)))
 
 (defn run-complete-pipeline! [renderer piece-ref measure-ids]
-  "Complete four-stage hierarchical rendering pipeline with integrated optimization.
+  "Complete five-stage hierarchical rendering pipeline with integrated optimization.
 
-  ORCHESTRATION GOAL: Coordinate all four pipeline stages to transform musical
+  ORCHESTRATION GOAL: Coordinate all five pipeline stages to transform musical
   data into optimized visual layout using hierarchical discomfort minimization.
 
   HIERARCHICAL PIPELINE STAGES:
   1. STAGE 1 (Measure-level): Spatial analysis with atomic measurement caching
-  2. STAGE 2 (System-level): Collision boundary calculation and rhythmic distribution
-  3. STAGE 3 (System/Page/Layout): Hierarchical optimization with measure movement
-  4. STAGE 4 (Visual): Final visual generation with hierarchical scaling and timewalker sequencing
+  2. STAGE 2 (Measure-stack-level): Parallel minimum collision boundary calculation
+  3. STAGE 3 (Measure-stack-level): Rhythmic proportional distribution above minimums
+  4. STAGE 4 (System/Page/Layout): Hierarchical optimization with measure movement
+  5. STAGE 5 (Visual): Final visual generation with hierarchical scaling and timewalker sequencing
 
   HIERARCHICAL DISCOMFORT OPTIMIZATION:
   - Each stage targets specific levels of the discomfort hierarchy
