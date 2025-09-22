@@ -458,60 +458,67 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
     ;; Set current operation
     (reset! current-formatting-operation operation-id)
 
-    (dosync
-      (alter piece-ref
-        (fn [piece]
-          (binding [*current-operation* operation-id]
+    ;; Execute pipeline within STM transaction (no side effects)
+    (let [pipeline-result
+          (dosync
+            (alter piece-ref
+              (fn [piece]
+                (binding [*current-operation* operation-id]
 
-            ;; Stage 1: Spatial Analysis (parallel per measure)
-            (let [spatial-results (cp/pmap cpu-pool
-                                          (fn [measure-id]
-                                            (with-cancellation
-                                              (analyze-spatial-requirements piece measure-id)))
-                                          measure-ids)]
+                  ;; Stage 1: Spatial Analysis (parallel per measure)
+                  (let [spatial-results (cp/pmap cpu-pool
+                                                (fn [measure-id]
+                                                  (with-cancellation
+                                                    (analyze-spatial-requirements piece measure-id)))
+                                                measure-ids)]
 
-              (if (some #{::cancelled} spatial-results)
-                piece
+                    (if (some #{::cancelled} spatial-results)
+                      piece
 
-                ;; Stage 2: Rhythmic Distribution (parallel per measure)
-                (let [rhythmic-results (cp/pmap cpu-pool
-                                               (fn [[measure-id spatial-data]]
-                                                 (with-cancellation
-                                                   (calculate-rhythmic-distribution piece measure-id spatial-data)))
-                                               (map vector measure-ids spatial-results))]
-
-                  (if (some #{::cancelled} rhythmic-results)
-                    piece
-
-                    ;; Stage 3: System Breaking with Discomfort Optimization (parallel per system)
-                    (let [system-results (cp/pmap cpu-pool
-                                                  (fn [system-data]
-                                                    (with-cancellation
-                                                      (enhanced-system-breaking-with-optimization!
-                                                        renderer piece-ref system-data operation-id)))
-                                                  (group-into-systems rhythmic-results))]
-
-                      (if (some #{::cancelled} system-results)
-                        piece
-
-                        ;; Stage 4: Visual Generation (parallel per measure)
-                        (let [visual-results (cp/pmap cpu-pool
-                                                     (fn [measure-layout]
+                      ;; Stage 2: Rhythmic Distribution (parallel per measure)
+                      (let [rhythmic-results (cp/pmap cpu-pool
+                                                     (fn [[measure-id spatial-data]]
                                                        (with-cancellation
-                                                         (generate-visual-elements piece measure-layout)))
-                                                     (flatten-system-layouts system-results))]
+                                                         (calculate-rhythmic-distribution piece measure-id spatial-data)))
+                                                     (map vector measure-ids spatial-results))]
 
-                          (if (some #{::cancelled} visual-results)
-                            piece
-                            ;; All stages completed successfully
-                            (-> piece
-                                (apply-all-updates spatial-results rhythmic-results
-                                                  system-results visual-results)
-                                (generate-invalidation-events))))))))))))))))
+                        (if (some #{::cancelled} rhythmic-results)
+                          piece
+
+                          ;; Stage 3: System Breaking with Discomfort Optimization (parallel per system)
+                          (let [system-results (cp/pmap cpu-pool
+                                                        (fn [system-data]
+                                                          (with-cancellation
+                                                            (enhanced-system-breaking-with-optimization!
+                                                              renderer piece-ref system-data operation-id)))
+                                                        (group-into-systems rhythmic-results))]
+
+                            (if (some #{::cancelled} system-results)
+                              piece
+
+                              ;; Stage 4: Visual Generation (parallel per measure)
+                              (let [visual-results (cp/pmap cpu-pool
+                                                           (fn [measure-layout]
+                                                             (with-cancellation
+                                                               (generate-visual-elements piece measure-layout)))
+                                                           (flatten-system-layouts system-results))]
+
+                                (if (some #{::cancelled} visual-results)
+                                  piece
+                                  ;; All stages completed successfully - return updated piece
+                                  (apply-all-updates piece spatial-results rhythmic-results
+                                                   system-results visual-results))))))))))))]
+
+      ;; Send invalidation events AFTER STM transaction completes (side effect)
+      (when (not= pipeline-result ::cancelled)
+        (send-invalidation-events! renderer measure-ids pipeline-result))
+
+      pipeline-result)))
 ```
 
 **Pipeline Characteristics:**
-- **Single STM transaction**: All stages execute within one `dosync` block
+- **Single STM transaction**: All stages execute within one `dosync` block with no side effects
+- **Post-transaction events**: Invalidation events sent after STM transaction completes successfully
 - **Cancellation at each stage**: Any stage can abort cleanly if new edits arrive
 - **Claypoole parallelism**: Each stage uses `cp/pmap` for parallel processing
 - **Progressive computation**: Each stage builds on results from previous stages
