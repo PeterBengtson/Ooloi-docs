@@ -452,23 +452,89 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 
 ```clojure
 (defn run-stage-1-spatial-analysis! [cpu-pool piece measure-ids]
-  "Stage 1: Parallel spatial analysis of measures"
+  "Stage 1: Measure-level spatial analysis with ideal width caching.
+
+  GOAL: Establish the foundation for all subsequent stages by computing and caching
+  each measure's ideal width and spatial requirements.
+
+  APPROACH:
+  - Analyze each measure independently in parallel
+  - Compute engraving atoms (noteheads, stems, accidentals as spatial units)
+  - Calculate ideal width based on musical content density
+  - Cache ideal widths for fast discomfort evaluation in later stages
+  - Establish collision boundaries and height indicators
+
+  HIERARCHICAL DISCOMFORT TARGET: Measure-stack level optimization
+  - Each measure gets its preferred width based on musical content
+  - Creates foundation for 0.0 measure-stack discomfort when achieved
+
+  INPUT: Musical piece data and list of measure IDs to process
+  OUTPUT: Spatial analysis results with cached ideal widths per measure
+
+  PERFORMANCE: Fully parallelizable across available CPU cores - measures are independent"
   (cp/pmap cpu-pool
            (fn [measure-id]
              (with-cancellation
-               (analyze-spatial-requirements piece measure-id)))
+               (let [spatial-data (analyze-spatial-requirements piece measure-id)
+                     ideal-width (calculate-ideal-measure-width spatial-data)]
+                 ;; Cache ideal width for fast discomfort evaluation
+                 (cache-ideal-width! piece measure-id ideal-width)
+                 spatial-data)))
            measure-ids))
 
 (defn run-stage-2-rhythmic-distribution! [cpu-pool piece measure-ids spatial-results]
-  "Stage 2: Parallel rhythmic distribution calculation"
+  "Stage 2: Rhythmic proportional distribution with width optimization.
+
+  GOAL: Distribute horizontal space according to rhythmic relationships while
+  respecting cached ideal widths from Stage 1.
+
+  APPROACH:
+  - Use cached ideal widths as optimization targets
+  - Apply rhythmic proportion rules (longer notes get more space)
+  - Balance individual measure preferences with system-wide consistency
+  - Maintain cross-staff synchronization within measure numbers
+
+  HIERARCHICAL DISCOMFORT TARGET: System-level optimization
+  - Minimize combined discomfort of component measures within systems
+  - Balance individual measure ideal widths with system spacing requirements
+  - Prefer solutions that keep measures close to their cached ideal widths
+
+  INPUT: Spatial analysis results with cached ideal widths
+  OUTPUT: Rhythmic distribution with width assignments per measure
+
+  PERFORMANCE: Parallelizable per measure, with cross-measure synchronization"
   (cp/pmap cpu-pool
            (fn [[measure-id spatial-data]]
              (with-cancellation
-               (calculate-rhythmic-distribution piece measure-id spatial-data)))
+               (let [cached-ideal (get-cached-ideal-width piece measure-id)]
+                 (calculate-rhythmic-distribution piece measure-id spatial-data cached-ideal))))
            (map vector measure-ids spatial-results)))
 
 (defn run-stage-2-iteration! [cpu-pool piece measure-ids current-rhythmic system-results]
-  "Stage 2 Iteration: Recalculate rhythmic distribution for moved measures"
+  "Stage 2 Iteration: Fast rhythmic redistribution using cached ideal widths.
+
+  GOAL: Quickly adjust rhythmic distribution when measures move between systems
+  during Stage 3 optimization, using cached ideal widths as adjustment targets.
+
+  APPROACH:
+  - Identify measures that moved to different systems
+  - For moved measures: recalculate distribution toward cached ideal width
+  - For unchanged measures: preserve existing rhythmic distribution
+  - Use cached ideals to minimize computation time during iteration
+
+  HIERARCHICAL DISCOMFORT TARGET: Minimize system-level discomfort
+  - Moved measures adapt to new system context while targeting ideal widths
+  - Unchanged measures maintain their optimized distribution
+
+  CONVERGENCE STRATEGY:
+  - Fast iteration enabled by cached ideal width targets
+  - Each measure knows its preferred width, simplifying adjustment calculations
+  - Converges when measures achieve acceptable proximity to cached ideals
+
+  INPUT: Current rhythmic distribution, system results showing measure movements
+  OUTPUT: Updated rhythmic distribution with moved measures readjusted
+
+  PERFORMANCE: Only recalculates affected measures, uses cached values for speed"
   (let [affected-systems (find-systems-with-moved-measures current-rhythmic system-results)
         affected-measures (get-all-measures-in-systems affected-systems)]
 
@@ -476,13 +542,39 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
              (fn [measure-id]
                (if (contains? affected-measures measure-id)
                  (with-cancellation
-                   (recalculate-rhythmic-distribution-for-new-system piece measure-id system-results))
+                   (let [cached-ideal (get-cached-ideal-width piece measure-id)]
+                     (adjust-rhythmic-distribution-toward-ideal piece measure-id system-results cached-ideal)))
+                 ;; Keep existing result for unchanged measures
                  (get-rhythmic-result current-rhythmic measure-id)))
              measure-ids)))
 
 (defn check-stage-3-convergence [current-rhythmic system-results piece-ref previous-discomfort discomfort-history]
-  "Check if Stage 3 iteration should continue or converge based on optimization quality"
+  "Check if Stage 3 system-level optimization should continue or converge.
+
+  CONVERGENCE ANALYSIS: Uses hierarchical discomfort model to determine when
+  system-level optimization has achieved acceptable quality.
+
+  CONVERGENCE CONDITIONS:
+  1. TOLERANCE THRESHOLD: Multiplicative discomfort change falls below tolerance
+  2. LOCAL MINIMUM: Current discomfort equals minimum in recent iteration history
+  3. PLATEAU: Discomfort no longer improves between consecutive iterations
+
+  HIERARCHICAL DISCOMFORT EVALUATION:
+  - Measures current total discomfort (multiplicative across all levels)
+  - System-level focus: combined discomfort of component measures + spacing
+  - Tracks history to detect optimization patterns and stopping points
+
+  CONVERGENCE REASONING:
+  - Returns specific reason for convergence decision
+  - Enables different handling based on why optimization stopped
+  - Supports debugging and performance analysis
+
+  INPUT: Current state, previous discomfort, iteration history
+  OUTPUT: Convergence decision with detailed reasoning
+
+  PERFORMANCE: Fast evaluation using cached ideal widths for discomfort calculation"
   (let [measures-moved? (measures-changed-systems? current-rhythmic system-results)
+        ;; Use hierarchical multiplicative discomfort calculation
         current-discomfort (calculate-total-discomfort @piece-ref)
 
         ;; Check if discomfort change is below tolerance threshold
@@ -514,7 +606,38 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                           :else :continuing)}))
 
 (defn run-stage-3-system-breaking! [cpu-pool renderer piece-ref operation-id rhythmic-results]
-  "Stage 3: Fast system breaking with cached width evaluation"
+  "Stage 3: System-level optimization with iterative measure movement convergence.
+
+  GOAL: Optimize system-level layout by balancing individual measure preferences
+  with system-wide spacing requirements and measure movement opportunities.
+
+  APPROACH:
+  - Iterative optimization with Stage 3 ↔ Stage 2 feedback loop
+  - Use cached ideal widths for fast discomfort evaluation
+  - Move measures between systems when beneficial for overall layout
+  - Recalculate rhythmic distribution when measures move (Stage 2 iteration)
+  - Continue until convergence through quality-based stopping conditions
+
+  HIERARCHICAL DISCOMFORT TARGET: System-level optimization
+  - Minimize combined discomfort of component measures within each system
+  - Balance measure-stack ideals with system spacing and organization
+  - Consider measure movement opportunities for global discomfort reduction
+
+  CONVERGENCE STRATEGY:
+  - Uses multiplicative hierarchical discomfort for optimization quality assessment
+  - Stops at local minimum, plateau, or tolerance threshold - whichever comes first
+  - No arbitrary iteration limits - driven by actual optimization quality
+
+  MEASURE MOVEMENT HANDLING:
+  - Detects when system optimization moves measures between systems
+  - Triggers Stage 2 iteration to recalculate rhythmic distribution for moved measures
+  - Uses cached ideal widths as targets for fast adjustment
+  - Continues iteration until width requirements stabilize
+
+  INPUT: Rhythmic distribution results from Stage 2
+  OUTPUT: Optimized system organization with stable measure width assignments
+
+  PERFORMANCE: Cached widths enable fast iteration, parallel system processing"
   (loop [current-rhythmic-results rhythmic-results
          iteration 0
          previous-discomfort nil
@@ -524,7 +647,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
           system-results (cp/pmap cpu-pool
                                   (fn [system-data]
                                     (with-cancellation
-                                      (fast-system-breaking-with-cached-widths!
+                                      (optimize-system-with-cached-widths!
                                         renderer piece-ref system-data operation-id)))
                                   (group-into-systems current-rhythmic-results))]
 
