@@ -138,26 +138,30 @@ Individual measures process their internal musical content independently:
 - **Plugin Hook Integration**: Spacing hooks fire for each notational element, contributing spatial requirements to atom formation
 - **Atom Dimension Caching**: Once calculated for a rhythmic configuration, engraving atoms remain **immutable** until measure content changes, enabling efficient repositioning without recomputation
 
-### Pipeline Stage 2: Measure Stack Minimum Calculation
-Parallel computation of collision boundaries across measure stacks:
+### Pipeline Stage 2: Measure Stack Minimum Calculation and Formatting
+Two-phase process: parallel calculation followed by integration:
 
-- **Parallel measure processing**: All measures in each stack compute their minimums simultaneously
-- **Minimum width calculation**: Each measure determines absolute minimum width before collisions occur (measured in staff spaces)
+**Phase A - Parallel Minimum Calculation (Timewalker Collection):**
+- **Individual measure caching**: Each measure computes and caches its own minimum width (collision boundaries in staff spaces)
 - **Minimum height calculation**: Each measure determines minimum height requirements (measured in staff spaces)
 - **Standard following distance**: Each measure calculates required spacing after its content (measured in staff spaces)
-- **Measure stack consolidation**: Stack formatter consolidates individual measure minimums into unified stack requirements
-- **Result raster preparation**: Creates rational rhythmic position framework for subsequent distribution
-- **No proportionality applied**: Pure collision avoidance - musical spacing comes in Stage 3
+- **Timewalker collection**: All measures in each stack processed in parallel, results collected
 
-### Pipeline Stage 3: Rhythmic Proportional Distribution
-Musical spacing applied above established collision boundaries:
+**Phase B - Integration via Measure Stack Formatter:**
+- **Stack formatter consolidation**: Integrates all individual measure minimums from the timewalker
+- **Proportionality algorithm application**: Applies pluggable proportionality algorithms to rational rhythmic positions
+- **Result raster creation**: Generates positioning data in staff spaces for each rhythmic position
+- **Raster distribution**: Makes formatted raster available to measures for paint list preparation
 
-- **Minimum boundary respect**: All distribution respects the collision boundaries established in Stage 2
-- **Rhythmic proportion calculation**: Longer note values receive proportionally more horizontal space
-- **Atom repositioning**: Pre-computed engraving atoms moved horizontally for optimal rhythmic alignment
-- **Cross-staff synchronisation**: Ensure consistent rhythmic spacing across all staves within each measure stack
-- **Result raster application**: Apply rational rhythmic positions to actual spacing using measure stack formatter output
-- **Computational efficiency**: Fast since atomic dimensions and minimums are pre-calculated - only positioning changes
+### Pipeline Stage 3: Paint List Preparation
+Parallel phase where measures apply raster positioning and prepare visual output:
+
+- **Raster reception**: Each measure receives the formatted raster with positional data from Stage 2B
+- **Atom repositioning**: Pre-computed engraving atoms positioned using raster coordinates (in staff spaces)
+- **Cross-staff synchronisation**: Consistent rhythmic spacing across all staves within each measure stack
+- **Paint list creation/preparation**: Measures create and store paint lists OR prepare to do so at this point
+- **Visual element readiness**: All elements positioned and ready for final visual generation
+- **Parallel execution**: All measures in stack process raster simultaneously - no interdependencies
 
 ### Pipeline Stage 4: System Breaking and Hierarchical Layout Organization
 Measure streams are organized into visual layouts with full hierarchical cascade awareness:
