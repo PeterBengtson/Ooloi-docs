@@ -480,8 +480,8 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                  (get-rhythmic-result current-rhythmic measure-id)))
              measure-ids)))
 
-(defn check-stage-3-convergence [current-rhythmic system-results piece-ref iteration max-iterations previous-discomfort discomfort-history]
-  "Check if Stage 3 iteration should continue or converge"
+(defn check-stage-3-convergence [current-rhythmic system-results piece-ref previous-discomfort discomfort-history]
+  "Check if Stage 3 iteration should continue or converge based on optimization quality"
   (let [measures-moved? (measures-changed-systems? current-rhythmic system-results)
         current-discomfort (calculate-total-discomfort @piece-ref)
 
@@ -499,10 +499,8 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
         plateau-reached? (and (>= (count discomfort-history) 2)
                              (<= current-discomfort previous-discomfort))
 
-        max-iterations-reached? (>= iteration max-iterations)
-
-        ;; Convergence achieved if any stopping condition is met
-        converged? (or discomfort-converged? local-minimum-reached? plateau-reached? max-iterations-reached?)
+        ;; Convergence achieved when optimization quality conditions are met
+        converged? (or discomfort-converged? local-minimum-reached? plateau-reached?)
 
         updated-history (conj (vec (take-last 4 discomfort-history)) current-discomfort)]
 
@@ -510,7 +508,6 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
      :current-discomfort current-discomfort
      :discomfort-history updated-history
      :convergence-reason (cond
-                          max-iterations-reached? :max-iterations
                           discomfort-converged? :tolerance-threshold
                           local-minimum-reached? :local-minimum
                           plateau-reached? :plateau
@@ -519,8 +516,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 (defn run-stage-3-iterative-system-breaking! [cpu-pool renderer piece-ref operation-id rhythmic-results]
   "Stage 3: Iterative system breaking with width convergence"
   (loop [current-rhythmic-results rhythmic-results
-         iteration 0
-         max-iterations 5
+         iteration 0  ; Keep for debugging/metrics
          previous-discomfort nil
          discomfort-history []]
 
@@ -536,7 +532,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 
         (let [{:keys [convergence-needed? current-discomfort discomfort-history convergence-reason]}
               (check-stage-3-convergence current-rhythmic-results system-results piece-ref
-                                       iteration max-iterations previous-discomfort discomfort-history)]
+                                       previous-discomfort discomfort-history)]
 
           (if convergence-needed?
             ;; Continue iteration - recalculate rhythmic distribution
@@ -546,7 +542,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 
               (if (some #{::cancelled} updated-rhythmic-results)
                 {:result ::cancelled}
-                (recur updated-rhythmic-results (inc iteration) max-iterations current-discomfort discomfort-history)))
+                (recur updated-rhythmic-results (inc iteration) current-discomfort discomfort-history)))
 
             ;; Convergence achieved - return final system results with reason
             {:result :converged
@@ -707,7 +703,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 - **Iterative Stage 3 ↔ Stage 2 convergence**: When system optimization moves measures, rhythmic distribution recalculates for affected systems until width requirements stabilize
 - **Hierarchical cascade handling**: System changes trigger page recalculation; page changes trigger full layout restructuring
 - **Conditional stage execution**: Page breaking and layout restructuring execute only when system/page changes require them
-- **Multi-modal convergence detection**: Local minimum detection, plateau detection, tolerance threshold, and maximum iterations ensure optimal stopping conditions
+- **Quality-based convergence**: Local minimum detection, plateau detection, and tolerance threshold ensure optimization stops when truly optimal layout is found
 - **Parallel alternative evaluation**: Width configurations and layout alternatives evaluated concurrently to find deterministic optimal solutions
 - **Post-transaction events**: Invalidation events sent after STM transaction completes successfully
 - **Cancellation at each stage**: Any stage can abort cleanly if new edits arrive, including during iterative convergence
