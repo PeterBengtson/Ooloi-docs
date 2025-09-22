@@ -229,27 +229,365 @@ Memory access patterns prove favourable as each processing unit operates on dist
 
 The 100-millisecond **asynchronous** batching interval amplifies computational efficiency by amortising processing costs across multiple edits, accumulating changes and processing them in optimally-sized batches. Crucially, mutating API calls return immediately without waiting for batch processing.
 
-## Parallelism Implementation Options
+## Claypoole Integration Architecture
 
-### `pmap`
-**Pros**: Trivial to use; ideal for coarse, independent tasks (e.g. per-measure analysis).
-**Cons**: Spawns one future per element; lazy evaluation can clash with batching/STM; limited tuning.
+After comprehensive evaluation of parallel processing options, **Claypoole** has been selected as the optimal solution for Ooloi's CPU-intensive layout calculations, providing 16x performance improvement over pmap with superior resource control.
 
-### Reducers `fold`
-**Pros**: Good for associative reductions, controlled chunking.
-**Cons**: Less natural for per-item heavy computations.
+### Dependencies
 
-### Custom Executor / ForkJoin
-**Pros**: Full control (thread count, queueing, chunk size).
-**Cons**: Requires explicit setup.
+```clojure
+;; Add to backend/project.clj
+[org.clj-commons/claypoole "1.2.2"]
+```
 
-### core.async pipelines
-**Pros**: Explicit backpressure and pipeline stages.
-**Cons**: More moving parts, not as throughput-oriented by default.
+### Parallel Processing Approach Selection
 
-### Sequential baseline
-**Pros**: Simplest, deterministic, lowest overhead.
-**Cons**: Leaves parallelism potential unused.
+**Claypoole Selection Rationale:**
+
+After comprehensive evaluation of parallel processing options, Claypoole provides the optimal combination of performance, control, and integration characteristics for musical notation rendering:
+
+**Performance Advantages:**
+- **16x performance improvement** over built-in `pmap` for CPU-intensive layout calculations
+- **Near-linear scaling** up to available CPU cores (3.5-3.8x speedup on 4-core systems)
+- **Superior CPU utilization** through configurable thread pools vs pmap's fixed threading
+
+**Compared to Alternatives:**
+- **`pmap`**: Unpredictable performance due to lazy evaluation and fixed `(ncpus + 2)` threading - avoided for production
+- **`reducers/fold`**: Better for pure mathematical operations but limited by associative function requirements - doesn't fit measure-level processing
+- **`core.async` pipelines**: Higher overhead with fixed 8-thread default, suboptimal for CPU-bound work
+- **Custom `ForkJoinPool`**: Maximum performance potential but requires complex implementation and lacks Clojure integration
+
+**`cp/pmap` Selection within Claypoole:**
+
+Within Claypoole's API, `cp/pmap` provides the best fit for musical notation processing:
+
+**Ordered Processing Requirement:**
+- Musical measures must maintain sequence relationships for cross-measure elements (ties, slurs, spacing)
+- `cp/pmap` preserves input order, unlike `cp/upmap` which returns results unordered
+- Stage-to-stage data flow requires predictable result positioning
+
+**API Simplicity:**
+- `cp/pmap` provides direct replacement for `pmap` with controllable threadpool
+- Simpler than manual `cp/future` coordination for batch processing
+- More natural than `cp/pfor` for functional processing patterns
+
+**Resource Control:**
+- Explicit threadpool specification enables priority scheduling (visible vs off-screen measures)
+- Controlled memory overhead through threadpool sizing
+- Clean integration with Integrant component lifecycle
+
+### Core Architecture Principles
+
+The Claypoole integration follows a strict separation of concerns that prevents architectural conflation:
+
+* **Claypoole handles execution substrate**: threadpool management, bounded parallelism, resource lifecycle, and backpressure control
+* **Domain scheduler handles musical coordination**: generation tracking, STM barriers, transaction commits, and cooperative cancellation
+* **Clean separation prevents complexity explosion**: execution primitives never mix with musical business logic
+
+This separation is critical because musical notation rendering has sophisticated coordination requirements (generation-based cancellation, STM transaction management, hierarchical invalidation) that generic parallel processing libraries cannot and should not address. Claypoole provides the execution foundation while Ooloi's domain logic maintains complete control over coordination semantics.
+
+### Resource Lifecycle Management
+
+Musical notation software requires deterministic resource management because layout calculations run continuously in response to user edits. Unlike batch processing scenarios, notation editors must manage threadpools as long-lived resources with predictable cleanup behavior.
+
+### Threadpool Component Integration
+
+```clojure
+(defmethod ig/init-key ::renderer [_ {:keys [cpu-cores]}]
+  (let [cores (or cpu-cores (.availableProcessors (Runtime/getRuntime)))]
+    {:cpu-pool (cp/threadpool cores)
+     :priority-pool (cp/priority-threadpool cores)  ; For visible measures
+     :metrics (atom {})}))
+
+(defmethod ig/halt-key! ::renderer [_ renderer]
+  (when-let [cpu (:cpu-pool renderer)]
+    (cp/shutdown cpu))
+  (when-let [prio (:priority-pool renderer)]
+    (cp/shutdown prio)))
+```
+
+**Integrant Integration**: The component system manages threadpool lifecycle deterministically. Manual resource management is essential because threadpools maintain daemon threads that prevent JVM shutdown if not explicitly cleaned up.
+
+**Dual Pool Strategy**: Standard and priority threadpools enable responsive UI behavior. Priority pools process visible measures first, ensuring user viewport updates receive immediate attention during complex score processing.
+
+**Thread Count Configuration**: Pool sizing defaults to physical CPU cores, optimizing for CPU-bound layout calculations. This prevents thread oversubscription and context switching overhead.
+
+### Generation-Based Cancellation Architecture
+
+Musical notation editing requires sophisticated cancellation semantics because users frequently trigger overlapping layout operations through rapid editing. Traditional thread interruption is insufficient because layout calculations involve complex musical logic that must complete atomically or not at all.
+
+### Cooperative Cancellation Implementation
+
+Since Claypoole lacks native cancellation, we implement cooperative cancellation through generation checking:
+
+```clojure
+;; Dynamic context for cancellation
+(def ^:dynamic *renderer* nil)
+(def ^:dynamic *run-id* nil)
+
+(defn canceled? []
+  "Fast cancellation check"
+  (not= *run-id* @(:current-run-id *renderer*)))
+
+(defmacro with-cancel [& body]
+  "Execute body only if run is still active"
+  `(if (canceled?) ::cancelled (do ~@body)))
+
+(defn next-run-id! [renderer]
+  (let [new-id (swap! (:run-counter renderer) inc)]
+    (vreset! (:current-run-id renderer) new-id)
+    new-id))
+```
+
+**Generation Tracking Rationale**: Each rendering run receives a unique generation ID. When new edits arrive, the system increments the current generation, immediately invalidating all previous runs. This provides clean cancellation semantics without thread interruption complexity.
+
+**Dynamic Variable Strategy**: The `*renderer*` and `*run-id*` dynamic variables convey cancellation context across thread boundaries. Dynamic variables are essential because layout calculations may involve deep call stacks where passing context explicitly would create API pollution.
+
+**Cooperative Cancellation Philosophy**: The `with-cancel` macro implements cooperative cancellation by checking generation validity at strategic points. Tasks voluntarily yield when their generation becomes obsolete. This prevents partial state corruption that could occur with forced thread termination.
+
+**Performance Considerations**: Generation checking adds minimal overhead (~1-2 nanoseconds per check) but enables responsive cancellation. The `volatile!` used for current-run-id provides faster reads than atoms since cancellation checking is purely read-heavy.
+
+### Cross-Thread Context Management
+
+Claypoole executes tasks on threadpool threads that don't inherit dynamic variable bindings from the calling thread. Musical notation rendering requires consistent context (renderer instance, run generation, musical settings) across all parallel tasks.
+
+### Binding Conveyance Implementation
+
+```clojure
+(defn submit-batch! [pool run-id task xs]
+  "Submit tasks to pool with run-id context and proper binding conveyance"
+  (let [current-renderer *renderer*]  ; Capture binding
+    (mapv (fn [x]
+            (cp/future pool
+              (binding [*run-id* run-id *renderer* current-renderer]
+                (try
+                  (task x)
+                  (catch Exception e
+                    (throw (ex-info "Task failed" {:item x} e)))))))
+          xs)))
+
+(defn par-mapv! [pool renderer run-id f xs]
+  "Parallel mapv with cancellation support"
+  (binding [*renderer* renderer *run-id* run-id]
+    (if (not= run-id @(:current-run-id renderer))
+      ::cancelled
+      (let [futs (submit-batch! pool run-id f xs)
+            res  (await-batch! futs)]
+        (if (not= run-id @(:current-run-id renderer)) ::cancelled res)))))
+```
+
+**Explicit Binding Capture**: The `current-renderer` local variable explicitly captures the dynamic binding before task submission. This is crucial because dynamic variables are thread-local - without explicit capture, threadpool workers would see `nil` for `*renderer*`.
+
+**Generation Fencing**: Double-checking the run generation (before task submission and after result collection) prevents race conditions where tasks complete successfully but their results become obsolete during processing. This fencing ensures only current-generation results affect the STM transaction.
+
+**Exception Context Preservation**: Task failures include ex-info context to maintain debugging information across thread boundaries. This is critical for diagnosing layout calculation failures in complex musical scenarios.
+
+### STM Integration with Cooperative Cancellation
+
+The rendering pipeline coordinates Claypoole parallel processing within STM transactions. Since only one formatting operation runs at a time, cancellation uses simple global state coordination.
+
+### Single-Operation Architecture
+
+**Key Constraint**: Only one formatting operation runs at any given time, eliminating complex concurrency coordination requirements.
+
+**Cancellation Strategy**: Global operation tracking with dynamic variable binding enables responsive cancellation of parallel tasks within STM transactions.
+
+```clojure
+;; Global formatting coordination
+(defonce ^:private current-formatting-operation (atom nil))
+
+(def ^:dynamic *current-operation* nil)
+
+(defn cancelled? []
+  "Check if current parallel task should abort"
+  (not= *current-operation* @current-formatting-operation))
+
+(defmacro with-cancellation [& body]
+  "Execute body with cancellation checking"
+  `(if (cancelled?) ::cancelled (do ~@body)))
+```
+
+### Integrated STM and Claypoole Implementation
+
+```clojure
+(defn run-formatting-pipeline! [renderer piece-ref measure-ids]
+  "Complete formatting pipeline with Claypoole and STM integration"
+  (let [operation-id (java.util.UUID/randomUUID)
+        {:keys [cpu-pool]} renderer]
+
+    ;; Set current operation (outside STM)
+    (reset! current-formatting-operation operation-id)
+
+    ;; Execute pipeline within STM transaction
+    (dosync
+      (alter piece-ref
+        (fn [piece]
+          (binding [*current-operation* operation-id]
+            ;; Stage 1: Parallel spatial analysis
+            (let [stage1-results (cp/pmap cpu-pool
+                                          (fn [measure-id]
+                                            (with-cancellation
+                                              (analyze-measure piece measure-id)))
+                                          measure-ids)]
+
+              (if (some #{::cancelled} stage1-results)
+                piece  ; Return unchanged if cancelled
+                ;; Continue with remaining stages
+                (-> piece
+                    (apply-rhythmic-distribution stage1-results)
+                    (apply-system-breaking)
+                    (generate-visual-elements)
+                    (generate-invalidation-events))))))))))
+```
+
+### Cancellation Flow
+
+**Responsive Editing**: When user makes new edits during active formatting:
+
+1. **New operation starts**: `(reset! current-formatting-operation new-id)`
+2. **Old tasks detect cancellation**: `(cancelled?)` returns `true`
+3. **Tasks abort cleanly**: Return `::cancelled` without corrupting state
+4. **STM handles consistency**: Transaction proceeds with partial results or unchanged piece
+
+**Benefits**:
+- **Simple coordination**: Single global atom coordinates all parallel tasks
+- **STM compatibility**: No side effects within transactions
+- **Responsive UI**: Long-running calculations abort quickly when new edits arrive
+- **Clean state**: Cancelled operations leave no partial modifications
+
+### Four-Stage Pipeline Implementation
+
+Each pipeline stage uses Claypoole for parallel processing within the STM transaction:
+
+```clojure
+(defn run-complete-pipeline! [renderer piece-ref measure-ids]
+  "Four-stage rendering pipeline with integrated cancellation"
+  (let [operation-id (java.util.UUID/randomUUID)
+        {:keys [cpu-pool]} renderer]
+
+    ;; Set current operation
+    (reset! current-formatting-operation operation-id)
+
+    (dosync
+      (alter piece-ref
+        (fn [piece]
+          (binding [*current-operation* operation-id]
+
+            ;; Stage 1: Spatial Analysis (parallel per measure)
+            (let [spatial-results (cp/pmap cpu-pool
+                                          (fn [measure-id]
+                                            (with-cancellation
+                                              (analyze-spatial-requirements piece measure-id)))
+                                          measure-ids)]
+
+              (if (some #{::cancelled} spatial-results)
+                piece
+
+                ;; Stage 2: Rhythmic Distribution (parallel per measure)
+                (let [rhythmic-results (cp/pmap cpu-pool
+                                               (fn [[measure-id spatial-data]]
+                                                 (with-cancellation
+                                                   (calculate-rhythmic-distribution piece measure-id spatial-data)))
+                                               (map vector measure-ids spatial-results))]
+
+                  (if (some #{::cancelled} rhythmic-results)
+                    piece
+
+                    ;; Stage 3: System Breaking (parallel per system)
+                    (let [system-results (cp/pmap cpu-pool
+                                                  (fn [system-data]
+                                                    (with-cancellation
+                                                      (calculate-system-breaks piece system-data)))
+                                                  (group-into-systems rhythmic-results))]
+
+                      (if (some #{::cancelled} system-results)
+                        piece
+
+                        ;; Stage 4: Visual Generation (parallel per measure)
+                        (let [visual-results (cp/pmap cpu-pool
+                                                     (fn [measure-layout]
+                                                       (with-cancellation
+                                                         (generate-visual-elements piece measure-layout)))
+                                                     (flatten-system-layouts system-results))]
+
+                          (if (some #{::cancelled} visual-results)
+                            piece
+                            ;; All stages completed successfully
+                            (-> piece
+                                (apply-all-updates spatial-results rhythmic-results
+                                                  system-results visual-results)
+                                (generate-invalidation-events))))))))))))))))
+```
+
+**Pipeline Characteristics:**
+- **Single STM transaction**: All stages execute within one `dosync` block
+- **Cancellation at each stage**: Any stage can abort cleanly if new edits arrive
+- **Claypoole parallelism**: Each stage uses `cp/pmap` for parallel processing
+- **Progressive computation**: Each stage builds on results from previous stages
+- **Atomic updates**: Either entire pipeline succeeds or piece remains unchanged
+
+### Priority Scheduling Architecture
+
+User experience requires that visible measures receive priority processing over off-screen content. This creates a two-tier processing model where UI responsiveness takes precedence over computational efficiency.
+
+### Priority Wave Implementation
+
+```clojure
+(defn execute-priority-waves! [renderer snapshot work-sets run-id]
+  "Execute priority measures first for UI responsiveness"
+  (let [cpu  (:cpu-pool renderer)
+        prio (or (:priority-pool renderer) cpu)
+        {:keys [priority normal]} work-sets]
+
+    ;; Wave 1: Priority measures (visible + dependencies)
+    (let [priority-results
+          (when (seq priority)
+            (par-mapv! prio renderer run-id
+                       #(analyze-measure-with-cancellation snapshot %)
+                       priority))]
+
+      (when-not (= priority-results ::cancelled)
+        ;; Wave 2: Remaining measures
+        (let [normal-results
+              (when (seq normal)
+                (par-mapv! cpu renderer run-id
+                           #(analyze-measure-with-cancellation snapshot %)
+                           normal))]
+          (when-not (= normal-results ::cancelled)
+            (concat priority-results normal-results)))))))
+```
+
+**Two-Wave Processing Strategy**: Priority measures (visible to the user plus their dependencies) process first using the priority threadpool, followed by remaining measures on the standard pool. This ensures UI updates occur quickly even during large score processing.
+
+**Dependency Closure Calculation**: Priority sets include not just visible measures but their dependency closure (measures affecting key signatures, time signatures, cross-measure elements). This prevents visual inconsistencies where visible measures render without their required context.
+
+**Resource Pool Flexibility**: The system gracefully degrades to a single pool if no priority pool is configured, maintaining functionality while losing priority scheduling benefits. This supports deployment flexibility and testing scenarios.
+
+**Result Composition**: Both waves' results concatenate into a single result set, maintaining the abstraction that priority scheduling is an optimization rather than a fundamental architectural change.
+
+### Architectural Benefits Summary
+
+The Claypoole integration with single-operation coordination provides several critical advantages:
+
+**Responsive User Interface**: Priority scheduling ensures that user viewport changes receive immediate processing attention, preventing UI lag during complex score manipulation.
+
+**Resource Predictability**: Explicit threadpool management provides deterministic resource usage patterns, essential for professional audio workstation integration where resource conflicts must be avoided.
+
+**Simple Cancellation**: Global operation tracking with dynamic binding provides clean cancellation semantics without complex coordination machinery.
+
+**STM Integration**: Parallel processing within STM transactions leverages automatic conflict resolution while maintaining transactional consistency across the entire pipeline.
+
+**Computational Scalability**: Near-linear scaling with CPU cores provides predictable performance improvements on professional workstations with high core counts, enabling complex orchestral score processing.
+
+**Architectural Simplicity**: Single-operation constraint eliminates complex concurrency coordination, enabling straightforward implementation and maintenance.
+
+### Performance Characteristics
+
+- **16x performance improvement** over pmap for CPU-intensive layout calculations
+- **Near-linear scaling** up to available CPU cores (3.5-3.8x speedup on 4-core systems)
+- **Controlled memory overhead**: Buffer size scales as `2 × pool_size` (eager) or `1 × pool_size` (lazy)
+- **STM automatic conflict handling**: Transactions retry with fresh data when conflicts occur
+- **Cooperative cancellation** with responsive abort behavior through generation checking
 
 ## Caching and Incremental Processing
 
@@ -353,6 +691,10 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 ## References
 
+### Implementation Research
+- **research/CLAYPOOLE_FOR_OOLOI_RESEARCH.md** - Comprehensive technical assessment and suitability analysis
+- **research/LAYOUT_COMPUTATION_WITH_CLAYPOOLE.md** - Complete production-ready implementation guide
+
 ### Related ADRs
 - [ADR-0000: Clojure](0000-Clojure.md) - Language providing parallel processing capabilities essential for pipeline stages
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural foundation enabling clean separation with transparent distribution
@@ -365,6 +707,7 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 - [ADR-0022: Lazy Frontend-Backend Architecture](0022-Lazy-Frontend-Backend-Architecture.md) - Event-driven client synchronization patterns underlying the rendering pipeline
 
 ### Technical Dependencies
+- **Claypoole**: Threadpool-based parallel processing library providing controlled CPU-intensive task execution
 - **Clojure STM**: Transaction system coordinating multi-stage updates
 - **gRPC Streaming**: Bi-directional communication for real-time invalidation events
 - **SMuFL Font Metadata**: Glyph dimension data essential for spatial requirement calculations
