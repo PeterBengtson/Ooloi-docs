@@ -677,7 +677,30 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
              :iterations iteration}))))))
 
 (defn run-stage-3-iterative-convergence! [cpu-pool renderer piece-ref operation-id rhythmic-results]
-  "Stage 3: Iterative convergence for large solution spaces"
+  "Stage 3 Backup: Iterative convergence for complex optimization scenarios.
+
+  GOAL: Fallback optimization approach for large or complex solution spaces where
+  the main Stage 3 approach may need additional iteration strategies.
+
+  APPROACH:
+  - Legacy iterative approach maintained for complex edge cases
+  - Uses enhanced system breaking with full optimization capabilities
+  - Maintains same convergence logic as main Stage 3 function
+  - Provides compatibility layer for complex musical scenarios
+
+  HIERARCHICAL DISCOMFORT TARGET: System-level optimization (same as main Stage 3)
+  - Uses same multiplicative hierarchical discomfort calculation
+  - Same convergence detection (local minimum, plateau, tolerance)
+
+  USAGE: Automatically selected for scenarios where main approach insufficient
+  - Complex cross-staff musical elements requiring specialized handling
+  - Large solution spaces that exceed main approach capabilities
+  - Edge cases in musical notation that need additional optimization flexibility
+
+  INPUT: Rhythmic distribution results from Stage 2
+  OUTPUT: Optimized system organization (same format as main Stage 3)
+
+  PERFORMANCE: May be slower than main approach but handles complex edge cases"
   (loop [current-rhythmic-results rhythmic-results
          iteration 0
          previous-discomfort nil
@@ -717,7 +740,36 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
              :iterations iteration})))))))
 
 (defn run-stage-3-hierarchical-layout! [cpu-pool piece system-results]
-  "Stage 3b & 3c: Hierarchical page breaking and layout restructuring"
+  "Stage 3b & 3c: Page and layout-level hierarchical optimization.
+
+  GOAL: Handle hierarchical cascade from system-level changes up to page-level
+  and layout-level restructuring when system optimization affects higher levels.
+
+  APPROACH:
+  - Stage 3b (Conditional): Page breaking when system changes affect pagination
+  - Stage 3c (Conditional): Layout restructuring when page changes require adding/removing pages
+  - Uses hierarchical discomfort evaluation to determine when each level is needed
+  - Only executes expensive higher-level recalculation when actually required
+
+  HIERARCHICAL DISCOMFORT TARGETS:
+  - Page-level: Pages want to be appropriately filled (not too empty, not overcrowded)
+  - Layout-level: Overall structure wants optimal page count (triggers page addition/removal)
+
+  CASCADE LOGIC:
+  - System changes → check if pagination affected (heights, system count per page)
+  - If yes: recalculate page breaking to achieve desired page fullness
+  - Page changes → check if layout restructuring needed (page count optimization)
+  - If yes: add/remove pages to achieve optimal page count for content density
+
+  CONDITIONAL EXECUTION:
+  - Page breaking only when system changes actually affect pagination
+  - Layout restructuring only when page changes require page count adjustment
+  - Avoids expensive recalculation when system changes are purely local
+
+  INPUT: Optimized system organization from Stage 3a
+  OUTPUT: Complete hierarchical layout with optimized page and layout structure
+
+  PERFORMANCE: Conditional execution minimizes work, parallel page processing when needed"
   (let [page-recalc-needed? (system-changes-affect-pagination? piece system-results)
 
         ;; Stage 3b: Page Breaking (conditional)
@@ -747,15 +799,71 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
            :layout-results layout-results})))))
 
 (defn run-stage-4-visual-generation! [cpu-pool piece layout-results]
-  "Stage 4: Parallel visual element generation"
+  "Stage 4: Visual element generation with finalized positioning.
+
+  GOAL: Generate final visual output elements using completed layout positioning
+  from all previous stages with established measure widths, system organization,
+  and page/layout structure.
+
+  APPROACH:
+  - Use finalized positioning data from hierarchical layout optimization
+  - Generate visual elements (noteheads, stems, beams, slurs, text) at precise coordinates
+  - Combine cached spatial measurements with final layout positioning
+  - Apply visual refinements (collision avoidance, aesthetic adjustments)
+
+  HIERARCHICAL DISCOMFORT TARGET: Visual quality optimization
+  - No layout changes at this stage - positioning is finalized
+  - Focus on visual clarity, collision avoidance, and aesthetic refinement
+  - Uses established layout structure to optimize visual presentation
+
+  VISUAL GENERATION PROCESS:
+  - Flatten all hierarchical layout results into measure-level visual specifications
+  - Generate visual elements in parallel across all finalized measure layouts
+  - Apply visual collision detection and aesthetic adjustments
+  - Produce final renderable output for client display
+
+  INPUT: Complete hierarchical layout results (measures, systems, pages, layout structure)
+  OUTPUT: Final visual elements ready for client rendering
+
+  PERFORMANCE: Fully parallelizable across measures - no interdependencies at visual stage"
   (cp/pmap cpu-pool
            (fn [measure-layout]
              (with-cancellation
-               (generate-visual-elements piece measure-layout)))
+               (generate-visual-elements-with-final-positioning piece measure-layout)))
            (flatten-all-layouts layout-results)))
 
 (defn run-complete-pipeline! [renderer piece-ref measure-ids]
-  "Four-stage rendering pipeline with integrated cancellation and hierarchical cascade"
+  "Complete four-stage hierarchical rendering pipeline with integrated optimization.
+
+  ORCHESTRATION GOAL: Coordinate all four pipeline stages to transform musical
+  data into optimized visual layout using hierarchical discomfort minimization.
+
+  HIERARCHICAL PIPELINE STAGES:
+  1. STAGE 1 (Measure-level): Spatial analysis with ideal width caching
+  2. STAGE 2 (System-level): Rhythmic distribution targeting cached ideals
+  3. STAGE 3 (System/Page/Layout): Hierarchical optimization with measure movement
+  4. STAGE 4 (Visual): Final visual generation with optimized positioning
+
+  HIERARCHICAL DISCOMFORT OPTIMIZATION:
+  - Each stage targets specific levels of the discomfort hierarchy
+  - Multiplicative discomfort calculation creates sophisticated level interactions
+  - Cached ideal widths enable fast discomfort evaluation across stages
+  - Quality-based convergence ensures optimization stops at appropriate quality level
+
+  STM TRANSACTION ARCHITECTURE:
+  - Single atomic transaction ensures consistency across all stages
+  - No side effects within transaction (events sent afterward)
+  - Cancellation supported at every stage for responsive editing
+  - Either complete pipeline succeeds or piece remains unchanged
+
+  PERFORMANCE CHARACTERISTICS:
+  - Extensive parallelization using Claypoole across available CPU cores
+  - Cached computations minimize redundant work during optimization
+  - Conditional stage execution (page/layout recalc only when needed)
+  - Modern hardware can achieve near-instantaneous response for typical editing
+
+  INPUT: Musical piece reference and list of measure IDs requiring processing
+  OUTPUT: Fully optimized visual layout ready for client rendering"
   (let [operation-id (java.util.UUID/randomUUID)
         {:keys [cpu-pool]} renderer]
 
