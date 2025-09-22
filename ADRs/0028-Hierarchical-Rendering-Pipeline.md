@@ -53,6 +53,7 @@ Ooloi implements a **four-stage hierarchical rendering pipeline** with comprehen
   - [Threadpool Component Integration](#threadpool-component-integration)
   - [Cross-Thread Context Management](#cross-thread-context-management)
   - [STM Integration with Cooperative Cancellation](#stm-integration-with-cooperative-cancellation)
+  - [Integrated STM and Claypoole Implementation](#integrated-stm-and-claypoole-implementation)
   - [Four-Stage Pipeline Implementation](#four-stage-pipeline-implementation)
   - [Discomfort-Driven Iterative Optimization](#discomfort-driven-iterative-optimization)
   - [Core Discomfort Algorithm](#core-discomfort-algorithm)
