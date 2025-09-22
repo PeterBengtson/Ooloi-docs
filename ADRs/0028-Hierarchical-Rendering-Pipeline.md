@@ -308,7 +308,7 @@ Musical notation software requires deterministic resource management because lay
 
 **Integrant Integration**: The component system manages threadpool lifecycle deterministically. Manual resource management is essential because threadpools maintain daemon threads that prevent JVM shutdown if not explicitly cleaned up.
 
-**Dual Pool Strategy**: Standard and priority threadpools enable responsive UI behavior. Priority pools process visible measures first, ensuring user viewport updates receive immediate attention during complex score processing.
+**Dual Pool Strategy**: Standard and priority threadpools enable responsive editing behavior. Priority pools process high-priority measures first, ensuring critical musical structure updates receive immediate attention during complex score processing.
 
 **Thread Count Configuration**: Pool sizing defaults to physical CPU cores, optimizing for CPU-bound layout calculations. This prevents thread oversubscription and context switching overhead.
 
@@ -402,9 +402,9 @@ The rendering pipeline coordinates Claypoole parallel processing within STM tran
 4. **STM handles consistency**: Transaction proceeds with partial results or unchanged piece
 
 **Benefits**:
-- **Simple coordination**: Single global atom coordinates all parallel tasks
+- **Simple cancellation**: Global operation tracking enables clean task abortion
 - **STM compatibility**: No side effects within transactions
-- **Responsive UI**: Long-running calculations abort quickly when new edits arrive
+- **Responsive editing**: Long-running calculations abort quickly when new edits arrive
 - **Clean state**: Cancelled operations leave no partial modifications
 
 ### Four-Stage Pipeline Implementation
@@ -543,7 +543,7 @@ When layout changes occur, musical consistency requires processing related measu
 
 The Claypoole integration with single-operation coordination provides several critical advantages:
 
-**Responsive User Interface**: Priority scheduling ensures that user viewport changes receive immediate processing attention, preventing UI lag during complex score manipulation.
+**Responsive Musical Processing**: Priority scheduling ensures that musical structure changes receive appropriate processing attention based on their structural impact, maintaining musical consistency during complex score manipulation.
 
 **Resource Predictability**: Explicit threadpool management provides deterministic resource usage patterns, essential for professional audio workstation integration where resource conflicts must be avoided.
 
