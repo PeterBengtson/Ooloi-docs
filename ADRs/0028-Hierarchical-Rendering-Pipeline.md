@@ -764,10 +764,12 @@ The layout engine continuously measures and minimizes "discomfort" - the deviati
 
 ```clojure
 (defn calculate-total-discomfort [piece]
-  "Calculate system-wide layout discomfort"
-  (+ (measure-stack-discomfort piece)
-     (system-spacing-discomfort piece)
-     (page-density-discomfort piece)))
+  "Calculate system-wide layout discomfort across all hierarchical levels"
+  ;; Multiply normalized discomfort values (0.0-1.0) for sophisticated interaction
+  (* (normalize-measure-stack-discomfort piece)      ; Individual measures vs ideal widths
+     (normalize-system-spacing-discomfort piece)     ; Systems vs optimal measure distribution
+     (normalize-page-density-discomfort piece)       ; Pages vs desired fullness
+     (normalize-layout-structure-discomfort piece))) ; Layout vs optimal page count
 
 (defn measure-stack-discomfort [piece]
   "Sum of width deviations from ideal for all measure stacks"
@@ -776,6 +778,91 @@ The layout engine continuously measures and minimizes "discomfort" - the deviati
               (Math/abs (- (actual-width stack)
                           (ideal-width stack)))))
        (reduce +)))
+
+(defn system-spacing-discomfort [piece]
+  "Combined discomfort of component measures within each system"
+  (->> (get-all-systems piece)
+       (map (fn [system]
+              (let [measures-in-system (get-measures system)
+                    ;; System discomfort = sum of its component measure discomforts
+                    component-discomfort (reduce + (map measure-discomfort measures-in-system))
+                    ;; Plus system-level spacing issues (overcrowding, too sparse)
+                    spacing-discomfort (calculate-system-spacing-discomfort system)]
+                (+ component-discomfort spacing-discomfort))))
+       (reduce +)))
+
+(defn page-density-discomfort [piece]
+  "Page discomfort based on deviation from desired fullness"
+  (->> (get-all-pages piece)
+       (map (fn [page]
+              (let [current-fullness (calculate-page-fullness page)
+                    ;; Pages want to be filled - empty pages have high discomfort
+                    ideal-fullness (get-ideal-page-fullness page)
+                    fullness-gap (Math/abs (- ideal-fullness current-fullness))
+                    ;; Weight heavily against underfilled pages in publication contexts
+                    underfill-penalty (if (< current-fullness 0.7) (* 2 fullness-gap) fullness-gap)]
+                underfill-penalty)))
+       (reduce +)))
+
+(defn layout-structure-discomfort [piece]
+  "Layout-level discomfort about adding or removing pages"
+  (let [current-page-count (get-page-count piece)
+        content-density (calculate-overall-content-density piece)
+
+        ;; Layout wants optimal page count for content amount
+        optimal-page-count (calculate-optimal-page-count piece content-density)
+        page-count-discomfort (Math/abs (- current-page-count optimal-page-count))
+
+        ;; Heavy penalty for layouts requiring page addition/removal
+        restructuring-penalty (cond
+                               ;; Too many pages - content could be condensed
+                               (> current-page-count optimal-page-count)
+                               (* 10 page-count-discomfort)  ; Encourage page removal
+
+                               ;; Too few pages - content is overcrowded
+                               (< current-page-count optimal-page-count)
+                               (* 15 page-count-discomfort)  ; Strongly encourage page addition
+
+                               ;; Optimal page count
+                               :else 0)]
+
+    restructuring-penalty))
+
+;; Normalized discomfort functions (all return 0.0-1.0)
+(defn normalize-measure-stack-discomfort [piece]
+  "Normalize measure-stack discomfort to 0.0-1.0 range"
+  (let [raw-discomfort (measure-stack-discomfort piece)
+        max-possible-discomfort (calculate-max-measure-discomfort piece)]
+    (min 1.0 (/ raw-discomfort max-possible-discomfort))))
+
+(defn normalize-system-spacing-discomfort [piece]
+  "Normalize system spacing discomfort to 0.0-1.0 range"
+  (let [raw-discomfort (system-spacing-discomfort piece)
+        max-possible-discomfort (calculate-max-system-discomfort piece)]
+    (min 1.0 (/ raw-discomfort max-possible-discomfort))))
+
+(defn normalize-page-density-discomfort [piece]
+  "Normalize page density discomfort to 0.0-1.0 range"
+  (let [raw-discomfort (page-density-discomfort piece)]
+    ;; Page discomfort naturally ranges 0.0-1.0 (fullness percentages)
+    (min 1.0 raw-discomfort)))
+
+(defn normalize-layout-structure-discomfort [piece]
+  "Normalize layout structure discomfort to 0.0-1.0 range"
+  (let [raw-penalty (layout-structure-discomfort piece)
+        max-reasonable-penalty (* 15 (get-max-reasonable-page-variance piece))]
+    (min 1.0 (/ raw-penalty max-reasonable-penalty))))
+
+;; Hierarchical Discomfort Summary with Multiplicative Interaction
+;; 1. Measure-stack level: Individual measures want their ideal widths (0.0-1.0)
+;; 2. System level: Combined discomfort of component measures + system spacing (0.0-1.0)
+;; 3. Page level: Pages want to be appropriately filled (0.0-1.0)
+;; 4. Layout level: Overall structure wants optimal page count (0.0-1.0)
+;;
+;; Multiplication creates sophisticated interactions:
+;; - Perfect measure widths (0.0) make total discomfort 0.0 regardless of other factors
+;; - Any single factor at maximum discomfort (1.0) doesn't necessarily doom the layout
+;; - Small improvements in multiple areas compound multiplicatively
 
 (defn run-discomfort-optimization! [renderer piece-ref operation-id optimization-plugins]
   "Iterative discomfort minimization with plugin-driven strategies"
