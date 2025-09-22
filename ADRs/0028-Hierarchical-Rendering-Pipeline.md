@@ -9,9 +9,9 @@ Musical notation software faces computational challenges when handling large orc
 
 **Real-World Scalability Challenge**: Traditional notation software famously struggles with large complex scores such as Strauss's Elektra recognition scene - dense orchestral passages with intricate notation that cause performance degradation, memory exhaustion, and unresponsive editing. These scenarios expose the limitations of eager computation approaches that attempt to process entire scores regardless of user viewport or editing context.
 
-Additionally, notation software requires extensibility for contemporary notational techniques and experimental approaches. The challenge lies in providing a unified architecture that supports both traditional notation and innovative extensions without compromising performance or architectural consistency.
+The challenge lies in providing a unified architecture that handles both fundamental notation formatting (chord layouts, articulation placement, beam positioning) and contemporary notational extensions without architectural distinction or performance compromise.
 
-Ooloi requires an architecture that maintains responsive editing performance with the most demanding symphonic works whilst enabling comprehensive notational extensibility through a plugin system.
+Ooloi requires an architecture that maintains responsive editing performance with the most demanding symphonic works whilst implementing all notation formatting through a unified plugin system where canonical plugins handle standard notation alongside custom extensions.
 
 ### Architectural Foundation: Frontend-Backend Separation
 
@@ -304,7 +304,7 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 1. **Performance Scalability**: The four-stage pipeline enables parallelisation across different computational characteristics, with each stage optimised for its specific processing requirements.
 
-2. **Plugin Architectural Uniformity**: Core notation elements use the same plugin machinery available to external developers, ensuring genuine extensibility without architectural compromises.
+2. **Plugin-Based Fundamental Architecture**: All notation formatting - from basic chord layouts and articulation placement to custom extensions - operates through the same unified plugin system, eliminating distinction between "core" and "extended" functionality.
 
 3. **Intelligent Resource Management**: Client-server coordination minimises computational waste whilst maintaining responsive user experience through demand-driven visual realisation.
 
@@ -320,7 +320,7 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 1. **Implementation Complexity**: The four-stage pipeline requires sophisticated coordination mechanisms and careful state management across stage boundaries.
 
-2. **Plugin Development Overhead**: External developers must understand and implement both spacing and paint hooks, increasing the barrier to entry for simple extensions.
+2. **Plugin Development Requirements**: All formatting logic must implement both spacing and paint hooks, creating consistent architectural requirements across canonical and custom plugins.
 
 3. **Memory Usage During Transitions**: Intermediate state between stages requires temporary storage, particularly significant for large scores.
 
@@ -343,12 +343,13 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 ## Alternatives Considered
 
 ### Alternative 1: Hardcoded Core Notation Elements
-**Approach**: Implement basic notation elements (staff lines, clefs, notes) directly in core system without plugin architecture.
+**Approach**: Implement fundamental notation formatting (chord layouts, articulation placement, beam positioning) directly in core system with plugin architecture only for extensions.
 **Rejection Reasons**:
-- Creates architectural inconsistency between core and extended elements
-- Prevents experimentation with alternative approaches to basic notation
-- Violates "eating our own soup" principle
-- Limits future extensibility options
+- Creates artificial architectural distinction between fundamental and extended formatting logic
+- Prevents unified optimization and caching strategies across all notation elements
+- Violates architectural uniformity principle where all formatting logic follows identical patterns
+- Complicates maintenance by requiring separate code paths for equivalent functionality
+- Limits ability to customize or replace fundamental formatting behaviors when needed
 
 ## References
 
@@ -379,8 +380,8 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 ## Notes
 
-This architectural decision establishes Ooloi's rendering pipeline as a scalable system capable of handling professional-scale musical compositions whilst maintaining the extensibility essential for contemporary notational innovation.
+This architectural decision establishes Ooloi's rendering pipeline as a scalable system capable of handling professional-scale musical compositions through unified plugin-based formatting for all notation elements.
 
-The mandatory plugin compliance ensures that no artificial barriers exist between core and extended notation elements, providing a foundation for comprehensive musical expression within a unified architectural framework.
+The mandatory plugin compliance ensures that fundamental notation formatting (chords, articulations, beams) and custom extensions operate through identical architectural patterns, providing a foundation for comprehensive musical expression without artificial distinctions between "core" and "extended" functionality.
 
-The four-stage approach recognises that musical logic, spatial arrangement, layout organisation, and visual rendering represent distinct computational problems that benefit from separation and targeted optimisation.
+The four-stage approach recognises that musical logic, spatial arrangement, layout organisation, and visual rendering represent distinct computational problems that benefit from separation and targeted optimisation, with all formatting logic implemented through canonical and custom plugins as first-class citizens.
