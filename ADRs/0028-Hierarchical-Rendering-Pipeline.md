@@ -29,6 +29,39 @@ Ooloi's [frontend-backend separation](0001-Frontend-Backend-Separation.md) provi
 
 Ooloi implements a **four-stage hierarchical rendering pipeline** with comprehensive plugin integration and intelligent client-server coordination:
 
+## Table of Contents
+
+- [Context](#context)
+  - [Architectural Foundation: Frontend-Backend Separation](#architectural-foundation-frontend-backend-separation)
+- [Decision](#decision)
+- [Four-Stage Pipeline Architecture](#four-stage-pipeline-architecture)
+  - [Stage 1: Spatial Analysis](#stage-1-spatial-analysis)
+  - [Stage 2: Rhythmic Distribution](#stage-2-rhythmic-distribution)
+  - [Stage 3: System Breaking](#stage-3-system-breaking)
+  - [Stage 4: Visual Generation](#stage-4-visual-generation)
+- [Plugin Integration Architecture](#plugin-integration-architecture)
+  - [Spacing Hooks](#spacing-hooks)
+  - [Paint Hooks](#paint-hooks)
+- [Client-Server Coordination](#client-server-coordination)
+  - [Lazy Rendering Strategy](#lazy-rendering-strategy)
+  - [Hierarchical Invalidation](#hierarchical-invalidation)
+- [Claypoole Integration Architecture](#claypoole-integration-architecture)
+  - [Dependencies](#dependencies)
+  - [Parallel Processing Approach Selection](#parallel-processing-approach-selection)
+  - [Core Architecture Principles](#core-architecture-principles)
+  - [Resource Lifecycle Management](#resource-lifecycle-management)
+  - [Threadpool Component Integration](#threadpool-component-integration)
+  - [Cross-Thread Context Management](#cross-thread-context-management)
+  - [STM Integration with Cooperative Cancellation](#stm-integration-with-cooperative-cancellation)
+  - [Four-Stage Pipeline Implementation](#four-stage-pipeline-implementation)
+  - [Musical Priority Scheduling](#musical-priority-scheduling)
+  - [Architectural Benefits Summary](#architectural-benefits-summary)
+  - [Performance Characteristics](#performance-characteristics)
+- [Caching and Incremental Processing](#caching-and-incremental-processing)
+- [Benefits](#benefits)
+- [Trade-offs](#trade-offs)
+- [References](#references)
+
 ```mermaid
 flowchart TD
     A[Musical Content Changes] --> B[Stage 1: Musical Logic & Spatial Analysis]
