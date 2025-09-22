@@ -486,52 +486,93 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                         (if (some #{::cancelled} rhythmic-results)
                           piece
 
-                          ;; Stage 3: System Breaking with Discomfort Optimization (parallel per system)
-                          (let [system-results (cp/pmap cpu-pool
-                                                        (fn [system-data]
-                                                          (with-cancellation
-                                                            (enhanced-system-breaking-with-optimization!
-                                                              renderer piece-ref system-data operation-id)))
-                                                        (group-into-systems rhythmic-results))]
+                          ;; Stage 3: Iterative System Breaking with Width Convergence
+                          (loop [current-rhythmic-results rhythmic-results
+                                 iteration 0
+                                 max-iterations 5 ; Prevent infinite loops
+                                 previous-discomfort nil] ; Track convergence
 
-                            (if (some #{::cancelled} system-results)
-                              piece
+                            (let [system-results (cp/pmap cpu-pool
+                                                          (fn [system-data]
+                                                            (with-cancellation
+                                                              (enhanced-system-breaking-with-optimization!
+                                                                renderer piece-ref system-data operation-id)))
+                                                          (group-into-systems current-rhythmic-results))
 
-                              ;; Check if system changes require page-level recalculation
-                              (let [page-recalc-needed? (system-changes-affect-pagination? piece system-results)
+                                  current-discomfort (calculate-total-discomfort @piece-ref)]
 
-                                    ;; Stage 3b: Page Breaking (if system changes affect pagination)
-                                    page-results (if page-recalc-needed?
-                                                   (cp/pmap cpu-pool
-                                                           (fn [page-data]
-                                                             (with-cancellation
-                                                               (recalculate-page-layout piece page-data system-results)))
-                                                           (group-into-pages system-results))
-                                                   ;; No page recalc needed, use existing page structure
-                                                   (preserve-existing-page-structure piece system-results))]
+                              (if (some #{::cancelled} system-results)
+                                piece
 
-                                (if (some #{::cancelled} page-results)
-                                  piece
+                                ;; Check convergence conditions
+                                (let [measures-moved? (measures-changed-systems? current-rhythmic-results system-results)
+                                      discomfort-converged? (and previous-discomfort
+                                                                (<= (Math/abs (- current-discomfort previous-discomfort))
+                                                                   (get-convergence-tolerance @piece-ref)))
+                                      max-iterations-reached? (>= iteration max-iterations)
+                                      convergence-needed? (and measures-moved?
+                                                              (not discomfort-converged?)
+                                                              (not max-iterations-reached?))]
 
-                                  ;; Check if page changes require full layout restructuring
-                                  (let [layout-recalc-needed? (page-changes-affect-full-layout? piece page-results)
+                                  (if convergence-needed?
+                                    ;; Stage 2 Iteration: Recalculate rhythmic distribution for affected systems
+                                    (let [affected-systems (find-systems-with-moved-measures current-rhythmic-results system-results)
+                                          affected-measures (get-all-measures-in-systems affected-systems)
 
-                                        ;; Stage 3c: Full Layout Restructuring (if pages added/removed)
-                                        layout-results (if layout-recalc-needed?
-                                                         (with-cancellation
-                                                           (restructure-full-layout piece page-results))
-                                                         ;; No layout restructuring needed
-                                                         page-results)]
+                                          ;; Recalculate Stage 2 for measures with new system context
+                                          updated-rhythmic-results
+                                          (cp/pmap cpu-pool
+                                                   (fn [measure-id]
+                                                     (if (contains? affected-measures measure-id)
+                                                       ;; Recalculate rhythmic distribution with new system constraints
+                                                       (with-cancellation
+                                                         (recalculate-rhythmic-distribution-for-new-system
+                                                           piece measure-id system-results))
+                                                       ;; Keep existing rhythmic result for unchanged measures
+                                                       (get-rhythmic-result current-rhythmic-results measure-id)))
+                                                   measure-ids)]
 
-                                    (if (= layout-results ::cancelled)
-                                      piece
+                                      (if (some #{::cancelled} updated-rhythmic-results)
+                                        piece
+                                        ;; Continue iteration with updated rhythmic results and discomfort tracking
+                                        (recur updated-rhythmic-results (inc iteration) max-iterations current-discomfort)))
 
-                                      ;; Stage 4: Visual Generation (parallel per measure)
-                                      (let [visual-results (cp/pmap cpu-pool
-                                                                   (fn [measure-layout]
-                                                                     (with-cancellation
-                                                                       (generate-visual-elements piece measure-layout)))
-                                                                   (flatten-all-layouts layout-results))]
+                                    ;; Convergence achieved or max iterations reached - proceed to page breaking
+                                    (let [final-system-results system-results
+                                          page-recalc-needed? (system-changes-affect-pagination? piece final-system-results)
+
+                                          ;; Stage 3b: Page Breaking (if system changes affect pagination)
+                                          page-results (if page-recalc-needed?
+                                                         (cp/pmap cpu-pool
+                                                                 (fn [page-data]
+                                                                   (with-cancellation
+                                                                     (recalculate-page-layout piece page-data final-system-results)))
+                                                                 (group-into-pages final-system-results))
+                                                         ;; No page recalc needed, use existing page structure
+                                                         (preserve-existing-page-structure piece final-system-results))]
+
+                                      (if (some #{::cancelled} page-results)
+                                        piece
+
+                                        ;; Check if page changes require full layout restructuring
+                                        (let [layout-recalc-needed? (page-changes-affect-full-layout? piece page-results)
+
+                                              ;; Stage 3c: Full Layout Restructuring (if pages added/removed)
+                                              layout-results (if layout-recalc-needed?
+                                                               (with-cancellation
+                                                                 (restructure-full-layout piece page-results))
+                                                               ;; No layout restructuring needed
+                                                               page-results)]
+
+                                          (if (= layout-results ::cancelled)
+                                            piece
+
+                                            ;; Stage 4: Visual Generation (parallel per measure)
+                                            (let [visual-results (cp/pmap cpu-pool
+                                                                         (fn [measure-layout]
+                                                                           (with-cancellation
+                                                                             (generate-visual-elements piece measure-layout)))
+                                                                         (flatten-all-layouts layout-results))]
 
                                         (if (some #{::cancelled} visual-results)
                                           piece
@@ -544,6 +585,31 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
         (send-invalidation-events! renderer measure-ids pipeline-result))
 
       pipeline-result)))
+
+;; Stage 3 ↔ Stage 2 iteration functions
+(defn measures-changed-systems? [previous-rhythmic-results current-system-results]
+  "Detect if any measures moved to different systems during optimization"
+  (not= (extract-measure-to-system-mapping previous-rhythmic-results)
+        (extract-measure-to-system-mapping current-system-results)))
+
+(defn find-systems-with-moved-measures [previous-rhythmic current-system]
+  "Identify systems containing measures that moved during optimization"
+  (let [prev-mapping (extract-measure-to-system-mapping previous-rhythmic)
+        curr-mapping (extract-measure-to-system-mapping current-system)]
+    (distinct (concat (vals prev-mapping) (vals curr-mapping)))))
+
+(defn recalculate-rhythmic-distribution-for-new-system [piece measure-id system-results]
+  "Recalculate rhythmic distribution when measure moves to different system"
+  (let [new-system-context (find-system-containing-measure system-results measure-id)
+        new-width-constraints (calculate-system-width-constraints new-system-context)]
+    (calculate-rhythmic-distribution piece measure-id
+                                   (get-spatial-data piece measure-id)
+                                   new-width-constraints)))
+
+(defn get-convergence-tolerance [piece]
+  "Get discomfort convergence tolerance for iterative optimization"
+  (or (get-piece-setting piece :stage-convergence-tolerance)
+      1.0)) ; Default 1 unit of discomfort change
 
 ;; Hierarchical cascade decision functions
 (defn system-changes-affect-pagination? [piece system-results]
@@ -573,12 +639,14 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
 
 **Pipeline Characteristics:**
 - **Single STM transaction**: All stages execute within one `dosync` block with no side effects
+- **Iterative Stage 3 ↔ Stage 2 convergence**: When system optimization moves measures, rhythmic distribution recalculates for affected systems until width requirements stabilize
 - **Hierarchical cascade handling**: System changes trigger page recalculation; page changes trigger full layout restructuring
 - **Conditional stage execution**: Page breaking and layout restructuring execute only when system/page changes require them
+- **Convergence protection**: Maximum 5 iterations AND discomfort tolerance threshold prevent infinite loops during measure movement optimization
 - **Post-transaction events**: Invalidation events sent after STM transaction completes successfully
-- **Cancellation at each stage**: Any stage can abort cleanly if new edits arrive
+- **Cancellation at each stage**: Any stage can abort cleanly if new edits arrive, including during iterative convergence
 - **Claypoole parallelism**: Each stage uses `cp/pmap` for parallel processing where applicable
-- **Progressive computation**: Each stage builds on results from previous stages with hierarchical dependency awareness
+- **Progressive computation**: Each stage builds on results from previous stages with iterative refinement awareness
 - **Atomic updates**: Either entire hierarchical pipeline succeeds or piece remains unchanged
 
 ### Discomfort-Driven Iterative Optimization
