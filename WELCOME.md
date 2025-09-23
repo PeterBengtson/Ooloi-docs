@@ -78,6 +78,15 @@ The creative energy that might have gone into another opera has found expression
 
 This is what happens when you take the time to get it right, when you resist the urge to rush, when you're willing to solve the hard problems properly. The result is something that can grow and evolve through the contributions of others while maintaining its essential character.
 
-Now, let's make some music. On all levels.
+## Credo
+
+Ooloi is built without compromise.<br>
+It is not designed to please a community, or to flatter opinion.<br>
+It stands on architecture, tests, and documentation.<br>
+
+If you see the value, you will find it here, intact and intelligible.<br>
+If you don’t, nothing is lost.
+
+*"Nun denn, allein."*
 
 / Peter Bengtson
