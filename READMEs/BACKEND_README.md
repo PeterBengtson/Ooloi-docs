@@ -281,6 +281,65 @@ lein run
 
 **Configuration Precedence**: Command-line arguments override environment variables, which override defaults.
 
+#### JVM Configuration
+
+The backend includes production-optimized JVM defaults but supports customization for different deployment scenarios.
+
+**Default JVM Settings** (configured in project.clj):
+```bash
+# Garbage Collection: G1GC with string deduplication
+-XX:+UseG1GC -XX:+UseStringDeduplication
+
+# Memory Management: Percentage-based sizing for containers
+-XX:InitialRAMPercentage=15 -XX:MaxRAMPercentage=65 -XX:MaxDirectMemorySize=4g
+
+# Thread Configuration: 1MB stack size
+-Xss1m
+
+# Error Handling: Exit on OOM with heap dump
+-XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError
+-XX:HeapDumpPath=/tmp/ooloi-heapdump.hprof
+```
+
+**Development (lein run)**:
+```bash
+# Use project defaults
+lein run
+
+# Override via JVM_OPTS environment variable (Leiningen standard)
+JVM_OPTS="-XX:MaxRAMPercentage=80 -Xmx8g" lein run
+
+# Custom profile for specific JVM settings
+lein with-profile +production run
+```
+
+**Production (standalone JAR)**:
+```bash
+# Use JAVA_OPTS environment variable (standard practice)
+JAVA_OPTS="-XX:MaxRAMPercentage=80 -XX:+UseZGC" java -jar target/ooloi-backend-*-standalone.jar
+
+# Pass JVM options directly
+java -XX:MaxRAMPercentage=80 -XX:+UseZGC -jar target/ooloi-backend-*-standalone.jar
+
+# Container deployment with memory limits
+docker run -e JAVA_OPTS="-XX:MaxRAMPercentage=90" ooloi-backend
+```
+
+**Common JVM Tuning Examples**:
+```bash
+# High-memory server (32GB+ RAM)
+JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+UseG1GC -XX:MaxGCPauseMillis=100"
+
+# Low-latency requirements
+JAVA_OPTS="-XX:+UseZGC -XX:+UnlockExperimentalVMOptions"
+
+# Container with memory constraints
+JAVA_OPTS="-XX:MaxRAMPercentage=90 -XX:InitialRAMPercentage=50"
+
+# Debug/development settings
+JAVA_OPTS="-XX:+PrintGCDetails -XX:+PrintGCTimeStamps -Xloggc:gc.log"
+```
+
 #### TLS Configuration and Test Certificates
 
 **TLS Overview** ([ADR-0020: TLS Infrastructure and Deployment Architecture](../ADRs/0020-TLS-Infrastructure-and-Deployment-Architecture.md)):
