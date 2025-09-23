@@ -9,9 +9,9 @@ Musical notation software faces computational challenges when handling large orc
 
 **Real-World Scalability Challenge**: Traditional notation software famously struggles with large complex scores such as Strauss's Elektra recognition scene - dense orchestral passages with intricate notation that cause performance degradation, memory exhaustion, and unresponsive editing. These scenarios expose the limitations of eager computation approaches that attempt to process entire scores regardless of user viewport or editing context.
 
-**Ooloi's Raison d'Être**: This architectural specification represents Ooloi's fundamental value proposition and core innovation - solving the scalability problem that has limited music notation software for decades. The 5-stage hierarchical rendering pipeline with plugins as first-class citizens IS Ooloi's answer to enabling professional-grade notation software in the multi-core era.
+**Architectural Purpose**: This specification addresses the scalability limitations of existing notation software when processing large orchestral scores. The 5-stage hierarchical rendering pipeline with plugin integration provides the foundation for handling complex notation efficiently across multiple CPU cores.
 
-**Scaling Breakthrough**: While other notation systems struggle with large orchestral works, Ooloi's fan-out/fan-in architecture enables linear scaling with CPU cores, allowing the system to handle everything from simple lead sheets to Mahler symphonies, Ferneyhough complexity, and contemporary notation extensions with equal efficiency.
+**Scalability Approach**: The fan-out/fan-in architecture enables parallel processing during computationally intensive stages, providing linear scaling characteristics with available CPU cores for both simple and complex musical scores.
 
 The challenge lies in providing a unified architecture that handles both fundamental notation formatting (chord layouts, articulation placement, beam positioning) and contemporary notational extensions without architectural distinction or performance compromise.
 
@@ -1872,17 +1872,17 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 ### Positive Aspects
 
-1. **Ooloi's Core Innovation**: The five-stage pipeline represents Ooloi's fundamental solution to the scalability crisis that has plagued notation software for decades, enabling professional-grade performance with complex orchestral scores through intelligent parallel processing.
+1. **Scalability Architecture**: The five-stage pipeline addresses computational scalability challenges in notation software through structured parallel processing and efficient resource utilization.
 
-2. **Linear CPU Scaling**: Fan-out/fan-in architecture enables near-linear performance scaling with available CPU cores, allowing Ooloi to harness modern multi-core hardware effectively where traditional notation software fails.
+2. **Parallel Processing**: Fan-out/fan-in architecture enables near-linear performance scaling with available CPU cores through independent measure processing and coordinated integration points.
 
-3. **Plugin-First Architecture**: All notation formatting - from basic chord layouts and articulation placement to contemporary extensions - operates through the same unified plugin system with first-class citizenship, eliminating any distinction between "core" and "extended" functionality.
+3. **Unified Plugin System**: All notation formatting operates through the same plugin interface, eliminating architectural distinctions between basic and extended notation elements.
 
-4. **Professional Scale Capability**: The dependency boundaries and connecting element architecture properly handle the complexity that causes other systems to break down with dense orchestral notation, enabling everything from simple lead sheets to Mahler symphonies.
+4. **Complex Score Handling**: The dependency boundaries and connecting element architecture manage the computational complexity of dense orchestral notation through proper stage separation.
 
-5. **Multi-Core Era Solution**: This architecture IS Ooloi's answer to bringing music notation software into the multi-core computing era, solving fundamental scalability limitations that have constrained the field.
+5. **Multi-Core Utilization**: The architecture leverages modern multi-core hardware through parallelizable stages and efficient coordination mechanisms.
 
-6. **Incremental Processing Excellence**: Comprehensive caching with hierarchical invalidation provides dramatic performance improvements for typical editing scenarios while maintaining scalability for complex scores.
+6. **Incremental Processing**: Comprehensive caching with hierarchical invalidation provides performance improvements for typical editing scenarios while maintaining scalability for complex scores.
 
 7. **Transparent Distribution**: Type fidelity across gRPC boundaries eliminates serialization impedance, enabling plugins and musical logic to operate identically in local or distributed modes.
 
