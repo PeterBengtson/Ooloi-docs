@@ -276,9 +276,9 @@ The MeasureStackFormatter introduces a sophisticated cross-tree caching mechanis
 
 **Architecture Principles:**
 
-- **Cross-Tree Access Pattern**: Each MeasureStackFormatter cuts across the pure tree structure, managing measures that may exist in different branches of the visual hierarchy (different pages, systems, staves).
+- **Vertical Measure Stack Coordination**: Each MeasureStackFormatter manages all measures at position N across all staves in the layout - a vertical slice of 1 measure width containing all simultaneous musical content.
 
-- **Timewalker-Driven Member Retrieval**: Formatters use the timewalker to dynamically discover and collect their member measures from across the tree structure, enabling temporal coordination without breaking encapsulation.
+- **Same-Staff Constraint**: All measures managed by a single formatter are always at the same measure position (e.g., measure 17) across different staves, not across different measure numbers or positions.
 
 - **Internal-Only Scope**: The stack-formatters vector is intentionally excluded from the public API - it serves purely as an internal optimization mechanism for the rendering pipeline.
 
