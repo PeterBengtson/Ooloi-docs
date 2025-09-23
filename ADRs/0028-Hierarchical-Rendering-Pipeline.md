@@ -9,6 +9,10 @@ Musical notation software faces computational challenges when handling large orc
 
 **Real-World Scalability Challenge**: Traditional notation software famously struggles with large complex scores such as Strauss's Elektra recognition scene - dense orchestral passages with intricate notation that cause performance degradation, memory exhaustion, and unresponsive editing. These scenarios expose the limitations of eager computation approaches that attempt to process entire scores regardless of user viewport or editing context.
 
+**Ooloi's Raison d'Être**: This architectural specification represents Ooloi's fundamental value proposition and core innovation - solving the scalability problem that has limited music notation software for decades. The 5-stage hierarchical rendering pipeline with plugins as first-class citizens IS Ooloi's answer to enabling professional-grade notation software in the multi-core era.
+
+**Scaling Breakthrough**: While other notation systems struggle with large orchestral works, Ooloi's fan-out/fan-in architecture enables linear scaling with CPU cores, allowing the system to handle everything from simple lead sheets to Mahler symphonies, Ferneyhough complexity, and contemporary notation extensions with equal efficiency.
+
 The challenge lies in providing a unified architecture that handles both fundamental notation formatting (chord layouts, articulation placement, beam positioning) and contemporary notational extensions without architectural distinction or performance compromise.
 
 Ooloi requires an architecture that maintains responsive editing performance with the most demanding symphonic works whilst implementing all notation formatting through a unified plugin system where canonical plugins handle standard notation alongside custom extensions.
@@ -1868,25 +1872,27 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 ### Positive Aspects
 
-1. **Performance Scalability**: The four-stage pipeline enables parallelisation across different computational characteristics, with each stage optimised for its specific processing requirements.
+1. **Ooloi's Core Innovation**: The five-stage pipeline represents Ooloi's fundamental solution to the scalability crisis that has plagued notation software for decades, enabling professional-grade performance with complex orchestral scores through intelligent parallel processing.
 
-2. **Plugin-Based Fundamental Architecture**: All notation formatting - from basic chord layouts and articulation placement to custom extensions - operates through the same unified plugin system, eliminating distinction between "core" and "extended" functionality.
+2. **Linear CPU Scaling**: Fan-out/fan-in architecture enables near-linear performance scaling with available CPU cores, allowing Ooloi to harness modern multi-core hardware effectively where traditional notation software fails.
 
-3. **Intelligent Resource Management**: Client-server coordination minimises computational waste whilst maintaining responsive user experience through demand-driven visual realisation.
+3. **Plugin-First Architecture**: All notation formatting - from basic chord layouts and articulation placement to contemporary extensions - operates through the same unified plugin system with first-class citizenship, eliminating any distinction between "core" and "extended" functionality.
 
-4. **Musical Accuracy**: Pipeline separation ensures that musical logic resolution occurs independently of spatial concerns, preventing layout constraints from corrupting musical meaning.
+4. **Professional Scale Capability**: The dependency boundaries and connecting element architecture properly handle the complexity that causes other systems to break down with dense orchestral notation, enabling everything from simple lead sheets to Mahler symphonies.
 
-5. **Incremental Processing**: Comprehensive caching with hierarchical invalidation provides dramatic performance improvements for typical editing scenarios.
+5. **Multi-Core Era Solution**: This architecture IS Ooloi's answer to bringing music notation software into the multi-core computing era, solving fundamental scalability limitations that have constrained the field.
 
-6. **Transparent Distribution**: Type fidelity across gRPC boundaries eliminates serialization impedance, enabling plugins and musical logic to operate identically in local or distributed modes.
+6. **Incremental Processing Excellence**: Comprehensive caching with hierarchical invalidation provides dramatic performance improvements for typical editing scenarios while maintaining scalability for complex scores.
 
-7. **Efficient Spatial Computation**: Engraving atom caching prevents unnecessary recomputation - most changes only require fast atom repositioning rather than expensive dimension recalculation.
+7. **Transparent Distribution**: Type fidelity across gRPC boundaries eliminates serialization impedance, enabling plugins and musical logic to operate identically in local or distributed modes.
+
+8. **Efficient Spatial Computation**: Engraving atom caching prevents unnecessary recomputation - most changes only require fast atom repositioning rather than expensive dimension recalculation.
 
 ### Negative Aspects
 
-1. **Implementation Complexity**: The four-stage pipeline requires sophisticated coordination mechanisms and careful state management across stage boundaries.
+1. **Implementation Complexity**: The five-stage pipeline requires sophisticated coordination mechanisms and careful state management across stage boundaries.
 
-2. **Plugin Development Requirements**: All formatting logic must implement both spacing and paint hooks, creating consistent architectural requirements across canonical and custom plugins.
+2. **Plugin Development Requirements**: All formatting logic must implement spacing hooks and optionally paint/connect hooks based on element requirements, creating consistent architectural requirements across canonical and custom plugins.
 
 3. **Memory Usage During Transitions**: Intermediate state between stages requires temporary storage, particularly significant for large scores.
 
