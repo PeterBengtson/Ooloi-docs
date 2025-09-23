@@ -71,11 +71,11 @@ Ooloi implements a **five-stage hierarchical rendering pipeline** with comprehen
 
 ```mermaid
 flowchart TD
-    A[Musical Content Changes] --> B[Stage 1: Musical Logic & Spatial Analysis]
-    B --> C[Stage 2: Measure Stack Minimum Calculation]
-    C --> D[Stage 3: Rhythmic Proportional Distribution]
-    D --> E[Stage 4: System & Page Breaking]
-    E --> F[Stage 5: Visual Element Generation]
+    A[Musical Content Changes] --> B[Stage 1: Minimum Width Calculation (Fan-out)]
+    B --> C[Stage 2: Raster Generation (Fan-in)]
+    C --> D[Stage 3: Non-Connecting Elements (Fan-out)]
+    D --> E[Stage 4: Discomfort Optimization & Final Positioning]
+    E --> F[Stage 5: Connecting Elements Generation]
     F --> G[Client Invalidation Events]
     
     B -.-> B1[Parallel Processing<br/>Per Measure]
@@ -104,84 +104,85 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[Measure<br/>Changes] --> B[Stage 1<br/>Spatial Analysis]
-    B --> C[Stage 2<br/>Measure Stack<br/>Minimum Calculation]
-    C --> D[Stage 3<br/>Rhythmic<br/>Proportional Distribution]
-    D --> E[Stage 4<br/>System Breaking]
-    E --> F[Stage 5<br/>Visual Generation]
+    A[Measure<br/>Changes] --> B[Stage 1<br/>Minimum Width<br/>Calculation (Fan-out)]
+    B --> C[Stage 2<br/>Raster Generation<br/>(Fan-in)]
+    C --> D[Stage 3<br/>Non-Connecting<br/>Elements (Fan-out)]
+    D --> E[Stage 4<br/>Discomfort Optimization<br/>& Final Positioning]
+    E --> F[Stage 5<br/>Connecting Elements<br/>Generation]
     
-    B1[Width Requirements<br/>Height Indicators<br/>Collision Bounds] --> B
-    B --> B2[Minimum Spacing<br/>Element Positions]
-    
-    C1[Rhythmic Proportions<br/>Cross-Staff Sync] --> C
-    C --> C2[Final Coordinates<br/>Absolute Positions]
-    
-    D1[System Layout<br/>Page Breaking] --> D
-    D --> D2[System Boundaries<br/>Page Structure]
-    
-    E1[Coordinate Finalisation<br/>Visual Assembly] --> E
-    E --> E2[Rendering Instructions<br/>Paint Lists]
+    B1[Musical Content<br/>Collision Analysis<br/>Spatial Requirements] --> B
+    B --> B2[Minimum Widths<br/>Collision Boundaries]
+
+    C1[Minimum Width Data<br/>Stack Integration] --> C
+    C --> C2[Result Rasters<br/>MeasureStackFormatters]
+
+    D1[Raster Data<br/>Non-Connecting Elements] --> D
+    D --> D2[Prepared Paintlists<br/>Positioned Elements]
+
+    E1[Optimization Algorithms<br/>Final Positioning] --> E
+    E --> E2[Absolute Coordinates<br/>System/Page Layout]
+
+    F1[Final Positions<br/>Connecting Elements] --> F
+    F --> F2[Ties, Slurs, Beams<br/>Cross-Boundary Elements]
     
     style B fill:#bbdefb,color:#000
     style C fill:#c5e1a5,color:#000
     style D fill:#f8bbd9,color:#000
     style E fill:#d1c4e9,color:#000
+    style F fill:#ffe0b2,color:#000
 ```
 
-### Pipeline Stage 1: Musical Logic Resolution and Spatial Analysis
-Individual measures process their internal musical content independently:
-- Note transpositions and pitch calculations
-- Effective accidental determination based on key signatures and measure context
-- Tie, slur, and beam resolution
-- Key signature and time signature propagation
+### Pipeline Stage 1: Minimum Width Calculation (Fan-Out)
+Individual measures calculate their absolute minimum widths in parallel:
+- Fan out to each measure in the stack independently
+- Analyze musical content density and collision boundaries
+- Calculate absolute minimum width before collisions occur
+- No rhythmic proportionality at this stage - pure collision boundary calculation
 - **Engraving Atom Formation**: Each rhythmic position calculates its complete spatial unit - noteheads, stems, accidentals, articulations positioned relative to each other as an indivisible "engraving atom"
 - **Plugin Hook Integration**: Spacing hooks fire for each notational element, contributing spatial requirements to atom formation
 - **Atom Dimension Caching**: Once calculated for a rhythmic configuration, engraving atoms remain **immutable** until measure content changes, enabling efficient repositioning without recomputation
 
-### Pipeline Stage 2: Measure Stack Minimum Calculation and Formatting
-Two-phase process: parallel calculation followed by integration:
+### Pipeline Stage 2: Vertical Raster Generation (Fan-In)
+Collects minimum width information and produces the result raster:
+- **Fan in**: Takes minimum width calculations from Stage 1
+- **Result raster creation**: Generates positioning data with vertical placements across the measure stack
+- **MeasureStackFormatter storage**: Stores both minimum AND ideal widths for this measure stack
+- **Rational rhythmic positions**: Creates raster with rational positions (including tuplets like 1/3, 2/3)
+- **Cross-staff synchronization**: Ensures consistent vertical alignment across all staves in the stack
+- **Discomfort calculation setup**: Establishes minimum and ideal width boundaries for optimization
+- **Distribution**: Makes formatted raster available to measures for Stage 3 processing
 
-**Phase A - Parallel Minimum Calculation (Timewalker Collection):**
-- **Individual measure caching**: Each measure computes and caches its own minimum width (collision boundaries in staff spaces)
-- **Minimum height calculation**: Each measure determines minimum height requirements (measured in staff spaces)
-- **Standard following distance**: Each measure calculates required spacing after its content (measured in staff spaces)
-- **Timewalker collection**: All measures in each stack processed in parallel, results collected
-
-**Phase B - Integration via Measure Stack Formatter:**
-- **Stack formatter consolidation**: Integrates all individual measure minimums from the timewalker
-- **Ideal width caching**: Measure stack formatter caches its own ideal width for efficient discomfort calculation
-- **Discomfort value calculation**: Calculates and stores discomfort value for the measure stack based on actual vs ideal width
-- **Proportionality algorithm application**: Applies pluggable proportionality algorithms to rational rhythmic positions
-- **Result raster creation**: Generates positioning data in staff spaces for each rhythmic position
-- **Raster distribution**: Makes formatted raster available to measures for paint list preparation
-- **Quick recalculation support**: Cached ideal width enables fast discomfort evaluation for proposed new widths
-
-### Pipeline Stage 3: Paint List Preparation
-Parallel phase where measures apply raster positioning and prepare visual output:
-
-- **Raster reception**: Each measure receives the formatted raster with positional data from Stage 2B
+### Pipeline Stage 3: Non-Connecting Element Preparation (Fan-Out)
+Parallel phase where measures prepare paintlists for non-connecting elements:
+- **Fan out**: Distributes raster information back to individual measures
+- **Non-connecting elements only**: Handles notes, accidentals, articulations, dynamics - NOT ties, slurs, glissandos, hairpins
+- **Raster application**: Each measure receives the formatted raster with positional data from Stage 2
 - **Atom repositioning**: Pre-computed engraving atoms positioned using raster coordinates (in staff spaces)
+- **Paint list preparation**: Measures prepare paintlists for everything that does NOT connect atoms
 - **Cross-staff synchronisation**: Consistent rhythmic spacing across all staves within each measure stack
-- **Paint list creation/preparation**: Measures create and store paint lists OR prepare to do so at this point
-- **Visual element readiness**: All elements positioned and ready for final visual generation
 - **Parallel execution**: All measures in stack process raster simultaneously - no interdependencies
 
-### Pipeline Stage 4: System Breaking and Hierarchical Layout Organization
-Measure streams are organized into visual layouts with full hierarchical cascade awareness:
-- **Stage 4a - System Breaking**: Groups measures into horizontal systems based on available width and discomfort optimization
-- **Stage 4b - Page Breaking** (conditional): Arranges systems vertically within page boundaries when system changes affect pagination
-- **Stage 4c - Layout Restructuring** (conditional): Full layout reorganization when page changes require adding/removing pages or cross-movement adjustments
-- **Cross-hierarchy element coordination**: Manages ties, slurs, and other elements spanning system and page breaks
-- **Hierarchical cascade detection**: Automatically determines when system changes require page recalculation, and when page changes require full layout restructuring
+### Pipeline Stage 4: Discomfort Optimization and Final Positioning
+Discomfort-based optimization to determine final measure widths and positions:
+- **Discomfort calculation**: Uses minimum and ideal widths from MeasureStackFormatters to calculate current discomfort
+- **Width optimization**: Adjusts measure widths to minimize total discomfort across the layout
+- **System breaking**: Groups measures into horizontal systems based on optimized widths
+- **Position finalization**: Determines final x,y coordinates for all measures
+- **Page breaking** (conditional): Arranges systems vertically within page boundaries when system changes affect pagination
+- **Layout restructuring** (conditional): Full layout reorganization when page changes require adding/removing pages
+- **Hierarchical cascade detection**: Automatically determines when system changes require page recalculation
 
-### Pipeline Stage 5: Visual Element Generation
-With final positioning established, measures generate their visual output using timewalker sequential processing:
-- **Coordinate finalisation**: Combines positioning data with spatial measurements from earlier stages
-- **Cross-measure element coordination**: Timewalker processes measure stacks sequentially, enabling originating measures to directly format elements (ties, slurs, beams, glissandos) spanning to subsequent measures
-- **Visual element assembly**: Creates rendering instructions for glyphs, curves, and text elements
-- **Layout-specific adjustments**: Applies zoom levels, display preferences, and viewport optimisations
+### Pipeline Stage 5: Connecting Elements Generation
+With final positioning established, generate elements that connect atoms:
+- **Dependency on final positions**: Can only execute after Stage 4 provides final measure widths and positions
+- **Connecting elements**: Generates ties, slurs, glissandos, hairpins, beams - everything that connects musical atoms
+- **Cross-boundary elements**: Handles connections across measure, system, and page boundaries
+- **Parallel processing**: Can process multiple measures in parallel once final positions are established
+- **Sequential coordination**: Uses timewalker for cross-measure coordination when elements span measures
+- **Absolute positioning**: Uses finalized coordinates to determine exact start/end points for connecting elements
+- **System/page boundary handling**: Can only generate cross-boundary connections after systems are distributed over pages
 
-**Sequential Processing Architecture**: The timewalker ensures measure stacks are processed in musical order, allowing cross-measure elements to be handled naturally without complex coordination mechanisms. Each originating measure formats its spanning elements directly into target measures as they are encountered in sequence.
+**Critical Dependencies**: This stage requires complete layout finalization because connecting elements need to know exact atom positions that only exist after discomfort optimization completes.
 
 ### Plugin Architecture Integration
 
@@ -219,6 +220,54 @@ Plugins generate visual rendering instructions:
 - **Output**: Rendering instructions (glyphs, curves, text) with precise coordinates
 
 **Registry-Based Discovery**: The plugin registry maintains mappings between musical elements and their formatters, enabling runtime composition and replacement of notational elements.
+
+### Cross-Tree Caching Architecture: Layout Integration
+
+The MeasureStackFormatter introduces a sophisticated cross-tree caching mechanism that breaks the pure hierarchical tree structure in a controlled way to enable efficient width optimization. This architecture is implemented through the Layout model's `stack-formatters` vector.
+
+#### Layout Model Integration
+
+```clojure
+(defrecord Layout [page-views stack-formatters])
+
+;; stack-formatters is a vector of MeasureStackFormatter records
+;; indexed by measure position across the entire layout timeline
+```
+
+**Architecture Principles:**
+
+- **Cross-Tree Access Pattern**: Each MeasureStackFormatter cuts across the pure tree structure, managing measures that may exist in different branches of the visual hierarchy (different pages, systems, staves).
+
+- **Timewalker-Driven Member Retrieval**: Formatters use the timewalker to dynamically discover and collect their member measures from across the tree structure, enabling temporal coordination without breaking encapsulation.
+
+- **Internal-Only Scope**: The stack-formatters vector is intentionally excluded from the public API - it serves purely as an internal optimization mechanism for the rendering pipeline.
+
+#### Performance Benefits
+
+```clojure
+;; Hot path optimization during Stage 3 integration:
+(defn calculate-layout-discomfort [layout proposed-widths]
+  "Extremely fast - O(n) where n = number of measure stacks"
+  (reduce +
+    (map-indexed
+      (fn [i proposed-width]
+        (calculate-discomfort (get-stack-formatter layout i) proposed-width))
+      proposed-widths)))
+```
+
+**Caching Strategy:**
+
+- **Minimum/Ideal Width Boundaries**: Pre-computed during Stage 2B and cached for repeated evaluation
+- **Discomfort Function**: Mathematical function (no lookup tables) enabling instant evaluation for any proposed width
+- **Result Raster Caching**: Generated positioning data cached and distributed to member measures
+
+#### Cross-Tree Consistency Guarantees
+
+**Timewalker Coordination**: All measures within a stack are processed with identical rhythmic raster data, ensuring perfect cross-staff alignment even when measures exist in different visual tree branches.
+
+**STM Transaction Safety**: Width updates and cache invalidation occur within STM transactions, maintaining consistency across the entire layout during concurrent access.
+
+This architecture enables the pipeline to achieve both tree structure benefits (encapsulation, modularity) and cross-tree optimization benefits (efficient constraint solving, temporal coordination) simultaneously.
 
 ## User Interaction Flow
 
@@ -452,64 +501,101 @@ The complete pipeline implementation is detailed in the [Four-Stage Pipeline Imp
 Each pipeline stage uses Claypoole for parallel processing within the STM transaction:
 
 ```clojure
-(defn run-stage-1-spatial-analysis! [cpu-pool piece measure-ids]
-  "Stage 1: Measure-level spatial analysis with ideal width caching.
+(defn run-stage-1-minimum-width-calculation! [cpu-pool piece measure-ids]
+  "Stage 1: Fan-out minimum width calculation for individual measures.
 
-  GOAL: Establish the foundation for all subsequent stages by computing and caching
-  each measure's ideal width and spatial requirements.
+  GOAL: Calculate absolute minimum widths for each measure in parallel without
+  any rhythmic proportionality - pure collision boundary determination.
 
   APPROACH:
-  - Analyze each measure independently in parallel
+  - Fan out to each measure in the stack independently
+  - Analyze musical content density and collision boundaries only
+  - Calculate absolute minimum width before collisions occur
+  - NO rhythmic proportionality at this stage - that comes in Stage 2
   - Compute engraving atoms (noteheads, stems, accidentals as spatial units)
-  - Calculate ideal width based on musical content density
-  - Cache ideal widths for fast discomfort evaluation in later stages
   - Establish collision boundaries and height indicators
 
-  HIERARCHICAL DISCOMFORT TARGET: Measure-stack level optimization
-  - Each measure gets its preferred width based on musical content
-  - Creates foundation for 0.0 measure-stack discomfort when achieved
+  HIERARCHICAL DISCOMFORT TARGET: Foundation for measure-stack optimization
+  - Each measure determines its absolute minimum space requirements
+  - Creates collision boundary data for Stage 2 integration
 
   INPUT: Musical piece data and list of measure IDs to process
-  OUTPUT: Spatial analysis results with cached ideal widths per measure
+  OUTPUT: Minimum width calculations and spatial collision data per measure
 
   PERFORMANCE: Fully parallelizable across available CPU cores - measures are independent"
   (cp/pmap cpu-pool
            (fn [measure-id]
              (with-cancellation
                (let [spatial-data (analyze-spatial-requirements piece measure-id)
-                     ideal-width (calculate-ideal-measure-width spatial-data)]
-                 ;; Cache ideal width for fast discomfort evaluation
-                 (cache-ideal-width! piece measure-id ideal-width)
+                     minimum-width (calculate-minimum-measure-width spatial-data)]
+                 ;; Store only minimum width - no ideal width calculation yet
+                 (store-minimum-width! piece measure-id minimum-width)
                  spatial-data)))
            measure-ids))
 
-(defn run-stage-2-rhythmic-distribution! [cpu-pool piece measure-ids spatial-results]
-  "Stage 2: Rhythmic proportional distribution with width optimization.
+(defn run-stage-2-raster-generation! [cpu-pool piece measure-stacks minimum-width-results]
+  "Stage 2: Fan-in raster generation with MeasureStackFormatter integration.
 
-  GOAL: Distribute horizontal space according to rhythmic relationships while
-  respecting cached ideal widths from Stage 1.
+  GOAL: Collect minimum width information from Stage 1 and produce vertical
+  raster with positioning data, storing both minimum AND ideal widths.
 
   APPROACH:
-  - Use cached ideal widths as optimization targets
-  - Apply rhythmic proportion rules (longer notes get more space)
-  - Balance individual measure preferences with system-wide consistency
-  - Maintain cross-staff synchronization within measure numbers
+  - Fan in: take minimum width calculations from Stage 1
+  - Generate result raster with vertical placements across measure stacks
+  - MeasureStackFormatter stores both minimum AND ideal widths
+  - Create rational rhythmic positions (including tuplets like 1/3, 2/3)
+  - Establish cross-staff synchronization data
+  - Set up discomfort calculation boundaries for Stage 4
 
-  HIERARCHICAL DISCOMFORT TARGET: System-level optimization
-  - Minimize combined discomfort of component measures within systems
-  - Balance individual measure ideal widths with system spacing requirements
-  - Prefer solutions that keep measures close to their cached ideal widths
+  HIERARCHICAL DISCOMFORT TARGET: Measure-stack level preparation
+  - Integrate individual measure minimums into stack-wide optimization data
+  - Establish ideal width targets for Stage 4 discomfort calculation
+  - Create positioning framework for Stage 3 element preparation
 
-  INPUT: Spatial analysis results with cached ideal widths
-  OUTPUT: Rhythmic distribution with width assignments per measure
+  INPUT: Minimum width calculations from Stage 1 fan-out
+  OUTPUT: Result rasters and MeasureStackFormatters with min/ideal width boundaries
 
-  PERFORMANCE: Parallelizable per measure, with cross-measure synchronization"
+  PERFORMANCE: Integrates parallel results, prepares for Stage 3 fan-out"
   (cp/pmap cpu-pool
-           (fn [[measure-id spatial-data]]
+           (fn [measure-stack]
              (with-cancellation
-               (let [cached-ideal (get-cached-ideal-width piece measure-id)]
-                 (calculate-rhythmic-distribution piece measure-id spatial-data cached-ideal))))
-           (map vector measure-ids spatial-results)))
+               (let [minimum-widths (collect-minimum-widths measure-stack minimum-width-results)
+                     ideal-width (calculate-stack-ideal-width measure-stack minimum-widths)
+                     formatter (create-measure-stack-formatter
+                                 (:time-position measure-stack) minimum-widths ideal-width)
+                     raster (generate-result-raster formatter measure-stack)]
+                 {:formatter formatter :raster raster})))
+           measure-stacks))
+
+(defn run-stage-3-non-connecting-elements! [cpu-pool piece measure-ids raster-results]
+  "Stage 3: Fan-out preparation of non-connecting elements in measures.
+
+  GOAL: Distribute raster information to measures for preparing paintlists of
+  elements that do NOT connect atoms (notes, accidentals, dynamics).
+
+  APPROACH:
+  - Fan out: distribute result rasters back to individual measures
+  - Handle ONLY non-connecting elements at this stage
+  - Apply raster positioning to pre-computed engraving atoms
+  - Prepare paintlists for notes, accidentals, articulations, dynamics
+  - NO ties, slurs, glissandos, hairpins - those require final positions
+  - Maintain cross-staff synchronization using raster data
+
+  HIERARCHICAL DISCOMFORT TARGET: Element-level positioning
+  - Position individual musical elements using raster coordinates
+  - Prepare visual elements that don't depend on final measure positions
+  - Enable parallel processing of independent visual elements
+
+  INPUT: Result rasters with positioning data from Stage 2 fan-in
+  OUTPUT: Prepared paintlists for non-connecting visual elements
+
+  PERFORMANCE: Fully parallelizable - measures process rasters independently"
+  (cp/pmap cpu-pool
+           (fn [measure-id]
+             (with-cancellation
+               (let [raster (get-measure-raster raster-results measure-id)]
+                 (prepare-non-connecting-elements! piece measure-id raster))))
+           measure-ids))
 
 (defn run-stage-2-iteration! [cpu-pool piece measure-ids current-rhythmic system-results]
   "Stage 2 Iteration: Fast rhythmic redistribution using cached ideal widths.
@@ -606,39 +692,39 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                           plateau-reached? :plateau
                           :else :continuing)}))
 
-(defn run-stage-3-system-breaking! [cpu-pool renderer piece-ref operation-id rhythmic-results]
-  "Stage 3: System-level optimization with iterative measure movement convergence.
+(defn run-stage-4-discomfort-optimization! [cpu-pool renderer piece-ref operation-id non-connecting-results]
+  "Stage 4: Discomfort optimization and final positioning with system breaking.
 
-  GOAL: Optimize system-level layout by balancing individual measure preferences
-  with system-wide spacing requirements and measure movement opportunities.
+  GOAL: Use MeasureStackFormatter discomfort calculation to optimize measure widths
+  and determine final positions. Complete all layout decisions at this stage.
 
   APPROACH:
-  - Iterative optimization with Stage 3 ↔ Stage 2 feedback loop
-  - Use cached ideal widths for fast discomfort evaluation
-  - Move measures between systems when beneficial for overall layout
-  - Recalculate rhythmic distribution when measures move (Stage 2 iteration)
-  - Continue until convergence through quality-based stopping conditions
+  - Use minimum and ideal widths from Stage 2 MeasureStackFormatters
+  - Calculate current discomfort across all measure stacks
+  - Apply width optimization to minimize total layout discomfort
+  - Perform system breaking based on optimized widths
+  - Execute page breaking and layout restructuring when needed
+  - Finalize all measure positions and widths
 
-  HIERARCHICAL DISCOMFORT TARGET: System-level optimization
-  - Minimize combined discomfort of component measures within each system
-  - Balance measure-stack ideals with system spacing and organization
-  - Consider measure movement opportunities for global discomfort reduction
+  CRITICAL COMPLETION REQUIREMENT:
+  - NO measure movement or width changes after this stage completes
+  - All connecting elements in Stage 5 depend on these final positions
+  - System and page boundaries must be completely established
+
+  HIERARCHICAL DISCOMFORT TARGET: System and layout-level optimization
+  - Minimize combined discomfort using cached min/ideal width boundaries
+  - Balance measure-stack preferences with system-wide organization
+  - Achieve final layout structure ready for connecting elements
 
   CONVERGENCE STRATEGY:
-  - Uses multiplicative hierarchical discomfort for optimization quality assessment
-  - Stops at local minimum, plateau, or tolerance threshold - whichever comes first
-  - No arbitrary iteration limits - driven by actual optimization quality
+  - Uses MeasureStackFormatter discomfort functions for fast evaluation
+  - Iterative optimization until acceptable quality achieved
+  - Quality-based stopping conditions rather than arbitrary limits
 
-  MEASURE MOVEMENT HANDLING:
-  - Detects when system optimization moves measures between systems
-  - Triggers Stage 2 iteration to recalculate rhythmic distribution for moved measures
-  - Uses cached ideal widths as targets for fast adjustment
-  - Continues iteration until width requirements stabilize
+  INPUT: Non-connecting element preparations and MeasureStackFormatters from Stage 2
+  OUTPUT: Final layout with absolute measure positions and widths
 
-  INPUT: Rhythmic distribution results from Stage 2
-  OUTPUT: Optimized system organization with stable measure width assignments
-
-  PERFORMANCE: Cached widths enable fast iteration, parallel system processing"
+  PERFORMANCE: Fast discomfort evaluation using cached boundaries, parallel system processing"
   (loop [current-rhythmic-results rhythmic-results
          iteration 0
          previous-discomfort nil
@@ -799,43 +885,42 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
            :page-results page-results
            :layout-results layout-results})))))
 
-(defn run-stage-4-visual-generation! [cpu-pool piece layout-results]
-  "Stage 4: Visual element generation with finalized positioning and timewalker sequential processing.
+(defn run-stage-5-connecting-elements! [cpu-pool piece final-layout-results]
+  "Stage 5: Connecting elements generation with final positioning dependency.
 
-  GOAL: Generate final visual output elements using completed layout positioning
-  from all previous stages with established measure widths, system organization,
-  and page/layout structure.
+  GOAL: Generate all elements that connect atoms using finalized measure positions
+  and coordinates from Stage 4 optimization completion.
 
   APPROACH:
-  - Use finalized positioning data from hierarchical layout optimization
-  - Generate visual elements (noteheads, stems, beams, slurs, text) at precise coordinates
+  - Generate connecting elements: ties, slurs, glissandos, hairpins, beams
+  - Use finalized positioning data from Stage 4 - no layout changes possible
+  - Handle cross-boundary connections spanning measures, systems, pages
   - Apply hierarchical scaling factors to convert staff spaces to absolute coordinates
-  - Combine atomic measurements with final layout positioning and scale contexts
-  - Apply visual refinements (collision avoidance, aesthetic adjustments)
+  - Process in parallel where possible, sequential for cross-measure coordination
+
+  CRITICAL POSITIONING DEPENDENCY:
+  - Can ONLY execute after Stage 4 provides final measure widths and positions
+  - Connecting elements need exact atom positions that exist only after optimization
+  - Cross-boundary elements require complete system/page distribution
+  - NO layout changes permitted - positions are fixed
 
   CROSS-MEASURE ELEMENT HANDLING:
-  - Sequential processing via timewalker enables natural cross-measure coordination
-  - Originating measures directly format elements spanning to subsequent measures
-  - Ties, slurs, beams, glissandos handled by source measure during its processing
-  - No separate resolution stage needed - elements format themselves in sequence
-
-  HIERARCHICAL DISCOMFORT TARGET: Visual quality optimization
-  - No layout changes at this stage - positioning is finalized
-  - Focus on visual clarity, collision avoidance, and aesthetic refinement
-  - Uses established layout structure to optimize visual presentation
+  - Sequential coordination via timewalker for elements spanning measures
+  - Parallel processing within measures for independent connecting elements
+  - Originating measures format elements to target measures in sequence
+  - Handles system and page boundaries using final layout structure
 
   VISUAL GENERATION PROCESS:
-  - Flatten all hierarchical layout results into measure-level visual specifications
-  - Apply scale contexts to convert atomic measurements from staff spaces to absolute coordinates
-  - Process measure stacks sequentially via timewalker to enable cross-measure coordination
-  - Generate visual elements in parallel within each measure stack
-  - Apply visual collision detection using absolute coordinate collision boundaries
-  - Produce final renderable output for client display
+  - Apply scale contexts for staff spaces to absolute coordinate conversion
+  - Generate connecting elements at precise start/end atom coordinates
+  - Process measure stacks with timewalker sequence for cross-measure elements
+  - Apply visual refinements and collision avoidance for connecting elements
+  - Produce final renderable connecting element output
 
-  INPUT: Complete hierarchical layout results
-  OUTPUT: Final visual elements ready for client rendering
+  INPUT: Complete final layout with absolute measure positions from Stage 4
+  OUTPUT: Final connecting visual elements ready for client rendering
 
-  PERFORMANCE: Parallelizable within measure stacks, sequential between stacks for cross-measure elements"
+  PERFORMANCE: Parallelizable within measures, sequential timewalker for cross-measure elements"
   ;; Process measure stacks sequentially via timewalker for cross-measure coordination
   (cp/pmap cpu-pool
            (fn [measure-stack-layout]
@@ -850,11 +935,11 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
   data into optimized visual layout using hierarchical discomfort minimization.
 
   HIERARCHICAL PIPELINE STAGES:
-  1. STAGE 1 (Measure-level): Spatial analysis with atomic measurement caching
-  2. STAGE 2 (Measure-stack-level): Parallel minimum collision boundary calculation
-  3. STAGE 3 (Measure-stack-level): Rhythmic proportional distribution above minimums
-  4. STAGE 4 (System/Page/Layout): Hierarchical optimization with measure movement
-  5. STAGE 5 (Visual): Final visual generation with hierarchical scaling and timewalker sequencing
+  1. STAGE 1 (Fan-out): Minimum width calculation for individual measures in parallel
+  2. STAGE 2 (Fan-in): MeasureStackFormatter integration and result raster generation
+  3. STAGE 3 (Fan-out): Non-connecting element preparation using result rasters
+  4. STAGE 4: Discomfort optimization and final positioning - NO changes after this
+  5. STAGE 5: Connecting elements generation requiring final atom positions
 
   HIERARCHICAL DISCOMFORT OPTIMIZATION:
   - Each stage targets specific levels of the discomfort hierarchy
@@ -889,41 +974,37 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
               (fn [piece]
                 (binding [*current-operation* operation-id]
 
-                  ;; Stage 1: Spatial Analysis
-                  (let [spatial-results (run-stage-1-spatial-analysis! cpu-pool piece measure-ids)]
-                    (if (some #{::cancelled} spatial-results)
+                  ;; Stage 1: Minimum Width Calculation (Fan-out)
+                  (let [minimum-width-results (run-stage-1-minimum-width-calculation! cpu-pool piece measure-ids)]
+                    (if (some #{::cancelled} minimum-width-results)
                       piece
 
-                      ;; Stage 2: Rhythmic Distribution
-                      (let [rhythmic-results (run-stage-2-rhythmic-distribution! cpu-pool piece measure-ids spatial-results)]
-                        (if (some #{::cancelled} rhythmic-results)
+                      ;; Stage 2: Raster Generation (Fan-in)
+                      (let [raster-results (run-stage-2-raster-generation! cpu-pool piece (get-measure-stacks piece) minimum-width-results)]
+                        (if (some #{::cancelled} raster-results)
                           piece
 
-                          ;; Stage 3: System Breaking with Adaptive Optimization Strategy
-                          (let [stage-3-result (run-stage-3-system-breaking! cpu-pool renderer piece-ref operation-id rhythmic-results)]
-                            (case (:result stage-3-result)
-                              ::cancelled piece
+                          ;; Stage 3: Non-Connecting Elements (Fan-out)
+                          (let [non-connecting-results (run-stage-3-non-connecting-elements! cpu-pool piece measure-ids raster-results)]
+                            (if (some #{::cancelled} non-connecting-results)
+                              piece
 
-                              (:converged :optimal-found)
-                              (let [{:keys [system-results rhythmic-results]} stage-3-result
-
-                                    ;; Stage 3b & 3c: Hierarchical Layout Organization
-                                    hierarchical-result (run-stage-3-hierarchical-layout! cpu-pool piece system-results)]
-
-                                (case (:result hierarchical-result)
+                              ;; Stage 4: Discomfort Optimization and Final Positioning
+                              (let [stage-4-result (run-stage-4-discomfort-optimization! cpu-pool renderer piece-ref operation-id non-connecting-results)]
+                                (case (:result stage-4-result)
                                   ::cancelled piece
 
-                                  :success
-                                  (let [{:keys [page-results layout-results]} hierarchical-result
+                                  (:converged :optimal-found)
+                                  (let [{:keys [final-layout-results]} stage-4-result
 
-                                        ;; Stage 4: Visual Generation with Timewalker Sequencing
-                                        visual-results (run-stage-4-visual-generation! cpu-pool piece layout-results)]
+                                        ;; Stage 5: Connecting Elements Generation
+                                        connecting-results (run-stage-5-connecting-elements! cpu-pool piece final-layout-results)]
 
-                                    (if (some #{::cancelled} visual-results)
+                                    (if (some #{::cancelled} connecting-results)
                                       piece
-                                      ;; All stages completed successfully - apply hierarchical updates with scaling
-                                      (apply-all-hierarchical-updates piece spatial-results rhythmic-results
-                                                                     system-results page-results layout-results visual-results)))))))))))))]
+                                      ;; All stages completed successfully - apply all updates
+                                      (apply-all-pipeline-updates piece minimum-width-results raster-results
+                                                                non-connecting-results final-layout-results connecting-results))))))))))]
 
       ;; Send invalidation events AFTER STM transaction completes (side effect)
       (when (not= pipeline-result ::cancelled)
@@ -1065,6 +1146,14 @@ The layout engine continuously measures and minimizes "discomfort" - the deviati
                         total-width          ; Total width allocated to this measure stack
                         spacing-adjustments]) ; Per-position spacing adjustments
 
+;; MeasureStackFormatter - lives in Layout as vector indexed by measure position
+(defrecord MeasureStackFormatter [minimum-width    ; Below this width, discomfort = 1.0 (impossible)
+                                 ideal-width      ; Target width for optimal spacing
+                                 current-width    ; Currently allocated width
+                                 result-raster    ; Generated raster for measure positioning
+                                 discomfort-cache ; Cached discomfort value for current width
+                                 time-position])  ; Time position this formatter manages
+
 (defn create-result-raster [positions width adjustments]
   "Create result raster for measure stack formatting.
 
@@ -1073,6 +1162,23 @@ The layout engine continuously measures and minimizes "discomfort" - the deviati
   The stack formatter uses these rationals with minimum atom positioning data to apply
   any non-linear ideal placement spacing in the allocated staff space raster."
   (->ResultRaster positions width adjustments))
+
+(defn calculate-discomfort [formatter proposed-width]
+  "Calculate discomfort for a proposed width. Trivial calculation using cached boundaries.
+
+  DISCOMFORT SCALE:
+  - Below minimum-width: 1.0 (impossible - would cause collisions)
+  - At ideal-width: 0.0 (perfect spacing)
+  - Between minimum and ideal: Linear interpolation from 1.0 to 0.0
+  - Above ideal-width: 0.0 (extra space is not uncomfortable)
+
+  PERFORMANCE: Extremely fast - just arithmetic on cached values."
+  (let [{:keys [minimum-width ideal-width]} formatter]
+    (cond
+      (<= proposed-width minimum-width) 1.0
+      (>= proposed-width ideal-width) 0.0
+      :else (/ (- ideal-width proposed-width)
+               (- ideal-width minimum-width)))))
 
 (defn format-measure-stack! [measure-stack]
   "Format measure stack to determine ideal width and create result raster.
