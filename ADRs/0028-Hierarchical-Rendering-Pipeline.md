@@ -263,7 +263,7 @@ Plugins generate connecting elements using finalized positions:
 
 ### Cross-Tree Caching Architecture: Layout Integration
 
-The MeasureStackFormatter introduces a sophisticated cross-tree caching mechanism that breaks the pure hierarchical tree structure in a controlled way to enable efficient width optimization. This architecture is implemented through the Layout model's `stack-formatters` vector.
+The MeasureStackFormatter provides vertical coordination across all staves at each measure position. This architecture is implemented through the Layout model's `stack-formatters` vector, where each formatter manages the vertical alignment and spacing of one measure position across every staff in the score.
 
 #### Layout Model Integration
 
@@ -271,14 +271,25 @@ The MeasureStackFormatter introduces a sophisticated cross-tree caching mechanis
 (defrecord Layout [page-views stack-formatters])
 
 ;; stack-formatters is a vector of MeasureStackFormatter records
-;; indexed by measure position across the entire layout timeline
+;; indexed by measure position: [formatter-measure-1, formatter-measure-2, ...]
+;; Each formatter coordinates the vertical stack of simultaneous measures
 ```
 
-**Architecture Principles:**
+**Vertical Coordination Architecture:**
 
-- **Vertical Measure Stack Coordination**: Each MeasureStackFormatter manages all measures at position N across all staves in the layout - a vertical slice of 1 measure width containing all simultaneous musical content.
+- **Stack Definition**: Each "stack" is the vertical collection of measures at the same time position across all staves (measure 1 on violin + measure 1 on viola + measure 1 on cello + etc.)
 
-- **Same-Staff Constraint**: All measures managed by a single formatter are always at the same measure position (e.g., measure 17) across different staves, not across different measure numbers or positions.
+- **One Formatter Per Stack**: `stack-formatters[17]` manages measure 17 across ALL staves - ensuring consistent rhythmic spacing and width optimization for that vertical slice of the score
+
+- **Simultaneous Content**: All measures in a stack contain simultaneous musical content that must be vertically aligned and rhythmically coordinated
+
+**Example - String Quartet Measure 5:**
+```
+Violin I:    [measure 5 content]  ←
+Violin II:   [measure 5 content]  ← stack-formatters[5] coordinates
+Viola:       [measure 5 content]  ← all of these vertically
+Cello:       [measure 5 content]  ←
+```
 
 - **Internal-Only Scope**: The stack-formatters vector is intentionally excluded from the public API - it serves purely as an internal optimization mechanism for the rendering pipeline.
 
