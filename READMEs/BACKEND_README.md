@@ -14,6 +14,12 @@ The backend server component providing gRPC API services, STM-based piece manage
 6. [Building the Backend](#building-the-backend)
 7. [Shared Model Architecture](#shared-model-architecture)
 8. [Development](#development)
+   - [Running the Backend](#running-the-backend)
+   - [Configuration Options](#configuration-options)
+   - [JVM Configuration](#jvm-configuration)
+   - [TLS Configuration and Test Certificates](#tls-configuration-and-test-certificates)
+   - [Monitoring and Health](#monitoring-and-health)
+   - [Development Commands](#development-commands)
 9. [Related Documentation](#related-documentation)
 
 ## Project Role
