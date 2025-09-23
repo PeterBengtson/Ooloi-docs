@@ -648,31 +648,31 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                  (prepare-non-connecting-elements! piece measure-id raster))))
            measure-ids))
 
-(defn run-stage-2-iteration! [cpu-pool piece measure-ids current-rhythmic system-results]
-  "Stage 2 Iteration: Fast rhythmic redistribution using cached ideal widths.
+(defn run-stage-4-width-adjustment! [cpu-pool piece measure-ids current-widths system-results]
+  "Stage 4 Iteration: Fast width adjustment using cached MeasureStackFormatter boundaries.
 
-  GOAL: Quickly adjust rhythmic distribution when measures move between systems
-  during Stage 3 optimization, using cached ideal widths as adjustment targets.
+  GOAL: Quickly adjust measure widths when measures move between systems
+  during Stage 4 optimization, using cached minimum/ideal widths as targets.
 
   APPROACH:
   - Identify measures that moved to different systems
-  - For moved measures: recalculate distribution toward cached ideal width
-  - For unchanged measures: preserve existing rhythmic distribution
-  - Use cached ideals to minimize computation time during iteration
+  - For moved measures: recalculate widths using MeasureStackFormatter discomfort functions
+  - For unchanged measures: preserve existing width assignments
+  - Use cached min/ideal bounds from Stage 2 to minimize computation time
 
   HIERARCHICAL DISCOMFORT TARGET: Minimize system-level discomfort
-  - Moved measures adapt to new system context while targeting ideal widths
-  - Unchanged measures maintain their optimized distribution
+  - Moved measures adapt to new system context using cached boundaries
+  - Unchanged measures maintain their optimized width assignments
 
   CONVERGENCE STRATEGY:
-  - Fast iteration enabled by cached ideal width targets
-  - Each measure knows its preferred width, simplifying adjustment calculations
-  - Converges when measures achieve acceptable proximity to cached ideals
+  - Fast iteration enabled by cached MeasureStackFormatter boundaries
+  - Each formatter provides discomfort calculation for any proposed width
+  - Converges when total discomfort reaches acceptable threshold
 
-  INPUT: Current rhythmic distribution, system results showing measure movements
-  OUTPUT: Updated rhythmic distribution with moved measures readjusted
+  INPUT: Current width assignments, system results showing measure movements
+  OUTPUT: Updated width assignments with moved measures readjusted
 
-  PERFORMANCE: Only recalculates affected measures, uses cached values for speed"
+  PERFORMANCE: Only recalculates affected measures, uses cached MeasureStackFormatter boundaries for speed"
   (let [affected-systems (find-systems-with-moved-measures current-rhythmic system-results)
         affected-measures (get-all-measures-in-systems affected-systems)]
 
@@ -859,14 +859,14 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                                        previous-discomfort discomfort-history)]
 
           (if convergence-needed?
-            ;; Continue iteration - recalculate rhythmic distribution with updated collision boundaries
-            (let [updated-rhythmic-results
-                  (run-stage-2-iteration! cpu-pool @piece-ref (keys current-rhythmic-results)
-                                        current-rhythmic-results system-results)]
+            ;; Continue iteration - recalculate width assignments with updated system organization
+            (let [updated-width-results
+                  (run-stage-4-width-adjustment! cpu-pool @piece-ref (keys current-width-results)
+                                                current-width-results system-results)]
 
-              (if (some #{::cancelled} updated-rhythmic-results)
+              (if (some #{::cancelled} updated-width-results)
                 {:result ::cancelled}
-                (recur updated-rhythmic-results (inc iteration) current-discomfort discomfort-history)))
+                (recur updated-width-results (inc iteration) current-discomfort discomfort-history)))
 
             ;; Convergence achieved - return final system results
             {:result :converged
