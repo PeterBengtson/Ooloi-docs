@@ -154,17 +154,17 @@ Collects minimum width information and produces the result raster:
 - **Rational rhythmic positions**: Creates raster with rational positions (including tuplets like 1/3, 2/3)
 - **Cross-staff synchronization**: Ensures consistent vertical alignment across all staves in the stack
 - **Discomfort calculation setup**: Establishes minimum and ideal width boundaries for optimization
-- **Distribution**: Makes formatted raster available to measures for Stage 3 processing
+- **Distribution**: Makes Result Raster available to measures for Stage 3 processing
 
 ### Pipeline Stage 3: Non-Connecting Element Preparation (Fan-Out)
 Parallel phase where measures prepare paintlists for non-connecting elements:
-- **Fan out**: Distributes raster information back to individual measures
+- **Fan out**: Distributes Result Raster information back to individual measures
 - **Non-connecting elements only**: Handles notes, accidentals, articulations, dynamics - NOT ties, slurs, glissandos, hairpins
-- **Raster application**: Each measure receives the formatted raster with positional data from Stage 2
+- **Result Raster application**: Each measure receives the Result Raster with positional data from Stage 2
 - **Atom repositioning**: Pre-computed engraving atoms positioned using raster coordinates (in staff spaces)
 - **Paint list preparation**: Measures prepare paintlists for everything that does NOT connect atoms
 - **Cross-staff synchronisation**: Consistent rhythmic spacing across all staves within each measure stack
-- **Parallel execution**: All measures in stack process raster simultaneously - no interdependencies
+- **Parallel execution**: All measures in stack process Result Raster simultaneously - no interdependencies
 
 ### Pipeline Stage 4: Discomfort Optimization and Final Positioning
 Discomfort-based optimization to determine final measure widths and positions:
@@ -530,7 +530,7 @@ The rendering pipeline coordinates Claypoole parallel processing within STM tran
 
 ### Integrated STM and Claypoole Implementation
 
-The complete pipeline implementation is detailed in the [Four-Stage Pipeline Implementation](#four-stage-pipeline-implementation) section below, demonstrating full integration of STM transactions with Claypoole parallel processing and proper side effect handling.
+The complete pipeline implementation is detailed in the [Five-Stage Pipeline Implementation](#five-stage-pipeline-implementation) section below, demonstrating full integration of STM transactions with Claypoole parallel processing and proper side effect handling.
 
 ### Cancellation Flow
 
@@ -1576,7 +1576,7 @@ Optimization strategies are implemented as plugins, enabling domain-specific lay
 (defn fast-system-breaking-with-cached-widths! [renderer piece-ref system-data operation-id]
   "Fast system breaking using pre-cached ideal widths for quick evaluation"
   (let [measures-in-system (get-measures-in-system system-data)
-        ;; Get cached ideal widths - computed once during Stage 1
+        ;; Get cached ideal widths - computed once during Stage 2
         cached-ideal-widths (map #(get-cached-ideal-width piece-ref %) measures-in-system)
 
         ;; Fast discomfort calculation using cached values
@@ -1766,9 +1766,9 @@ Optimization automatically expands its scope until discomfort is minimized or ha
 
 ### Integration with Pipeline Processing
 
-Discomfort optimization integrates with the four-stage pipeline, running after initial layout calculation to refine results:
+Discomfort optimization integrates with the five-stage pipeline, running after initial layout calculation to refine results:
 
-**Stage 3 Enhancement**: System Breaking stage now includes iterative optimization:
+**Stage 4 Enhancement**: Discomfort Optimization and Final Positioning stage now includes iterative optimization:
 
 ```clojure
 (defn enhanced-system-breaking-with-optimization! [renderer piece-ref system-data operation-id]
@@ -1972,4 +1972,4 @@ This architectural decision establishes Ooloi's rendering pipeline as a scalable
 
 The mandatory plugin compliance ensures that fundamental notation formatting (chords, articulations, beams) and custom extensions operate through identical architectural patterns, providing a foundation for comprehensive musical expression without artificial distinctions between "core" and "extended" functionality.
 
-The four-stage approach recognises that musical logic, spatial arrangement, layout organisation, and visual rendering represent distinct computational problems that benefit from separation and targeted optimisation, with all formatting logic implemented through canonical and custom plugins as first-class citizens.
+The five-stage approach recognises that minimum width calculation, raster generation, non-connecting element preparation, discomfort optimization, and connecting element generation represent distinct computational problems that benefit from separation and targeted optimisation, with all formatting logic implemented through canonical and custom plugins as first-class citizens.
