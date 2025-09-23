@@ -673,7 +673,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
   OUTPUT: Updated width assignments with moved measures readjusted
 
   PERFORMANCE: Only recalculates affected measures, uses cached MeasureStackFormatter boundaries for speed"
-  (let [affected-systems (find-systems-with-moved-measures current-rhythmic system-results)
+  (let [affected-systems (find-systems-with-moved-measures current-widths system-results)
         affected-measures (get-all-measures-in-systems affected-systems)]
 
     (cp/pmap cpu-pool
@@ -681,12 +681,12 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                (if (contains? affected-measures measure-id)
                  (with-cancellation
                    (let [cached-ideal (get-cached-ideal-width piece measure-id)]
-                     (adjust-rhythmic-distribution-toward-ideal piece measure-id system-results cached-ideal)))
+                     (adjust-width-toward-ideal piece measure-id system-results cached-ideal)))
                  ;; Keep existing result for unchanged measures
-                 (get-rhythmic-result current-rhythmic measure-id)))
+                 (get-width-result current-widths measure-id)))
              measure-ids)))
 
-(defn check-stage-3-convergence [current-rhythmic system-results piece-ref previous-discomfort discomfort-history]
+(defn check-stage-4-convergence [current-widths system-results piece-ref previous-discomfort discomfort-history]
   "Check if Stage 3 system-level optimization should continue or converge.
 
   CONVERGENCE ANALYSIS: Uses hierarchical discomfort model to determine when
@@ -711,7 +711,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
   OUTPUT: Convergence decision with detailed reasoning
 
   PERFORMANCE: Fast evaluation using cached ideal widths for discomfort calculation"
-  (let [measures-moved? (measures-changed-systems? current-rhythmic system-results)
+  (let [measures-moved? (measures-changed-systems? current-widths system-results)
         ;; Use hierarchical multiplicative discomfort calculation
         current-discomfort (calculate-total-discomfort @piece-ref)
 
@@ -776,7 +776,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
   OUTPUT: Final layout with absolute measure positions and widths
 
   PERFORMANCE: Fast discomfort evaluation using cached boundaries, parallel system processing"
-  (loop [current-rhythmic-results rhythmic-results
+  (loop [current-widths-results width-results
          iteration 0
          previous-discomfort nil
          discomfort-history []]
@@ -787,38 +787,38 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                                     (with-cancellation
                                       (optimize-system-with-cached-widths!
                                         renderer piece-ref system-data operation-id)))
-                                  (group-into-systems current-rhythmic-results))]
+                                  (group-into-systems current-widths-results))]
 
       (if (some #{::cancelled} system-results)
         {:result ::cancelled}
 
         (let [{:keys [convergence-needed? current-discomfort discomfort-history convergence-reason]}
-              (check-stage-3-convergence current-rhythmic-results system-results piece-ref
+              (check-stage-4-convergence current-widths-results system-results piece-ref
                                        previous-discomfort discomfort-history)]
 
           (if convergence-needed?
             ;; Continue iteration - recalculate rhythmic distribution using cached widths
-            (let [updated-rhythmic-results
-                  (run-stage-2-iteration-fast! cpu-pool @piece-ref (keys current-rhythmic-results)
-                                              current-rhythmic-results system-results)]
+            (let [updated-width-results
+                  (run-stage-4-width-optimization-fast! cpu-pool @piece-ref (keys current-width-results)
+                                                   current-width-results system-results)]
 
-              (if (some #{::cancelled} updated-rhythmic-results)
+              (if (some #{::cancelled} updated-width-results)
                 {:result ::cancelled}
-                (recur updated-rhythmic-results (inc iteration) current-discomfort discomfort-history)))
+                (recur updated-width-results (inc iteration) current-discomfort discomfort-history)))
 
             ;; Good enough solution found - return results
             {:result :converged
              :system-results system-results
-             :rhythmic-results current-rhythmic-results
+             :width-results current-widths-results
              :convergence-reason convergence-reason
              :final-discomfort current-discomfort
              :iterations iteration}))))))
 
-(defn run-stage-3-iterative-convergence! [cpu-pool renderer piece-ref operation-id rhythmic-results]
-  "Stage 3 Backup: Iterative convergence for complex optimization scenarios.
+(defn run-stage-4-iterative-convergence! [cpu-pool renderer piece-ref operation-id width-results]
+  "Stage 4 Backup: Iterative convergence for complex optimization scenarios.
 
   GOAL: Fallback optimization approach for large or complex solution spaces where
-  the main Stage 3 approach may need additional iteration strategies.
+  the main Stage 4 approach may need additional iteration strategies.
 
   APPROACH:
   - Legacy iterative approach maintained for complex edge cases
@@ -839,7 +839,7 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
   OUTPUT: Optimized system organization (same format as main Stage 3)
 
   PERFORMANCE: May be slower than main approach but handles complex edge cases"
-  (loop [current-rhythmic-results rhythmic-results
+  (loop [current-widths-results width-results
          iteration 0
          previous-discomfort nil
          discomfort-history []]
@@ -849,13 +849,13 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
                                     (with-cancellation
                                       (enhanced-system-breaking-with-optimization!
                                         renderer piece-ref system-data operation-id)))
-                                  (group-into-systems current-rhythmic-results))]
+                                  (group-into-systems current-widths-results))]
 
       (if (some #{::cancelled} system-results)
         {:result ::cancelled}
 
         (let [{:keys [convergence-needed? current-discomfort discomfort-history convergence-reason]}
-              (check-stage-3-convergence current-rhythmic-results system-results piece-ref
+              (check-stage-4-convergence current-widths-results system-results piece-ref
                                        previous-discomfort discomfort-history)]
 
           (if convergence-needed?
@@ -871,14 +871,14 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
             ;; Convergence achieved - return final system results
             {:result :converged
              :system-results system-results
-             :rhythmic-results current-rhythmic-results
+             :width-results current-widths-results
              :convergence-reason convergence-reason
              :convergence-method :iterative
              :final-discomfort current-discomfort
              :iterations iteration})))))))
 
-(defn run-stage-3-hierarchical-layout! [cpu-pool piece system-results]
-  "Stage 3b & 3c: Page and layout-level hierarchical optimization.
+(defn run-stage-4-hierarchical-layout! [cpu-pool piece system-results]
+  "Stage 4 Extension: Page and layout-level hierarchical optimization.
 
   GOAL: Handle hierarchical cascade from system-level changes up to page-level
   and layout-level restructuring when system optimization affects higher levels.
@@ -1064,9 +1064,9 @@ Each pipeline stage uses Claypoole for parallel processing within the STM transa
       pipeline-result)))
 
 ;; Stage 3 ↔ Stage 2 iteration functions
-(defn measures-changed-systems? [previous-rhythmic-results current-system-results]
+(defn measures-changed-systems? [previous-width-results current-system-results]
   "Detect if any measures moved to different systems during optimization"
-  (not= (extract-measure-to-system-mapping previous-rhythmic-results)
+  (not= (extract-measure-to-system-mapping previous-width-results)
         (extract-measure-to-system-mapping current-system-results)))
 
 (defn find-systems-with-moved-measures [previous-rhythmic current-system]
@@ -1616,9 +1616,9 @@ Optimization strategies are implemented as plugins, enabling domain-specific lay
     ;; Select minimum discomfort solution
     (:layout (apply min-key :discomfort evaluated-alternatives))))
 
-(defn run-stage-2-iteration-fast! [cpu-pool piece measure-ids current-rhythmic system-results]
-  "Fast Stage 2 iteration using cached ideal widths"
-  (let [affected-systems (find-systems-with-moved-measures current-rhythmic system-results)
+(defn run-stage-4-width-optimization-fast! [cpu-pool piece measure-ids current-widths system-results]
+  "Fast Stage 4 width optimization using cached MeasureStackFormatter boundaries"
+  (let [affected-systems (find-systems-with-moved-measures current-widths system-results)
         affected-measures (get-all-measures-in-systems affected-systems)]
 
     (cp/pmap cpu-pool
@@ -1626,9 +1626,9 @@ Optimization strategies are implemented as plugins, enabling domain-specific lay
                (if (contains? affected-measures measure-id)
                  ;; Fast recalculation using cached ideal width as target
                  (with-cancellation
-                   (adjust-rhythmic-distribution-toward-ideal piece measure-id system-results))
+                   (adjust-width-toward-ideal piece measure-id system-results))
                  ;; Keep existing result
-                 (get-rhythmic-result current-rhythmic measure-id)))
+                 (get-width-result current-widths measure-id)))
              measure-ids)))
 
 ;; Practical examples of when to use parallel evaluation
@@ -1653,7 +1653,7 @@ Optimization strategies are implemented as plugins, enabling domain-specific lay
 (defn format-title-page! [piece-ref]
   "Title pages justify parallel evaluation for perfect layout"
   (binding [*enable-parallel-evaluation* true]
-    (run-stage-3-system-breaking! cpu-pool renderer piece-ref operation-id title-measures)))
+    (run-stage-4-system-breaking! cpu-pool renderer piece-ref operation-id title-measures)))
 
 ;; Generates alternatives like:
 ;; - Different composer name positioning (left, center, right)
