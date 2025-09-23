@@ -308,7 +308,7 @@ Cello:       [measure 5 content]  ←
 
 **Caching Strategy:**
 
-- **Minimum/Ideal Width Boundaries**: Pre-computed during Stage 2B and cached for repeated evaluation
+- **Minimum/Ideal Width Boundaries**: Pre-computed during Stage 2 and cached for repeated evaluation
 - **Discomfort Function**: Mathematical function (no lookup tables) enabling instant evaluation for any proposed width
 - **Result Raster Caching**: Generated positioning data cached and distributed to member measures
 
