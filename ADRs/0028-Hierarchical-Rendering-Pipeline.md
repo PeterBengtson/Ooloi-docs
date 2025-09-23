@@ -71,11 +71,11 @@ Ooloi implements a **five-stage hierarchical rendering pipeline** with comprehen
 
 ```mermaid
 flowchart TD
-    A[Musical Content Changes] --> B[Stage 1: Minimum Width Calculation (Fan-out)]
-    B --> C[Stage 2: Raster Generation (Fan-in)]
-    C --> D[Stage 3: Non-Connecting Elements (Fan-out)]
-    D --> E[Stage 4: Discomfort Optimization & Final Positioning]
-    E --> F[Stage 5: Connecting Elements Generation]
+    A[Musical Content Changes] --> B["Stage 1: Minimum Width Calculation (Fan-out)"]
+    B --> C["Stage 2: Raster Generation (Fan-in)"]
+    C --> D["Stage 3: Non-Connecting Elements (Fan-out)"]
+    D --> E["Stage 4: Discomfort Optimization & Final Positioning"]
+    E --> F["Stage 5: Connecting Elements Generation"]
     F --> G[Client Invalidation Events]
     
     B -.-> B1[Parallel Processing<br/>Per Measure]
@@ -104,11 +104,11 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[Measure<br/>Changes] --> B[Stage 1<br/>Minimum Width<br/>Calculation (Fan-out)]
-    B --> C[Stage 2<br/>Raster Generation<br/>(Fan-in)]
-    C --> D[Stage 3<br/>Non-Connecting<br/>Elements (Fan-out)]
-    D --> E[Stage 4<br/>Discomfort Optimization<br/>& Final Positioning]
-    E --> F[Stage 5<br/>Connecting Elements<br/>Generation]
+    A[Measure<br/>Changes] --> B["Stage 1<br/>Minimum Width<br/>Calculation (Fan-out)"]
+    B --> C["Stage 2<br/>Raster Generation<br/>(Fan-in)"]
+    C --> D["Stage 3<br/>Non-Connecting<br/>Elements (Fan-out)"]
+    D --> E["Stage 4<br/>Discomfort Optimization<br/>& Final Positioning"]
+    E --> F["Stage 5<br/>Connecting Elements<br/>Generation"]
     
     B1[Musical Content<br/>Collision Analysis<br/>Spatial Requirements] --> B
     B --> B2[Minimum Widths<br/>Collision Boundaries]
