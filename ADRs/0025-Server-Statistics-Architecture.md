@@ -775,12 +775,15 @@ GET /health/clients/{id}       # Individual client detailed metrics
   - **Use Case**: Prometheus scraping, operational dashboards, capacity planning
 
 - **`/health/clients`**: Client operational overview
-  - **Content**: Per-client statistics including queue metrics and connection state
+  - **Content**: All client data structures keyed by client-id (JSON format only)
+  - **Prometheus Protection**: Returns HTTP 400 for Prometheus format requests to prevent TSDB cardinality explosion
   - **Use Case**: Client monitoring dashboards, performance analysis
 
-- **`/health/clients/{id}`**: Individual client deep-dive
-  - **Content**: Complete client statistics and queue state for debugging
-  - **Use Case**: Troubleshooting specific client issues
+- **`/health/clients/{id}`**: Individual client detailed metrics
+  - **Content**: Complete client statistics (22 LongAdder fields + 4 computed metrics)
+  - **Prometheus Protection**: Returns HTTP 400 for Prometheus format requests due to unbounded client_id cardinality
+  - **Error Handling**: Returns structured 404 response for non-existent clients
+  - **Use Case**: Per-client debugging, detailed performance analysis
 
 #### Content Negotiation Contract
 
@@ -820,10 +823,11 @@ GET /health/clients/{id}       # Individual client detailed metrics
 
 **Cardinality Management**:
 - **Bounded Labels Only**: No unbounded `client_id` labels in Prometheus format by default
-- **Aggregate-First Strategy**: Per-client details available in JSON format only  
-- **Bounded series count**: No per-client labels to prevent TSDB explosion
+- **HTTP 400 Protection**: Per-client endpoints (`/health/clients/{id}` and `/health/clients`) return HTTP 400 for Prometheus format requests to prevent TSDB cardinality explosion
+- **JSON-Only Client Data**: Per-client details available exclusively in JSON format
+- **Bounded Series Count**: Server-wide metrics only use bounded label sets (no per-client labels)
 - **TTL Policy**: Client-specific metrics expire after disconnection
-- **Per-Client Metrics Opt-In**: If per-client metrics are ever exposed in Prometheus view, they will be behind an explicit opt-in flag (`--enable-prom-client-metrics`) with strict cardinality limits to prevent TSDB explosion
+- **Error Response**: Prometheus requests to client endpoints receive descriptive 400 error explaining cardinality constraints and suggesting JSON alternatives
 
 **Performance Constraints**:
 - **Serialization Budget**: < 1ms typical response time for all formats
