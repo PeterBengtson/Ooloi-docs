@@ -186,40 +186,76 @@ With final positioning established, generate elements that connect atoms:
 
 ### Plugin Architecture Integration
 
-Every notational element participates through a unified plugin interface with **mandatory two-stage compliance**:
+Every notational element participates through a unified plugin interface with **flexible multi-stage participation**:
 
 ```mermaid
 flowchart LR
     A[Musical Element] --> B[Plugin Registry]
     B --> C[Spacing Hook]
     B --> D[Paint Hook]
-    
+    B --> E[Connect Hook]
+
     C --> C1[Input: Element + Context]
     C1 --> C2[Output: Width, Height, Bounds]
-    
+
     D --> D1[Input: Element + Coordinates]
-    D1 --> D2[Output: Rendering Instructions]
-    
-    C2 --> E[Stage 1]
-    D2 --> F[Stage 4]
-    
+    D1 --> D2[Output: Non-Connecting Instructions]
+
+    E --> E1[Input: Element + Final Positions]
+    E1 --> E2[Output: Connecting Instructions]
+
+    C2 --> F[Stage 1: Minimum Width Calculation]
+    D2 --> G[Stage 3: Non-Connecting Elements]
+    E2 --> H[Stage 5: Connecting Elements]
+
     style C fill:#bbdefb,color:#000
     style D fill:#f8bbd9,color:#000
-    style E fill:#c5e1a5,color:#000
-    style F fill:#d1c4e9,color:#000
+    style E fill:#ffe0b2,color:#000
+    style F fill:#c5e1a5,color:#000
+    style G fill:#e1f5fe,color:#000
+    style H fill:#fff3e0,color:#000
 ```
 
-#### Spacing Hook
+#### Spacing Hook (Stage 1)
 Plugins declare the spatial requirements of their elements:
 - **Input**: Musical element data and contextual information
 - **Output**: Width requirements, indicative height, and collision boundaries
+- **Participation**: All plugins must implement (may return null for purely connecting elements)
 
-#### Paint Hook  
-Plugins generate visual rendering instructions:
-- **Input**: Musical element data with finalised positioning coordinates
-- **Output**: Rendering instructions (glyphs, curves, text) with precise coordinates
+#### Paint Hook (Stage 3)
+Plugins generate visual rendering instructions for non-connecting elements:
+- **Input**: Musical element data with raster positioning coordinates
+- **Output**: Rendering instructions for elements that don't connect atoms
+- **Participation**: Optional - only for elements with non-connecting visual components
 
-**Registry-Based Discovery**: The plugin registry maintains mappings between musical elements and their formatters, enabling runtime composition and replacement of notational elements.
+#### Connect Hook (Stage 5)
+Plugins generate connecting elements using finalized positions:
+- **Input**: Musical element data with absolute final atom positions
+- **Output**: Rendering instructions for elements that connect atoms (ties, slurs, beams, etc.)
+- **Participation**: Optional - only for elements that connect across atoms
+
+**Plugin Flexibility Examples**:
+```clojure
+;; Simple plugin - non-connecting only
+(defrecord ArticulationPlugin []
+  (spacing-hook [_ art ctx] (calculate-bounds art ctx))
+  (paint-hook [_ art coords] (render-glyph art coords))
+  (connect-hook [_ _ _] nil))
+
+;; Connecting-only plugin
+(defrecord TiePlugin []
+  (spacing-hook [_ tie ctx] (calculate-clearance tie ctx))
+  (paint-hook [_ _ _] nil)
+  (connect-hook [_ tie positions] (generate-tie-curve tie positions)))
+
+;; Hybrid plugin - both stages
+(defrecord BeamPlugin []
+  (spacing-hook [_ beam ctx] (calculate-spacing beam ctx))
+  (paint-hook [_ beam coords] (render-stems beam coords))
+  (connect-hook [_ beam positions] (generate-beam-line beam positions)))
+```
+
+**Registry-Based Discovery**: The plugin registry maintains mappings between musical elements and their formatters, enabling runtime composition and replacement of notational elements with flexible stage participation.
 
 ### Cross-Tree Caching Architecture: Layout Integration
 
