@@ -32,7 +32,7 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0025-Server-Statistics-Architecture](0025-Server-Statistics-Architecture.md)**: Comprehensive statistics collection for operational visibility and test validation
 - **[0026-Pitch-Representation-and-Operations](0026-Pitch-Representation-and-Operations.md)**: String-based pitch representation with factory-based transposition system
 - **[0027-Plugin-Based-Audio-Architecture](0027-Plugin-Based-Audio-Architecture.md)**: Frontend plugin-based audio architecture with complete backend-frontend audio separation
-- **[0029-Global-Object-Caching](0029-Global-Object-Caching.md)**: Global caching and deduplication for immutable musical objects with Nippy integration
+- **[0029-Global-Hash-Consing](0029-Global-Hash-Consing.md)**: Global hash-consing for immutable musical objects with Nippy integration
 
 ## Decisions by Technical Area
 
@@ -42,7 +42,7 @@ Technical decisions that shaped Ooloi's architecture.
 | **Client-Server Architecture** | [0001](0001-Frontend-Backend-Separation.md), [0002](0002-gRPC.md), [0018](0018-API-gRPC-Interface-and-Events.md), [0019](0019-In-Process-gRPC-Transport-Optimization.md), [0022](0022-Lazy-Frontend-Backend-Architecture.md), [0023](0023-Shared-Model-Contracts.md), [0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md), [0025](0025-Server-Statistics-Architecture.md) | Clean separation, gRPC communication, event streaming, performance optimization, operational monitoring |
 | **User Interface & Rendering** | [0005](0005-JavaFX-and-Skija.md), [0006](0006-SMuFL.md), [0013](0013-Slur-Formatting.md) | JavaFX+Skija graphics, professional music fonts, advanced curve rendering |
 | **Audio Architecture** | [0027](0027-Plugin-Based-Audio-Architecture.md) | Frontend plugin-based audio processing, complete backend-frontend audio separation |
-| **Data Architecture & Storage** | [0008](0008-VPDs.md), [0010](0010-Pure-Trees.md), [0011](0011-Shared-Structure.md), [0012](0012-Persisting-Pieces.md), [0029](0029-Global-Object-Caching.md) | Hierarchical addressing, immutable trees, memory optimization, persistence, global object caching |
+| **Data Architecture & Storage** | [0008](0008-VPDs.md), [0010](0010-Pure-Trees.md), [0011](0011-Shared-Structure.md), [0012](0012-Persisting-Pieces.md), [0029](0029-Global-Hash-Consing.md) | Hierarchical addressing, immutable trees, memory optimization, persistence, global hash-consing |
 | **Musical Domain & Collaboration** | [0009](0009-Collaboration.md), [0014](0014-Timewalk.md), [0015](0015-Undo-and-Redo.md) | Multi-user editing, temporal coordination, undo/redo implementation |
 | **Musical Representation** | [0026](0026-Pitch-Representation-and-Operations.md) | String-based pitch representation, microtonal support, diatonic/chromatic transposition |
 | **System Infrastructure** | [0016](0016-Settings.md), [0017](0017-System-Architecture.md), [0020](0020-TLS-Infrastructure-and-Deployment-Architecture.md), [0021](0021-Authentication.md) | Configuration management, component lifecycle, security infrastructure, authentication |
