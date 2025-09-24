@@ -22,7 +22,7 @@
 - [Approval](#approval)
 
 ## Status
-Proposed
+Accepted - September 24, 2025
 
 ## Context
 
