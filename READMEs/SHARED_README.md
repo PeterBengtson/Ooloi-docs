@@ -656,6 +656,6 @@ Remember to run tests (`lein midje`) before packaging to ensure everything is wo
 - **[gRPC Communication and Flow Control](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - How shared types enable network serialization
 
 ### Technical Documentation
-- **[Development Plan](/DEV_PLAN.md)** - Current development status and implementation roadmap
+- **[GitHub Project Board](https://github.com/users/PeterBengtson/projects/4)** - Current development status and implementation roadmap
 - **[ADR-0023: Shared Model Contracts](/ADRs/0023-Shared-Model-Contracts.md)** - Multi-project architecture decisions
 - **[gRPC Streaming & Threading Guide](/guides/GRPC_STREAMING_THREADING_GUIDE.md)** - Advanced streaming implementation patterns

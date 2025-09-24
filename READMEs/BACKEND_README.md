@@ -632,6 +632,6 @@ Remember to run tests (`lein midje`) before packaging to ensure everything is wo
 - **[Advanced Concurrency Patterns](/guides/ADVANCED_CONCURRENCY_PATTERNS.md)** - STM coordination patterns used in server implementation
 
 ### Technical Documentation
-- **[Development Plan](/DEV_PLAN.md)** - Current development status and implementation roadmap
+- **[GitHub Project Board](https://github.com/users/PeterBengtson/projects/4)** - Current development status and implementation roadmap
 - **[ADR-0019: In-Process gRPC Transport Optimization](/ADRs/0019-In-Process-gRPC-Transport-Optimization.md)** - Transport performance optimization
 - **[ADR-0024: gRPC Concurrency and Flow Control Architecture](/ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)** - Technical decisions behind communication patterns

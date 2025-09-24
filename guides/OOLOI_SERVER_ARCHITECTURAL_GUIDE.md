@@ -422,7 +422,7 @@ The Ooloi backend server represents a specialized approach to concurrent distrib
 
 ### Technical Documentation  
 - **[gRPC Streaming & Threading Guide](GRPC_STREAMING_THREADING_GUIDE.md)** - Advanced streaming implementation patterns
-- **[DEV_PLAN.md](../DEV_PLAN.md)** - Current development status and implementation roadmap
+- **[GitHub Project Board](https://github.com/users/PeterBengtson/projects/4)** - Current development status and implementation roadmap
 
 ### Development Resources
 - **Backend gRPC Server Implementation**: `backend/src/main/clojure/ooloi/backend/components/grpc_server.clj`

@@ -209,7 +209,7 @@ The client application providing the graphical interface for music notation.
 - **Documentation**: See [frontend/README.md](/frontend/README.md)
 
 For technical architecture details and development roadmap, see:
-- [Development Plan](/DEV_PLAN.md) - Complete project roadmap and milestones  
+- [GitHub Project Board](https://github.com/users/PeterBengtson/projects/4) - Complete project roadmap and milestones  
 - [Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md) - Comprehensive server architecture analysis and enterprise patterns
 - [gRPC Communication and Flow Control Guide](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md) - Practical communication patterns and collaborative scenarios
 - [ADR-0024: gRPC Concurrency and Flow Control Architecture](/ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Technical decisions behind communication patterns

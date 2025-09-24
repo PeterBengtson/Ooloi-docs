@@ -543,6 +543,6 @@ Remember to run tests (`lein midje`) before packaging to ensure everything is wo
 - **[Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Understanding the server architecture that frontend connects to
 
 ### Technical Documentation
-- **[Development Plan](/DEV_PLAN.md)** - Current development status and implementation roadmap  
+- **[GitHub Project Board](https://github.com/users/PeterBengtson/projects/4)** - Current development status and implementation roadmap
 - **[ADR-0023: Shared Model Contracts](/ADRs/0023-Shared-Model-Contracts.md)** - Shared model architecture that frontend uses
 - **[ADR-0022: Lazy Frontend-Backend Architecture](/ADRs/0022-Lazy-Frontend-Backend-Architecture.md)** - Frontend-backend interaction patterns

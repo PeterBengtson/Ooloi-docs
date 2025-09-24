@@ -286,7 +286,7 @@ message PieceUpdate {
 
 ## Notes
 
-This architecture decision removes the "Application Settings" component from the backend development queue in DEV_PLAN.md. The analysis demonstrates that no legitimate backend application settings exist that would require the complexity of a dedicated component.
+This architecture decision removes the "Application Settings" component from the backend development queue. The analysis demonstrates that no legitimate backend application settings exist that would require the complexity of a dedicated component.
 
 However, the analysis identified that **piece-specific settings** (configuration attributes that travel with piece data) do have legitimate use cases. The implementation of this piece-specific settings architecture is detailed in [ADR-0016: Settings](0016-Settings.md), which provides a comprehensive solution for configuration attributes across all musical and visual entities within pieces.
 
