@@ -9,6 +9,13 @@ Ooloi creates massive numbers of immutable musical objects during typical usage 
 
 Since these objects are immutable, identical instances can be safely shared across the entire system without affecting behavior. This presents an opportunity for dramatic memory optimization through global caching and deduplication strategies.
 
+**Terminology**: This approach is known as **hash-consing** in functional programming literature, where identical immutable values are represented by the same object instance. Other terms for this concept include:
+- **Object interning** (Java string interning)
+- **Value sharing** or **structural sharing**
+- **Flyweight pattern** (GoF design patterns)
+- **Object pooling** for immutable objects
+- **Canonical representation** or **canonicalization**
+
 ### Current Memory Inefficiency
 
 ```clojure
@@ -35,7 +42,7 @@ Standard serialization destroys shared object structure, losing all caching bene
 
 ## Decision
 
-We will implement a **Multi-Layer Global Caching System** with four complementary strategies:
+We will implement a **Multi-Layer Global Hash-Consing System** (also known as object interning or canonical representation) with four complementary strategies:
 
 1. **Constructor-Level Caching** - Intercept object creation and return cached instances
 2. **Cache-First Modifications** - Check cache for desired result instead of modifying existing objects
@@ -44,7 +51,7 @@ We will implement a **Multi-Layer Global Caching System** with four complementar
 
 ## Design
 
-### Layer 1: Constructor-Level Caching
+### Layer 1: Constructor-Level Hash-Consing (Object Interning)
 
 #### Global Cache Infrastructure
 ```clojure
