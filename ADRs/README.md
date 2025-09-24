@@ -33,6 +33,7 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0026-Pitch-Representation-and-Operations](0026-Pitch-Representation-and-Operations.md)**: String-based pitch representation with factory-based transposition system
 - **[0027-Plugin-Based-Audio-Architecture](0027-Plugin-Based-Audio-Architecture.md)**: Frontend plugin-based audio architecture with complete backend-frontend audio separation
 - **[0029-Global-Hash-Consing](0029-Global-Hash-Consing.md)**: Global hash-consing for immutable musical objects with Nippy integration
+- **[0030-MusicXML](0030-MusicXML.md)**: MusicXML interoperability excellence with best-in-class importer/exporter
 
 ## Decisions by Technical Area
 
@@ -46,7 +47,7 @@ Technical decisions that shaped Ooloi's architecture.
 | **Musical Domain & Collaboration** | [0009](0009-Collaboration.md), [0014](0014-Timewalk.md), [0015](0015-Undo-and-Redo.md) | Multi-user editing, temporal coordination, undo/redo implementation |
 | **Musical Representation** | [0026](0026-Pitch-Representation-and-Operations.md) | String-based pitch representation, microtonal support, diatonic/chromatic transposition |
 | **System Infrastructure** | [0016](0016-Settings.md), [0017](0017-System-Architecture.md), [0020](0020-TLS-Infrastructure-and-Deployment-Architecture.md), [0021](0021-Authentication.md) | Configuration management, component lifecycle, security infrastructure, authentication |
-| **Extensibility** | [0003](0003-Plugins.md) | Plugin architecture for third-party integration |
+| **Extensibility & Interoperability** | [0003](0003-Plugins.md), [0030](0030-MusicXML.md) | Plugin architecture for third-party integration, MusicXML interoperability excellence |
 
 ## Architecture Overview
 
