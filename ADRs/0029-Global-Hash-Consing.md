@@ -84,25 +84,22 @@ We will implement a **Multi-Layer Global Hash-Consing System** with four complem
 ```clojure
 (defn create-pitch [& {:keys [note duration attachments endpoint-id]
                        :or {attachments [] endpoint-id nil}}]
-  (let [;; CRITICAL: Exclude endpoint-id from hash-cons key (nearly always unique)
-        hash-cons-key {:note note
-                       :duration duration
-                       :attachments (normalize-attachments attachments)}]
-    (if-let [consed-pitch (cache/lookup @global-pitch-hash-cons hash-cons-key)]
-      (do
-        (swap! hash-cons-hits inc)
-        ;; Apply endpoint-id to hash-consed instance (don't hash-cons endpoint-ids)
-        (if endpoint-id
-          (assoc consed-pitch :endpoint-id endpoint-id)
-          consed-pitch))
-      ;; Hash-cons miss: create new object and add to hash-cons table
-      (let [new-pitch (->Pitch note duration attachments nil)
-            final-pitch (if endpoint-id
-                         (assoc new-pitch :endpoint-id endpoint-id)
-                         new-pitch)]
-        (swap! hash-cons-misses inc)
-        (swap! global-pitch-hash-cons cache/miss hash-cons-key new-pitch)
-        final-pitch))))
+  (if endpoint-id
+    ;; Has endpoint-id: NEVER cache - create unique instance directly
+    (->Pitch note duration attachments endpoint-id)
+    ;; No endpoint-id: Use cache-first approach
+    (let [hash-cons-key {:note note
+                         :duration duration
+                         :attachments (normalize-attachments attachments)}]
+      (if-let [consed-pitch (cache/lookup @global-pitch-hash-cons hash-cons-key)]
+        (do
+          (swap! hash-cons-hits inc)
+          consed-pitch)
+        ;; Hash-cons miss: create new object and add to hash-cons table
+        (let [new-pitch (->Pitch note duration attachments nil)]
+          (swap! hash-cons-misses inc)
+          (swap! global-pitch-hash-cons cache/miss hash-cons-key new-pitch)
+          new-pitch)))))
 ```
 
 #### Hash-Cons Key Design Principles
@@ -126,25 +123,26 @@ Instead of traditional "modify existing object → create new instance" pattern:
   ;; Traditional: modify existing, create new instance
   ;; (assoc musical-obj :attachments (conj (:attachments musical-obj) attachment))
 
-  ;; Hash-consing: look up desired end result
+  ;; Hash-consing: look up desired end result using constructors
   (let [new-attachments (conj (:attachments musical-obj) attachment)
         endpoint-id (:endpoint-id musical-obj)]
     (case (type musical-obj)
+      ;; Constructor will cache if endpoint-id is nil, create unique if endpoint-id has value
       Pitch (create-pitch :note (:note musical-obj)
                           :duration (:duration musical-obj)
                           :attachments new-attachments
-                          :endpoint-id endpoint-id)  ; Will likely hit hash-cons table
+                          :endpoint-id endpoint-id)
       Rest (create-rest :duration (:duration musical-obj)
                         :attachments new-attachments
                         :endpoint-id endpoint-id))))
 
 (defn transpose-pitch [pitch semitones]
-  ;; Hash-consing transposition
+  ;; Hash-consing transposition - constructor handles caching decision
   (let [new-note (transpose-note (:note pitch) semitones)]
     (create-pitch :note new-note
                   :duration (:duration pitch)
                   :attachments (:attachments pitch)
-                  :endpoint-id (:endpoint-id pitch))))  ; Hash-cons lookup for result
+                  :endpoint-id (:endpoint-id pitch))))  ; Cached if nil, unique if has value
 ```
 
 ### Layer 3: Nippy-Integrated Hash-Consing Serialization
