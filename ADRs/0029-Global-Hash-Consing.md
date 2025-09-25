@@ -3,11 +3,26 @@
 ## Table of Contents
 - [Status](#status)
 - [Context](#context)
+  - [Memory Usage Patterns](#memory-usage-patterns)
+  - [Functional Programming Advantage](#functional-programming-advantage)
 - [Decision](#decision)
 - [Design Rationale](#design-rationale)
+  - [Frequency-Based Caching Strategy](#frequency-based-caching-strategy)
 - [Architecture](#architecture)
+  - [Selective Caching System](#selective-caching-system)
+  - [Constructor-Level Implementation](#constructor-level-implementation)
+  - [Cache Key Strategy](#cache-key-strategy)
+  - [Memory Optimization Benefits](#memory-optimization-benefits)
 - [Implementation Strategy](#implementation-strategy)
+  - [Constructor-Level Caching Architecture](#constructor-level-caching-architecture)
+  - [Cache Key Strategy](#cache-key-strategy-1)
+  - [Serialization Integration with Nippy](#serialization-integration-with-nippy)
+  - [Background Consolidation Process](#background-consolidation-process)
+  - [Dynamic Cache Population Through Background Daemon](#dynamic-cache-population-through-background-daemon)
 - [Consequences](#consequences)
+  - [Benefits](#benefits)
+  - [Trade-offs](#trade-offs)
+  - [Risk Mitigation](#risk-mitigation)
 - [References](#references)
 
 ## Status
@@ -95,9 +110,48 @@ This selective approach provides significant memory reduction by targeting the h
 
 ## Implementation Strategy
 
-The hash-consing system operates through constructor-level caching with selective eligibility based on object repetition patterns. Core musical objects (pitches, rests, chords) and high-repetition attachments (articulations) use global LRU caches, while contextual objects (dynamics) and relationship objects (slurs, ties) remain uncached.
+### Constructor-Level Caching Architecture
 
-The system integrates with serialization operations to preserve shared structure across save/load cycles and provides enhanced memory efficiency for server-side operations.
+The hash-consing system operates through constructor-level caching with selective eligibility based on object repetition patterns. Each cacheable object type maintains its own global LRU cache using `clojure.core.cache/lru-cache-factory` with configurable thresholds (typically 1,000-10,000 entries).
+
+Core musical objects (pitches, rests, chords) and high-repetition attachments (articulations) use global LRU caches, while contextual objects (dynamics) and relationship objects (slurs, ties) remain uncached based on the `hash-cons-cacheable?` predicate.
+
+### Cache Key Strategy
+
+Constructor arguments are used directly as cache keys, eliminating the need for complex hash key construction. The system uses a simple cache-miss pattern:
+
+```clojure
+(if-let [cached-object (cache/lookup @global-cache args)]
+  cached-object
+  (do
+    (swap! global-cache cache/miss args new-object)
+    new-object))
+```
+
+### Serialization Integration with Nippy
+
+The system integrates with Nippy serialization to preserve shared object structure across save/load cycles. Nippy automatically handles object deduplication during serialization, ensuring that shared instances in memory remain shared in the serialized form. Upon deserialization, objects are reconstructed through the same constructor caching mechanism, maintaining the hash-consing benefits.
+
+### Background Consolidation Process
+
+Similar to JVM String Deduplication (JEP 192), the system employs a background consolidation approach where object sharing occurs transparently during normal operation without requiring explicit consolidation phases. The LRU cache management handles memory pressure automatically by evicting least-recently-used entries when cache thresholds are exceeded, maintaining bounded memory usage while preserving frequently-accessed shared instances.
+
+### Dynamic Cache Population Through Background Daemon
+
+The system includes a background daemon that performs sophisticated dynamic hash-consing of objects created through mutations, **directly paralleling JVM string consolidation**. Just as the JVM string consolidation daemon identifies duplicate strings created during program execution and consolidates them in the background, our musical object daemon identifies duplicate musical objects and consolidates them asynchronously.
+
+**JVM String Consolidation Parallel:**
+- JVM: String concatenation creates `"Hello" + " " + "World"` → daemon later consolidates identical results
+- Ooloi: Cached C4 pitch + staccato attachment → daemon later consolidates identical "C4 with staccato" objects
+
+When cached objects are modified (such as adding a staccato to a C4 pitch), the resulting new objects can themselves become cached if they occur frequently enough:
+
+- A cached C4 pitch receives a staccato attachment, creating a "C4 with staccato" object
+- The background daemon monitors object creation patterns and identifies this new combination as frequently occurring
+- Future creations of "C4 with staccato" will return the same cached instance
+- This process continues recursively - cached objects that are mutated can produce new cached objects
+
+**This is identical in approach to JVM string consolidation:** rather than trying to predict all possible string combinations at compile time, the JVM daemon observes actual runtime patterns and consolidates what actually occurs. Similarly, our daemon eliminates the need to track all mutation points synchronously in the codebase, instead asynchronously analyzing object creation patterns and promoting frequently-created objects to cached status based on actual usage patterns.
 
 ## Consequences
 
