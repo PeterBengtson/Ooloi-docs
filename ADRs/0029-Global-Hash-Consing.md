@@ -17,7 +17,11 @@ Accepted - September 24, 2025
 
 Musical notation systems create enormous numbers of immutable objects during operation. A single symphony can contain 50,000+ pitch objects, 10,000+ rest objects, and thousands of attachment objects. Analysis of typical musical pieces reveals that over 99% of these objects are duplicates with identical parameter values.
 
-Since musical objects are immutable by design, identical instances can be safely shared across the entire system without affecting behavior. This presents an opportunity for significant memory optimization through **hash-consing** - a technique where identical immutable values are represented by the same object instance.
+Since musical objects are immutable by design, identical instances can be safely shared across the entire system without affecting behavior. This enables **hash-consing** - a technique where identical immutable values are represented by the same object instance.
+
+Since over 99% of musical objects are duplicates with identical parameter values, hash-consing provides substantial memory reductions across typical compositions. File sizes shrink proportionally, with corresponding improvements in save/load performance.
+
+This optimization is straightforward in functional programming with immutable data structures, where sharing identical objects is safe. The same optimization is complex in procedural/object-oriented programming where mutable state makes object sharing require synchronization and defensive copying.
 
 ### Memory Usage Patterns
 
@@ -29,6 +33,19 @@ Musical compositions exhibit highly repetitive patterns:
 - **Contextual elements**: Dynamics (forte, piano) and relationships (slurs, ties) are more situational
 
 This repetition pattern suggests that selective caching based on frequency would be more effective than universal caching.
+
+### Functional Programming Advantage
+
+Hash-consing demonstrates a key difference between functional and procedural/object-oriented approaches. In mutable systems, sharing object instances requires defensive copying and synchronization mechanisms to prevent modifications from affecting multiple references, which eliminates performance benefits.
+
+Immutable data structures make sharing safe since objects cannot be modified after creation. This enables:
+
+- Object sharing without defensive copying
+- No synchronization or locking mechanisms required
+- Elimination of sharing-related bugs through immutability guarantees
+- Reduced memory usage and creation overhead
+
+This approach leverages functional programming principles to enable optimizations that require significant complexity in mutable architectures.
 
 ## Decision
 
@@ -78,18 +95,22 @@ This selective approach provides significant memory reduction by targeting the h
 
 ## Implementation Strategy
 
-The hash-consing system is implemented through constructor-level caching with selective eligibility based on object repetition patterns. Core musical objects (pitches, rests, chords) and high-repetition attachments (articulations) use global LRU caches, while contextual objects (dynamics) and relationship objects (slurs, ties) remain uncached.
+The hash-consing system operates through constructor-level caching with selective eligibility based on object repetition patterns. Core musical objects (pitches, rests, chords) and high-repetition attachments (articulations) use global LRU caches, while contextual objects (dynamics) and relationship objects (slurs, ties) remain uncached.
 
-Future extensions may include serialization optimizations to preserve shared structure across save/load cycles, and integration with server-side operations for enhanced memory efficiency.
+The system integrates with serialization operations to preserve shared structure across save/load cycles and provides enhanced memory efficiency for server-side operations.
 
 ## Consequences
 
 ### Benefits
-- **Significant memory reduction**: Dramatic reduction in object allocation for typical musical compositions
-- **Improved system performance**: Faster object creation and reduced garbage collection pressure
-- **Enhanced scalability**: System can handle larger and more complex musical pieces
-- **Transparent optimization**: Existing code benefits without requiring modifications
-- **Focused efficiency**: Selective caching targets only high-impact scenarios
+- **Significant memory reduction**: Substantial reductions in memory usage as duplicate objects are eliminated system-wide
+- **Smaller file sizes**: Save files shrink proportionally to memory reductions, enabling faster storage and network transfers
+- **Improved I/O performance**: Save/load operations benefit from reduced data volumes
+- **Reduced garbage collection pressure**: Fewer object allocations reduce GC overhead
+- **Better scalability**: System can handle larger orchestral scores and complex compositions
+- **Transparent implementation**: Existing code benefits without requiring modifications
+- **Functional programming benefit**: Leverages immutability for safe object sharing
+- **Network efficiency**: Client-server communication benefits from smaller data payloads
+- **Selective targeting**: Caching focuses on high-repetition patterns, avoiding cache pollution
 
 ### Trade-offs
 - **Selective complexity**: System requires analysis of object usage patterns to determine caching eligibility
