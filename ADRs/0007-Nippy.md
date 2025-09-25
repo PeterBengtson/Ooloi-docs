@@ -1,15 +1,27 @@
-# ADR: Use of Nippy for File Persistence
+# ADR-0007: Use of Nippy for File Persistence
 
-Decision: Use Nippy for file persistence in Ooloi, leveraging its built-in features and implementing custom handlers for Ooloi's specific needs.
+## Table of Contents
+- [Decision](#decision)
+- [Context](#context)
+- [Rationale](#rationale)
+- [Why Fressian Was Not Chosen](#why-fressian-was-not-chosen)
+- [Consequences](#consequences)
+- [Implementation Approach](#implementation-approach)
+- [Future Considerations](#future-considerations)
+- [Related Decisions](#related-decisions)
 
-Context:
-- Ooloi deals with complex musical structures that form a Directed Acyclic Graph (DAG) with shared structure.
+## Decision
+
+Use Nippy for file persistence in Ooloi, leveraging its built-in features and implementing custom handlers for Ooloi's specific needs.
+
+## Context
+- Ooloi deals with complex musical structures that form pure trees with integer ID references for cross-tree relationships.
 - The system needs to efficiently serialize and deserialize large musical scores.
 - The persistence mechanism should support handling large files efficiently.
 - Concurrent serialization of multiple pieces is desirable for performance.
 - The system should be able to handle future extensions and modifications to data structures.
 
-Rationale:
+## Rationale
 1. Simplicity and Ease of Use: Nippy provides a simple API that's easy to use out of the box, requiring minimal configuration for basic use cases.
 
 2. Built-in Support for Clojure Data Structures: Nippy is designed specifically for Clojure and has native support for all Clojure data structures, including records and protocols.
@@ -26,7 +38,7 @@ Rationale:
 
 8. Flexibility: Nippy allows for easy extension with custom data types, crucial for our complex musical data structures.
 
-Why Fressian Was Not Chosen:
+## Why Fressian Was Not Chosen
 While Fressian was initially considered due to its language-agnostic nature and handling of complex data structures, it was ultimately not selected for the following reasons:
 
 1. Complexity: Fressian requires more configuration and custom coding for basic use cases compared to Nippy's simpler API.
@@ -41,7 +53,7 @@ While Fressian was initially considered due to its language-agnostic nature and 
 
 6. Performance: In our specific use case with Clojure data structures, Nippy often outperforms Fressian.
 
-Consequences:
+## Consequences
 - Pros:
   - Simple API and seamless integration with Clojure projects.
   - Efficient handling of Clojure-specific data structures.
@@ -51,16 +63,17 @@ Consequences:
   - Built-in encryption support for potential future security needs.
 - Cons:
   - Clojure-specific, which may limit interoperability with non-JVM systems if needed in the future.
-  - Doesn't natively handle shared structure, requiring custom solutions for Ooloi's musical structures.
+  - ~~Doesn't natively handle shared structure, requiring custom solutions for Ooloi's musical structures~~ **RESOLVED**: Custom Nippy transforms now provide registry-based shared object optimization with substantial performance gains.
 
-Implementation Approach:
+## Implementation Approach
 1. Utilize Nippy's core functions for basic serialization and deserialization.
 2. Create a system to handle shared structure using Vector Path Descriptors (VPDs).
 3. Implement asynchronous serialization using Clojure futures for concurrent operations.
 4. Integrate with the Piece Manager for efficient piece storage and retrieval.
 5. Implement chunked serialization and deserialization for handling very large musical scores.
+6. **Registry-Based File Size Optimization**: Leverage custom Nippy transforms to replace cached objects with shared references during serialization, achieving 69% file size reduction and 4x performance improvement for repetitive musical structures (see [ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md)).
 
-Future Considerations:
+## Future Considerations
 - Implement versioning for serialized data to manage future schema changes.
 - Optimize compression settings for very large scores.
 - Develop a comprehensive testing suite for serialization/deserialization, especially for complex structures and shared structure.

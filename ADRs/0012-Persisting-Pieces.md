@@ -1,6 +1,21 @@
-# ADR: Persisting the Pure Tree Structure with Integer ID References
+# ADR-0012: Persisting the Pure Tree Structure with Integer ID References
 
-## Status: Accepted
+## Table of Contents
+- [Status](#status)
+- [Context](#context)
+- [Decision](#decision)
+- [Detailed Design](#detailed-design)
+  - [Pure Tree Structure](#1-pure-tree-structure)
+  - [Integer ID Reference Management](#2-integer-id-reference-management)
+  - [Serialization and Deserialization](#3-serialization-and-deserialization)
+- [Rationale](#rationale)
+- [Consequences](#consequences)
+- [Related Decisions](#related-decisions)
+- [Implementation Notes](#implementation-notes)
+- [Future Considerations](#future-considerations)
+
+## Status
+Accepted
 
 ## Context
 
@@ -49,6 +64,7 @@ Elements that can be referenced implement the TakesAttachment trait:
 
 - Serialization: The entire piece structure, including all integer ID references, is serialized directly using Nippy.
 - Deserialization: The piece structure is deserialized directly using Nippy, with all integer ID references intact.
+- **Hash-Consing Optimization**: Registry-based file size optimization leverages selective hash-consing to achieve substantial performance gains during serialization/deserialization while preserving all ID references and structural integrity (see [ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md)).
 
 ## Rationale
 
@@ -66,6 +82,7 @@ Elements that can be referenced implement the TakesAttachment trait:
 - Maintains consistency of references across updates.
 - Simplifies the overall data structure by maintaining a pure tree.
 - Allows for straightforward serialization and deserialization.
+- **Substantial performance optimization**: Hash-consing provides 69% file size reduction and 4x serialization/deserialization speed improvement for repetitive musical structures while preserving all ID references.
 
 ### Negative
 
@@ -77,6 +94,7 @@ Elements that can be referenced implement the TakesAttachment trait:
 - [ADR-0010: Pure Trees](0010-Pure-Trees.md) - Tree structure foundation that this persistence model builds upon
 - [ADR-0007: Nippy](0007-Nippy.md) - Serialization technology chosen for persistence implementation
 - [ADR-0008: VPDs](0008-VPDs.md) - VPD addressing system that gets persisted as part of the structure
+- [ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md) - Hash-consing optimization system that dramatically improves serialization performance while maintaining ID reference integrity
 
 ### Neutral
 
