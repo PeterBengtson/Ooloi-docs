@@ -47,15 +47,13 @@ Ooloi requires pitch operations that are fast, notation-correct, and microtonal-
 3. **Performance**: Efficient operations for large orchestral scores
 4. **Integration**: Seamless interaction with parsers, serializers, and caching systems
 
-**Note on audio architecture**: As established in [ADR-0027 Plugin-Based Audio Architecture](0027-Plugin-Based-Audio-Architecture.md), Ooloi core provides no audio or MIDI functionality. All audio processing occurs in frontend plugins. The MIDI calculations in this ADR serve computational purposes (frequency conversion reference) rather than direct MIDI output.
+**Note on audio architecture**: As established in [ADR-0027 Plugin-Based Audio Architecture](0027-Plugin-Based-Audio-Architecture.md), Ooloi core provides no audio or MIDI functionality. All audio processing occurs in frontend plugins. The pitch operations focus on frequency (Hz) calculations for audio rendering.
 
 **Historical note on A4 = 440 Hz standard**: The A4 = 440 Hz reference significantly predates MIDI (1834 Scheibler recommendation, 1955 ISO standardization vs. early 1980s MIDI development). Scientific pitch notation with A4 designation also predates MIDI by decades. MIDI adopted these existing musical conventions rather than establishing them. The A4 reference in frequency calculations reflects fundamental musical mathematics, not MIDI dependency.
 
-**Future API evolution**: The `ops.pitches` namespace serves both backend (Hz calculations) and frontend (MIDI input device handling). The current `convert` function calculates both `:hz` and `:midi` values, but this conflates concerns. **MIDI number calculations are vestigial and will be removed from backend operations** as the backend never touches MIDI. Future refinement will separate these:
-- Backend-focused conversion: pitch string → Hz only  
-- Frontend helper function: Hz → MIDI number + cent offset for MIDI plugins
+**Backend/Frontend API separation**: The `ops.pitches` namespace serves both backend (Hz calculations) and frontend contexts. The `convert` function provides backend-focused conversion (pitch string → Hz only). Frontend components that require MIDI number conversion can calculate this from the Hz values when interfacing with MIDI plugins.
 
-This would align with the strict frontend-backend separation whilst maintaining shared pitch representation.
+This maintains strict frontend-backend separation whilst providing shared pitch representation.
 
 **Alternatives considered:**
 - **Compound pitch objects** (e.g., Igor Engraver style): semantically clear but higher memory/CPU overhead
@@ -158,19 +156,17 @@ Canonicalisation (sharp-only) is applied in conversion, sorting, and chromatic t
 
 ```clojure
 (convert "A4")
-=> {:pitch "A", :octave 4, :cent-offset 0, :midi 69, :hz 440.0}
+=> {:pitch "A", :octave 4, :cent-offset 0, :hz 440.0}
 
-(convert "A4+50") 
-=> {:pitch "A", :octave 4, :cent-offset 50, :midi 69, :hz 452.89}
+(convert "A4+50")
+=> {:pitch "A", :octave 4, :cent-offset 50, :hz 452.89}
 
 (convert "C4")
-=> {:pitch "C", :octave 4, :cent-offset 0, :midi 60, :hz 261.63}
+=> {:pitch "C", :octave 4, :cent-offset 0, :hz 261.63}
 
 (convert "G9")
-=> {:pitch "G", :octave 9, :cent-offset 0, :midi 127, :hz 12543.85}
+=> {:pitch "G", :octave 9, :cent-offset 0, :hz 12543.85}
 ```
-
-**Note**: `:midi` values in these examples are vestigial and will be removed from backend calculations. A separate frontend helper function will convert Hz values to MIDI number + cent offset for MIDI plugins that require this conversion.
 
 **Design benefits:**
 - Results memoized with LRU cache (10,000 entries) for performance
@@ -204,7 +200,7 @@ Canonicalisation (sharp-only) is applied in conversion, sorting, and chromatic t
 ```
 
 **Performance characteristics:**
-- Uses normalisation only (no MIDI/Hz calculation overhead)
+- Uses normalisation only (no Hz calculation overhead)
 - Essential for chord recognition and harmonic analysis
 
 ---
@@ -496,7 +492,7 @@ Includes global caching and hot-path memoization. Performance scales well for in
 
 These vectors are applied as `(apply make-transposer params)`.
 
-**Integration with musical processing**: Pitch operations are extensively used within the timewalking system ([ADR-0014 Timewalk](0014-Timewalk.md)) for musical analysis, MIDI generation examples, and cross-measure processing.
+**Integration with musical processing**: Pitch operations are extensively used within the timewalking system ([ADR-0014 Timewalk](0014-Timewalk.md)) for musical analysis, frequency calculations, and cross-measure processing.
 
 ---
 
@@ -522,8 +518,8 @@ These vectors are applied as `(apply make-transposer params)`.
 
 This ADR establishes pitch operations as a stable, high-performance foundation for:
 - Part extraction and transposition
-- Score analysis and harmonic functions  
-- MIDI and audio rendering systems
+- Score analysis and harmonic functions
+- Audio rendering systems via frequency calculations
 - Notation layout and formatting
 - Interactive editing and playback features
 
