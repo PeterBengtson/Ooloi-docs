@@ -51,9 +51,9 @@ Ooloi requires pitch operations that are fast, notation-correct, and microtonal-
 
 **Historical note on A4 = 440 Hz standard**: The A4 = 440 Hz reference significantly predates MIDI (1834 Scheibler recommendation, 1955 ISO standardization vs. early 1980s MIDI development). Scientific pitch notation with A4 designation also predates MIDI by decades. MIDI adopted these existing musical conventions rather than establishing them. The A4 reference in frequency calculations reflects fundamental musical mathematics, not MIDI dependency.
 
-**Backend/Frontend API separation**: The `ops.pitches` namespace serves both backend (Hz calculations) and frontend contexts. The `convert` function provides backend-focused conversion (pitch string → Hz only). Frontend components that require MIDI number conversion can calculate this from the Hz values when interfacing with MIDI plugins.
+**Backend/Frontend API separation**: The `ops.pitches` namespace serves both backend (Hz calculations) and frontend contexts. The `convert` function uses direct cent-to-Hz calculation without any MIDI number intermediary, providing clean backend-focused conversion (pitch string → Hz only). Frontend components that require MIDI number conversion can calculate this from the Hz values when interfacing with MIDI plugins.
 
-This maintains strict frontend-backend separation whilst providing shared pitch representation.
+This maintains strict frontend-backend separation whilst providing shared pitch representation with no vestigial MIDI calculations.
 
 **Alternatives considered:**
 - **Compound pitch objects** (e.g., Igor Engraver style): semantically clear but higher memory/CPU overhead
@@ -170,7 +170,9 @@ Canonicalisation (sharp-only) is applied in conversion, sorting, and chromatic t
 
 **Design benefits:**
 - Results memoized with LRU cache (10,000 entries) for performance
-- Handles extreme ranges beyond MIDI (floating-point precision limited)
+- Direct cent-to-Hz calculation eliminates MIDI number intermediary
+- Handles extreme ranges with floating-point precision
+- Clean mathematical model: pitch → cents → Hz
 - Direct integration with synthesizer and audio systems
 
 ### Frequency-Based Sorting
