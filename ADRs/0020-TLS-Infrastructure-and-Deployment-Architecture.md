@@ -81,7 +81,8 @@ Ooloi automatically generates certificates for development and testing:
 - **Certificate properties**: RSA 2048-bit, 20-year validity, X.509 with Subject Alternative Names  
 - **Storage**: Certificates created at cert-path/key-path if specified, otherwise platform-appropriate defaults
 
-**Server Implementation:**
+### Server Implementation
+
 ```clojure
 ;; gRPC server with auto-generating TLS support
 (let [tls-enabled? (get-tls-enabled config)  ; defaults to false
@@ -95,7 +96,7 @@ Ooloi automatically generates certificates for development and testing:
   ;; ... rest of server setup
 ```
 
-**Client Implementation with Certificate Discovery:**
+### Client Implementation with Certificate Discovery
 
 The client implements priority-based certificate resolution:
 
