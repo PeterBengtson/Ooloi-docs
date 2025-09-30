@@ -44,7 +44,7 @@ We will use **Integrant for component lifecycle management** combined with **str
 
 #### Configuration Management
 - **Command-line arguments** override **environment variables** override **defaults**
-- **Deployment modes**: `backend` (default), `combined`, `dev-engine-only`
+- **Deployment modes**: `backend` (default), `combined`
 - **Flexible port/timeout configuration** for different operational environments
 
 #### Error Classification
@@ -64,7 +64,7 @@ We will use **Integrant for component lifecycle management** combined with **str
 
 ### Architectural Benefits
 
-1. **Deployment Flexibility**: Single codebase supports backend-only, combined, and dev-engine-only deployments through configuration changes
+1. **Deployment Flexibility**: Single codebase supports backend-only and combined deployments through configuration changes
 2. **Operational Integration**: Structured exit codes and error messages enable automated deployment tooling and operational monitoring
 3. **Resource Safety**: Automatic cleanup of partially initialized systems prevents resource leaks during failure scenarios
 4. **Development Productivity**: Components can be developed and tested independently; clear separation between system concerns and business logic
