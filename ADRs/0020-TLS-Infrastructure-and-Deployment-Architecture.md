@@ -1,5 +1,29 @@
 # ADR-0020: TLS Infrastructure and Deployment Architecture
 
+## Table of Contents
+
+1. [Status](#status)
+2. [Context](#context)
+3. [Decision](#decision)
+   - [Complete TLS Capability](#complete-tls-capability)
+   - [Server Implementation](#server-implementation)
+   - [Client Implementation with Certificate Discovery](#client-implementation-with-certificate-discovery)
+4. [Deployment Scenarios and Certificate Management](#deployment-scenarios-and-certificate-management)
+   - [Single Developer (Combined Mode)](#single-developer-combined-mode)
+   - [Collaboration Development (Distributed)](#collaboration-development-distributed)
+   - [Production Deployment (SaaS)](#production-deployment-saas)
+   - [Enterprise Deployment](#enterprise-deployment)
+   - [Container/Kubernetes Deployment](#containerkubernetes-deployment)
+5. [Rationale](#rationale)
+   - [Design Principles](#design-principles)
+   - [Integration with Existing Architecture](#integration-with-existing-architecture)
+6. [Consequences](#consequences)
+7. [Success Criteria](#success-criteria)
+8. [Implementation Dependencies](#implementation-dependencies)
+9. [Alternatives Considered](#alternatives-considered)
+10. [References](#references)
+11. [Notes](#notes)
+
 ## Status
 
 Accepted
