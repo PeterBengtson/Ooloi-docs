@@ -327,16 +327,7 @@ OOLOI_TLS=true OOLOI_CERT_PATH=/etc/ssl/ooloi.crt OOLOI_KEY_PATH=/etc/ssl/ooloi.
 ### 1. TLS Always Enabled
 **Rejected**: Would create friction for local development and combined-mode deployments where TLS adds no value
 
-### 2. Client-Side Certificate Generation
-**Rejected**: Only servers should generate certificates; clients consume certificates from trusted sources
-
-### 3. ACME/Let's Encrypt Integration
-**Rejected**: Certificate management is infrastructure's responsibility, not the application's concern. Adds significant complexity for minimal benefit in monolithic architecture.
-
-### 4. Mutual TLS (mTLS) Support
-**Rejected**: No server-to-server communication in monolithic architecture. Client authentication handled at application layer.
-
-### 5. Third-Party Certificate Management Only
+### 2. Third-Party Certificate Management Only
 **Rejected**: Would complicate development workflows and require external dependencies for basic TLS functionality
 
 ## References
