@@ -206,8 +206,8 @@ lein run -- --backend-host remote-server --backend-port 10700
 # With UI and transport options  
 lein run -- --ui-mode graphical --transport network
 
-# With security configuration
-lein run -- --tls true --cert-path /path/to/cert.pem --key-path /path/to/key.pem
+# With TLS security
+lein run -- --tls true --cert-path /path/to/server-cert.pem
 
 # Complete configuration example
 lein run -- --backend-host localhost --backend-port 10700 --transport network --ui-mode graphical --deployment-mode frontend --timeout-ms 5000 --tls false
@@ -224,14 +224,13 @@ lein run -- --backend-host localhost --backend-port 10700 --transport network --
 | `--deployment-mode MODE` | frontend, combined-client, dev-client-only | frontend | Application deployment configuration |
 | `--timeout-ms MS` | milliseconds | 5000 | Backend connection timeout |
 | `--tls FLAG` | true, false | false | Enable TLS encryption for backend connection |
-| `--cert-path PATH` | file path | - | TLS certificate file path (requires --key-path) |
-| `--key-path PATH` | file path | - | TLS private key file path (requires --cert-path) |
+| `--cert-path PATH` | file path | auto-discovered | Path to server's public certificate (TLS only) |
 
 **Argument Validation:**
 - Port numbers are validated as integers within valid range
 - Transport and UI modes are validated against allowed values
 - TLS setting accepts only "true" or "false"
-- Certificate paths must be provided together (both --cert-path and --key-path)
+- Certificate path is optional when TLS enabled (auto-discovers from `~/.ooloi/certs/`)
 
 ### Environment Variables
 
@@ -246,8 +245,7 @@ All CLI arguments have corresponding environment variable alternatives:
 | `OOLOI_FRONTEND_DEPLOYMENT_MODE` | --deployment-mode | Deployment configuration |
 | `OOLOI_FRONTEND_TIMEOUT_MS` | --timeout-ms | Connection timeout in milliseconds |
 | `OOLOI_FRONTEND_TLS` | --tls | Enable TLS (true/false) |
-| `OOLOI_FRONTEND_CERT_PATH` | --cert-path | TLS certificate path |
-| `OOLOI_FRONTEND_KEY_PATH` | --key-path | TLS private key path |
+| `OOLOI_FRONTEND_CERT_PATH` | --cert-path | Path to server's public certificate |
 
 **Configuration Precedence:** CLI arguments override environment variables, which override application defaults.
 
@@ -260,12 +258,11 @@ export OOLOI_FRONTEND_BACKEND_PORT=10700
 export OOLOI_FRONTEND_UI_MODE=graphical
 lein run
 
-# Remote backend configuration
+# Secure remote backend configuration
 export OOLOI_FRONTEND_BACKEND_HOST=production-server.company.com
 export OOLOI_FRONTEND_BACKEND_PORT=443
 export OOLOI_FRONTEND_TLS=true
-export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/certs/client.pem
-export OOLOI_FRONTEND_KEY_PATH=/etc/ssl/private/client.key
+export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/certs/ooloi-server.pem
 lein run
 
 # Headless mode for automated testing
@@ -331,27 +328,28 @@ The application provides actionable guidance for common errors:
 ### TLS and Security Configuration
 
 **Client-Side TLS Support:**
-The frontend supports secure connections to backend servers:
+The frontend supports secure connections to TLS-enabled backend servers using one-way TLS (server authentication):
 
 ```bash
-# Enable TLS with auto-generated certificates (development)
+# Enable TLS with automatic certificate discovery
 lein run -- --tls true
 
-# Production TLS with custom certificates
-lein run -- --tls true --cert-path ./client.pem --key-path ./client.key
+# Explicit certificate path
+lein run -- --tls true --cert-path /path/to/server-cert.pem
 
 # Environment variable configuration
 export OOLOI_FRONTEND_TLS=true
-export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/ooloi/client.pem
-export OOLOI_FRONTEND_KEY_PATH=/etc/ssl/ooloi/client.key
+export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/ooloi/server.pem
 lein run
 ```
 
 **TLS Configuration Notes:**
-- Both certificate and key paths must be provided together
-- Frontend validates certificate path pairs at startup
-- TLS setting applies to gRPC client connection to backend
-- Invalid certificate configurations result in clear error messages
+- **One-way TLS**: Clients verify server identity using server's public certificate
+- **Certificate Discovery**: When `--cert-path` not specified, automatically discovers certificate from `~/.ooloi/certs/`
+- **Requirements**: Expects exactly one `.crt` file in certificate directory for auto-discovery
+- **Explicit Path**: Use `--cert-path` to specify custom certificate location
+- **Server Certificate Only**: Clients only need the server's public certificate, never private keys
+- **Security**: TLS encrypts all gRPC communication between client and backend
 
 ### Integration Testing
 

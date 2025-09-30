@@ -343,39 +343,95 @@ lein run -- --mode dev-orchestrator --auto-restart true --log-level debug
 
 #### Available CLI Arguments
 
+The combined application accepts the **union** of all backend and frontend CLI arguments:
+
+**Backend Component Configuration:**
+
 | **Argument** | **Values** | **Default** | **Description** |
 |--------------|------------|-------------|-----------------|
-| `--mode MODE` | integration-test, combined, distributed, dev-orchestrator | combined | Deployment orchestration mode |
-| `--frontend-host HOST` | hostname/IP | localhost | Frontend component hostname |
-| `--frontend-port PORT` | 1-65535 | 10800 | Frontend component port |
-| `--backend-host HOST` | hostname/IP | localhost | Backend component hostname |
-| `--backend-port PORT` | 1-65535 | 10700 | Backend component port |
-| `--transport MODE` | network, in-process, auto | auto | Inter-component transport |
-| `--ui-mode MODE` | graphical, headless, auto | auto | UI display mode for combined deployment |
-| `--integration-timeout MS` | milliseconds | 30000 | Integration test timeout |
-| `--auto-restart BOOL` | true, false | false | Auto-restart components on failure |
-| `--log-level LEVEL` | debug, info, warn, error | info | Application logging level |
-| `--health-port PORT` | 1-65535 | 10801 | Combined application health endpoint |
-| `--tls BOOL` | true, false | false | Enable TLS for all communications |
+| `--port PORT` | 1-65535 | 10700 | Backend gRPC server port |
+| `--deployment-mode MODE` | backend, combined, dev-engine-only | backend | System deployment configuration |
+| `--timeout-ms MS` | milliseconds | 5000 | Network timeout in milliseconds |
+| `--tls FLAG` | true, false | false | Enable/disable TLS encryption (backend) |
+| `--cert-path PATH` | file path | platform default | Path to server's public certificate |
+| `--key-path PATH` | file path | platform default | Path to server's private key (backend only) |
+| `--grpc-transport TYPE` | network, in-process, auto | auto | gRPC transport optimization |
+| `--health-port PORT` | 1-65535 | 10701 | HTTP health endpoint port |
+
+**Frontend Component Configuration:**
+
+| **Argument** | **Values** | **Default** | **Description** |
+|--------------|------------|-------------|-----------------|
+| `--backend-host HOST` | hostname/IP | localhost | Backend server hostname or IP address |
+| `--backend-port PORT` | 1-65535 | 10700 | Backend server port number |
+| `--transport MODE` | network, in-process | network | Communication transport mechanism |
+| `--ui-mode MODE` | graphical, headless | graphical | User interface display mode |
+| `--tls FLAG` | true, false | false | Enable TLS encryption for backend connection |
+| `--cert-path PATH` | file path | auto-discovered | Path to server's public certificate |
+
+**Combined Application Specific:**
+
+| **Argument** | **Values** | **Default** | **Description** |
+|--------------|------------|-------------|-----------------|
+| `--deployment-mode MODE` | combined, integration-test | combined | Combined application deployment mode |
+| `--transport MODE` | network, in-process | in-process | Inter-component transport for combined mode |
 
 ### Environment Variables
 
-All CLI arguments have corresponding environment variable alternatives:
+The combined application accepts the **union** of all backend and frontend environment variables:
 
-| **Environment Variable** | **CLI Equivalent** | **Description** |
-|-------------------------|-------------------|-----------------|
-| `OOLOI_SHARED_MODE` | --mode | Deployment orchestration mode |
-| `OOLOI_SHARED_FRONTEND_HOST` | --frontend-host | Frontend component hostname |
-| `OOLOI_SHARED_FRONTEND_PORT` | --frontend-port | Frontend component port |
-| `OOLOI_SHARED_BACKEND_HOST` | --backend-host | Backend component hostname |
-| `OOLOI_SHARED_BACKEND_PORT` | --backend-port | Backend component port |
-| `OOLOI_SHARED_TRANSPORT` | --transport | Inter-component transport mode |
-| `OOLOI_SHARED_UI_MODE` | --ui-mode | UI display mode |
-| `OOLOI_SHARED_INTEGRATION_TIMEOUT` | --integration-timeout | Integration test timeout |
-| `OOLOI_SHARED_AUTO_RESTART` | --auto-restart | Auto-restart on component failure |
-| `OOLOI_SHARED_LOG_LEVEL` | --log-level | Application logging level |
-| `OOLOI_SHARED_HEALTH_PORT` | --health-port | Health monitoring port |
-| `OOLOI_SHARED_TLS` | --tls | Enable TLS communications |
+**Backend Component Environment Variables:**
+
+| **Environment Variable** | **CLI Equivalent** | **Default** | **Description** |
+|-------------------------|-------------------|-------------|-----------------|
+| `OOLOI_PORT` | --port | 10700 | Backend gRPC server port |
+| `OOLOI_DEPLOYMENT_MODE` | --deployment-mode | backend | System deployment configuration |
+| `OOLOI_TIMEOUT_MS` | --timeout-ms | 5000 | Network timeout in milliseconds |
+| `OOLOI_TLS` | --tls | false | Enable/disable TLS encryption (backend) |
+| `OOLOI_CERT_PATH` | --cert-path | platform default | Path to server's public certificate |
+| `OOLOI_KEY_PATH` | --key-path | platform default | Path to server's private key (backend only) |
+| `OOLOI_GRPC_TRANSPORT` | --grpc-transport | auto | gRPC transport optimization |
+| `OOLOI_HEALTH_PORT` | --health-port | 10701 | HTTP health endpoint port |
+
+**Frontend Component Environment Variables:**
+
+| **Environment Variable** | **CLI Equivalent** | **Default** | **Description** |
+|-------------------------|-------------------|-------------|-----------------|
+| `OOLOI_FRONTEND_BACKEND_HOST` | --backend-host | localhost | Backend server hostname |
+| `OOLOI_FRONTEND_BACKEND_PORT` | --backend-port | 10700 | Backend server port |
+| `OOLOI_FRONTEND_TRANSPORT` | --transport | network | Communication transport mode |
+| `OOLOI_FRONTEND_UI_MODE` | --ui-mode | graphical | User interface display mode |
+| `OOLOI_FRONTEND_DEPLOYMENT_MODE` | --deployment-mode | frontend | Frontend deployment configuration |
+| `OOLOI_FRONTEND_TIMEOUT_MS` | --timeout-ms | 5000 | Backend connection timeout |
+| `OOLOI_FRONTEND_TLS` | --tls | false | Enable TLS for backend connection |
+| `OOLOI_FRONTEND_CERT_PATH` | --cert-path | auto-discovered | Path to server's public certificate |
+
+**Configuration Precedence:** CLI arguments override environment variables, which override application defaults.
+
+### TLS Configuration
+
+The combined application supports secure TLS connections for internal client-server communication:
+
+```bash
+# Combined mode typically uses in-process transport (no TLS needed)
+lein run
+
+# If using network transport in combined mode with TLS
+export OOLOI_BACKEND_TLS=true
+export OOLOI_BACKEND_CERT_PATH=/etc/ssl/ooloi/server-cert.pem
+export OOLOI_BACKEND_KEY_PATH=/etc/ssl/ooloi/server-key.pem
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/ooloi/server-cert.pem
+lein run
+```
+
+**TLS Configuration Notes:**
+- **Combined Mode Default**: Uses in-process transport (no network, no TLS needed)
+- **Network Transport**: When using network transport, configure both backend (server) and frontend (client) TLS
+- **Backend TLS**: Requires both `--cert-path` (server certificate) and `--key-path` (server private key)
+- **Frontend TLS**: Requires only `--cert-path` (server's public certificate) for one-way TLS
+- **Certificate Discovery**: Frontend auto-discovers certificates from `~/.ooloi/certs/` when TLS enabled
+- **Security**: One-way TLS (server authentication) appropriate for collaboration software
 
 ### Deployment Modes
 

@@ -59,12 +59,12 @@ Implement comprehensive TLS support for both gRPC server and client components:
 - Complete environment variable and CLI switch support for all TLS configuration (server and client)
 - TLS disabled by default for immediate developer productivity
 - `OOLOI_TLS=true` or `--tls true` enables TLS with intelligent certificate management
-- TLS-specific CLI overrides: `--tls true/false`, `--cert-path`, `--key-path`
+- TLS-specific CLI overrides: `--tls true/false`, `--cert-path` (server's public certificate), `--key-path` (server's private key, backend only)
 - Auto-generated self-signed certificates for development and testing (server-side)
 - Custom certificate support for production and enterprise deployments
 - Certificate creation at specified paths or platform-appropriate defaults
 - TLS validation test in `system_integration_test.clj`
-- Client TLS support for distributed deployments with automatic certificate discovery
+- Client TLS support using one-way TLS (server authentication only) with automatic certificate discovery
 - Works transparently across all deployment scenarios
 
 **Test Certificate Infrastructure:**
@@ -98,7 +98,7 @@ Ooloi automatically generates certificates for development and testing:
 
 ### Client Implementation with Certificate Discovery
 
-The client implements priority-based certificate resolution:
+The client implements one-way TLS (server authentication only) with priority-based certificate resolution:
 
 ```clojure
 ;; gRPC client with automatic certificate discovery
@@ -112,11 +112,11 @@ The client implements priority-based certificate resolution:
     ;; TLS disabled: plaintext (development default)
     (build-plaintext-channel host port)
 
-    ;; TLS enabled: priority-based certificate resolution
+    ;; TLS enabled: one-way TLS with automatic certificate discovery
     (cond
-      ;; Priority 1: Explicit cert/key provided
-      (and cert-path key-path)
-      (build-tls-channel-with-explicit-certs host port cert-path key-path)
+      ;; Priority 1: Explicit server cert provided
+      cert-path
+      (build-tls-channel-with-explicit-cert host port cert-path)
 
       ;; Priority 2: Server cert exists (same machine development)
       (server-cert-exists?)
@@ -127,20 +127,26 @@ The client implements priority-based certificate resolution:
       (build-tls-channel-with-system-trust-store host port))))
 ```
 
+**One-Way TLS Architecture:**
+- **Server Authentication**: Client verifies server identity using server's public certificate
+- **Client Identity**: Application-level authentication via client-id (not certificate-based)
+- **Security Model**: Appropriate for collaboration software (not banking/military requiring mTLS)
+- **Client Configuration**: Only needs server's public certificate, never private keys
+
 **Certificate Discovery Strategy:**
 
 | Scenario | Transport | TLS Flag | Cert Config | Server Cert Found | Client Behavior | Use Case |
 |----------|-----------|----------|-------------|-------------------|-----------------|----------|
 | **Dev (plaintext)** | `:network` | `false` | - | - | `.usePlaintext()` | Default development |
 | **Dev (same machine)** | `:network` | `true` | None | Yes @ `~/.ooloi/certs/` | Trust server's self-signed cert | Local dev with TLS |
-| **Dev (explicit cert)** | `:network` | `true` | Provided | - | Use explicit cert/key | Custom dev setup |
+| **Dev (explicit cert)** | `:network` | `true` | Server cert path | - | Use explicit server cert | Custom dev setup |
 | **Production (CA-signed)** | `:network` | `true` | None | No | System trust store (cacerts) | Production deployment |
 | **Enterprise (custom CA)** | `:network` | `true` | CA cert path | - | Trust custom CA | Enterprise PKI |
 | **Combined mode** | `:in-process` | Any | Any | Any | In-process (no network) | Single-JVM deployment |
 
 **Certificate Discovery Locations:**
-- **Unix/macOS**: `~/.ooloi/certs/server.crt`
-- **Windows**: `%APPDATA%\Ooloi\certs\server.crt`
+- **Unix/macOS**: `~/.ooloi/certs/*.crt` (discovers single .crt file)
+- **Windows**: `%APPDATA%\Ooloi\certs\*.crt` (discovers single .crt file)
 - **System trust store**: `$JAVA_HOME/lib/security/cacerts` (~150 trusted CAs)
 
 ## Deployment Scenarios and Certificate Management
@@ -330,8 +336,9 @@ OOLOI_TLS=true OOLOI_CERT_PATH=/etc/ssl/ooloi.crt OOLOI_KEY_PATH=/etc/ssl/ooloi.
 - All gRPC server tests passing with comprehensive certificate management coverage
 
 ### Client-Side TLS
-- Complete TLS environment variable support: `OOLOI_FRONTEND_TLS`, `OOLOI_FRONTEND_CERT_PATH`, `OOLOI_FRONTEND_KEY_PATH`
-- Complete TLS CLI flag support: `--tls true/false`, `--cert-path`, `--key-path`
+- Complete TLS environment variable support: `OOLOI_FRONTEND_TLS`, `OOLOI_FRONTEND_CERT_PATH`
+- Complete TLS CLI flag support: `--tls true/false`, `--cert-path`
+- One-way TLS implementation (server authentication only, no client certificates)
 - Client certificate discovery finds server certificates automatically (same-machine development)
 - Client falls back to system trust store for CA-signed certificates (production)
 - Explicit certificate configuration works for enterprise PKI scenarios
