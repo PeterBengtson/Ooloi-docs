@@ -350,7 +350,7 @@ The combined application accepts the **union** of all backend and frontend CLI a
 | **Argument** | **Values** | **Default** | **Description** |
 |--------------|------------|-------------|-----------------|
 | `--port PORT` | 1-65535 | 10700 | Backend gRPC server port |
-| `--deployment-mode MODE` | backend, combined | backend | System deployment configuration |
+| `--deployment-mode MODE` | backend, frontend, combined | backend | System deployment configuration |
 | `--timeout-ms MS` | milliseconds | 5000 | Network timeout in milliseconds |
 | `--tls FLAG` | true, false | false | Enable/disable TLS encryption (backend) |
 | `--cert-path PATH` | file path | platform default | Path to server's public certificate |

@@ -273,6 +273,7 @@ lein run
 
 **Deployment Modes**:
 - **`backend`** (default): Piece manager + gRPC server - typical server deployment
+- **`frontend`**: Client-only mode connecting to remote backend
 - **`combined`**: All components including UI support - single-process deployment
 
 **gRPC Transport Optimization** ([ADR-0019](../ADRs/0019-In-Process-gRPC-Transport-Optimization.md)):
