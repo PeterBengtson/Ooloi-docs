@@ -25,15 +25,15 @@ We will implement TLS support through **two distinct phases**, each with specifi
 **Timeline**: Immediate (production readiness requirement)
 
 **Deliverables:**
-- Complete environment variable and CLI switch support for all TLS configuration
+- Complete environment variable and CLI switch support for all TLS configuration (server and client)
 - TLS disabled by default for immediate developer productivity
 - `OOLOI_TLS=true` or `--tls true` enables TLS with intelligent certificate management
 - TLS-specific CLI overrides: `--tls true/false`, `--cert-path`, `--key-path`
-- Auto-generated self-signed certificates for development and testing
+- Auto-generated self-signed certificates for development and testing (server-side)
 - Custom certificate support for production and enterprise deployments
 - Certificate creation at specified paths or platform-appropriate defaults
 - TLS validation test in `system_integration_test.clj`
-- Client TLS support for distributed deployments
+- Client TLS support for distributed deployments with automatic certificate discovery
 - Works transparently across all deployment scenarios
 
 **Test Certificate Infrastructure:**
@@ -50,7 +50,7 @@ Ooloi automatically generates certificates for development and testing:
 - **Certificate properties**: RSA 2048-bit, 20-year validity, X.509 with Subject Alternative Names  
 - **Storage**: Certificates created at cert-path/key-path if specified, otherwise platform-appropriate defaults
 
-**Implementation:**
+**Server Implementation:**
 ```clojure
 ;; gRPC server with auto-generating TLS support
 (let [tls-enabled? (get-tls-enabled config)  ; defaults to false
@@ -63,6 +63,53 @@ Ooloi automatically generates certificates for development and testing:
                        (ServerBuilder/forPort port))]
   ;; ... rest of server setup
 ```
+
+**Client Implementation with Certificate Discovery:**
+
+The client implements priority-based certificate resolution:
+
+```clojure
+;; gRPC client with automatic certificate discovery
+(case transport
+  :in-process
+  ;; In-process: TLS irrelevant (no network communication)
+  (build-in-process-channel server-name)
+
+  :network
+  (if (not tls-enabled?)
+    ;; TLS disabled: plaintext (development default)
+    (build-plaintext-channel host port)
+
+    ;; TLS enabled: priority-based certificate resolution
+    (cond
+      ;; Priority 1: Explicit cert/key provided
+      (and cert-path key-path)
+      (build-tls-channel-with-explicit-certs host port cert-path key-path)
+
+      ;; Priority 2: Server cert exists (same machine development)
+      (server-cert-exists?)
+      (build-tls-channel-with-server-cert host port (discover-server-cert))
+
+      ;; Priority 3: System trust store (production CA-signed)
+      :else
+      (build-tls-channel-with-system-trust-store host port))))
+```
+
+**Certificate Discovery Strategy:**
+
+| Scenario | Transport | TLS Flag | Cert Config | Server Cert Found | Client Behavior | Use Case |
+|----------|-----------|----------|-------------|-------------------|-----------------|----------|
+| **Dev (plaintext)** | `:network` | `false` | - | - | `.usePlaintext()` | Default development |
+| **Dev (same machine)** | `:network` | `true` | None | Yes @ `~/.ooloi/certs/` | Trust server's self-signed cert | Local dev with TLS |
+| **Dev (explicit cert)** | `:network` | `true` | Provided | - | Use explicit cert/key | Custom dev setup |
+| **Production (CA-signed)** | `:network` | `true` | None | No | System trust store (cacerts) | Production deployment |
+| **Enterprise (custom CA)** | `:network` | `true` | CA cert path | - | Trust custom CA | Enterprise PKI |
+| **Combined mode** | `:in-process` | Any | Any | Any | In-process (no network) | Single-JVM deployment |
+
+**Certificate Discovery Locations:**
+- **Unix/macOS**: `~/.ooloi/certs/server.crt`
+- **Windows**: `%APPDATA%\Ooloi\certs\server.crt`
+- **System trust store**: `$JAVA_HOME/lib/security/cacerts` (~150 trusted CAs)
 
 ## Deployment Scenarios and Certificate Management
 
@@ -296,25 +343,28 @@ prod-server:
 
 ## Success Criteria
 
-### Phase 1 Success Criteria (COMPLETE)
-- ✅ gRPC server starts immediately with TLS disabled by default
-- ✅ Complete TLS environment variable support: `OOLOI_TLS`, `OOLOI_CERT_PATH`, `OOLOI_KEY_PATH`
-- ✅ Complete TLS CLI flag support: `--tls true/false`, `--cert-path`, `--key-path`
-- ✅ Auto-generated certificates work without manual intervention when no custom certs provided (Pure Java implementation)
-- ✅ Custom certificate paths work for production and enterprise deployments
-- ✅ Works transparently across development, testing, production, enterprise, and cloud scenarios
-- ⏳ TLS validation test passes in `system_integration_test.clj` (final task for production readiness)
-- ✅ Certificate generation uses pure Java cryptography (cross-platform, no external dependencies)
-- ✅ All 70 gRPC server tests passing with comprehensive certificate management coverage including reuse behavior
+### Phase 1 Success Criteria
+- gRPC server starts immediately with TLS disabled by default
+- Complete TLS environment variable support: `OOLOI_TLS`, `OOLOI_CERT_PATH`, `OOLOI_KEY_PATH` (server)
+- Complete TLS environment variable support: `OOLOI_FRONTEND_TLS`, `OOLOI_FRONTEND_CERT_PATH`, `OOLOI_FRONTEND_KEY_PATH` (client)
+- Complete TLS CLI flag support: `--tls true/false`, `--cert-path`, `--key-path` (server and client)
+- Auto-generated certificates work without manual intervention when no custom certs provided
+- Client certificate discovery finds server certificates automatically (same-machine development)
+- Client falls back to system trust store for CA-signed certificates (production)
+- Custom certificate paths work for production and enterprise deployments
+- Works transparently across development, testing, production, enterprise, and cloud scenarios
+- TLS validation test passes in `system_integration_test.clj`
+- Certificate generation uses pure Java cryptography (cross-platform, no external dependencies)
+- All gRPC server and client tests passing with comprehensive certificate management coverage
 
 ### Phase 2 Success Criteria
-- ✅ Build tooling (`make dev-certs`, `make debug-server`, `make prod-server`) functions correctly
-- ✅ Certificate validation and diagnostic tools provide clear error messages
-- ✅ Health endpoint reports certificate expiration dates and validity
-- ✅ ACME protocol integration works with multiple providers (Let's Encrypt, internal CAs)
-- ✅ Certificate renewal automation prevents expiration-related outages
-- ✅ Enterprise monitoring integration provides operational visibility
-- ✅ mTLS support enables secure service-to-service communication
+- Build tooling (`make dev-certs`, `make debug-server`, `make prod-server`) functions correctly
+- Certificate validation and diagnostic tools provide clear error messages
+- Health endpoint reports certificate expiration dates and validity
+- ACME protocol integration works with multiple providers (Let's Encrypt, internal CAs)
+- Certificate renewal automation prevents expiration-related outages
+- Enterprise monitoring integration provides operational visibility
+- Mutual TLS (mTLS) support enables secure service-to-service communication
 
 ## Implementation Dependencies
 
