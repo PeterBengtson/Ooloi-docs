@@ -6,21 +6,22 @@ Accepted
 
 ## Context
 
-[ADR-0002: gRPC Communication](0002-gRPC.md) establishes a comprehensive "TLS Everywhere Policy" with enterprise-grade certificate management, auto-generation tooling, and production-ready operational capabilities. However, this vision assumes infrastructure that doesn't currently exist in the codebase.
+[ADR-0002: gRPC Communication](0002-gRPC.md) establishes a comprehensive "TLS Everywhere Policy" with enterprise-grade certificate management and production-ready operational capabilities.
 
-The current gRPC server implementation ([grpc_server.clj:67](../backend/src/main/clojure/ooloi/backend/components/grpc_server.clj)) creates insecure servers with no TLS support:
+Ooloi requires TLS support that:
+- Works transparently across all deployment scenarios (development, production, enterprise, cloud)
+- Enables TLS with minimal configuration friction
+- Supports automatic certificate generation for development workflows
+- Integrates with enterprise PKI infrastructure
+- Works with both server and client components
 
-```clojure
-(ServerBuilder/forPort port)  ; No TLS configuration
-```
-
-For production readiness, we need TLS capability immediately, but we also want to deliver ADR-0002's full enterprise vision systematically without compromising architectural integrity.
+The implementation must balance developer productivity (zero-friction local development) with production requirements (secure communication, proper certificate validation).
 
 ## Decision
 
-We will implement TLS support through **two distinct phases**, each with specific deliverables and success criteria:
+Implement comprehensive TLS support for both gRPC server and client components:
 
-### Phase 1: Complete TLS Capability
+### Complete TLS Capability
 **Goal**: Full TLS support for ANY deployment scenario - development, production, enterprise, cloud  
 **Timeline**: Immediate (production readiness requirement)
 
@@ -240,71 +241,16 @@ OOLOI_TLS=true OOLOI_CERT_PATH=/etc/ssl/ooloi.crt OOLOI_KEY_PATH=/etc/ssl/ooloi.
 ./ooloi-backend --tls false
 ```
 
-### Phase 2: Developer & Operations Tooling
-**Goal**: Make Phase 1 easy to use and operationally robust  
-**Timeline**: When tooling and automation become important for productivity and operations
-
-**Deliverables:**
-- Build tooling for certificate management (`make dev-certs`, `make prod-server`, `make debug-server`)
-- Certificate validation and diagnostic tools
-- Certificate expiration monitoring and health endpoint integration
-- Automated certificate provisioning (ACME protocol support)
-- Certificate rotation and renewal automation
-- Enterprise monitoring integration (Prometheus metrics, alerting)
-- Documentation and troubleshooting guides
-- Team development certificate sharing (shared dev CA)
-
-**Build Tooling:**
-```makefile
-dev-certs:
-	# No external tools needed - certificates auto-generated using Java cryptography
-	./ooloi-backend --tls true --generate-certs
-
-dev-server:
-	./ooloi-backend --tls true
-
-debug-server:
-	./ooloi-backend
-
-combined-app:
-	./ooloi-combined  # In-process transport, no TLS needed
-
-prod-server:
-	./ooloi-backend --tls true --port 443
-```
-
-**Automated Certificate Management:**
-```bash
-# ACME protocol support for automated provisioning
-./ooloi-server --tls true --acme-provider letsencrypt --domain api.example.com
-./ooloi-server --tls true --acme-provider internal-ca --domain internal.company.com
-```
-
-**Operational Features:**
-- Health endpoint reports certificate expiration dates and validity
-- Certificate validation warnings and diagnostics in server logs
-- Prometheus metrics for certificate validity periods
-- Automated certificate renewal with configurable thresholds
-- Integration with enterprise PKI infrastructure
-- mTLS (mutual TLS) support for service-to-service authentication
-
 ## Rationale
 
-### Phased Approach Benefits
+### Design Principles
 
-1. **Developer Experience First**: Phase 1 eliminates certificate setup friction while enabling TLS testing
-2. **Immediate Productivity**: Developers can start working immediately without certificate management
-3. **Progressive Enhancement**: Each phase adds capability without breaking previous functionality
-4. **Production When Needed**: Phase 2 adds production deployment support when actually needed
-5. **Risk Management**: Each phase can be validated independently before proceeding to the next
-
-### Phase 1 Design Principles
-
-**Developer Experience First**: TLS disabled by default, enabled with single environment variable
-**Zero Setup Friction**: Auto-generated certificates eliminate manual certificate management
-**Immediate Productivity**: Developers can start coding immediately without certificate setup
-**Debug Capability**: TLS easily toggled on/off for testing and troubleshooting
-**Progressive Enhancement**: TLS functionality builds from simple toggle to full production capability
+1. **Developer Experience First**: TLS disabled by default, enabled with single environment variable
+2. **Zero Setup Friction**: Auto-generated certificates eliminate manual certificate management
+3. **Immediate Productivity**: Developers can start coding immediately without certificate setup
+4. **Debug Capability**: TLS easily toggled on/off for testing and troubleshooting
+5. **Production Ready**: Supports enterprise PKI, custom certificates, and CA-signed certificates
+6. **Client Intelligence**: Automatic certificate discovery for development, system trust store for production
 
 ### Integration with Existing Architecture
 
@@ -321,79 +267,77 @@ prod-server:
 ### Positive
 
 - **Developer productivity preserved** with zero-friction TLS toggle
-- **Clear development roadmap** for enterprise features
-- **No architectural debt** - each phase builds on previous phases
-- **Maintains ADR-0002 vision** while enabling incremental delivery
-- **Risk mitigation** through validated phase completion
-- **Developer productivity** preserved through phased complexity introduction
+- **Production ready** with comprehensive certificate support
+- **No architectural debt** - clean integration with existing component lifecycle
+- **Maintains ADR-0002 vision** for TLS everywhere policy
+- **Cross-platform** using pure Java cryptography (no external dependencies)
+- **Intelligent defaults** handle common scenarios automatically
 
 ### Negative
 
-- **Multiple implementation phases** require sustained development effort
-- **Coordination complexity** between phases and other feature development
-- **Testing complexity** requiring validation across all phases
-- **Documentation maintenance** for multiple configuration approaches
+- **Certificate management complexity** for users managing custom certificates
+- **Testing complexity** requiring validation across multiple deployment scenarios
+- **Documentation requirements** for different certificate configurations
+- **Platform-specific paths** for certificate storage require conditional logic
 
 ### Mitigations
 
-- **Clear phase boundaries** with specific success criteria and deliverables
-- **Comprehensive testing** for each phase before progression
-- **Documentation strategy** that grows with phase implementation
-- **Rollback capability** to previous phases if issues arise
+- **Clear error messages** guide users through certificate configuration issues
+- **Comprehensive testing** across all deployment scenarios (dev, prod, enterprise)
+- **Complete documentation** with examples for each deployment model
+- **Automatic fallbacks** reduce configuration burden (auto-generation, discovery, system trust store)
 
 ## Success Criteria
 
-### Phase 1 Success Criteria
+### Server-Side TLS
 - gRPC server starts immediately with TLS disabled by default
-- Complete TLS environment variable support: `OOLOI_TLS`, `OOLOI_CERT_PATH`, `OOLOI_KEY_PATH` (server)
-- Complete TLS environment variable support: `OOLOI_FRONTEND_TLS`, `OOLOI_FRONTEND_CERT_PATH`, `OOLOI_FRONTEND_KEY_PATH` (client)
-- Complete TLS CLI flag support: `--tls true/false`, `--cert-path`, `--key-path` (server and client)
+- Complete TLS environment variable support: `OOLOI_TLS`, `OOLOI_CERT_PATH`, `OOLOI_KEY_PATH`
+- Complete TLS CLI flag support: `--tls true/false`, `--cert-path`, `--key-path`
 - Auto-generated certificates work without manual intervention when no custom certs provided
+- Custom certificate paths work for production and enterprise deployments
+- Certificate generation uses pure Java cryptography (cross-platform, no external dependencies)
+- All gRPC server tests passing with comprehensive certificate management coverage
+
+### Client-Side TLS
+- Complete TLS environment variable support: `OOLOI_FRONTEND_TLS`, `OOLOI_FRONTEND_CERT_PATH`, `OOLOI_FRONTEND_KEY_PATH`
+- Complete TLS CLI flag support: `--tls true/false`, `--cert-path`, `--key-path`
 - Client certificate discovery finds server certificates automatically (same-machine development)
 - Client falls back to system trust store for CA-signed certificates (production)
-- Custom certificate paths work for production and enterprise deployments
+- Explicit certificate configuration works for enterprise PKI scenarios
+- All gRPC client tests passing with comprehensive certificate discovery coverage
+
+### Integration & Deployment
 - Works transparently across development, testing, production, enterprise, and cloud scenarios
 - TLS validation test passes in `system_integration_test.clj`
-- Certificate generation uses pure Java cryptography (cross-platform, no external dependencies)
-- All gRPC server and client tests passing with comprehensive certificate management coverage
-
-### Phase 2 Success Criteria
-- Build tooling (`make dev-certs`, `make debug-server`, `make prod-server`) functions correctly
-- Certificate validation and diagnostic tools provide clear error messages
-- Health endpoint reports certificate expiration dates and validity
-- ACME protocol integration works with multiple providers (Let's Encrypt, internal CAs)
-- Certificate renewal automation prevents expiration-related outages
-- Enterprise monitoring integration provides operational visibility
-- Mutual TLS (mTLS) support enables secure service-to-service communication
+- Combined mode (in-process transport) works without TLS configuration
+- Distributed mode (network transport) supports TLS with proper certificate validation
+- Clear error messages guide users through certificate configuration issues
 
 ## Implementation Dependencies
 
-### Phase 1 Dependencies
-- Current gRPC server component (`grpc_server.clj`)
+- gRPC server component (`backend/components/grpc_server.clj`)
+- gRPC client components (`frontend/grpc/event_client.clj`, `frontend/grpc/api_client.clj`)
 - Existing Integrant configuration system
-- Java gRPC TLS APIs (`ServerBuilder.useTransportSecurity`)
+- Java gRPC TLS APIs (`ServerBuilder.useTransportSecurity`, `ManagedChannelBuilder`)
 - Bouncy Castle cryptography libraries for pure Java certificate generation
-
-### Phase 2 Dependencies
-- Phase 1 completion
-- Build system integration (Make or equivalent)
-- ACME protocol client libraries (for Let's Encrypt, internal CAs, etc.)
-- Enterprise monitoring infrastructure integration
-- Production automation tooling
+- Platform-specific file system APIs for certificate storage paths
 
 ## Alternatives Considered
 
-### 1. Implement Full ADR-0002 Vision Immediately
-**Rejected**: Would delay production readiness milestone significantly while building comprehensive certificate infrastructure
+### 1. TLS Always Enabled
+**Rejected**: Would create friction for local development and combined-mode deployments where TLS adds no value
 
-### 2. Simple TLS Only (No Enterprise Features)
-**Rejected**: Would leave gap between basic implementation and enterprise deployment requirements, potentially creating technical debt
+### 2. Client-Side Certificate Generation
+**Rejected**: Only servers should generate certificates; clients consume certificates from trusted sources
 
-### 3. Revise ADR-0002 to Remove Enterprise Features
-**Rejected**: Enterprise features are legitimate requirements for production deployments; removing them would compromise long-term architecture
+### 3. ACME/Let's Encrypt Integration
+**Rejected**: Certificate management is infrastructure's responsibility, not the application's concern. Adds significant complexity for minimal benefit in monolithic architecture.
 
-### 4. Third-Party Certificate Management Integration Only
-**Rejected**: Would create external dependencies for basic TLS functionality and complicate development workflows
+### 4. Mutual TLS (mTLS) Support
+**Rejected**: No server-to-server communication in monolithic architecture. Client authentication handled at application layer.
+
+### 5. Third-Party Certificate Management Only
+**Rejected**: Would complicate development workflows and require external dependencies for basic TLS functionality
 
 ## References
 
@@ -414,8 +358,11 @@ prod-server:
 
 ## Notes
 
-This phased approach prioritizes developer experience while building toward enterprise requirements. Phase 1 provides frictionless TLS capability that developers can use immediately, while Phase 2 adds production deployment support when needed.
+This implementation prioritizes developer experience while providing production-ready TLS support. The design balances:
 
-The implementation phases can be adjusted based on deployment requirements and resource availability. Phase 1 completion enables both development TLS testing and production readiness through auto-generated certificate capability.
+- **Zero-friction local development**: TLS disabled by default, auto-generated certificates when enabled
+- **Production readiness**: Full support for enterprise PKI, custom certificates, and CA-signed certificates
+- **Intelligent defaults**: Automatic certificate discovery and system trust store fallbacks
+- **Monolithic architecture**: No unnecessary complexity (ACME, mTLS, etc.) for features not needed in a monolithic server
 
-Each phase should be thoroughly tested and documented before progression to ensure stability and maintainability of the TLS implementation across all deployment scenarios.
+The TLS implementation should be thoroughly tested across all deployment scenarios (development, production, enterprise, cloud) before considering it complete.
