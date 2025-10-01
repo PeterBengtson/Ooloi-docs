@@ -128,33 +128,35 @@ Ooloi automatically generates certificates for development and testing:
 
 ### Client Implementation with Certificate Discovery
 
-The client implements one-way TLS (server authentication only) with priority-based certificate resolution:
+The client implements one-way TLS (server authentication only) with three-tier trust strategy:
 
 ```clojure
-;; gRPC client with automatic certificate discovery
-(case transport
-  :in-process
-  ;; In-process: TLS irrelevant (no network communication)
-  (build-in-process-channel server-name)
+;; Three-tier certificate trust strategy (configure-tls-for-channel)
+(defn configure-tls-for-channel [builder config]
+  (if (:tls config)
+    (let [ssl-context-builder (GrpcSslContexts/forClient)
+          ssl-context (cond
+                        ;; Priority 1: Insecure development mode (explicit opt-in)
+                        (:insecure-dev-mode config)
+                        (do
+                          (println "⚠️  WARNING: Running in insecure TLS mode")
+                          (-> ssl-context-builder
+                              (.trustManager InsecureTrustManagerFactory/INSTANCE)
+                              (.build)))
 
-  :network
-  (if (not tls-enabled?)
-    ;; TLS disabled: plaintext (development default)
-    (build-plaintext-channel host port)
+                        ;; Priority 2: Explicit certificate (custom CA or enterprise)
+                        (:cert-path config)
+                        (-> ssl-context-builder
+                            (.trustManager (io/file (:cert-path config)))
+                            (.build))
 
-    ;; TLS enabled: one-way TLS with automatic certificate discovery
-    (cond
-      ;; Priority 1: Explicit server cert provided
-      cert-path
-      (build-tls-channel-with-explicit-cert host port cert-path)
-
-      ;; Priority 2: Server cert exists (same machine development)
-      (server-cert-exists?)
-      (build-tls-channel-with-server-cert host port (discover-server-cert))
-
-      ;; Priority 3: System trust store (production CA-signed)
-      :else
-      (build-tls-channel-with-system-trust-store host port))))
+                        ;; Priority 3: System trust store (production default)
+                        :else
+                        (.build ssl-context-builder))]  ; Uses Java's cacerts
+      (-> builder
+          (.sslContext ssl-context)
+          (.overrideAuthority "localhost")))
+    (.usePlaintext builder)))
 ```
 
 **One-Way TLS Architecture:**
@@ -163,15 +165,23 @@ The client implements one-way TLS (server authentication only) with priority-bas
 - **Security Model**: Appropriate for collaboration software (not banking/military requiring mTLS)
 - **Client Configuration**: Only needs server's public certificate, never private keys
 
-**Certificate Discovery Strategy:**
+**Three-Tier Trust Strategy:**
 
-| Scenario | Transport | TLS Flag | Cert Config | Server Cert Found | Client Behavior | Use Case |
-|----------|-----------|----------|-------------|-------------------|-----------------|----------|
-| **Dev (plaintext)** | `:network` | `false` | - | - | `.usePlaintext()` | Default development |
-| **Dev (same machine)** | `:network` | `true` | None | Yes @ `~/.ooloi/certs/` | Trust server's self-signed cert | Local dev with TLS |
-| **Dev (explicit cert)** | `:network` | `true` | Server cert path | - | Use explicit server cert | Custom dev setup |
-| **Production (CA-signed)** | `:network` | `true` | None | No | System trust store (cacerts) | Production deployment |
-| **Enterprise (custom CA)** | `:network` | `true` | CA cert path | - | Trust custom CA | Enterprise PKI |
+| Priority | Config | Behavior | Use Case | Security Level |
+|----------|--------|----------|----------|----------------|
+| **1 (Highest)** | `:insecure-dev-mode true` | Bypass ALL validation, accept any certificate | Self-signed certs in development | ⚠️ Insecure (explicit opt-in required) |
+| **2** | `:cert-path "/path/to/cert"` | Trust specific certificate with proper validation | Custom CA or enterprise PKI | ✅ Secure (validates certificate) |
+| **3 (Default)** | No config | Use system trust store (Java cacerts) | Production with Let's Encrypt, DigiCert, etc. | ✅ Secure (validates against 150+ trusted CAs) |
+
+**Development Scenarios:**
+
+| Scenario | Transport | TLS | insecure-dev-mode | cert-path | Behavior | When to Use |
+|----------|-----------|-----|-------------------|-----------|----------|-------------|
+| **Local dev (no TLS)** | `:network` | `false` | - | - | Plaintext | Default development, fastest |
+| **Local dev (self-signed)** | `:network` | `true` | `true` | Auto-discovered | Insecure mode with self-signed cert | Testing TLS with auto-generated certs |
+| **Multi-client dev** | `:network` | `true` | `true` | Explicit path | Insecure mode with shared cert | Testing collaboration with TLS |
+| **Production testing** | `:network` | `true` | `false` | CA cert path | Secure validation | Testing with custom CA before production |
+| **Production** | `:network` | `true` | `false` | None | System trust store | Production deployment with CA-signed certs |
 | **Combined mode** | `:in-process` | Any | Any | Any | In-process (no network) | Single-JVM deployment |
 
 **Certificate Discovery Locations:**
@@ -207,24 +217,68 @@ OOLOI_TLS=true ./ooloi-combined  # TLS setting has no effect
 - **Maximum performance**: Direct in-memory communication with 37.5-75x faster response times (98.7-99.3% latency reduction vs network gRPC, per ADR-0019)
 - **No network dependencies**: Works offline or in restricted network environments
 
-### Collaboration Development (Distributed)
-**Architecture**: Multiple client machines connecting to shared development server  
-**Certificate Strategy**: Proper certificates with server hostname/IP coverage  
-**Use Case**: Team developing collaboration features, multi-client testing
+### Local Development (No TLS) - Default
+**Architecture**: Backend and frontend on same machine, network transport
+**Certificate Strategy**: No TLS - plaintext communication
+**Use Case**: Default development workflow, fastest iteration
 
 ```bash
-# Development server with proper certificates
-./ooloi-backend --tls true --cert-path ./dev-server.crt --key-path ./dev-server.key
+# Backend - no TLS
+./ooloi-backend
 
-# Clients connecting to dev-server.local
-# Certificate must cover dev-server.local and be trusted by client machines
+# Frontend - no TLS
+./ooloi-frontend
+```
+
+**Benefits**:
+- **Fastest**: No TLS overhead
+- **Simple**: No certificate management
+- **Default**: Most developers work this way
+
+### Local Development with TLS (Self-Signed Certificates)
+**Architecture**: Backend and frontend on same or different machines, testing TLS functionality
+**Certificate Strategy**: Server auto-generates self-signed certificate, client uses insecure mode
+**Use Case**: Testing TLS features, multi-machine development, verifying encryption
+
+```bash
+# Backend - generates self-signed cert at ~/.ooloi/certs/server.crt
+OOLOI_TLS=true ./ooloi-backend
+
+# Frontend - uses insecure mode to accept self-signed cert
+OOLOI_FRONTEND_TLS=true
+OOLOI_FRONTEND_INSECURE_DEV_MODE=true
+./ooloi-frontend
+```
+
+**Important Notes**:
+- ⚠️ **Insecure mode required** for self-signed certificates (explicit opt-in)
+- **Auto-discovery**: Client automatically finds server's certificate at `~/.ooloi/certs/`
+- **Security**: Insecure mode bypasses ALL certificate validation - development only
+- **When to use**: Testing TLS functionality, not production-like security
+
+### Multi-Client Development (Distributed Testing)
+**Architecture**: Multiple client machines connecting to shared development server
+**Certificate Strategy**: Self-signed certificate shared across development team
+**Use Case**: Testing collaboration features with TLS enabled
+
+```bash
+# Development server with auto-generated cert
+OOLOI_TLS=true ./ooloi-backend
+
+# Copy certificate to client machines:
+# scp ~/.ooloi/certs/server.crt dev-machine-2:~/.ooloi/certs/
+
+# Clients on different machines
+OOLOI_FRONTEND_TLS=true
+OOLOI_FRONTEND_INSECURE_DEV_MODE=true
+OOLOI_FRONTEND_CERT_PATH=~/.ooloi/certs/server.crt
+./ooloi-frontend
 ```
 
 **Certificate Requirements**:
-- **Coverage**: Must include server's actual hostname/IP addresses
-- **Distribution**: Certificate must be trusted by all client development machines
-- **Generation**: Manual certificate creation or team CA infrastructure
-- **Rationale**: Multi-client scenarios mirror production networking, require realistic certificate management
+- **Distribution**: Share server's certificate with all client machines
+- **Insecure mode**: Required for self-signed certificates
+- **Testing focus**: Collaboration features, not production security model
 
 ### SaaS Production (AWS/Cloud)
 **Architecture**: Backend on AWS behind Application Load Balancer  
@@ -285,27 +339,57 @@ OOLOI_TLS=true OOLOI_CERT_PATH=/secrets/tls.crt OOLOI_KEY_PATH=/secrets/tls.key 
 
 **Configuration Examples Summary**:
 ```bash
-# Combined Mode: In-process transport, no TLS needed
-./ooloi-combined  # TLS flags ignored
+# ============================================================================
+# DEVELOPMENT SCENARIOS
+# ============================================================================
 
-# Backend-only: TLS disabled by default
+# Default: No TLS (fastest, simplest)
+./ooloi-backend
+./ooloi-frontend
+
+# Testing TLS with self-signed certificates (same machine)
+OOLOI_TLS=true ./ooloi-backend
+OOLOI_FRONTEND_TLS=true OOLOI_FRONTEND_INSECURE_DEV_MODE=true ./ooloi-frontend
+
+# Testing TLS across multiple machines
+OOLOI_TLS=true ./ooloi-backend  # Generates cert at ~/.ooloi/certs/
+# Copy cert to other machines, then:
+OOLOI_FRONTEND_TLS=true \
+OOLOI_FRONTEND_INSECURE_DEV_MODE=true \
+OOLOI_FRONTEND_CERT_PATH=~/.ooloi/certs/server.crt \
+./ooloi-frontend
+
+# Combined mode (in-process, no network)
+./ooloi-combined  # TLS not applicable
+
+# ============================================================================
+# PRODUCTION SCENARIOS
+# ============================================================================
+
+# Production with Let's Encrypt (system trust store)
+OOLOI_TLS=true \
+OOLOI_CERT_PATH=/etc/letsencrypt/live/api.example.com/fullchain.pem \
+OOLOI_KEY_PATH=/etc/letsencrypt/live/api.example.com/privkey.pem \
 ./ooloi-backend
 
-# Backend-only: TLS with auto-generated certificates
-OOLOI_TLS=true ./ooloi-backend
-./ooloi-backend --tls true
+# Client connects with system trust (no config needed)
+OOLOI_FRONTEND_TLS=true \
+OOLOI_FRONTEND_BACKEND_HOST=api.example.com \
+./ooloi-frontend
 
-# Collaboration Development: Custom certificates for multi-client scenarios
-./ooloi-backend --tls true --cert-path ./dev-server.crt --key-path ./dev-server.key
-
-# SaaS Production: TLS termination at load balancer
+# SaaS: TLS termination at load balancer
 OOLOI_TLS=false OOLOI_PORT=8080 ./ooloi-backend  # Behind AWS ALB
 
-# Enterprise: Customer-managed certificates
-OOLOI_TLS=true OOLOI_CERT_PATH=/etc/ssl/ooloi.crt OOLOI_KEY_PATH=/etc/ssl/ooloi.key ./ooloi-backend
+# Enterprise with custom CA
+OOLOI_TLS=true \
+OOLOI_CERT_PATH=/etc/ssl/company.crt \
+OOLOI_KEY_PATH=/etc/ssl/company.key \
+./ooloi-backend
 
-# Debugging: Explicit TLS disable
-./ooloi-backend --tls false
+# Enterprise client (trusts custom CA with validation)
+OOLOI_FRONTEND_TLS=true \
+OOLOI_FRONTEND_CERT_PATH=/etc/ssl/company-ca.crt \
+./ooloi-frontend
 ```
 
 ## Rationale

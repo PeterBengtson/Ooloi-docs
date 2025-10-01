@@ -350,50 +350,77 @@ JAVA_OPTS="-XX:+PrintGCDetails -XX:+PrintGCTimeStamps -Xloggc:gc.log"
 
 **TLS Overview** ([ADR-0020: TLS Infrastructure and Deployment Architecture](../ADRs/0020-TLS-Infrastructure-and-Deployment-Architecture.md)):
 - **Default**: TLS disabled for immediate developer productivity
-- **Development**: Enable with `--tls true` or `OOLOI_TLS=true` - certificates auto-generated
-- **Certificate Management**: Intelligent creation at specified paths or platform defaults
-- **Production**: Full control via `--cert-path` and `--key-path` parameters
+- **Development**: Auto-generates self-signed certificates for testing TLS functionality
+- **Production**: Supports CA-signed certificates with secure validation
+- **Enterprise**: Custom CA certificates with proper certificate chain validation
+
+**Development Scenarios**:
+
+**1. Local Development (No TLS) - Default and Recommended**
+```bash
+# Fastest development experience, no TLS overhead
+lein run
+# Or with environment variable
+OOLOI_TLS=false lein run
+```
+Most developers work this way. Use this for normal development.
+
+**2. Testing TLS Functionality (Self-Signed Certificates)**
+```bash
+# Server auto-generates certificate at ~/.ooloi/certs/server.crt
+OOLOI_TLS=true lein run
+
+# Note: Clients connecting to this server will need OOLOI_FRONTEND_INSECURE_DEV_MODE=true
+# because self-signed certificates cannot be validated through a trust chain
+```
+Use this when testing TLS features or multi-machine setups.
+
+**3. Custom Certificate Locations**
+```bash
+# Server uses certificates at specified paths
+lein run -- --tls true --cert-path ./dev.crt --key-path ./dev.key
+```
+
+**Production Scenarios**:
+
+**4. Production with Let's Encrypt (Recommended)**
+```bash
+# Production deployment with CA-signed certificate
+export OOLOI_TLS=true
+export OOLOI_PORT=443
+export OOLOI_CERT_PATH=/etc/letsencrypt/live/api.example.com/fullchain.pem
+export OOLOI_KEY_PATH=/etc/letsencrypt/live/api.example.com/privkey.pem
+java -jar target/ooloi-backend-*-standalone.jar
+
+# Clients connect with zero configuration - system trust store validates Let's Encrypt
+```
+
+**5. Enterprise with Custom CA**
+```bash
+# Enterprise deployment with company CA
+export OOLOI_TLS=true
+export OOLOI_CERT_PATH=/etc/ssl/company-server.crt
+export OOLOI_KEY_PATH=/etc/ssl/company-server.key
+java -jar target/ooloi-backend-*-standalone.jar
+
+# Clients use OOLOI_FRONTEND_CERT_PATH=/etc/ssl/company-ca.crt for validation
+```
 
 **Certificate Auto-Generation**:
-Ooloi automatically generates TLS certificates when needed:
-- **Implementation**: Pure Java with Bouncy Castle (cross-platform, no external dependencies)
-- **Default Locations**: 
+When TLS is enabled without explicit cert paths, Ooloi auto-generates self-signed certificates:
+- **Implementation**: Pure Java with Bouncy Castle (cross-platform, no dependencies)
+- **Default Locations**:
   - Unix/macOS: `~/.ooloi/certs/server.{crt,key}`
   - Windows: `%APPDATA%\Ooloi\certs\server.{crt,key}`
 - **Properties**: RSA 2048-bit, 20-year validity, covers `localhost`, `127.0.0.1`, `::1`
-- **Behavior**: Certificates created on first TLS startup, reused on subsequent starts
+- **Reuse**: Once generated, certificates persist across restarts
+- **Purpose**: Development and testing only (not for production)
 
-**TLS Configuration Examples**:
-```bash
-# Development: TLS disabled (default)
-lein run
-
-# Development: TLS with auto-generated certificates (platform defaults)
-lein run -- --tls true
-OOLOI_TLS=true lein run
-
-# Development: TLS with certificates at custom locations
-lein run -- --tls true --cert-path ./my.crt --key-path ./my.key
-
-# Production: Environment variables with custom certificates
-export OOLOI_TLS=true
-export OOLOI_CERT_PATH=/etc/ssl/ooloi.crt
-export OOLOI_KEY_PATH=/etc/ssl/ooloi.key
-lein run
-
-# Production: HTTPS port with TLS
-export OOLOI_TLS=true
-export OOLOI_PORT=443
-export OOLOI_CERT_PATH=/etc/ssl/ooloi.crt  
-export OOLOI_KEY_PATH=/etc/ssl/ooloi.key
-java -jar target/ooloi-backend-*-standalone.jar
-```
-
-**Certificate Management**:
-- **Automatic**: Certificates are generated automatically when TLS is enabled
-- **Persistent**: Once created, certificates are reused across server restarts
-- **Configurable**: Use `--cert-path` and `--key-path` to control certificate locations
-- **Cross-platform**: Works on Unix, macOS, and Windows
+**Important Security Notes**:
+- ⚠️ Self-signed certificates are for **development/testing only**
+- ✅ Production deployments should use CA-signed certificates
+- ✅ Let's Encrypt provides free, automated CA-signed certificates
+- ✅ Enterprise deployments can use internal CA infrastructure
 
 #### Production Deployment
 

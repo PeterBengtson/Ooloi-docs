@@ -410,28 +410,145 @@ The combined application accepts the **union** of all backend and frontend envir
 
 ### TLS Configuration
 
-The combined application supports secure TLS connections for internal client-server communication:
+The combined application supports secure TLS connections for internal client-server communication.
+
+#### TLS Infrastructure Overview
+
+The shared project provides the **complete TLS infrastructure** used by both backend (server) and frontend (client):
+
+**Three-Tier Certificate Trust Strategy:**
+
+1. **Priority 1: Insecure Development Mode** (`:insecure-dev-mode true`)
+   - Bypasses ALL certificate validation (self-signed certificates)
+   - Backend: Accepts any client without validation
+   - Frontend: Accepts any server without validation
+   - **Use for**: Development with self-signed certificates
+   - **Security**: ⚠️  NOT FOR PRODUCTION
+
+2. **Priority 2: Explicit Certificate** (`:cert-path` + `:key-path`)
+   - Backend: Uses specified certificate/key for server identity
+   - Frontend: Trusts specified certificate with proper validation
+   - **Use for**: Custom CA or enterprise certificates
+   - **Security**: ✅ Secure with proper validation
+
+3. **Priority 3: System Trust Store** (default when TLS enabled)
+   - Backend: Auto-generates self-signed certificate in `~/.ooloi/certs/`
+   - Frontend: Uses Java's built-in trusted CAs (~150 authorities)
+   - **Use for**: Production with Let's Encrypt or commercial CA
+   - **Security**: ✅ Fully secure - standard PKI validation
+
+#### Common Scenarios
+
+**1. Combined Mode (Default) - No TLS Needed**
+
+Combined mode uses in-process transport with no network communication:
 
 ```bash
-# Combined mode typically uses in-process transport (no TLS needed)
+# Default configuration - in-process communication
 lein run
 
-# If using network transport in combined mode with TLS
-export OOLOI_BACKEND_TLS=true
-export OOLOI_BACKEND_CERT_PATH=/etc/ssl/ooloi/server-cert.pem
-export OOLOI_BACKEND_KEY_PATH=/etc/ssl/ooloi/server-key.pem
-export OOLOI_FRONTEND_TLS=true
-export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/ooloi/server-cert.pem
-lein run
+# Explicit combined mode with in-process transport
+lein run -- --mode combined --transport in-process
 ```
 
-**TLS Configuration Notes:**
-- **Combined Mode Default**: Uses in-process transport (no network, no TLS needed)
-- **Network Transport**: When using network transport, configure both backend (server) and frontend (client) TLS
-- **Backend TLS**: Requires both `--cert-path` (server certificate) and `--key-path` (server private key)
-- **Frontend TLS**: Requires only `--cert-path` (server's public certificate) for one-way TLS
-- **Certificate Discovery**: Frontend auto-discovers certificates from `~/.ooloi/certs/` when TLS enabled
-- **Security**: One-way TLS (server authentication) appropriate for collaboration software
+**No TLS overhead** - components communicate directly in same JVM.
+
+**2. Combined Mode with Network Transport (Testing)**
+
+When testing network transport in combined mode with self-signed certificates:
+
+```bash
+# Backend and frontend use self-signed certificates with insecure mode
+export OOLOI_TLS=true
+export OOLOI_INSECURE_DEV_MODE=true
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_INSECURE_DEV_MODE=true
+lein run -- --mode combined --transport network
+```
+
+**Why insecure mode?** Self-signed certificates cannot be validated through a trust chain.
+
+**3. Integration Testing with TLS**
+
+When running integration tests with TLS-enabled backend and frontend:
+
+```bash
+# Integration test mode with TLS (self-signed)
+export OOLOI_TLS=true
+export OOLOI_INSECURE_DEV_MODE=true
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_INSECURE_DEV_MODE=true
+lein run -- --mode integration-test
+```
+
+**4. Production Combined Mode (Network Transport)**
+
+For combined deployment with CA-signed certificates:
+
+```bash
+# Backend with Let's Encrypt certificate
+export OOLOI_TLS=true
+export OOLOI_CERT_PATH=/etc/letsencrypt/live/ooloi.example.com/fullchain.pem
+export OOLOI_KEY_PATH=/etc/letsencrypt/live/ooloi.example.com/privkey.pem
+
+# Frontend uses system trust store
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_BACKEND_HOST=ooloi.example.com
+export OOLOI_FRONTEND_BACKEND_PORT=443
+
+lein run -- --mode combined --transport network
+```
+
+**Fully secure** - standard PKI validation, encrypted communication.
+
+**5. Enterprise with Custom CA**
+
+For enterprise environments with internal certificate authority:
+
+```bash
+# Backend with company-issued certificate
+export OOLOI_TLS=true
+export OOLOI_CERT_PATH=/etc/ssl/company/ooloi-server.crt
+export OOLOI_KEY_PATH=/etc/ssl/company/ooloi-server.key
+
+# Frontend trusts company CA
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/company/company-ca.crt
+export OOLOI_FRONTEND_BACKEND_HOST=ooloi.internal
+
+lein run -- --mode combined --transport network
+```
+
+**Uses proper validation** - no insecure mode needed.
+
+#### TLS Configuration Summary
+
+| **Scenario** | **Transport** | **Backend TLS** | **Frontend TLS** | **Insecure Mode** | **Security** |
+|--------------|---------------|-----------------|------------------|-------------------|--------------|
+| Combined (Default) | in-process | N/A | N/A | N/A | N/A (no network) |
+| Testing Network TLS | network | `true` | `true` | `true` | ⚠️  Development only |
+| Integration Testing | network | `true` | `true` | `true` | ⚠️  Development only |
+| Production (Let's Encrypt) | network | `true` | `true` | `false` | ✅ Fully secure |
+| Enterprise Custom CA | network | `true` | `true` | `false` | ✅ Fully secure |
+
+#### TLS Implementation Details
+
+**Server-Side (Backend):**
+- **Certificate Generation**: Auto-generates self-signed certificates in `~/.ooloi/certs/` when TLS enabled
+- **Certificate/Key Pair**: Requires both public certificate and private key
+- **Platform Support**: macOS, Linux, Windows certificate storage
+- **Bouncy Castle**: Uses Bouncy Castle library for certificate generation
+
+**Client-Side (Frontend):**
+- **Certificate Discovery**: Auto-discovers certificates from `~/.ooloi/certs/` when TLS enabled
+- **One-Way TLS**: Clients verify server identity (server authentication only)
+- **System Trust Store**: Uses Java's built-in ~150 trusted CAs for production
+- **Custom Certificates**: Supports explicit certificate paths for enterprise deployments
+
+**For detailed TLS scenarios, see:**
+- Backend README: Server-side TLS configuration and certificate generation
+- Frontend README: Client-side TLS configuration and certificate trust
+- ADR-0020: TLS Infrastructure and Deployment Architecture
 
 ### Deployment Modes
 

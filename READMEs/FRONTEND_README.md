@@ -328,28 +328,138 @@ The application provides actionable guidance for common errors:
 ### TLS and Security Configuration
 
 **Client-Side TLS Support:**
-The frontend supports secure connections to TLS-enabled backend servers using one-way TLS (server authentication):
+The frontend supports secure connections to TLS-enabled backend servers using one-way TLS (server authentication).
+
+#### Three-Tier Certificate Trust Strategy
+
+The frontend uses a priority-based fallback system for validating server certificates:
+
+1. **Priority 1: Insecure Development Mode** (`:insecure-dev-mode true`)
+   - Bypasses ALL certificate validation (self-signed certificates)
+   - **Use for**: Development with self-signed certificates
+   - **Security**: ⚠️  NOT FOR PRODUCTION - accepts any certificate
+
+2. **Priority 2: Explicit Certificate** (`:cert-path "/path/to/cert.pem"`)
+   - Trusts specific certificate file with proper validation
+   - **Use for**: Custom CA or enterprise certificates
+   - **Security**: ✅ Secure - validates certificate properly
+
+3. **Priority 3: System Trust Store** (default when TLS enabled)
+   - Uses Java's built-in trusted CAs (~150 authorities)
+   - **Use for**: Production with Let's Encrypt or commercial CA
+   - **Security**: ✅ Fully secure - standard PKI validation
+
+#### Common Scenarios
+
+**1. Local Development (No TLS) - Default and Recommended**
+
+Most developers work without TLS during local development:
 
 ```bash
-# Enable TLS with automatic certificate discovery
-lein run -- --tls true
+# Default configuration - fastest development experience
+lein run
 
-# Explicit certificate path
-lein run -- --tls true --cert-path /path/to/server-cert.pem
+# Or explicitly disable TLS
+lein run -- --tls false
+```
 
-# Environment variable configuration
+**No TLS overhead, direct plaintext communication.**
+
+**2. Testing TLS with Self-Signed Certificates**
+
+When testing multi-client setups or TLS functionality, use the backend's auto-generated self-signed certificate with insecure mode:
+
+```bash
+# Backend generates self-signed certificate in ~/.ooloi/certs/
+# Frontend discovers it automatically and requires insecure mode
+
+# Using CLI flag
+lein run -- --tls true --insecure-dev-mode true
+
+# Using environment variables
 export OOLOI_FRONTEND_TLS=true
-export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/ooloi/server.pem
+export OOLOI_FRONTEND_INSECURE_DEV_MODE=true
 lein run
 ```
 
-**TLS Configuration Notes:**
+**Why insecure mode?** Self-signed certificates cannot be validated through a trust chain. They're fundamentally for development only.
+
+**3. Custom Certificate Location**
+
+If backend certificate is in non-default location:
+
+```bash
+# Explicit certificate path with insecure mode for self-signed
+lein run -- --tls true --cert-path /custom/path/server.crt --insecure-dev-mode true
+
+# Environment variables
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_CERT_PATH=/custom/path/server.crt
+export OOLOI_FRONTEND_INSECURE_DEV_MODE=true
+lein run
+```
+
+**4. Production with Let's Encrypt (Recommended)**
+
+For production deployment with CA-signed certificates (Let's Encrypt, DigiCert, etc.):
+
+```bash
+# TLS enabled, system trust store validates automatically
+lein run -- --tls true --backend-host production.example.com --backend-port 443
+
+# Environment variables for containerized deployment
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_BACKEND_HOST=production.example.com
+export OOLOI_FRONTEND_BACKEND_PORT=443
+lein run
+```
+
+**No certificate path needed** - Java's built-in trust store (~150 CAs) validates the server's certificate automatically.
+
+**5. Enterprise with Custom CA**
+
+For enterprise environments with internal certificate authority:
+
+```bash
+# Explicit certificate path with proper validation (no insecure mode)
+lein run -- --tls true --cert-path /etc/ssl/certs/company-ca.pem --backend-host enterprise.internal --backend-port 50051
+
+# Environment variables
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/certs/company-ca.pem
+export OOLOI_FRONTEND_BACKEND_HOST=enterprise.internal
+export OOLOI_FRONTEND_BACKEND_PORT=50051
+lein run
+```
+
+**Uses proper validation** - the certificate can be verified, so no insecure mode needed.
+
+#### TLS Configuration Summary
+
+| **Scenario** | **TLS Flag** | **Cert Path** | **Insecure Mode** | **Security** |
+|--------------|--------------|---------------|-------------------|--------------|
+| Local Development | `false` (default) | - | - | N/A (plaintext) |
+| Testing TLS (Self-Signed) | `true` | auto-discovered | `true` | ⚠️  Development only |
+| Custom Self-Signed Location | `true` | explicit path | `true` | ⚠️  Development only |
+| Production (Let's Encrypt) | `true` | - | `false` (default) | ✅ Fully secure |
+| Enterprise Custom CA | `true` | explicit path | `false` (default) | ✅ Fully secure |
+
+#### Certificate Discovery
+
+When `--cert-path` not specified with `--tls true`, the frontend automatically discovers certificates from `~/.ooloi/certs/`:
+
+- Searches for `.crt` files in default directory
+- Expects exactly one `.crt` file (throws exception if multiple found)
+- Validates that file exists and is readable
+- Fails cleanly with actionable error message if discovery fails
+
+#### Security Notes
+
 - **One-way TLS**: Clients verify server identity using server's public certificate
-- **Certificate Discovery**: When `--cert-path` not specified, automatically discovers certificate from `~/.ooloi/certs/`
-- **Requirements**: Expects exactly one `.crt` file in certificate directory for auto-discovery
-- **Explicit Path**: Use `--cert-path` to specify custom certificate location
 - **Server Certificate Only**: Clients only need the server's public certificate, never private keys
-- **Security**: TLS encrypts all gRPC communication between client and backend
+- **Insecure Mode Warning**: ⚠️  `--insecure-dev-mode true` prints warning and should NEVER be used in production
+- **Certificate Validation**: Production deployments use full PKI validation through Java's trust store
+- **Encryption**: All TLS modes encrypt gRPC communication between client and backend
 
 ### Integration Testing
 
