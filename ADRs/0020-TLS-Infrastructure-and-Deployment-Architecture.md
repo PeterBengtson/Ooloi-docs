@@ -3,36 +3,66 @@
 ## Table of Contents
 
 1. [Status](#status)
-2. [Context](#context)
-3. [Decision](#decision)
+2. [Implementation](#implementation)
+3. [Context](#context)
+4. [Decision](#decision)
    - [Complete TLS Capability](#complete-tls-capability)
    - [Server Implementation](#server-implementation)
    - [Client Implementation with Certificate Discovery](#client-implementation-with-certificate-discovery)
-4. [Deployment Scenarios and Certificate Management](#deployment-scenarios-and-certificate-management)
+5. [Deployment Scenarios and Certificate Management](#deployment-scenarios-and-certificate-management)
    - [Single Developer (Combined Mode)](#single-developer-combined-mode)
    - [Collaboration Development (Distributed)](#collaboration-development-distributed)
    - [SaaS Production (AWS/Cloud)](#saas-production-awscloud)
    - [Enterprise/Self-Hosted Production](#enterpriseself-hosted-production)
    - [Container/Kubernetes Deployment](#containerkubernetes-deployment)
-5. [Rationale](#rationale)
+6. [Rationale](#rationale)
    - [Design Principles](#design-principles)
    - [Integration with Existing Architecture](#integration-with-existing-architecture)
-6. [Consequences](#consequences)
+7. [Consequences](#consequences)
    - [Positive](#positive)
    - [Negative](#negative)
    - [Mitigations](#mitigations)
-7. [Success Criteria](#success-criteria)
+8. [Success Criteria](#success-criteria)
    - [Server-Side TLS](#server-side-tls)
    - [Client-Side TLS](#client-side-tls)
    - [Integration & Deployment](#integration--deployment)
-8. [Implementation Dependencies](#implementation-dependencies)
-9. [Alternatives Considered](#alternatives-considered)
-10. [References](#references)
-11. [Notes](#notes)
+9. [Implementation Dependencies](#implementation-dependencies)
+10. [Alternatives Considered](#alternatives-considered)
+11. [References](#references)
+12. [Notes](#notes)
 
 ## Status
 
-Accepted
+Accepted - Implemented
+
+## Implementation
+
+The TLS infrastructure is implemented as a unified module in the shared project with comprehensive test coverage:
+
+**Architecture:**
+- **Core Module**: `shared/src/main/clojure/ooloi/shared/grpc/tls.clj` - Unified TLS utilities for both server and client
+- **Platform Support**: `shared/src/main/clojure/ooloi/shared/platform.clj` - Cross-platform directory management
+- **Test Coverage**: `shared/test/clojure/ooloi/shared/grpc/tls_test.clj` - 45 unit tests covering all TLS functionality
+- **Integration Tests**: `shared/test/clojure/ooloi/shared/grpc/tls_integration_test.clj` - End-to-end component lifecycle testing
+
+**Server-Side Implementation:**
+- `ensure-certificates` - Complete certificate lifecycle management with automatic generation
+- `generate-rsa-key-pair` - RSA 2048-bit key pair generation
+- `create-self-signed-certificate` - X.509 certificates with SAN support
+- `write-key-pair-to-files` - PEM format output with proper encoding
+- Platform-appropriate certificate storage (Windows: `%APPDATA%/Ooloi/certs/`, Unix/macOS: `~/.ooloi/certs/`)
+
+**Client-Side Implementation:**
+- `apply-tls-config` - Automatic certificate discovery and validation
+- `configure-tls-for-channel` - gRPC channel TLS configuration
+- Three-tier trust strategy: explicit cert → system trust store → insecure dev mode
+- Support for self-signed certificates (development), CA-signed certificates (production), and custom CA (enterprise)
+
+**Test Infrastructure:**
+- 11 unit tests for `ensure-certificates` covering generation, reuse, error handling, and platform paths
+- 11 unit tests for `apply-tls-config` covering discovery logic, validation, and error scenarios
+- Integration tests verifying behavior through component lifecycle
+- Platform-specific path testing for Windows and Unix/macOS conventions
 
 ## Context
 
