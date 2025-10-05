@@ -10,7 +10,7 @@ Ooloi's musical notation system requires extensive configuration capabilities fo
 
 ### Current Architecture Analysis
 
-**Musical Entity Hierarchy**: Piece → Musicians → Instruments → Staves → Voices → Measures → Items
+**Musical Entity Hierarchy**: Piece → Musicians → Instruments → Staves → Measures → Voices → Items
 **Visual Entity Hierarchy**: Layouts → PageViews → SystemViews → StaffViews → MeasureViews
 
 Each entity type currently uses defrecord slots that fall into two categories:

@@ -280,7 +280,7 @@ For distributed applications or when you need ACID guarantees across network bou
               :piece-id "symphony-1" 
               :parameters ["Violin I"]}
              {:method-name :set-key-signature
-              :vpd [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 0]
+              :vpd [:musicians 0 :instruments 0 :staves 0 :measures 0 :voices 0]
               :piece-id "symphony-1"
               :parameters ["G major"]}])
 ```
@@ -858,11 +858,11 @@ The type system makes VPD operations polymorphic at multiple levels:
         (alter piece-ref update-in vpd conj item)))))
 
 ;; Usage - automatic type validation
-(add-item [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2] 
+(add-item [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0] 
           "piece-id" 
           new-pitch)  ; ✓ Works - measures implement HasItems
 
-(add-item [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2 :items 0]
+(add-item [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 0]
           "piece-id"
           new-pitch)  ; ✗ Error - pitches don't implement HasItems
 ```
@@ -888,7 +888,7 @@ A key aspect is how **every operation** gets VPD capability automatically:
 ;; This means ALL 200+ operations automatically work with VPDs:
 (get-musician [:musicians 0] piece-ref)           ; Auto-generated VPD method
 (get-measure [:musicians 0 :instruments 0 :staves 0 :voices 0] piece-ref 5)  ; Auto-generated
-(get-pitch [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2 :items 1] piece-ref)  ; Auto-generated
+(get-pitch [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 1] piece-ref)  ; Auto-generated
 ```
 
 ### VPD Path Type Coordination
@@ -948,7 +948,7 @@ A key aspect is how **every operation** gets VPD capability automatically:
 (api/set-duration ornament-instance 1/8)  ; Uses Ornament method
 
 ;; VPD operations work immediately
-(api/add-item [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 5]
+(api/add-item [:musicians 0 :instruments 0 :staves 0 :measures 5 :voices 0]
               piece-id
               ornament-instance)  ; Works automatically
 
@@ -1049,7 +1049,7 @@ Once defined, your operations automatically get:
 (set-transposition chord-object 4)    ; Uses Chord implementation
 
 ;; VPD operations work immediately  
-(get-transposition [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2] piece-ref)
+(get-transposition [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0] piece-ref)
 (set-transposition [:staves 0] piece-ref 7)  ; Automatic STM transactions
 
 ;; API access works immediately
@@ -1700,7 +1700,7 @@ Understanding when to use each dispatch mechanism:
 **3. VPD Type Validation Failures**
 ```clojure
 ;; Problem: VPD points to wrong type
-(api/add-item [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2 :items 0]
+(api/add-item [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 0]
               piece-id item)  ; Error: Pitch doesn't implement HasItems
 
 ;; Solution: Check VPD target type

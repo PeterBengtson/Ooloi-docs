@@ -19,9 +19,9 @@ The Ooloi Piece is organized as a pure tree:
 - Pieces contain Musicians and Layouts
 - Musicians have Instruments
 - Instruments have Staves
-- Staves have Voices
-- Voices have Measures
-- Measures contain musical items (Rests, Pitches, Chords, Tuplets, Tremolandos, etc.)
+- Staves have Measures
+- Measures have Voices
+- Voices contain musical items (Rests, Pitches, Chords, Tuplets, Tremolandos, etc.)
 
 This forms the basic tree structure of the Piece.
 
@@ -62,7 +62,7 @@ Musical items that can appear within Measures include:
 VPDs are used for efficient navigation and serialization of the nested piece structure:
 
 - Compact form: `[:m 2 0 0 0 46]` (for musical elements)
-- Verbose form: `[:musicians 2 :instruments 0 :staves 0 :voices 0 :measures 46]`
+- Verbose form: `[:musicians 2 :instruments 0 :staves 0 :measures 4 :voices 06]`
 - Layout elements use `:l` instead of `:m`
 
 Key VPD operations:
@@ -178,6 +178,7 @@ The Ooloi architecture is designed to be extensible, allowing for:
 6. Investigate integration with audio playback and MIDI systems.
 7. Consider developing a visual debugger for inspecting the structure and rendered elements.
 8. Investigate opportunities for sharing functional data structure approaches with other open-source music notation projects seeking to solve similar architectural challenges.
+9. **Ossia staff support**: Future implementation of ossia staves (instruments that enter at arbitrary measures) will use Staff-level `entry-measure` and `exit-measure` fields rather than Voice-level temporal positioning. This design aligns with the current architecture where Voices are measure-local content containers, not temporal streams. Ossia is primarily a visual/layout concern that should be expressed at the Staff level, keeping the Voice model pure and simple while enabling proper score rendering and layout coordination.
 
 ## Note on Structure Terminology
 

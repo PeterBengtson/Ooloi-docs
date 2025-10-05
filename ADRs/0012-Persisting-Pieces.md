@@ -49,9 +49,9 @@ The Ooloi Piece is organized as a pure tree:
 - Pieces contain Musicians and Layouts
 - Musicians have Instruments
 - Instruments have Staves
-- Staves have Voices
-- Voices have Measures
-- Measures contain musical items (Rests, Pitches, Chords, Tuplets, Tremolandos, etc.)
+- Staves have Measures
+- Measures have Voices
+- Voices contain musical items (Rests, Pitches, Chords, Tuplets, Tremolandos, etc.)
 
 ### 2. Integer ID Reference Management
 

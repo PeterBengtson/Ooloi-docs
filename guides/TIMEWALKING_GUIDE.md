@@ -54,7 +54,7 @@ This tuple gives you **complete context** for any musical element:
 
 ```clojure
 ;; Example tuple for a pitch
-[#Pitch{:note "C4"} [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2 :items 1] 1/4]
+[#Pitch{:note "C4"} [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 1] 1/4]
 ;;   ^actual pitch    ^exact location in piece structure                                    ^beat position
 ```
 
@@ -583,17 +583,17 @@ Common transducer patterns for musical processing:
 ;; Examples with output
 (sequence (comp (filter pitch??) absolute-time (take 3))
           (timewalk piece {:boundary-vpd voice-vpd}))
-;; => ([#Pitch{:note "C4"} [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 0 :items 0] 0.0]
-;;     [#Pitch{:note "E4"} [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 0 :items 1] 0.5]
-;;     [#Pitch{:note "G4"} [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 0 :items 2] 1.0])
+;; => ([#Pitch{:note "C4"} [:musicians 0 :instruments 0 :staves 0 :measures 0 :voices 0 :items 0] 0.0]
+;;     [#Pitch{:note "E4"} [:musicians 0 :instruments 0 :staves 0 :measures 0 :voices 0 :items 1] 0.5]
+;;     [#Pitch{:note "G4"} [:musicians 0 :instruments 0 :staves 0 :measures 0 :voices 0 :items 2] 1.0])
 
 (sequence (comp (filter pitch??) absolute-time)
           (timewalk piece {:boundary-vpd voice-vpd 
                            :start-measure 2 :end-measure 2}))
-;; => ([#Pitch{:note "F4"} [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2 :items 0] 4.0]
-;;     [#Pitch{:note "A4"} [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2 :items 1] 4.5]
-;;     [#Pitch{:note "C5"} [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2 :items 2] 5.0]
-;;     [#Pitch{:note "E5"} [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 2 :items 3] 5.5])
+;; => ([#Pitch{:note "F4"} [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 0] 4.0]
+;;     [#Pitch{:note "A4"} [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 1] 4.5]
+;;     [#Pitch{:note "C5"} [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 2] 5.0]
+;;     [#Pitch{:note "E5"} [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 3] 5.5])
 ```
 
 #### Pattern 5: Early Termination with `take`

@@ -126,8 +126,8 @@ Piece
 ├── musicians
 │   └── instruments
 │       └── staves
-│           └── voices
-│               └── measures
+│           └── measures
+│               └── voices
 │                   └── items (Pitch, Chord, Rest, Tuplet, Tremolando, etc.)
 └── layouts
     └── page-views
@@ -248,7 +248,7 @@ For remote access (frontend → gRPC → backend), the same operations can use V
 (remove-item measure 2)
 
 ;; Remote: VPD reference to same operation
-(remove-item [:musicians 0 :instruments 0 :staves 0 :voices 0 :measures 1] "PieceID2418" 2)
+(remove-item [:musicians 0 :instruments 0 :staves 0 :measures 1 :voices 0] "PieceID2418" 2)
 ```
 
 The VPD compact form:

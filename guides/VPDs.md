@@ -22,7 +22,7 @@ VPDs are vectors that describe a path to a specific element within the nested st
 VPDs use a combination of keywords and indices to navigate the piece structure. Here's a basic example:
 
 ```clojure
-[:musicians 0 :instruments 1 :staves 0 :voices 0 :measures 3]
+[:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0]
 ```
 
 This VPD points to the 4th measure of the first voice of the first staff of the second instrument of the first musician.
@@ -40,7 +40,7 @@ This points to the 4th measure view of the first staff view of the second system
 Ooloi also supports a compact form of VPDs for brevity:
 
 ```clojure
-[:m 0 1 0 0 3]  ; Equivalent to [:musicians 0 :instruments 1 :staves 0 :voices 0 :measures 3]
+[:m 0 1 0 0 3]  ; Equivalent to [:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0]
 [:l 0 2 1 0 3]  ; Equivalent to [:layouts 0 :page-views 2 :system-views 1 :staff-views 0 :measure-views 3]
 ```
 
