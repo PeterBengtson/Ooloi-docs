@@ -112,52 +112,6 @@ Since the `timewalk` function returns `[item vpd position]` tuples, Ooloi provid
 (filter pitch?? timewalk-results)
 
 ;; Clear separation: ? for raw items, ?? for timewalk tuples
-```
-
-### VPD Hierarchy Accessors
-
-The VPD (Vector Path Descriptor) contains the exact location of each item in the piece structure. Instead of using magic number indexing like `(get vpd 7)` for the measure index, Ooloi provides semantic accessor functions:
-
-```clojure
-;; Musical Hierarchy Accessors (from vpd.clj)
-(vpd/musician vpd)    ; Extract musician index
-(vpd/instrument vpd)  ; Extract instrument index
-(vpd/staff vpd)       ; Extract staff index
-(vpd/measure vpd)     ; Extract measure index
-(vpd/voice vpd)       ; Extract voice index
-(vpd/item vpd)        ; Extract item index
-
-;; Layout Hierarchy Accessors
-(vpd/layout vpd)       ; Extract layout index
-(vpd/page-view vpd)    ; Extract page-view index
-(vpd/system-view vpd)  ; Extract system-view index
-(vpd/staff-view vpd)   ; Extract staff-view index
-(vpd/measure-view vpd) ; Extract measure-view index
-
-;; All accessors:
-;; - Work with both compact (:m/:l) and verbose VPD forms
-;; - Return the index number if present, false if not present
-;; - Validate correct hierarchy (musical vs layout)
-;; - Throw IllegalArgumentException for invalid VPD format
-```
-
-**Example Usage:**
-```clojure
-;; Extract measure number from timewalk result
-(->> (timewalk piece {:boundary-vpd staff-vpd})
-     (filter pitch??)
-     (map (fn [result]
-            {:note (:note (item result))
-             :measure (vpd/measure (vpd result))  ; Clean, semantic access
-             :position (position result)})))
-
-;; Group items by measure
-(->> (timewalk piece {:boundary-vpd staff-vpd})
-     (group-by #(vpd/measure (vpd %))))
-
-;; Filter to specific measure
-(->> (timewalk piece {:boundary-vpd staff-vpd})
-     (filter #(= 47 (vpd/measure (vpd %)))))
 (pitch? raw-item)      ; ✓ Normal predicate for raw musical item
 (pitch?? tuple-result)  ; ✓ Counterpart predicate for timewalk tuple [item vpd position]
 
