@@ -465,6 +465,18 @@ Musical analysis tools require comprehensive piece traversal:
 
 8. **Mathematical Foundation**: Functional composition provides mathematical guarantees for musical computation.
 
+## Implementation Notes
+
+The timewalk transducer achieves true zero-allocation traversal through three key optimizations:
+
+1. **Non-Consing Transducer Architecture**: The implementation uses a push-based reducing function that calls the downstream reducer directly as items are discovered, eliminating all intermediate lazy sequence allocation. Early termination (via `reduced?`) propagates immediately, stopping traversal the moment a terminal condition is met.
+
+2. **Temporal Measure Bucketing**: To provide "measure N across all voices before measure N+1" ordering, the walker collects measures in structural order (depth-first through the hierarchy), then builds a lookup map grouping measures by their temporal index. This transforms what would be O(M×K) repeated scans (M measure numbers × K total measures) into O(K) map construction + O(M) constant-time lookups. The map only contains measures within the specified boundary-vpd scope, not the entire piece.
+
+3. **Voice-Level Position Tracking**: Position accumulation within voices correctly handles tuplet scaling by recursively calculating the scaled total duration of tuplet children before advancing the voice position. This prevents position drift when items follow tuplets in the voice sequence.
+
+These optimizations maintain ratio precision (no tick quantization) while enabling efficient processing of large orchestral scores with proper early termination semantics.
+
 ## Consequences
 
 ### Positive
