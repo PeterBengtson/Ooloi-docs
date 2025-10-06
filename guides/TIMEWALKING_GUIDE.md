@@ -624,12 +624,12 @@ Common transducer patterns for musical processing:
 ;; Stops immediately after finding 5 qualifying pitches
 
 ;; Get first pitch frequency (demonstrates early termination)
-(->> (timewalk piece {:boundary-vpd staff-vpd})
-     (filter pitch??)
-     (take 1)
-     (first)
-     (item)
-     (hz))
+(->> (timewalk piece {:boundary-vpd staff-vpd})  ; Returns lazy seq of [item vpd position] tuples
+     (filter pitch??)                             ; Filters to only pitch tuples
+     (take 1)                                     ; Takes first tuple
+     (first)                                      ; Extracts the tuple - now we have [item vpd position]
+     item                                         ; Extracts item from tuple
+     hz)                                          ; Gets frequency in Hz
 ;; => 261.63 (frequency in Hz of first pitch - stops immediately)
 ```
 
