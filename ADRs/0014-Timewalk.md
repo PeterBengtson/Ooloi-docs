@@ -1,5 +1,22 @@
 # ADR-0014: Timewalk Temporal Coordination System
 
+## Table of Contents
+
+- [Status](#status)
+- [Context](#context)
+- [Decision](#decision)
+- [Paradigm Shift: Musical Time as Computational Foundation](#paradigm-shift-musical-time-as-computational-foundation)
+- [Dual-Arity API Pattern Decision](#dual-arity-api-pattern-decision)
+- [Transducer Architecture Decision](#transducer-architecture-decision)
+- [Detailed Design](#detailed-design)
+- [Key Applications](#key-applications)
+- [Rationale](#rationale)
+- [Implementation Notes](#implementation-notes)
+- [Consequences](#consequences)
+- [Architectural Validation](#architectural-validation)
+- [Related ADRs](#related-adrs)
+- [Documentation](#documentation)
+
 ## Status
 
 Accepted
