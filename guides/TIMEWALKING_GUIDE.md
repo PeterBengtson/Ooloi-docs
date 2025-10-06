@@ -228,7 +228,7 @@ Let's start with practical examples that show the power of this approach.
      (filter pitch??)
      (map (fn [result] 
             {:note (:note (item result))
-             :measure (get (vpd result) 9)    ; Measure number from VPD
+             :measure (get (vpd result) 7)    ; Measure number from VPD
              :position (position result)})))       ; Beat position
 ;; => [{:note "C4" :measure 0 :position 0}
 ;;     {:note "E4" :measure 0 :position 1/4}
@@ -741,7 +741,7 @@ Here's a multi-step transformation - find specific pitches, transpose them, coll
             (let [transposed (transposer (item result))]
               {:original "C4"
                :transposed (:note transposed)
-               :measure (get (vpd result) 9)
+               :measure (get (vpd result) 7)
                :position (position result)})))
      (take 10))
 ;; => ({:original "C4" :transposed "E4" :measure 0 :position 0}
@@ -761,7 +761,7 @@ Here's a multi-step transformation - find specific pitches, transpose them, coll
                  (let [transposed (transposer (item result))]
                    {:original "C4"
                     :transposed (:note transposed)
-                    :measure (get (vpd result) 9)})))
+                    :measure (get (vpd result) 7)})))
           (take 10))))
 
 ;; Apply to multiple pieces efficiently
@@ -903,7 +903,7 @@ Control exactly which measures and positions to process:
 (->> (timewalk piece {:boundary-vpd []})
      (filter measure??)
      (map (fn [result] 
-            {:number (get (vpd result) 9) 
+            {:number (get (vpd result) 7) 
              :time-sig (:time-signature (item result))})))
 
 ;; Find all rests in a voice
@@ -911,13 +911,13 @@ Control exactly which measures and positions to process:
      (filter rest??)
      (map (fn [result] 
             {:duration (:duration (item result)) 
-             :measure (get (vpd result) 9) 
+             :measure (get (vpd result) 7) 
              :position (position result)})))
 
 ;; Count pitches per measure
 (->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
-     (group-by #(get (vpd %) 9))  ; Group by measure number
+     (group-by #(get (vpd %) 7))  ; Group by measure number
      (map (fn [[measure pitches]] [measure (count pitches)])))
 ```
 
@@ -934,7 +934,7 @@ Control exactly which measures and positions to process:
 (->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      (filter #(needs-accidental? (:note (item %))))
-     (map (fn [result] {:note (:note (item result)) :measure (get (vpd result) 9)})))
+     (map (fn [result] {:note (:note (item result)) :measure (get (vpd result) 7)})))
 ```
 
 
@@ -951,7 +951,7 @@ Once you understand the basics, you can build more sophisticated processing:
                 (filter #(>= (:velocity (item %) 64) 80))  ; Loud
                 (map (fn [result]
                        {:note (:note (item result)) 
-                        :measure (get (vpd result) 9) 
+                        :measure (get (vpd result) 7) 
                         :position (position result)})))
           [piece])
 ```
@@ -975,7 +975,7 @@ Once you understand the basics, you can build more sophisticated processing:
                 (filter chord??)
                 (take 5)  ; Stop after finding 5 chords
                 (map (fn [result] 
-                       {:measure (get (vpd result) 9) 
+                       {:measure (get (vpd result) 7) 
                         :notes (map :note (:pitches (item result)))})))
           [piece])
 ```
@@ -1010,7 +1010,7 @@ The timewalker processes **"measure N across all voices before measure N+1 in an
 
 ;; Finding measure 47 events across all voices:
 (->> (timewalk piece {:boundary-vpd []})
-     (filter #(= 47 (get (vpd %) 9)))  ; All items at measure 47
+     (filter #(= 47 (get (vpd %) 7)))  ; All items at measure 47
      (filter pitch??))
 ;; Result: All pitches happening at measure 47, properly coordinated in time
 ```
@@ -1028,7 +1028,7 @@ This ordering enables:
 ```clojure
 ;; Find all simultaneous events at measure 5
 (->> (timewalk piece {:boundary-vpd []})
-     (filter #(= (get (vpd %) 9) 5))
+     (filter #(= (get (vpd %) 7) 5))
      (filter pitch??))
 
 ;; Collect pitches with their measure numbers - naturally time-ordered
@@ -1036,7 +1036,7 @@ This ordering enables:
      (filter pitch??)
      (map (fn [result]
             {:note (:note (item result))
-             :measure (get (vpd result) 9)
+             :measure (get (vpd result) 7)
              :position (position result)})))
 ;; Already in temporal order - no sorting needed
 
