@@ -628,8 +628,8 @@ Common transducer patterns for musical processing:
      (filter pitch??)
      (take 1)
      (first)
-     item
-     hz)
+     (item)
+     (hz))
 ;; => 261.63 (frequency in Hz of first pitch - stops immediately)
 ```
 
