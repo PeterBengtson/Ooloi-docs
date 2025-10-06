@@ -47,10 +47,24 @@ We implement a comprehensive timewalk system based on temporal coordination prin
 
 The timewalk system represents a fundamental shift from **object-oriented musical manipulation** to **temporal stream processing**. Rather than treating musical time as a byproduct of object relationships, Ooloi makes temporal coordination the foundational abstraction for all musical computation.
 
+### The Core Transformation: Piece → Stream
+
+At its essence, timewalk performs a single conceptual transformation:
+
+**A hierarchical piece structure becomes a temporal stream of musical events.**
+
+This seemingly simple transformation has profound implications:
+
+**Philosophically:** Musical time becomes the primary computational abstraction, not an emergent property of spatial structure. The score as a physical object (spatial hierarchy) dissolves into music as a temporal phenomenon (event stream). This aligns computational thinking with musical thinking—we experience music as events unfolding in time, not as nested containers of objects.
+
+**Practically:** Operations that were complex graph traversals with manual synchronization become simple stream transformations with automatic temporal coordination. Finding "all forte passages" transforms from "recursively search tree, track positions, correlate across voices" into "filter stream for forte dynamics." The complexity collapses because you're working with the natural structure of music itself.
+
+**Architecturally:** Every musical operation—MIDI generation, visual layout, harmonic analysis, attachment resolution—becomes a stream transformation. This unification means one well-designed abstraction serves all musical computation, and new operations compose naturally from existing primitives without architectural changes.
+
 This transforms musical software development:
 
 - **Musical relationships become stream transformations** rather than pointer manipulations
-- **Complex operations emerge** from composition of simple temporal filters  
+- **Complex operations emerge** from composition of simple temporal filters
 - **Mathematical guarantees** apply to musical computation through functional composition
 - **Problem domains unify** under temporal stream processing (MIDI, layout, analysis, attachments)
 - **Musical intent maps directly** to computational expressions without translation overhead
