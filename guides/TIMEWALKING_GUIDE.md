@@ -45,7 +45,7 @@ Before diving into examples, here's the key insight:
 
 **Timewalking transforms your piece into a stream of musical events in time order.**
 
-Instead of navigating a tree of musicians → instruments → staves → voices → measures, you get a single stream where everything flows in musical time: all of measure 1, then all of measure 2, then all of measure 3.
+Instead of navigating a tree of musicians → instruments → staves → measures → voices, you get a single stream where everything flows in musical time: all of measure 1, then all of measure 2, then all of measure 3.
 
 **What this means for you:**
 
@@ -74,7 +74,7 @@ This tuple gives you **complete context** for any musical element:
 ```clojure
 ;; Example tuple for a pitch
 [#Pitch{:note "C4"} [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 1] 1/4]
-;;   ^actual pitch    ^exact location in piece structure                                    ^beat position
+;;   ^actual pitch    ^exact location in piece structure (staff → measure → voice → item)  ^beat position
 ```
 
 With this information, you can:
@@ -130,10 +130,10 @@ Before diving into examples, you need to understand `->>` (pronounced "thread-la
 ;; Instead of nesting functions like this (hard to read):
 (take 10 (map #(:note (item %)) 
               (filter pitch?? 
-                      (timewalk piece {:boundary-vpd voice-vpd}))))
+                      (timewalk piece {:boundary-vpd staff-vpd}))))
 
 ;; We use ->> to thread the result through each step:
-(->> (timewalk piece {:boundary-vpd voice-vpd})  ; Start with this
+(->> (timewalk piece {:boundary-vpd staff-vpd})  ; Start with this
      (filter pitch??)                            ; Pass result to filter (note: ??)
      (map #(:note (item %)))                     ; Pass result to map  
      (take 10))                                  ; Pass result to take
@@ -157,7 +157,7 @@ Before diving into examples, you need to understand `->>` (pronounced "thread-la
 
 ```clojure
 ;; This looks like it creates intermediate collections, but it doesn't
-(->> (timewalk piece {:boundary-vpd voice-vpd})  ; Lazy sequence
+(->> (timewalk piece {:boundary-vpd staff-vpd})  ; Lazy sequence
      (filter pitch??)                            ; Still lazy (note: ??)
      (map #(:note (item %)))                     ; Still lazy  
      (take 10))                                  ; Still lazy, only realizes 10 items
@@ -171,7 +171,7 @@ There's also `->` (thread-first) which inserts as the **first argument**:
 
 ```clojure
 ;; ->> (thread-last) - for collections and data transformations
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      (map #(:note (item %))))
 
@@ -199,10 +199,10 @@ Let's start with practical examples that show the power of this approach.
 ### Example 1: Find All Pitches
 
 ```clojure
-;; Get all pitches in a voice
-(def voice-vpd [:musicians 0 :instruments 0 :staves 0 :voices 0])
+;; Get all pitches in a staff (voices are now inside measures)
+(def staff-vpd [:musicians 0 :instruments 0 :staves 0])
 
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      (map item))  ; Extract just the pitch objects
 ;; => [#Pitch{:note "C4"} #Pitch{:note "E4"} #Pitch{:note "G4"} ...]
@@ -212,7 +212,7 @@ Let's start with practical examples that show the power of this approach.
 
 ```clojure
 ;; Find only pitches above middle C
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      (filter #(>= (midi-number (:note (item %))) 60))  ; C4 = 60
      (map item))
@@ -224,7 +224,7 @@ Let's start with practical examples that show the power of this approach.
 ```clojure
 ;; Alternative approach - extract items first, then filter
 ;; This shows how transformation is part of composition without creating intermediate collections
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)  ; Filter first using helper
      (map item)       ; Then extract just the items
      (filter #(>= (midi-number (:note %)) 60)))  ; Filter by range on items
@@ -235,7 +235,7 @@ Let's start with practical examples that show the power of this approach.
 
 ```clojure
 ;; Find pitches with their timing
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      (map (fn [result] 
             {:note (:note (item result))
@@ -250,7 +250,7 @@ Let's start with practical examples that show the power of this approach.
 
 ```clojure
 ;; Find pitches, filter range, extract notes
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)  ; Only pitches
      (filter #(>= (midi-number (:note (item %))) 60))  ; Above C4
      (map #(:note (item %)))  ; Extract note names
@@ -301,7 +301,7 @@ Now here's where it gets powerful. Those steps above can be **composed** using t
 
 ```clojure
 ;; Traditional approach with ->>
-(->> (timewalk piece {:boundary-vpd voice-vpd})       ; Returns lazy sequence
+(->> (timewalk piece {:boundary-vpd staff-vpd})       ; Returns lazy sequence
      (filter pitch??)                                 ; Creates new lazy sequence wrapper
      (filter #(>= (midi-number (:note (item %))) 60)) ; Creates another lazy wrapper
      (map #(:note (item %)))                          ; Creates another lazy wrapper  
@@ -313,7 +313,7 @@ Now here's where it gets powerful. Those steps above can be **composed** using t
                 (filter #(>= (midi-number (:note (item %))) 60)) ; > Combined into 
                 (map #(:note (item %)))               ; /  one transformation
                 (take 10))                            ; /
-          (timewalk piece {:boundary-vpd voice-vpd}))
+          (timewalk piece {:boundary-vpd staff-vpd}))
 ;; Total: 1 processing chain - no intermediate lazy objects
 ```
 
@@ -412,7 +412,7 @@ The musical context makes it natural because you're always doing multi-step proc
 
 ```clojure
 ;; Same thing, but composed into a single transformation
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (sequence (comp (filter pitch??)
                      (filter #(>= (midi-number (:note (item %))) 60))
                      (map #(:note (item %)))
@@ -427,7 +427,7 @@ The musical context makes it natural because you're always doing multi-step proc
 
 **Important distinction**: The `->>` here is just for readability - it's equivalent to:
 ```clojure
-(sequence (comp (filter pitch??) ...) (timewalk piece {:boundary-vpd voice-vpd}))
+(sequence (comp (filter pitch??) ...) (timewalk piece {:boundary-vpd staff-vpd}))
 ```
 
 ### Even Better: The Transducer Form
@@ -448,8 +448,8 @@ The timewalker's dual-arity API follows the exact same pattern as Clojure's core
 (take 5 data)      ; Returns lazy sequence
 
 ;; The timewalker follows the same pattern
-(timewalk {:boundary-vpd voice-vpd})        ; Returns transducer
-(timewalk piece {:boundary-vpd voice-vpd})  ; Returns lazy sequence
+(timewalk {:boundary-vpd staff-vpd})        ; Returns transducer
+(timewalk piece {:boundary-vpd staff-vpd})  ; Returns lazy sequence
 ```
 
 **Why This Pattern Works**
@@ -462,7 +462,7 @@ The `timewalk` function itself can be part of the composition:
 
 ```clojure
 ;; One-arity form returns a transducer - timewalk becomes part of the composition
-(sequence (comp (timewalk {:boundary-vpd voice-vpd})  ; Transducer form
+(sequence (comp (timewalk {:boundary-vpd staff-vpd})  ; Transducer form
                 (filter pitch??)
                 (filter #(>= (midi-number (:note (item %))) 60))
                 (map #(:note (item %)))
@@ -524,14 +524,14 @@ Common transducer patterns for musical processing:
 (into [] 
       (comp (filter pitch??)
             (map #(:note (item %))))
-      (timewalk piece {:boundary-vpd voice-vpd}))
+      (timewalk piece {:boundary-vpd staff-vpd}))
 ;; => ["C4" "E4" "G4" "C5" ...]
 
 ;; Into a set for unique notes
 (into #{} 
       (comp (filter pitch??)
             (map #(:note (item %))))
-      (timewalk piece {:boundary-vpd voice-vpd}))
+      (timewalk piece {:boundary-vpd staff-vpd}))
 ;; => #{"C4" "E4" "G4" "C5" ...}
 ```
 
@@ -542,7 +542,7 @@ Common transducer patterns for musical processing:
                  (map #(midi-number (:note (item %)))))
            +  ; reducing function (sum)
            0  ; initial value
-           (timewalk piece {:boundary-vpd voice-vpd}))
+           (timewalk piece {:boundary-vpd staff-vpd}))
 ;; => 3842 (sum of all MIDI note numbers)
 
 ;; Count pitches above middle C
@@ -551,7 +551,7 @@ Common transducer patterns for musical processing:
                  (map (constantly 1)))  ; Turn each item into 1
            +
            0
-           (timewalk piece {:boundary-vpd voice-vpd}))
+           (timewalk piece {:boundary-vpd staff-vpd}))
 ;; => 42 (count of high pitches)
 ```
 
@@ -561,7 +561,7 @@ Common transducer patterns for musical processing:
 (sequence (comp (filter pitch??)
                 (map #(:note (item %)))
                 (take 10))
-          (timewalk piece {:boundary-vpd voice-vpd}))
+          (timewalk piece {:boundary-vpd staff-vpd}))
 ;; => ("C4" "E4" "G4" "C5" "E5" ...)  ; Lazy sequence
 ```
 
@@ -601,13 +601,13 @@ Common transducer patterns for musical processing:
 
 ;; Examples with output
 (sequence (comp (filter pitch??) absolute-time (take 3))
-          (timewalk piece {:boundary-vpd voice-vpd}))
+          (timewalk piece {:boundary-vpd staff-vpd}))
 ;; => ([#Pitch{:note "C4"} [:musicians 0 :instruments 0 :staves 0 :measures 0 :voices 0 :items 0] 0.0]
 ;;     [#Pitch{:note "E4"} [:musicians 0 :instruments 0 :staves 0 :measures 0 :voices 0 :items 1] 0.5]
 ;;     [#Pitch{:note "G4"} [:musicians 0 :instruments 0 :staves 0 :measures 0 :voices 0 :items 2] 1.0])
 
 (sequence (comp (filter pitch??) absolute-time)
-          (timewalk piece {:boundary-vpd voice-vpd 
+          (timewalk piece {:boundary-vpd staff-vpd 
                            :start-measure 2 :end-measure 2}))
 ;; => ([#Pitch{:note "F4"} [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 0] 4.0]
 ;;     [#Pitch{:note "A4"} [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 1] 4.5]
@@ -621,7 +621,7 @@ Common transducer patterns for musical processing:
 (into [] 
       (comp (filter pitch??)
             (take 1))  ; Stop after finding the first pitch
-      (timewalk piece {:boundary-vpd voice-vpd}))
+      (timewalk piece {:boundary-vpd staff-vpd}))
 ;; => [#Pitch{:note "C4"}]
 ;; Stops processing as soon as 1 pitch is found - doesn't traverse the entire piece
 
@@ -630,7 +630,7 @@ Common transducer patterns for musical processing:
       (comp (filter pitch??)
             (filter #(>= (midi-number (:note (item %))) 72))  ; Above C5
             (take 5))  ; Stop after 5 high notes
-      (timewalk piece {:boundary-vpd voice-vpd :start-measure 32 :end-measure 64}))
+      (timewalk piece {:boundary-vpd staff-vpd :start-measure 32 :end-measure 64}))
 ;; Stops immediately after finding 5 qualifying pitches
 
 ;; This works with all transducer contexts
@@ -639,7 +639,7 @@ Common transducer patterns for musical processing:
                  (map #(midi-number (:note (item %)))))
            +
            0
-           (timewalk piece {:boundary-vpd voice-vpd}))
+           (timewalk piece {:boundary-vpd staff-vpd}))
 ;; => 60 (MIDI number of first pitch found - then stops)
 ```
 
@@ -705,7 +705,7 @@ For large orchestral scores, this is the difference between processing the entir
 
 ```clojure
 ;; Transpose all pitches up a major third
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      (map (let [transposer (make-transposer :up :major :third)]
             (fn [result]
@@ -716,7 +716,7 @@ For large orchestral scores, this is the difference between processing the entir
 
 ```clojure
 ;; Convert pitches to MIDI events with timing for a specific section
-(->> (timewalk piece {:boundary-vpd voice-vpd :start-measure 8 :end-measure 16})
+(->> (timewalk piece {:boundary-vpd staff-vpd :start-measure 8 :end-measure 16})
      (filter pitch??)
      absolute-time
      (map (fn [[pitch vpd abs-time]]
@@ -756,7 +756,7 @@ Here's the kind of chain mentioned - find pitches, filter range, transpose, send
 
 ```clojure
 ;; Process melody for MIDI with transposing and filtering
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      ;; 1. Find all pitches
      (filter pitch??)
      ;; 2. Filter away notes below C3 (MIDI 48)
@@ -773,7 +773,7 @@ Here's the kind of chain mentioned - find pitches, filter range, transpose, send
              :channel 0})))
 
 ;; Usage
-(def midi-events (process-melody-for-midi piece voice-vpd))
+(def midi-events (process-melody-for-midi piece staff-vpd))
 ```
 
 ### Example 9: The Same Thing with Transducers
@@ -781,7 +781,7 @@ Here's the kind of chain mentioned - find pitches, filter range, transpose, send
 ```clojure
 ;; Apply to any number of pieces - same transformation, reusable
 (let [transposer (make-transposer :up :major :third)]
-  (sequence (comp (timewalk {:boundary-vpd voice-vpd})
+  (sequence (comp (timewalk {:boundary-vpd staff-vpd})
                   (filter pitch??)
                   (filter #(>= (midi-number (:note (item %))) 48))
                   absolute-time
@@ -826,11 +826,14 @@ Use `:boundary-vpd` to precisely limit traversal scope:
 ;; Single instrument
 {:boundary-vpd [:musicians 4 :instruments 0]}
 
-;; Single staff
+;; Single staff (all measures, all voices)
 {:boundary-vpd [:musicians 4 :instruments 0 :staves 2]}
 
-;; Single voice
-{:boundary-vpd [:musicians 4 :instruments 0 :staves 2 :voices 0]}
+;; Single measure across all voices in a staff
+{:boundary-vpd [:musicians 4 :instruments 0 :staves 2 :measures 5]}
+
+;; Single voice within a specific measure
+{:boundary-vpd [:musicians 4 :instruments 0 :staves 2 :measures 5 :voices 0]}
 ```
 
 ### Start Position Control
@@ -838,13 +841,13 @@ Use `:start-measure` and `:start-position` to begin traversal from specific poin
 
 ```clojure
 ;; Start from measure 5 (0-based indexing)
-{:boundary-vpd voice-vpd :start-measure 5}
+{:boundary-vpd staff-vpd :start-measure 5}
 
 ;; Start from measure 3, position 1/2 (middle of measure)
-{:boundary-vpd voice-vpd :start-measure 3 :start-position 1/2}
+{:boundary-vpd staff-vpd :start-measure 3 :start-position 1/2}
 
 ;; Start from beginning of measure 0, position 1/4
-{:boundary-vpd voice-vpd :start-measure 0 :start-position 1/4}
+{:boundary-vpd staff-vpd :start-measure 0 :start-position 1/4}
 ```
 
 ### End Position Control
@@ -852,19 +855,19 @@ Support for stopping traversal at specific points (inclusive):
 
 ```clojure
 ;; Stop at measure 10 (inclusive)
-{:boundary-vpd voice-vpd :end-measure 10}
+{:boundary-vpd staff-vpd :end-measure 10}
 
 ;; Stop at measure 8, position 3/4 (inclusive)
-{:boundary-vpd voice-vpd :end-measure 8 :end-position 3/4}
+{:boundary-vpd staff-vpd :end-measure 8 :end-position 3/4}
 
 ;; Traverse specific range (measures 2-5, both inclusive)
-{:boundary-vpd voice-vpd :start-measure 2 :end-measure 5}
+{:boundary-vpd staff-vpd :start-measure 2 :end-measure 5}
 
 ;; Single measure: start-measure 5, end-measure 5 captures exactly one measure
-{:boundary-vpd voice-vpd :start-measure 5 :end-measure 5}
+{:boundary-vpd staff-vpd :start-measure 5 :end-measure 5}
 
 ;; Cross-measure end-position: all of measure 5 + position 0 in measure 6
-{:boundary-vpd voice-vpd :start-measure 5 :end-measure 6 :end-position 0}
+{:boundary-vpd staff-vpd :start-measure 5 :end-measure 6 :end-position 0}
 ```
 
 ## Understanding Scope and Boundaries
@@ -883,8 +886,8 @@ The `:boundary-vpd` option lets you focus on exactly the part of the piece you n
 ;; Single instrument (all its staves)
 (timewalk piece {:boundary-vpd [:musicians 0 :instruments 0]})
 
-;; Single voice
-(timewalk piece {:boundary-vpd [:musicians 0 :instruments 0 :staves 0 :voices 0]})
+;; Single staff (all measures, all voices)
+(timewalk piece {:boundary-vpd [:musicians 0 :instruments 0 :staves 0]})
 ```
 
 ### Start and End Position Control
@@ -893,20 +896,20 @@ Control exactly which measures and positions to process:
 
 ```clojure
 ;; Start from measure 5
-(timewalk piece {:boundary-vpd voice-vpd :start-measure 5})
+(timewalk piece {:boundary-vpd staff-vpd :start-measure 5})
 
 ;; Process measures 2 through 8 (inclusive)
-(timewalk piece {:boundary-vpd voice-vpd :start-measure 2 :end-measure 8})
+(timewalk piece {:boundary-vpd staff-vpd :start-measure 2 :end-measure 8})
 
 ;; Items that start from beginning up to and including position 1/2 in measure 3
-(timewalk piece {:boundary-vpd voice-vpd
+(timewalk piece {:boundary-vpd staff-vpd
                  :start-measure 3
                  :end-measure 3
                  :end-position 1/2})
 
 ;; Find ties across barlines: find the tie endpoint for a C4 pitch starting at measure 4
 (let [source-pitch (create-pitch "C4" 1/16)]
-  (->> (timewalk piece {:boundary-vpd voice-vpd 
+  (->> (timewalk piece {:boundary-vpd staff-vpd 
                         :start-measure 4
                         :end-measure 5 :end-position 0})
        (filter takes-attachment??)  ; Only items that can have ties attached
@@ -928,7 +931,7 @@ Control exactly which measures and positions to process:
              :time-sig (:time-signature (item result))})))
 
 ;; Find all rests in a voice
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter rest??)
      (map (fn [result] 
             {:duration (:duration (item result)) 
@@ -936,7 +939,7 @@ Control exactly which measures and positions to process:
              :position (position result)})))
 
 ;; Count pitches per measure
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      (group-by #(get (vpd %) 9))  ; Group by measure number
      (map (fn [[measure pitches]] [measure (count pitches)])))
@@ -946,13 +949,13 @@ Control exactly which measures and positions to process:
 
 ```clojure
 ;; Change all quarter notes to eighth notes
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter #(and (pitch?? %) (= (:duration (item %)) 1/4)))
      (map (fn [result]
             (assoc (item result) :duration 1/8))))
 
 ;; Find notes that need accidentals
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      (filter #(needs-accidental? (:note (item %))))
      (map (fn [result] {:note (:note (item result)) :measure (get (vpd result) 9)})))
@@ -966,7 +969,7 @@ Once you understand the basics, you can build more sophisticated processing:
 #### Multi-Step Filtering
 ```clojure
 ;; Find loud high notes in a specific range
-(sequence (comp (timewalk {:boundary-vpd voice-vpd :start-measure 10 :end-measure 20})
+(sequence (comp (timewalk {:boundary-vpd staff-vpd :start-measure 10 :end-measure 20})
                 (filter pitch??)
                 (filter #(>= (midi-number (:note (item %))) 72))  ; Above C5
                 (filter #(>= (:velocity (item %) 64) 80))  ; Loud
@@ -980,7 +983,7 @@ Once you understand the basics, you can build more sophisticated processing:
 #### Grouping and Counting
 ```clojure
 ;; Count note frequencies across measures
-(sequence (comp (timewalk {:boundary-vpd voice-vpd})
+(sequence (comp (timewalk {:boundary-vpd staff-vpd})
                 (filter pitch??)
                 (map #(:note (item %)))
                 (map (fn [note] [note 1]))  ; Turn into [note count] pairs
@@ -1074,11 +1077,11 @@ This ordering enables:
 
 ```clojure
 ;; Use scope to limit work
-(->> (timewalk piece {:boundary-vpd voice-vpd})  ; Just one voice
+(->> (timewalk piece {:boundary-vpd staff-vpd})  ; Just one voice
      (filter pitch??))
 
 ;; Use measure ranges to limit work  
-(->> (timewalk piece {:boundary-vpd voice-vpd :start-measure 10 :end-measure 15})
+(->> (timewalk piece {:boundary-vpd staff-vpd :start-measure 10 :end-measure 15})
      (filter pitch??))
 
 ;; Use take for early termination
@@ -1091,12 +1094,12 @@ This ordering enables:
 
 ```clojure
 ;; Lazy sequences - only generate what you consume
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      (first))  ; Only processes until first pitch found
 
 ;; Transducers - no intermediate collections
-(sequence (comp (timewalk {:boundary-vpd voice-vpd})
+(sequence (comp (timewalk {:boundary-vpd staff-vpd})
                 (filter pitch??)
                 (take 10))
           [piece])  ; Processes 10 pitches without creating intermediate lists
@@ -1149,7 +1152,7 @@ Temporal coordination means MIDI events are naturally time-ordered:
 
 ```clojure
 ;; Simple MIDI generation
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      absolute-time
      (map (fn [[pitch vpd abs-time]]
@@ -1159,7 +1162,7 @@ Temporal coordination means MIDI events are naturally time-ordered:
              :channel 0})))
 
 ;; With transducers for efficiency
-(sequence (comp (timewalk {:boundary-vpd voice-vpd})
+(sequence (comp (timewalk {:boundary-vpd staff-vpd})
                 (filter pitch??)
                 absolute-time
                 (map (fn [[pitch vpd abs-time]]
@@ -1202,7 +1205,7 @@ Elements come in temporal order with proper layout data:
 ### 1. Choose the Right Arity
 ```clojure
 ;; Use 2-arity for simple, direct access
-(timewalk piece {:boundary-vpd voice-vpd})
+(timewalk piece {:boundary-vpd staff-vpd})
 
 ;; Use 1-arity for complex transducer chains
 (sequence (comp (timewalk {:boundary-vpd staff-vpd})
@@ -1234,18 +1237,18 @@ Elements come in temporal order with proper layout data:
 ### 4. Compose Thoughtfully
 ```clojure
 ;; GOOD: Efficient filtering early in chain with early termination
-(comp (timewalk {:boundary-vpd voice-vpd})
+(comp (timewalk {:boundary-vpd staff-vpd})
       (filter pitch??)
       (take 10)           ; Early termination - stops after 10 pitches
       (map analyze-harmony))
 
 ;; LESS EFFICIENT: Expensive operations before filtering
-(comp (timewalk {:boundary-vpd voice-vpd})
+(comp (timewalk {:boundary-vpd staff-vpd})
       (map expensive-analysis)
       (filter pitch??))
 
 ;; EXCELLENT: Combine filtering with take for maximum efficiency
-(->> (timewalk piece {:boundary-vpd voice-vpd})
+(->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      (take 5)  ; Stop after first 5 pitches
      (map item))  ; Extract just the pitch objects
