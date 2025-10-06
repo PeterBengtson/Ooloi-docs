@@ -212,10 +212,10 @@ Let's start with practical examples that show the power of this approach.
 
 ```clojure
 ;; Find pitches above middle C (using frequency comparison)
-;; Note: hz function works with both Pitch objects and pitch strings
+;; Note: hz>= compares frequencies, works with Pitch objects and pitch strings
 (->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
-     (filter #(>= (hz (item %)) (hz "C4")))  ; Compare frequencies
+     (filter #(hz>= (item %) "C4"))  ; Compare by frequency
      (map item))
 ;; => [#Pitch{:note "C4"} #Pitch{:note "E4"} #Pitch{:note "G4"} ...]
 ```
@@ -241,7 +241,7 @@ Let's start with practical examples that show the power of this approach.
 ;; Find pitches, filter range, extract notes
 (->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)  ; Only pitches
-     (filter #(>= (hz (item %)) (hz "C4")))  ; Above middle C
+     (filter #(hz>= (item %) "C4"))  ; Above middle C
      (map #(:note (item %)))  ; Extract note names
      (take 10))  ; First 10 results
 ;; => ["C4" "E4" "G4" "C5" "E5" ...]
@@ -262,12 +262,12 @@ Now here's where it gets powerful. Those steps above can be **composed** using t
 ```clojure
 ;; Instead of nesting functions like this:
 (take 10 (map #(:note (item %))
-              (filter #(>= (hz (item %)) (hz "C4")) 
+              (filter #(hz>= (item %) "C4")
                       (filter pitch?? results))))
 
 ;; We can compose them into a single transformation:
 (comp (filter pitch??)
-      (filter #(>= (hz (item %)) (hz "C4")))
+      (filter #(hz>= (item %) "C4"))
       (map #(:note (item %)))
       (take 10))
 ;; This creates one function that does all four steps
@@ -292,14 +292,14 @@ Now here's where it gets powerful. Those steps above can be **composed** using t
 ;; Traditional approach with ->>
 (->> (timewalk piece {:boundary-vpd staff-vpd})       ; Returns lazy sequence
      (filter pitch??)                                 ; Creates new lazy sequence wrapper
-     (filter #(>= (hz (item %)) (hz "C4")))          ; Creates another lazy wrapper
+     (filter #(hz>= (item %) "C4"))          ; Creates another lazy wrapper
      (map #(:note (item %)))                          ; Creates another lazy wrapper
      (take 10))                                       ; Creates final lazy wrapper
 ;; Total: 4 intermediate lazy sequence objects (lightweight, but still overhead)
 
 ;; Transducer approach with sequence and comp
 (sequence (comp (filter pitch??)                      ; \
-                (filter #(>= (hz (item %)) (hz "C4"))) ; > Combined into
+                (filter #(hz>= (item %) "C4")) ; > Combined into
                 (map #(:note (item %)))               ; /  one transformation
                 (take 10))                            ; /
           (timewalk piece {:boundary-vpd staff-vpd}))
@@ -403,7 +403,7 @@ The musical context makes it natural because you're always doing multi-step proc
 ;; Same thing, but composed into a single transformation
 (->> (timewalk piece {:boundary-vpd staff-vpd})
      (sequence (comp (filter pitch??)
-                     (filter #(>= (hz (item %)) (hz "C4")))
+                     (filter #(hz>= (item %) "C4"))
                      (map #(:note (item %)))
                      (take 10))))
 ```
@@ -453,7 +453,7 @@ The `timewalk` function itself can be part of the composition:
 ;; One-arity form returns a transducer - timewalk becomes part of the composition
 (sequence (comp (timewalk {:boundary-vpd staff-vpd})  ; Transducer form
                 (filter pitch??)
-                (filter #(>= (hz (item %)) (hz "C4")))
+                (filter #(hz>= (item %) "C4"))
                 (map #(:note (item %)))
                 (take 10))
           [piece])
@@ -526,17 +526,18 @@ Common transducer patterns for musical processing:
 
 #### Pattern 2: Direct with `transduce`
 ```clojure
-;; When you want to reduce to a single value
-(transduce (comp (filter pitch??)
-                 (map #(hz (item %))))
-           +  ; reducing function (sum)
-           0  ; initial value
-           (timewalk piece {:boundary-vpd staff-vpd}))
-;; => 3842 (sum of all MIDI note numbers)
+;; Calculate average pitch frequency
+(let [freqs (transduce (comp (filter pitch??)
+                             (map #(hz (item %))))
+                       conj
+                       []
+                       (timewalk piece {:boundary-vpd staff-vpd}))]
+  (/ (reduce + freqs) (count freqs)))
+;; => 415.3 (average frequency in Hz)
 
 ;; Count pitches above middle C
 (transduce (comp (filter pitch??)
-                 (filter #(>= (hz (item %)) (hz "C4")))
+                 (filter #(hz>= (item %) "C4"))
                  (map (constantly 1)))  ; Turn each item into 1
            +
            0
@@ -617,19 +618,19 @@ Common transducer patterns for musical processing:
 ;; Find first 5 high notes efficiently in the development section
 (into [] 
       (comp (filter pitch??)
-            (filter #(>= (hz (item %)) (hz "C5")))  ; Above C5
+            (filter #(hz>= (item %) "C5"))  ; Above C5
             (take 5))  ; Stop after 5 high notes
       (timewalk piece {:boundary-vpd staff-vpd :start-measure 32 :end-measure 64}))
 ;; Stops immediately after finding 5 qualifying pitches
 
-;; This works with all transducer contexts
+;; Get frequency of first pitch found
 (transduce (comp (filter pitch??)
                  (take 1)
                  (map #(hz (item %))))
-           +
-           0
+           conj
+           []
            (timewalk piece {:boundary-vpd staff-vpd}))
-;; => 60 (MIDI number of first pitch found - then stops)
+;; => [261.63] (frequency in Hz of first pitch - early termination works!)
 ```
 
 **Why this matters for musical processing:**
@@ -946,7 +947,7 @@ Once you understand the basics, you can build more sophisticated processing:
 ;; Find loud high notes in a specific range
 (sequence (comp (timewalk {:boundary-vpd staff-vpd :start-measure 10 :end-measure 20})
                 (filter pitch??)
-                (filter #(>= (hz (item %)) (hz "C5")))  ; Above C5
+                (filter #(hz>= (item %) "C5"))  ; Above C5
                 (filter #(>= (:velocity (item %) 64) 80))  ; Loud
                 (map (fn [result]
                        {:note (:note (item result)) 
