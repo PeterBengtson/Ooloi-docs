@@ -6,7 +6,8 @@
 
 - [Overview](#overview)
 - [Prerequisites and Intended Audience](#prerequisites-and-intended-audience)
-- [What timewalk Returns: The Power of Tuples](#what-timewalk-returns-the-power-of-tuples)
+- [What Timewalking Actually Does](#what-timewalking-actually-does)
+- [What Timewalking Returns: The Power of Tuples](#what-timewalking-returns-the-power-of-tuples)
 - [🟢 Starting Simple: Direct Lazy Sequences](#-starting-simple-direct-lazy-sequences)
 - [🟡 The Magic of Composition](#-the-magic-of-composition)
 - [Why Not Just Use `->>` for Everything?](#why-not-just-use-----for-everything)
@@ -37,6 +38,24 @@ This guide assumes:
 - **No prior experience with transducers required** - they're explained through musical examples
 
 The guide progresses from basic timewalking to advanced transducer patterns. Each section builds on previous concepts, so working through sequentially is recommended.
+
+## What Timewalking Actually Does
+
+Before diving into examples, here's the key insight:
+
+**Timewalking transforms your piece into a stream of musical events in time order.**
+
+Instead of navigating a tree of musicians → instruments → staves → voices → measures, you get a single stream where everything flows in musical time: all of measure 1, then all of measure 2, then all of measure 3.
+
+**What this means for you:**
+
+- **No manual synchronization**: Want all forte passages? Just filter the stream. No tracking which voice you're in.
+- **Natural musical thinking**: "Find the first C# after measure 10" is exactly what you write—no tree navigation.
+- **Composable operations**: MIDI generation, layout, and analysis all use the same stream patterns.
+
+Think of it like this: A score is a spatial thing (ink on paper, nested data structures). Music is a temporal thing (events in time). Timewalking bridges the gap—it transforms the spatial score into the temporal music.
+
+The rest of this guide shows you how to work with that stream.
 
 ## What Timewalking Returns: The Power of Tuples
 
