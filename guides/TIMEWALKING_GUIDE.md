@@ -623,14 +623,14 @@ Common transducer patterns for musical processing:
       (timewalk piece {:boundary-vpd staff-vpd :start-measure 32 :end-measure 64}))
 ;; Stops immediately after finding 5 qualifying pitches
 
-;; Get frequency of first pitch found
-(transduce (comp (filter pitch??)
-                 (take 1)
-                 (map #(hz (item %))))
-           conj
-           []
-           (timewalk piece {:boundary-vpd staff-vpd}))
-;; => [261.63] (frequency in Hz of first pitch - early termination works!)
+;; Get first pitch frequency (demonstrates early termination)
+(->> (timewalk piece {:boundary-vpd staff-vpd})
+     (filter pitch??)
+     (take 1)
+     (first)
+     item
+     hz)
+;; => 261.63 (frequency in Hz of first pitch - stops immediately)
 ```
 
 **Why this matters for musical processing:**
