@@ -580,7 +580,7 @@ Common transducer patterns for musical processing:
    - Gradual tempo changes with different curvature algorithms
    - Complex rhythmic subdivisions within measures"
   (map (fn [result]
-         (let [measure-num (get (vpd result) 9 0)
+         (let [measure-num (vpd/measure (vpd result))
                measure-pos (position result)
                ;; Simplified: 4/4 time, 4 beats per measure, 120 BPM
                beats-per-measure 4
@@ -1117,7 +1117,7 @@ Ooloi's attachment system uses **endpoint-id** to connect attachments (slurs, ha
       end-vpd (vpd result)
       end-position (position result)]
   (when end-item
-    (println "Slur connects to" (:note end-item) "at measure" (get end-vpd 9))))
+    (println "Slur connects to" (:note end-item) "at measure" (vpd/measure end-vpd))))
 ```
 
 The temporal coordination ensures proper musical time ordering for attachment resolution.
@@ -1243,7 +1243,7 @@ Elements come in temporal order with proper layout data:
             {:type (type item)
              :vpd vpd
              :position pos
-             :measure (get vpd 9)
+             :measure (vpd/measure vpd)
              :preview (str item)})))
 ```
 
