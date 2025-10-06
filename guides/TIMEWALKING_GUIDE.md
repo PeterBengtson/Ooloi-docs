@@ -25,9 +25,9 @@
 
 ## Overview
 
-The `timewalk` function provides powerful traversal of musical piece structures with **temporal coordination** across measures. This ensures proper musical time ordering essential for formatting, MIDI generation, and finding musical elements.
+The `timewalk` function provides powerful traversal of musical piece structures with **temporal coordination** across measures. This ensures proper musical time ordering essential for formatting, analysis, and finding musical elements.
 
-This guide demonstrates how to use the `timewalk` function for musical data processing. The examples show practical operations like finding pitches, transposing melodies, and generating MIDI output. As the timewalker supports both direct lazy sequences and transducers, you'll see both approaches throughout.
+This guide demonstrates how to use the `timewalk` function for musical data processing. The examples show practical operations like finding pitches, transposing melodies, and analyzing musical data. As the timewalker supports both direct lazy sequences and transducers, you'll see both approaches throughout.
 
 ## Prerequisites and Intended Audience
 
@@ -51,7 +51,7 @@ Instead of navigating a tree of musicians → instruments → staves → measure
 
 - **No manual synchronization**: Want all forte passages? Just filter the stream. No tracking which voice you're in.
 - **Natural musical thinking**: "Find the first C# after measure 10" is exactly what you write—no tree navigation.
-- **Composable operations**: MIDI generation, layout, and analysis all use the same stream patterns.
+- **Composable operations**: Layout, harmonic analysis, and data processing all use the same stream patterns.
 
 Think of it like this: A score is a spatial thing (ink on paper, nested data structures). Music is a temporal thing (events in time). Timewalking bridges the gap—it transforms the spatial score into the temporal music.
 
@@ -78,9 +78,9 @@ This tuple gives you **complete context** for any musical element:
 ```
 
 With this information, you can:
-- **Access the item**: Get its properties like `(:note pitch)` 
+- **Access the item**: Get its properties like `(:note pitch)`
 - **Know its location**: Navigate to related elements using the VPD
-- **Know its timing**: Place it correctly in time for MIDI or formatting
+- **Know its timing**: Understand rhythmic placement for analysis or formatting
 
 ### Essential Tuple Helpers and Predicates
 
@@ -211,23 +211,12 @@ Let's start with practical examples that show the power of this approach.
 ### Example 2: Filter by Pitch Range
 
 ```clojure
-;; Find only pitches above middle C
+;; Find pitches above middle C (using frequency comparison)
+;; Note: hz function works with both Pitch objects and pitch strings
 (->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
-     (filter #(>= (midi-number (:note (item %))) 60))  ; C4 = 60
+     (filter #(>= (hz (item %)) (hz "C4")))  ; Compare frequencies
      (map item))
-;; => [#Pitch{:note "C4"} #Pitch{:note "E4"} #Pitch{:note "G4"} ...]
-```
-
-### Example 2b: Transform First, Filter Second
-
-```clojure
-;; Alternative approach - extract items first, then filter
-;; This shows how transformation is part of composition without creating intermediate collections
-(->> (timewalk piece {:boundary-vpd staff-vpd})
-     (filter pitch??)  ; Filter first using helper
-     (map item)       ; Then extract just the items
-     (filter #(>= (midi-number (:note %)) 60)))  ; Filter by range on items
 ;; => [#Pitch{:note "C4"} #Pitch{:note "E4"} #Pitch{:note "G4"} ...]
 ```
 
@@ -252,7 +241,7 @@ Let's start with practical examples that show the power of this approach.
 ;; Find pitches, filter range, extract notes
 (->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)  ; Only pitches
-     (filter #(>= (midi-number (:note (item %))) 60))  ; Above C4
+     (filter #(>= (hz (item %)) (hz "C4")))  ; Above middle C
      (map #(:note (item %)))  ; Extract note names
      (take 10))  ; First 10 results
 ;; => ["C4" "E4" "G4" "C5" "E5" ...]
@@ -272,13 +261,13 @@ Now here's where it gets powerful. Those steps above can be **composed** using t
 
 ```clojure
 ;; Instead of nesting functions like this:
-(take 10 (map #(:note (item %)) 
-              (filter #(>= (midi-number (:note (item %))) 60) 
+(take 10 (map #(:note (item %))
+              (filter #(>= (hz (item %)) (hz "C4")) 
                       (filter pitch?? results))))
 
 ;; We can compose them into a single transformation:
 (comp (filter pitch??)
-      (filter #(>= (midi-number (:note (item %))) 60))
+      (filter #(>= (hz (item %)) (hz "C4")))
       (map #(:note (item %)))
       (take 10))
 ;; This creates one function that does all four steps
@@ -303,14 +292,14 @@ Now here's where it gets powerful. Those steps above can be **composed** using t
 ;; Traditional approach with ->>
 (->> (timewalk piece {:boundary-vpd staff-vpd})       ; Returns lazy sequence
      (filter pitch??)                                 ; Creates new lazy sequence wrapper
-     (filter #(>= (midi-number (:note (item %))) 60)) ; Creates another lazy wrapper
-     (map #(:note (item %)))                          ; Creates another lazy wrapper  
+     (filter #(>= (hz (item %)) (hz "C4")))          ; Creates another lazy wrapper
+     (map #(:note (item %)))                          ; Creates another lazy wrapper
      (take 10))                                       ; Creates final lazy wrapper
 ;; Total: 4 intermediate lazy sequence objects (lightweight, but still overhead)
 
 ;; Transducer approach with sequence and comp
 (sequence (comp (filter pitch??)                      ; \
-                (filter #(>= (midi-number (:note (item %))) 60)) ; > Combined into 
+                (filter #(>= (hz (item %)) (hz "C4"))) ; > Combined into
                 (map #(:note (item %)))               ; /  one transformation
                 (take 10))                            ; /
           (timewalk piece {:boundary-vpd staff-vpd}))
@@ -414,7 +403,7 @@ The musical context makes it natural because you're always doing multi-step proc
 ;; Same thing, but composed into a single transformation
 (->> (timewalk piece {:boundary-vpd staff-vpd})
      (sequence (comp (filter pitch??)
-                     (filter #(>= (midi-number (:note (item %))) 60))
+                     (filter #(>= (hz (item %)) (hz "C4")))
                      (map #(:note (item %)))
                      (take 10))))
 ```
@@ -464,7 +453,7 @@ The `timewalk` function itself can be part of the composition:
 ;; One-arity form returns a transducer - timewalk becomes part of the composition
 (sequence (comp (timewalk {:boundary-vpd staff-vpd})  ; Transducer form
                 (filter pitch??)
-                (filter #(>= (midi-number (:note (item %))) 60))
+                (filter #(>= (hz (item %)) (hz "C4")))
                 (map #(:note (item %)))
                 (take 10))
           [piece])
@@ -539,7 +528,7 @@ Common transducer patterns for musical processing:
 ```clojure
 ;; When you want to reduce to a single value
 (transduce (comp (filter pitch??)
-                 (map #(midi-number (:note (item %)))))
+                 (map #(hz (item %))))
            +  ; reducing function (sum)
            0  ; initial value
            (timewalk piece {:boundary-vpd staff-vpd}))
@@ -547,7 +536,7 @@ Common transducer patterns for musical processing:
 
 ;; Count pitches above middle C
 (transduce (comp (filter pitch??)
-                 (filter #(>= (midi-number (:note (item %))) 60))
+                 (filter #(>= (hz (item %)) (hz "C4")))
                  (map (constantly 1)))  ; Turn each item into 1
            +
            0
@@ -628,7 +617,7 @@ Common transducer patterns for musical processing:
 ;; Find first 5 high notes efficiently in the development section
 (into [] 
       (comp (filter pitch??)
-            (filter #(>= (midi-number (:note (item %))) 72))  ; Above C5
+            (filter #(>= (hz (item %)) (hz "C5")))  ; Above C5
             (take 5))  ; Stop after 5 high notes
       (timewalk piece {:boundary-vpd staff-vpd :start-measure 32 :end-measure 64}))
 ;; Stops immediately after finding 5 qualifying pitches
@@ -636,7 +625,7 @@ Common transducer patterns for musical processing:
 ;; This works with all transducer contexts
 (transduce (comp (filter pitch??)
                  (take 1)
-                 (map #(midi-number (:note (item %)))))
+                 (map #(hz (item %))))
            +
            0
            (timewalk piece {:boundary-vpd staff-vpd}))
@@ -712,21 +701,7 @@ For large orchestral scores, this is the difference between processing the entir
               [(transposer (item result)) (vpd result) (position result)])))
 ```
 
-### Example 6: Prepare for MIDI Output
-
-```clojure
-;; Convert pitches to MIDI events with timing for a specific section
-(->> (timewalk piece {:boundary-vpd staff-vpd :start-measure 8 :end-measure 16})
-     (filter pitch??)
-     absolute-time
-     (map (fn [[pitch vpd abs-time]]
-            {:note-on (midi-number (:note pitch))
-             :velocity 64
-             :time abs-time
-             :channel 0})))
-```
-
-### Example 7: Format Elements for Layout
+### Example 6: Format Elements for Layout
 
 ```clojure
 ;; RECOMMENDED: Compose timewalk with visible-elements for large orchestral works
@@ -750,51 +725,51 @@ For large orchestral scores, this is the difference between processing the entir
           (timewalk piece {:boundary-vpd system-vpd :start-measure 0 :end-measure 5}))
 ```
 
-### Example 8: Complete Processing Chain
+### Example 7: Complete Processing Chain
 
-Here's the kind of chain mentioned - find pitches, filter range, transpose, send to MIDI:
+Here's a multi-step transformation - find specific pitches, transpose them, collect results:
 
 ```clojure
-;; Process melody for MIDI with transposing and filtering
+;; Find C4 pitches, transpose up a major third, extract notes
+(def transposer (make-transposer :up :major :third))
+
 (->> (timewalk piece {:boundary-vpd staff-vpd})
-     ;; 1. Find all pitches
      (filter pitch??)
-     ;; 2. Filter away notes below C3 (MIDI 48)
-     (filter #(>= (midi-number (:note (item %))) 48))
-     ;; 3. Transpose up a major third
-     (map (let [transposer (make-transposer :up :major :third)]
-            (fn [result]
-              [(transposer (item result)) (vpd result) (position result)])))
-     ;; 4. Convert to MIDI events
-     (map (fn [[note vpd position]]
-            {:note-on (midi-number note)
-             :velocity 64
-             :time (+ (* (get vpd 9) 4.0) position)
-             :channel 0})))
-
-;; Usage
-(def midi-events (process-melody-for-midi piece staff-vpd))
+     (filter #(= "C4" (:note (item %))))
+     (map (fn [result]
+            (let [transposed (transposer (item result))]
+              {:original "C4"
+               :transposed (:note transposed)
+               :measure (get (vpd result) 9)
+               :position (position result)})))
+     (take 10))
+;; => ({:original "C4" :transposed "E4" :measure 0 :position 0}
+;;     {:original "C4" :transposed "E4" :measure 2 :position 1/2} ...)
 ```
 
-### Example 9: The Same Thing with Transducers
+### Example 8: Reusable Transducer Version
 
 ```clojure
-;; Apply to any number of pieces - same transformation, reusable
-(let [transposer (make-transposer :up :major :third)]
-  (sequence (comp (timewalk {:boundary-vpd staff-vpd})
-                  (filter pitch??)
-                  (filter #(>= (midi-number (:note (item %))) 48))
-                  absolute-time
-                  (map (fn [[pitch vpd abs-time]]
-                         (let [transposed-pitch (transposer pitch)]
-                           {:note-on (midi-number (:note transposed-pitch))
-                            :velocity 64
-                            :time abs-time
-                            :channel 0})))))
-          [piece1 piece2 piece3])
+;; Define transformation once, apply to multiple pieces
+(def analyze-c4-transpositions
+  (let [transposer (make-transposer :up :major :third)]
+    (comp (timewalk {:boundary-vpd staff-vpd})
+          (filter pitch??)
+          (filter #(= "C4" (:note (item %))))
+          (map (fn [result]
+                 (let [transposed (transposer (item result))]
+                   {:original "C4"
+                    :transposed (:note transposed)
+                    :measure (get (vpd result) 9)})))
+          (take 10))))
+
+;; Apply to multiple pieces efficiently
+(sequence analyze-c4-transpositions [piece1])
+(sequence analyze-c4-transpositions [piece2])
+(sequence analyze-c4-transpositions [piece3])
 ```
 
-See how the transducer version is **reusable** across multiple pieces and **composable** with other transformations?
+The transducer version is **reusable** across multiple pieces and **composable** with other transformations.
 
 ## Core Concepts
 
@@ -971,7 +946,7 @@ Once you understand the basics, you can build more sophisticated processing:
 ;; Find loud high notes in a specific range
 (sequence (comp (timewalk {:boundary-vpd staff-vpd :start-measure 10 :end-measure 20})
                 (filter pitch??)
-                (filter #(>= (midi-number (:note (item %))) 72))  ; Above C5
+                (filter #(>= (hz (item %)) (hz "C5")))  ; Above C5
                 (filter #(>= (:velocity (item %) 64) 80))  ; Loud
                 (map (fn [result]
                        {:note (:note (item result)) 
@@ -1055,14 +1030,14 @@ This ordering enables:
      (filter #(= (get (vpd %) 9) 5))
      (filter pitch??))
 
-;; MIDI events naturally time-ordered  
+;; Collect pitches with their measure numbers - naturally time-ordered
 (->> (timewalk piece {:boundary-vpd []})
      (filter pitch??)
-     absolute-time
-     (map (fn [[pitch vpd abs-time]]
-            {:midi (midi-number (:note pitch))
-             :time abs-time}))  ; Already in time order
-     (sort-by :time))  ; No sorting needed - already temporal
+     (map (fn [result]
+            {:note (:note (item result))
+             :measure (get (vpd result) 9)
+             :position (position result)})))
+;; Already in temporal order - no sorting needed
 
 ;; Format measures correctly
 (->> (timewalk piece {:boundary-vpd []})
@@ -1146,17 +1121,18 @@ Ooloi's attachment system uses **endpoint-id** to connect attachments (slurs, ha
 
 The temporal coordination ensures proper musical time ordering for attachment resolution.
 
-### Generating MIDI Output
+### Generating Audio/MIDI Output (Conceptual)
 
-Temporal coordination means MIDI events are naturally time-ordered:
+Temporal coordination means events are naturally time-ordered for audio output:
 
 ```clojure
-;; Simple MIDI generation
+;; Conceptual: Convert pitches to playback events with timing
+;; (Note: hz function takes Pitch object or pitch string, returns frequency in Hertz)
 (->> (timewalk piece {:boundary-vpd staff-vpd})
      (filter pitch??)
      absolute-time
      (map (fn [[pitch vpd abs-time]]
-            {:note-on (midi-number (:note pitch))
+            {:frequency (hz pitch)  ; Get frequency in Hz
              :velocity 64
              :time abs-time  ; Already in time order
              :channel 0})))
@@ -1166,7 +1142,7 @@ Temporal coordination means MIDI events are naturally time-ordered:
                 (filter pitch??)
                 absolute-time
                 (map (fn [[pitch vpd abs-time]]
-                       {:note-on (midi-number (:note pitch))
+                       {:frequency (hz pitch)
                         :velocity 64
                         :time abs-time
                         :channel 0})))
