@@ -337,23 +337,18 @@ Find attachment endpoints without processing entire piece:
 
 ### 1. Core Algorithm: Temporal Breadth-First Traversal
 
-The timewalk implements temporal coordination through a two-phase process:
+The timewalk provides temporal coordination through a breadth-first traversal strategy:
 
-**Phase 1: Parallel Measure Grouping**
-```clojure
-(find-parallel-measures piece boundary-vpd)
-```
-- Discovers all measures at each temporal position across the specified scope
-- Groups measures by their measure number (1, 2, 3, etc.)
-- Returns sequence of measure groups in temporal order
+**Temporal Ordering Guarantee:**
+- All musical events at measure N are processed before any events at measure N+1
+- Within each measure, all voices are traversed completely
+- Items are pushed directly to the reducing function as discovered (zero intermediate allocation)
+- Early termination propagates immediately via reduced values
 
-**Phase 2: Temporal Item Processing**
-```clojure
-(walk-items grouped-measures transducer)
-```
-- Processes each measure group completely before advancing to the next
-- Applies transducer to all items within each measure group
-- Maintains temporal ordering guarantee throughout processing
+**Scope Limitation:**
+- Boundary-VPD constrains traversal to specific portions of the piece
+- Only measures within the specified scope are discovered and processed
+- Efficient indexing enables O(1) measure lookup after initial discovery
 
 ### 2. Boundary-VPD Scope Limiting
 
@@ -502,11 +497,13 @@ The timewalk transducer achieves true zero-allocation traversal through three ke
 
 1. **Non-Consing Transducer Architecture**: The implementation uses a push-based reducing function that calls the downstream reducer directly as items are discovered, eliminating all intermediate lazy sequence allocation. Early termination (via `reduced?`) propagates immediately, stopping traversal the moment a terminal condition is met.
 
+   This represents a true transducer implementation: it transforms reducing functions rather than producing sequences. Unlike lazy pull-based approaches that generate values on demand, this push-based producer drives the reducing function as items are discovered, enabling early termination to stop *computation itself*, not just sequence consumption.
+
 2. **Temporal Measure Bucketing**: To provide "measure N across all voices before measure N+1" ordering, the walker collects measures in structural order (depth-first through the hierarchy), then builds a lookup map grouping measures by their temporal index. This transforms what would be O(M×K) repeated scans (M measure numbers × K total measures) into O(K) map construction + O(M) constant-time lookups. The map only contains measures within the specified boundary-vpd scope, not the entire piece.
 
 3. **Voice-Level Position Tracking**: Position accumulation within voices correctly handles tuplet scaling by recursively calculating the scaled total duration of tuplet children before advancing the voice position. This prevents position drift when items follow tuplets in the voice sequence.
 
-These optimizations maintain ratio precision (no tick quantization) while enabling efficient processing of large orchestral scores with proper early termination semantics.
+These optimizations maintain ratio precision (no tick quantization) while enabling efficient processing of large orchestral scores with proper early termination semantics. The implementation demonstrates how transducers can be applied beyond simple collection transformations to complex domain-specific algorithms while maintaining constant space, functional purity, and composability.
 
 ## Consequences
 

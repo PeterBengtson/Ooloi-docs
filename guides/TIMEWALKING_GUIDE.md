@@ -363,6 +363,17 @@ Before diving deeper, let's establish what transducers actually are:
 
 **Transducers are transformation functions that are independent of the context in which they're used.**
 
+**Push vs Pull — A Critical Distinction:**
+
+Timewalk demonstrates a true push-based transducer: it *drives* the reducing function by calling it directly as items are discovered, rather than producing a lazy sequence that gets *pulled* when consumed. This distinction matters:
+
+- **Pull (lazy)**: "I'll generate the next value when you ask for it"
+- **Push (transducer)**: "Here's the next value right now — process it or stop"
+
+The push model enables **early termination to stop computation itself**, not just sequence consumption. When `take 10` signals termination via `reduced`, timewalk immediately stops traversing the musical hierarchy — no wasted work generating values that will never be used.
+
+This makes timewalk pedagogically valuable for understanding transducers: it shows how they compose transformations of *reducing functions* rather than transformations of *sequences*.
+
 Think of them as "transformation recipes" that can be applied to any data source:
 
 ```clojure
