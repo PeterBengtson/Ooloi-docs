@@ -303,7 +303,7 @@ When adding new benchmarks:
 
 ## Related Documentation
 
-- **[ADR-0014: Timewalk](../../ADRs/0014-Timewalk.md)** - Architecture and implementation
-- **[NONCONSING_TIMEWALKER.md](../../research/NONCONSING_TIMEWALKER.md)** - Complete refactoring spec
-- **[MASTER_PLAN.md](../../MASTER_PLAN.md)** - Phase 6.9 optimization details
-- **[TIMEWALKING_GUIDE.md](../../guides/TIMEWALKING_GUIDE.md)** - Practical usage guide
+- **[ADR-0014: Timewalk](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0014-Timewalk.md)** - Architecture and implementation
+- **[NONCONSING_TIMEWALKER.md](https://github.com/PeterBengtson/Ooloi/blob/main/research/NONCONSING_TIMEWALKER.md)** - Complete refactoring spec (Ooloi repository)
+- **[MASTER_PLAN.md](https://github.com/PeterBengtson/Ooloi/blob/main/MASTER_PLAN.md)** - Phase 6.9 optimization details (Ooloi repository)
+- **[TIMEWALKING_GUIDE.md](https://github.com/PeterBengtson/Ooloi-docs/blob/main/guides/TIMEWALKING_GUIDE.md)** - Practical usage guide
