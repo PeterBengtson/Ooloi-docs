@@ -585,12 +585,12 @@ The benchmarks confirm that the push-based transducer architecture delivers genu
 
 ## Related ADRs
 
-- [ADR-0010: Pure Trees](0010-Pure-Trees.md) - Provides the foundational tree structure that timewalk traverses
-- [ADR-0008: VPDs](0008-VPDs.md) - Defines the Vector Path Descriptor system used for boundary specification
-- [ADR-0012: Persisting Pieces](0012-Persisting-Pieces.md) - Establishes the ID reference system that timewalk respects during traversal
-- [ADR-0011: Shared Structure](0011-Shared-Structure.md) - Shared structure algorithms use timewalk for element collection and processing
-- [ADR-0013: Slur Formatting](0013-Slur-Formatting.md) - Slur formatting demonstrates timewalk application for point collection
+- [ADR-0010: Pure Trees](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0010-Pure-Trees.md) - Provides the foundational tree structure that timewalk traverses
+- [ADR-0008: VPDs](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0008-VPDs.md) - Defines the Vector Path Descriptor system used for boundary specification
+- [ADR-0012: Persisting Pieces](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0012-Persisting-Pieces.md) - Establishes the ID reference system that timewalk respects during traversal
+- [ADR-0011: Shared Structure](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0011-Shared-Structure.md) - Shared structure algorithms use timewalk for element collection and processing
+- [ADR-0013: Slur Formatting](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0013-Slur-Formatting.md) - Slur formatting demonstrates timewalk application for point collection
 
 ## Documentation
 
-For practical usage examples and comprehensive guidance, see [TIMEWALKING_GUIDE.md](../guides/TIMEWALKING_GUIDE.md).
+For practical usage examples and comprehensive guidance, see [TIMEWALKING_GUIDE.md](https://github.com/PeterBengtson/Ooloi-docs/blob/main/guides/TIMEWALKING_GUIDE.md).
