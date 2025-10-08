@@ -581,7 +581,7 @@ Comprehensive benchmarks (October 2025) on a 1000-measure orchestral piece (29 i
 - Materialisation only allocates when random access needed
 - Full materialisation: 244 MB for 520K pitches (~437 bytes per `[item vpd position]` tuple)
 
-The benchmarks confirm that the push-based transducer architecture delivers genuine zero-intermediate-allocation, with streaming and materialised performance differing only by the final vector allocation cost. See `shared/dev/bench/README.md` for complete methodology and results.
+The benchmarks confirm that the push-based transducer architecture delivers genuine zero-intermediate-allocation, with streaming and materialised performance differing only by the final vector allocation cost. See [Timewalk Performance Benchmarks](https://github.com/PeterBengtson/Ooloi-docs/blob/main/READMEs/BENCHMARKS_README.md) for complete methodology and results.
 
 ## Related ADRs
 
