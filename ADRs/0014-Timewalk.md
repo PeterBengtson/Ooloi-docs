@@ -14,6 +14,7 @@
 - [Implementation Notes](#implementation-notes)
 - [Consequences](#consequences)
 - [Architectural Validation](#architectural-validation)
+- [Performance Validation](#performance-validation)
 - [Related ADRs](#related-adrs)
 - [Documentation](#documentation)
 
