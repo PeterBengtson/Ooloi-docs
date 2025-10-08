@@ -1304,7 +1304,8 @@ Elements come in temporal order with proper layout data:
 ## Cross-References
 
 - **Basic usage**: See [🟢 Starting Simple](#-starting-simple-direct-lazy-sequences) for your first timewalking operations
-- **Performance**: See [Performance Comparison](#performance-comparison-threading-vs-transducers) for timing benchmarks  
+- **Performance**: See [Performance Comparison](#performance-comparison-threading-vs-transducers) for timing benchmarks
+- **Benchmarks**: See [Timewalk Performance Benchmarks](../shared/dev/bench/README.md) for comprehensive performance validation showing sub-millisecond cache refresh, constant-memory streaming, and sub-100 microsecond endpoint searches
 - **Temporal coordination**: See [Why Temporal Order Matters](#why-temporal-order-matters-what-goes-wrong-without-it) for musical analysis foundations
 - **🔴 Advanced concurrency**: See [Advanced Concurrency Patterns](ADVANCED_CONCURRENCY_PATTERNS.md) for parallel processing with STM coordination
 - **VPD addressing**: See [VPDs Guide](VPDs.md) for understanding the Vector Path Descriptors returned in timewalking tuples

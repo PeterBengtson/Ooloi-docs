@@ -548,6 +548,41 @@ The fact that slur rendering, MIDI generation, attachment endpoint resolution, a
 
 This represents **architecture as compression** - reducing the complexity of an entire problem domain to a small set of composable primitives. The timewalker demonstrates that Ooloi has discovered **musical time's computational essence**, making musical software development fundamentally more powerful and elegant.
 
+## Performance Validation
+
+Comprehensive benchmarks (October 2025) on a 1000-measure orchestral piece (29 instruments, ~520,000 pitches) validate the push-based transducer architecture:
+
+**Zero-Intermediate-Allocation Proof**:
+- Materialisation overhead <5% for small scopes (streaming vs collected performance nearly identical)
+- Only cost is final vector allocation, not lazy sequence overhead
+- Architecture delivers on zero-intermediate-allocation promise
+
+**Streaming Characteristics**:
+- Full traversal: 582ms (~1M pitches/second)
+- Cache refresh: 1-5ms for typical windows (10-50 measures)
+- Constant memory for exports (<10 MB regardless of piece size)
+- Streaming export: 1.25 seconds for 520K pitches
+
+**Scope Limiting Validation**:
+- Performance scales proportionally with scope
+- Boundary-VPD effectively limits traversal work
+- Small scopes complete sub-millisecond to few milliseconds
+
+**Endpoint Search Performance**:
+- Typical slur searches (2-10 notes): sub-100 microseconds
+  - 2 notes: ~6 µs
+  - 5 notes: ~15 µs
+  - 10 notes: ~29 µs
+- Searches complete so quickly they're essentially unmeasurable as distinct operations
+- Validates that attachment endpoint resolution has negligible performance impact
+
+**Memory Discipline**:
+- Streaming operations use constant memory
+- Materialisation only allocates when random access needed
+- Full materialisation: 244 MB for 520K pitches (~437 bytes per `[item vpd position]` tuple)
+
+The benchmarks confirm that the push-based transducer architecture delivers genuine zero-intermediate-allocation, with streaming and materialised performance differing only by the final vector allocation cost. See `shared/dev/bench/README.md` for complete methodology and results.
+
 ## Related ADRs
 
 - [ADR-0010: Pure Trees](0010-Pure-Trees.md) - Provides the foundational tree structure that timewalk traverses
