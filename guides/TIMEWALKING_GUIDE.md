@@ -895,7 +895,7 @@ Control exactly which measures and positions to process:
                  :end-position 1/2})
 
 ;; Find ties across barlines: find the tie endpoint for a C4 pitch starting at measure 4
-(let [source-pitch (create-pitch "C4" 1/16)]
+(let [source-pitch (create-pitch :note "C4" :duration 1/16)]
   (->> (timewalk piece {:boundary-vpd staff-vpd 
                         :start-measure 4
                         :end-measure 5 :end-position 0})

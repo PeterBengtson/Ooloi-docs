@@ -268,7 +268,7 @@ response = stub.ExecuteMethod(request)
 ;; Clojure gets native data structures + protobuf conversion
 (require '[ooloi.shared.models.musical.pitch :refer [create-pitch pitch?]])
 
-(let [pitch (create-pitch "C4" "1/4")]  ; ← Native Clojure record
+(let [pitch (create-pitch :note "C4" :duration 1/4)]  ; ← Native Clojure record
   (when (pitch? pitch)                  ; ← Shared predicate validation
     (grpc-call :create-pitch pitch)))   ; ← Automatic OoloiValue conversion
 ```
