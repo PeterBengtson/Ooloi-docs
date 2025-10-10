@@ -182,8 +182,12 @@ shared/
 
 #### macOS
 ```bash
-brew install openjdk@22 leiningen protobuf
-export JAVA_HOME="/usr/local/opt/openjdk@22"
+# Install latest OpenJDK (22+), Leiningen, and Protocol Buffers
+brew install openjdk leiningen protobuf
+
+# Set JAVA_HOME (add to ~/.zshrc or ~/.bash_profile for persistence)
+export JAVA_HOME="$(brew --prefix openjdk)"
+export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
 #### Linux (Ubuntu/Debian)
@@ -227,10 +231,20 @@ The shared project contains Protocol Buffer definitions for frontend-backend com
 
 ## Installation
 
-  ```bash
-  cd shared
-  lein deps
-  ```
+**First-time setup requires Protocol Buffer compilation**:
+
+```bash
+cd shared
+lein deps         # Install dependencies
+lein protoc       # Compile Protocol Buffers (required once for gRPC)
+```
+
+The `lein protoc` step generates gRPC client/server stubs from `src/main/proto/ooloi_service.proto`. This is required once during initial setup, and rarely needed afterward (only if the `.proto` schema itself changes).
+
+**Verification**:
+```bash
+lein midje        # Run tests to verify installation (~16,000 checks, 5-7 min)
+```
 
 ## Building the Combined Application
 

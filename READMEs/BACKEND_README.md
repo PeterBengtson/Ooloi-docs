@@ -120,8 +120,12 @@ backend/
 
 #### macOS
 ```bash
-brew install openjdk@22 leiningen
-export JAVA_HOME="/usr/local/opt/openjdk@22"
+# Install latest OpenJDK (22+) and Leiningen
+brew install openjdk leiningen
+
+# Set JAVA_HOME (add to ~/.zshrc or ~/.bash_profile for persistence)
+export JAVA_HOME="$(brew --prefix openjdk)"
+export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
 #### Linux (Ubuntu/Debian)
@@ -144,10 +148,24 @@ java -version && lein version
 
 ## Installation
 
-  ```bash
-  cd backend
-  lein deps
-  ```
+**Prerequisites**: Ensure shared project is set up first (required for gRPC infrastructure):
+
+```bash
+# First time only: compile Protocol Buffers in shared/
+cd ../shared
+lein protoc       # Generates gRPC stubs used by backend
+
+# Then install backend dependencies
+cd ../backend
+lein deps         # Install dependencies
+```
+
+**Verification**:
+```bash
+lein midje        # Run tests to verify installation (~600 checks, 3-5 min)
+```
+
+**Note**: If you get gRPC-related compilation errors, ensure `lein protoc` has been run in the shared/ directory.
 
 ## Building the Backend
 

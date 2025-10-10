@@ -188,25 +188,58 @@ Ooloi/
 
 ## Getting Started
 
-Ooloi is organized into three main components:
+### Quick Installation
+
+Ooloi installation involves three simple steps across all projects:
+
+1. **Install system dependencies** (Java 22+, Leiningen, Protocol Buffers)
+2. **Compile Protocol Buffers** (one-time setup in shared/)
+3. **Run tests** to verify installation
+
+**Complete setup** (first-time installation):
+
+```bash
+# 1. Install system dependencies (macOS example)
+brew install openjdk leiningen protobuf
+
+# 2. Set up shared project (gRPC infrastructure)
+cd shared
+lein deps
+lein protoc     # Compile Protocol Buffers (required once)
+lein midje      # Run tests (~16,000 checks, 5-7 min)
+
+# 3. Set up backend
+cd ../backend
+lein deps
+lein midje      # Run tests (~600 checks, 3-5 min)
+
+# 4. Set up frontend
+cd ../frontend
+lein deps
+lein midje      # Run tests (~140 checks, ~30 sec)
+```
+
+See individual project READMEs for platform-specific instructions and configuration details.
+
+### Project Components
+
+### 📁 **[Shared](/shared/)** - Model Contracts & gRPC Infrastructure
+Unified data models, interfaces, and Protocol Buffer layer for frontend-backend communication.
+- **Key Features**: All core data models, multimethod interfaces, attachment system, timewalk operations, unified gRPC protocol
+- **Installation**: See [shared/README.md](/shared/README.md) for detailed setup (required first)
+- **Quick start**: `cd shared && lein deps && lein protoc && lein midje`
 
 ### 📁 **[Backend](/backend/)** - Music Notation Engine
 The core server that handles musical data, calculations, and business logic.
 - **Key Features**: gRPC server, piece management, real-time event streaming, server components
-- **Installation**: See [backend/README.md](/backend/README.md) for detailed setup instructions
-- **Quick start**: `cd backend && lein deps && lein run`
-
-### 📁 **[Shared](/shared/)** - Model Contracts & gRPC Infrastructure  
-Unified data models, interfaces, and Protocol Buffer layer for frontend-backend communication.
-- **Key Features**: All core data models, multimethod interfaces, attachment system, timewalk operations, unified gRPC protocol
-- **Architecture**: Supports selective frontend imports with backend-dependent modules
-- **Documentation**: See [shared/README.md](/shared/README.md) for architecture details
+- **Installation**: See [backend/README.md](/backend/README.md) for detailed setup
+- **Quick start**: `cd backend && lein deps && lein midje`
 
 ### 📁 **[Frontend](/frontend/)** - User Interface Client
 The client application providing the graphical interface for music notation.
 - **Key Features**: gRPC client, UI manager, comprehensive configuration system, deployment modes
-- **Installation**: See [frontend/README.md](/frontend/README.md) for detailed setup instructions
-- **Documentation**: See [frontend/README.md](/frontend/README.md)
+- **Installation**: See [frontend/README.md](/frontend/README.md) for detailed setup
+- **Quick start**: `cd frontend && lein deps && lein midje`
 
 For technical architecture details and development roadmap, see:
 - [GitHub Project Board](https://github.com/users/PeterBengtson/projects/4) - Complete project roadmap and milestones  
