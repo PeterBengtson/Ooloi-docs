@@ -8,7 +8,7 @@ Twenty-five years ago, I created Igor Engraver, which became rather successful i
 
 In the intervening years, I became an AWS Solutions Architect Professional and created systems like Ocean and OpenSecOps. I have always thought in systems — this shift simply allowed me to give that instinct full rein, to focus entirely on designing foundations that can handle complexity and scale over time through elegant abstraction layers.
 
-I've spent the better part of a year on Ooloi distilling everything I've learned into an architecture that doesn't just work, but works elegantly. This isn't my first attempt at solving these problems, but it's the first time I've had the right tools — functional programming, immutable data structures, enterprise-scale systems thinking, and the kind of patience that comes with experience — to solve them properly.
+Ooloi represents a sustained effort to distill everything I've learned into an architecture that doesn't just work, but works elegantly. This isn't my first attempt at solving these problems, but it's the first time I've had the right tools — functional programming, immutable data structures, enterprise-scale systems thinking, and the kind of patience that comes with experience — to solve them properly.
 
 ## What is Ooloi?
 
