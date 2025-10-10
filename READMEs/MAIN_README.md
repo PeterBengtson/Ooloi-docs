@@ -19,12 +19,13 @@ For more information, check out our website and blog on [https://ooloi.org](http
 3. [License](#license)
     - [Core](#core)
     - [Plugins](#plugins)
-4. [Contributions](#contributions)
-5. [Code of Conduct](#code-of-conduct)
-6. [Architecture](#architecture)
-7. [Core Concepts Quick Reference](#core-concepts-quick-reference)
-8. [Directory Structure](#directory-structure)
-9. [Getting Started](#getting-started)
+4. [Contact](#contact)
+5. [Contributions](#contributions)
+6. [Code of Conduct](#code-of-conduct)
+7. [Architecture](#architecture)
+8. [Core Concepts Quick Reference](#core-concepts-quick-reference)
+9. [Directory Structure](#directory-structure)
+10. [Getting Started](#getting-started)
 
 ## Background and Name
 
@@ -81,6 +82,12 @@ Ooloi is licensed under the Mozilla Public License (MPL) 2.0. This means that an
 ### Plugins
 
 Plugins for Ooloi can be closed-source and proprietary. Developers are free to create and distribute plugins under their own licensing terms. They can create commercial plugins and sell them without any obligation to open-source the plugin code. We are planning a CRM interface via Cryptolens, so plugin developers have full control of installations through flexible license keys.
+
+## Contact
+
+For questions about Ooloi, contact Peter Bengtson at [peter.bengtson@ooloi.org](mailto:peter.bengtson@ooloi.org)
+
+Copyright © 2024-2025 Peter Bengtson
 
 ## Contributions
 
