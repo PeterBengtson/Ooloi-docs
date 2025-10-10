@@ -74,7 +74,7 @@ The architecture is complete, but the work is just beginning. There are plugins 
 
 At 64, carrying more than five decades of programming experience and a parallel career as a composer, I've tried to encode into this architecture not just technical solutions, but the aesthetic judgments and performance intuitions that come from actually making music. 
 
-The creative energy that might have gone into another opera has found expression in software architecture. It's a different kind of composition — one that enables other people's creative work rather than expressing my own. In many ways, it's more satisfying.
+The creative energy that might have gone into another opera has found expression in software architecture. It's a different kind of composition — one that enables other people's creative work rather than expressing my own. And who knows, maybe Ooloi is what I need to finally write that opera set in China in the 700s. 
 
 This is what happens when you take the time to get it right, when you resist the urge to rush, when you're willing to solve the hard problems properly. The result is something that can grow and evolve through the contributions of others while maintaining its essential character.
 
