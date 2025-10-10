@@ -206,17 +206,17 @@ brew install openjdk leiningen protobuf
 cd shared
 lein deps
 lein protoc     # Compile Protocol Buffers (required once)
-lein midje      # Run tests (~16,000 checks, 5-7 min)
+lein midje      # Run tests (takes a few minutes)
 
 # 3. Set up backend
 cd ../backend
 lein deps
-lein midje      # Run tests (~600 checks, 3-5 min)
+lein midje      # Run tests
 
 # 4. Set up frontend
 cd ../frontend
 lein deps
-lein midje      # Run tests (~140 checks, ~30 sec)
+lein midje      # Run tests
 ```
 
 See individual project READMEs for platform-specific instructions and configuration details.

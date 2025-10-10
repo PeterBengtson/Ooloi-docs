@@ -243,7 +243,7 @@ The `lein protoc` step generates gRPC client/server stubs from `src/main/proto/o
 
 **Verification**:
 ```bash
-lein midje        # Run tests to verify installation (~16,000 checks, 5-7 min)
+lein midje        # Run tests to verify installation (takes a few minutes)
 ```
 
 ## Building the Combined Application

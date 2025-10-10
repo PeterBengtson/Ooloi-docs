@@ -145,7 +145,7 @@ lein deps         # Install dependencies
 
 **Verification**:
 ```bash
-lein midje        # Run tests to verify installation (~140 checks, ~30 sec)
+lein midje        # Run tests to verify installation
 ```
 
 **Note**: If you get gRPC-related compilation errors, ensure `lein protoc` has been run in the shared/ directory.
