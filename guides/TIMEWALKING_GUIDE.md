@@ -655,7 +655,7 @@ Use when simplicity matters more than optimal performance:
 
 ### Performance Characteristics: Real Benchmarks
 
-Here are actual numbers from a 1,000-measure orchestral piece (29 instruments, 520,000 pitches):
+Here are actual numbers from a 1,000-measure orchestral piece (29 staves, 520,000 pitches):
 
 ```
 ╔═══════════════════════════════════════════════════════════╗
