@@ -488,7 +488,7 @@ Musical processing naturally involves multi-step operations: find → filter →
 
 ## Understanding Timewalk's Architecture: Push vs Pull
 
-*"Yes, Brad, but doesn't it feel **nice**?." - Frank N Furter* 
+*"Yes, Brad, but doesn't it feel **nice**?" - Frank N Furter* 
 
 You've been using two approaches to consume timewalking results:
 
