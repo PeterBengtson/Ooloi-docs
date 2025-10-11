@@ -4,17 +4,22 @@ Performance benchmarks for the Ooloi timewalk traversal system using Criterium f
 
 ## Test Hardware
 
-**MacBook Pro (2017)**
+**MacBook Pro (2017) - Baseline**
 - **Processor**: 2.2 GHz 6-Core Intel Core i7
 - **Memory**: 16 GB 2400 MHz DDR4
 - **Graphics**: Intel UHD Graphics 630 1536 MB
 - **macOS**: Sequoia 15.6.1
 
-All benchmarks run on older hardware. Modern systems will show significantly faster performance.
+**MacBook Air (2024) - M3 Comparison**
+- **Processor**: Apple M3 chip
+- **Memory**: 16 GB
+- **macOS**: Sonoma 14.x
+
+Original benchmarks run on 2017 hardware establish baseline. M3 benchmarks demonstrate 2-3× linear scaling improvements with newer hardware.
 
 ## Benchmark Results Summary
 
-All tests use a 1000-measure orchestral piece (29 instruments, ~520,000 pitches) - comparable in size and density to Wagner's *Götterdämmerung* or Strauss's *Elektra*. This represents an extreme test case significantly larger and denser than typical musical scores.
+All tests use a 1000-measure orchestral piece (29 staves, ~520,000 pitches) - comparable in size and density to Wagner's *Götterdämmerung* or Strauss's *Elektra*. This represents an extreme test case significantly larger and denser than typical musical scores.
 
 ### Traversal Scopes in Real Use
 
@@ -25,12 +30,24 @@ For each scope we report two forms:
 - **Unrealised (streaming)**: we *reduce* over the traversal and never allocate result tuples. This is **constant-memory** and typical for cache updates and searches.
 - **Materialised (collected)**: we *collect* `[item vpd position]` tuples into a vector. This allocates proportionally and is used intentionally for operations that need random access.
 
+**2017 MacBook Pro (Baseline):**
+
 | Scope | Typical Use | Unrealised Mean | Materialised Mean | Notes |
 |------|--------------|-----------------|-------------------|-------|
 | 10 measures × 1 staff | Cache refresh after edit | ~1.0 ms | ~1.0 ms | Minimal overhead for materialisation |
 | 10 measures × 4 staves | Compound cache rebuild | ~4.4 ms | ~4.4 ms | Proportional to number of staves |
 | 1 instrument × full piece | Part extraction / analysis | ~35 ms | ~35 ms | Noise within measurement variance |
 | 50 measures × 1 staff | Search endpoint (worst case) | ~2.3 ms | N/A | Real slurs end within 1-2 measures |
+
+**2024 M3 MacBook Air (2-3× improvement):**
+
+| Scope | Typical Use | Unrealised Mean | Materialised Mean | Notes |
+|------|--------------|-----------------|-------------------|-------|
+| 10 measures × 1 staff | Cache refresh after edit | ~360 µs | ~360 µs | 2.8× faster than baseline |
+| 10 measures × 4 staves | Compound cache rebuild | ~1.49 ms | ~1.49 ms | 2.95× faster than baseline |
+| 1 instrument × full piece | Part extraction / analysis | ~12.9 ms | ~12.9 ms | 2.7× faster than baseline |
+| 50 measures × 1 staff | Search endpoint (worst case) | ~788 µs | N/A | 2.9× faster than baseline |
+| Typical slur search (1-2 measures) | Common endpoint search | <50 µs | N/A | 2× faster than baseline (<100 µs) |
 
 #### Materialisation vs Streaming
 
@@ -65,6 +82,8 @@ There are two ways to consume this stream:
 
 ### Batch Operations (rare, but important)
 
+**2017 MacBook Pro (Baseline):**
+
 | Operation | Scope | Mean Time | Memory | Notes |
 |-----------|-------|-----------|--------|-------|
 | **Streaming export** | Full piece | ~1.25 sec | <10 MB | Constant memory, no materialization |
@@ -73,6 +92,13 @@ There are two ways to consume this stream:
 | **Save to disk** | Full piece | ~1.3 sec | - | Async with Nippy serialization |
 | **Load from disk** | Full piece | ~3.3 sec | - | Deserialization + verification |
 | **File size** | Full piece | 0.17 MB | - | 0.35 bytes/pitch with hash-consing |
+
+**2024 M3 MacBook Air (2-3× improvement):**
+
+| Operation | Scope | Mean Time | Memory | Notes |
+|-----------|-------|-----------|--------|-------|
+| **Streaming export** | Full piece | ~592 ms | <10 MB | 2.1× faster than baseline |
+| **Full traversal** | Full piece | ~316 ms | ~244 MB | 1.84× faster than baseline |
 
 **Key insight**: The streaming export (~1.27 sec) uses constant memory (<10 MB) vs full traversal with materialization (528 ms, 244 MB). For MIDI/MusicXML export, the system maintains constant memory regardless of piece size.
 
