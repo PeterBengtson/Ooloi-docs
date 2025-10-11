@@ -189,7 +189,7 @@ When cached objects are modified (such as adding a staccato to a C4 pitch), the 
               (vpd-ops/mutate (vpd t) p cached)))
           p)))
     piece
-    (timewalk piece {:boundary-vpd []})))
+    (timewalk piece {})))
 ```
 
 **Verification Results:**

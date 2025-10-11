@@ -86,7 +86,7 @@ This transforms musical software development:
 ```clojure
 ;; Define transformations, compose operations
 (into []
-      (comp (timewalk {:boundary-vpd []})
+      (comp (timewalk {})
             (filter #(violin-instrument? (item %)))
             (filter pitch?)
             (map #(transpose-pitch (item %) 4)))
