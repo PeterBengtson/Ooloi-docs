@@ -488,7 +488,7 @@ Musical processing naturally involves multi-step operations: find → filter →
 
 ## Understanding Timewalk's Architecture: Push vs Pull
 
-*"Now that you've seen both lazy sequences and transducers in action, let's explore why they feel different."*
+*"Yes, Brad, but doesn't it feel **nice**?." - Frank N Furter* 
 
 You've been using two approaches to consume timewalking results:
 
