@@ -669,7 +669,7 @@ Here are actual numbers from a 1,000-measure orchestral piece (29 staves, 520,00
 ║  2024 M3 MacBook Air (2-3× improvement):                  ║
 ║    Full traversal:        316 ms (~1.6M pitches/second)   ║
 ║    Cache refresh:         360 μs (typical window)         ║
-║    Typical slur search:   <200 microseconds               ║
+║    Typical slur search:   <50 microseconds                ║
 ║                                                            ║
 ║  Memory usage:            <10 MB (constant, any size)     ║
 ║  Linear scaling:          Better hardware = proportional  ║
