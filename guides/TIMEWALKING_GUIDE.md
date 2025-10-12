@@ -397,9 +397,9 @@ Notice how each step builds on the previous one, and we always have access to th
 
 *"The transducer will seduce ya" - Frank N. Furter*
 
-Now here's where it gets powerful. Those steps above can be **composed** using transducers for elegance and efficiency.
+Here the power of composition becomes evident. Those steps above can be **composed** using transducers for elegance and efficiency.
 
-**For Clojure learners**: Function composition is a cornerstone of functional programming. Instead of nesting function calls or writing intermediate variables, you **compose** simple functions into complex transformations. Clojure's `comp` function creates new functions by combining existing ones, and transducers extend this power to data transformation pipelines. What you're about to learn here—composing transformations that work independently of their data source—is one of the most elegant and reusable patterns in functional programming. Once you understand this pattern through musical examples, you'll recognize it everywhere in idiomatic Clojure code.
+**For Clojure learners**: Composing transformations that work independently of their data source is one of the most elegant and reusable patterns in functional programming. Once you understand this pattern through musical examples, you'll recognize it everywhere in idiomatic Clojure code.
 
 ### Understanding `comp` - Function Composition
 
@@ -526,7 +526,7 @@ Before diving deeper, let's establish what transducers actually are:
 
 **Transducers are transformation functions that are independent of the context in which they're used.**
 
-**For Clojure learners**: This independence is revolutionary. In most programming, a transformation is tied to its data structure—you filter *arrays* differently than you filter *streams* differently than you filter *database results*. Transducers break this coupling. You write the transformation logic once (filter for pitches, map to frequencies, take 10 results), and that *same code* works with vectors, lazy sequences, channels, streams, or musical scores. The transformation becomes a first-class value you can pass around, combine, and reuse. This is functional programming at its most powerful—separating *what* you want to do from *where* you're doing it.
+**For Clojure learners**: Transducers break the coupling between transformation logic and data structures. You write the transformation logic once (filter for pitches, map to frequencies, take 10 results), and that *same code* works with vectors, lazy sequences, channels, streams, or musical scores. This is functional programming at its most powerful—separating *what* you want to do from *where* you're doing it.
 
 **Push vs Pull — A Critical Distinction:**
 
@@ -536,10 +536,6 @@ Timewalk demonstrates a true push-based transducer: it *drives* the reducing fun
 - **Push (transducer)**: "Here's the next value right now — process it or stop"
 
 The push model enables **early termination to stop computation itself**, not just sequence consumption. When `take 10` signals termination via `reduced`, timewalk immediately stops traversing the musical hierarchy — no wasted work generating values that will never be used.
-
-**For Clojure learners**: Understanding push vs. pull is key to understanding when transducers shine. With lazy sequences (pull), you're creating a chain of "I'll compute when asked" promises. Each step wraps the previous step. With transducers (push), you're creating a *single composed function* that processes items as they arrive. When processing stops (via `reduced`), the producer *knows immediately* and stops generating. This makes transducers fundamentally more efficient for scenarios like "find the first match" or "take the first 10"—the computation stops the instant the goal is achieved, rather than just stopping consumption of an already-generated sequence.
-
-This makes timewalk pedagogically valuable for understanding transducers: it shows how they compose transformations of *reducing functions* rather than transformations of *sequences*.
 
 Think of them as "transformation recipes" that can be applied to any data source:
 
@@ -835,7 +831,7 @@ When modifying a piece during traversal, each modification creates a new piece o
 
 *"Yes, Janet, but isn't it **nice**?" - Frank N Furter*
 
-**For Clojure learners**: This section reveals a deep architectural distinction that affects performance in real-world applications. Understanding push vs. pull models isn't just academic - it's the difference between processing 100,000 items to find one result versus stopping immediately when found. The musical domain makes this visible and concrete: imagine searching a symphony score for the first forte passage. Do you want to scan the entire score, or stop the moment you find it? This architectural choice ripples through your entire application design, affecting memory usage, latency, and scalability.
+**For Clojure learners**: This architectural distinction affects performance in real-world applications. Understanding push vs. pull models is the difference between processing 100,000 items to find one result versus stopping immediately when found. This choice ripples through your entire application design, affecting memory usage, latency, and scalability.
 
 You've been using two approaches to consume timewalking results:
 
@@ -871,7 +867,7 @@ Timewalk pushes values as it discovers them. You signal when to stop.
 
 ### Why This Matters: Early Termination
 
-Here's where the difference becomes concrete:
+The distinction becomes significant when finding specific elements:
 
 ```clojure
 ;; Find the first forte passage in a symphony
@@ -1054,7 +1050,7 @@ The architecture is designed so the right choice is usually the simplest one.
 
 ## 🟢 Efficiency Tips
 
-**For Clojure learners**: These patterns demonstrate **doing less work** as the ultimate optimization. Functional programming enables this through lazy evaluation, early termination, and precise scope control. These aren't micro-optimizations—they're fundamental strategies that scale from toy examples to production systems. The principle: express exactly what you need, no more. Filter early. Terminate when done. Scope precisely. These habits, learned through musical examples, transfer directly to database queries, API calls, file processing, and any scenario where you're selecting from a larger universe of data.
+**For Clojure learners**: These patterns demonstrate doing less work as the ultimate optimization through lazy evaluation, early termination, and precise scope control.
 
 ### Only Process What You Need
 
