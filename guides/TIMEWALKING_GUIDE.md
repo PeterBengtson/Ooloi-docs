@@ -1049,6 +1049,14 @@ The architecture is designed so the right choice is usually the simplest one.
 
 **For Clojure learners**: These patterns demonstrate doing less work as the ultimate optimization through lazy evaluation, early termination, and precise scope control.
 
+### The Options Map: Controlling Traversal Scope
+
+Up until now, we've been passing an empty map `{}` as the second parameter to `timewalk`. This tells the timewalker to traverse the entire piece structure. But `timewalk` provides powerful scope control through this options map—you can limit traversal to specific musicians, instruments, staves, measure ranges, or even beat positions within measures.
+
+**Why this matters**: Processing only what you need is the most effective optimization. Rather than filtering results after traversal, you can prevent unnecessary traversal entirely. For large orchestral scores, this can mean the difference between processing 50,000 items and processing 100.
+
+Let's explore the scope control options available.
+
 ### Limit Scope, Not Just Results
 
 Don't process the entire symphony when you only need one part:
@@ -1072,6 +1080,7 @@ Working on measures 10-15 of the flute part? Tell the timewalker exactly what yo
 
 ```clojure
 ;; Just measures 10-15 of the flute (musician 2, instrument 0)
+;; Note: end-measure is INCLUSIVE - this processes measures 10, 11, 12, 13, 14, AND 15
 (->> (timewalk piece {:boundary-vpd [:musicians 2 :instruments 0]
                       :start-measure 10
                       :end-measure 15})
@@ -1080,20 +1089,25 @@ Working on measures 10-15 of the flute part? Tell the timewalker exactly what yo
 
 **Performance impact**: This processes ~100 items instead of ~50,000. That's a 500× reduction in work.
 
+**Important**: The `:end-measure` parameter is **inclusive**—it includes the specified measure in the results. Same for `:end-position` below.
+
 ### Fine-Grained Position Control
 
 Need items starting from beat 2 of measure 5 through beat 3 of measure 7?
 
 ```clojure
-;; Process from measure 5, beat 2 through measure 7, beat 3
+;; Process from measure 5, beat 2 through measure 7, beat 3 (INCLUSIVE)
+;; In 4/4 time: beat 1=0, beat 2=1/4, beat 3=1/2, beat 4=3/4, end of measure=1
+;; In 3/4 time: beat 1=0, beat 2=1/4, beat 3=1/2, end of measure=3/4
+;; In 5/8 time: positions would be 0, 1/8, 1/4, 3/8, 1/2, end of measure=5/8
 (->> (timewalk piece {:start-measure 5
-                      :start-position 2
+                      :start-position 1/4  ; Beat 2 in 4/4
                       :end-measure 7
-                      :end-position 3})
+                      :end-position 1/2})  ; Beat 3 in 4/4 (inclusive)
      (filter pitch??))
 ```
 
-The `:start-position` and `:end-position` parameters use rationals (0, 1/4, 1/2, etc.) representing beats within the measure.
+The `:start-position` and `:end-position` parameters use **rationals representing position within the measure**. Position 0 is the downbeat. The measure length equals the time signature: 4/4 = 1 (four quarters), 3/4 = 3/4 (three quarters), 5/8 = 5/8 (five eighths), 6/8 = 6/8 = 3/4 (six eighths), etc. Remember: `:end-position` is **inclusive**, so items at exactly that position are included in the results.
 
 ### Early Termination
 
