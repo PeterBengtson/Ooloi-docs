@@ -1083,38 +1083,70 @@ The architecture is designed so the right choice is usually the simplest one.
 
 **For Clojure learners**: These patterns demonstrate doing less work as the ultimate optimization through lazy evaluation, early termination, and precise scope control.
 
-### Only Process What You Need
+### Limit Scope, Not Just Results
+
+Don't process the entire symphony when you only need one part:
 
 ```clojure
-;; Use scope to limit work
-(->> (timewalk piece {:boundary-vpd staff-vpd})  ; Just one voice
+;; ❌ INEFFICIENT - Traverses all 29 instruments, then filters
+(->> (timewalk large-symphony {})
+     (filter #(= (vpd %) [:musicians 0 :instruments 0]))  ; Filter after processing
      (filter pitch??))
 
-;; Use measure ranges to limit work  
-(->> (timewalk piece {:boundary-vpd staff-vpd :start-measure 10 :end-measure 15})
+;; ✅ EFFICIENT - Only traverses the one instrument you need
+(->> (timewalk large-symphony {:boundary-vpd [:musicians 0 :instruments 0]})
      (filter pitch??))
-
-;; Use take for early termination
-(->> (timewalk piece {})
-     (filter chord??)
-     (take 5))  ; Stops as soon as 5 chords found
 ```
 
-### Memory Efficiency
+Scope limiting happens *before* traversal. The timewalker never even looks at the other 28 instruments.
+
+### Combine Scope with Measure Ranges
+
+Working on measures 10-15 of the flute part? Tell the timewalker exactly what you need:
 
 ```clojure
-;; Lazy sequences - only generate what you consume
-(->> (timewalk piece {:boundary-vpd staff-vpd})
-     (filter pitch??)
-     (take 1)   ; IMPORTANT: Use take 1 for early termination
-     (first))   ; Only processes until first pitch found
-
-;; Transducers - no intermediate collections
-(sequence (comp (timewalk {:boundary-vpd staff-vpd})
-                (filter pitch??)
-                (take 10))
-          [piece])  ; Processes 10 pitches without creating intermediate lists
+;; Just measures 10-15 of the flute (musician 2, instrument 0)
+(->> (timewalk piece {:boundary-vpd [:musicians 2 :instruments 0]
+                      :start-measure 10
+                      :end-measure 15})
+     (filter pitch??))
 ```
+
+**Performance impact**: This processes ~100 items instead of ~50,000. That's a 500× reduction in work.
+
+### Fine-Grained Position Control
+
+Need items starting from beat 2 of measure 5 through beat 3 of measure 7?
+
+```clojure
+;; Process from measure 5, beat 2 through measure 7, beat 3
+(->> (timewalk piece {:start-measure 5
+                      :start-position 2
+                      :end-measure 7
+                      :end-position 3})
+     (filter pitch??))
+```
+
+The `:start-position` and `:end-position` parameters use rationals (0, 1/4, 1/2, etc.) representing beats within the measure.
+
+### Early Termination
+
+Even with scope limiting, use `take` to stop as soon as you find what you need:
+
+```clojure
+;; Find first forte passage in violin I, measures 10-50
+(->> (timewalk piece {:boundary-vpd [:musicians 0 :instruments 0]
+                      :start-measure 10
+                      :end-measure 50})
+     (filter forte-passage??)
+     (take 1)   ; Stops immediately when found
+     (first))
+```
+
+**The hierarchy of efficiency**:
+1. **Scope limiting** - Don't traverse what you don't need
+2. **Measure ranges** - Further narrow the traversal window
+3. **Early termination with `take`** - Stop as soon as goal achieved
 
 ## Cross-References
 
