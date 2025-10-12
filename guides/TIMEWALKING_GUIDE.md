@@ -203,8 +203,8 @@ You think:
 **Timewalking lets you code the way you think about music:**
 
 ```clojure
-;; Find the first C# after measure 10
-(->> (timewalk piece {:start-measure 10})
+;; Find the first C# in the piece
+(->> (timewalk piece {})
      (filter pitch??)
      (filter #(= "C#4" (:note (item %))))
      (take 1)
@@ -370,10 +370,9 @@ Let's start with practical examples that show the power of this approach.
 ;; Find pitches with their timing (returns lazy sequence)
 (->> (timewalk piece {})
      (filter pitch??)
-     (map (fn [result]
-            {:note (:note (item result))
-             :measure (vpd/measure (vpd result))    ; Measure number from VPD
-             :position (position result)})))       ; Beat position
+     (map #(hash-map :note (:note (item %))
+                     :measure (vpd/measure (vpd %))
+                     :position (position %))))
 ;; => ({:note "C4" :measure 0 :position 0}
 ;;     {:note "E4" :measure 0 :position 1/4}
 ;;     {:note "G4" :measure 0 :position 1/2} ...)  ; Lazy sequence
@@ -717,10 +716,9 @@ When modifying a piece during traversal, each modification creates a new piece o
 
 ```clojure
 ;; This DOESN'T WORK - VPDs become stale after first modification
-(let [transposer (make-transposer :up :major :third)
-      transpose-pitch! (fn [result] (vpd/mutate (vpd result) piece-id transposer)]
-  (run! transpose-pitch!
-        (->> (timewalk piece-id {})
+(let [transposer (make-transposer :up :major :third)]
+  (run! #(vpd/mutate (vpd %) piece transposer)
+        (->> (timewalk piece {})
              (filter pitch??))))
 ;; Problem: First modification returns new piece, but it's immediately discarded
 ;; Subsequent modifications operate on original piece, but we want to use the new one
@@ -733,8 +731,8 @@ When modifying a piece during traversal, each modification creates a new piece o
 (let [transposer (make-transposer :up :major :third)
       transpose-pitch! (fn [piece result] (vpd/mutate (vpd result) piece transposer))]
   (reduce transpose-pitch!
-          piece-id
-          (->> (timewalk piece-id {})
+          piece
+          (->> (timewalk piece {})
                (filter pitch??))))
 ;; Success: Each modification receives current piece, returns updated piece
 ;; Final result is fully transposed piece with all modifications applied
@@ -931,8 +929,7 @@ Use when you process each item once and discard it:
 
 ```clojure
 ;; MIDI export - process each note once without storing
-(run! (fn [result]
-        (schedule-for-midi (item result)))
+(run! #(schedule-for-midi (item %))
       (->> (timewalk piece {})
            (filter pitch??)))
 ;; Memory: Constant (~10 MB regardless of piece size)
@@ -1008,7 +1005,7 @@ Use when simplicity matters more than optimal performance:
 
 ```clojure
 ;; Side effects only → True streaming with run!
-(run! (fn [result] (schedule-for-midi (item result)))
+(run! #(schedule-for-midi (item %))
       (->> (timewalk piece {}) (filter pitch??)))
 
 ;; Aggregate to single value → True streaming with transduce
