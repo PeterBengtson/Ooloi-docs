@@ -331,6 +331,20 @@ The easiest way to use the `timewalk` function is the **2-arity form** that retu
 (timewalk piece options)
 ```
 
+The `options` map controls traversal scope with these keys:
+- **`:boundary-vpd`** - Limit traversal to specific musician/instrument/staff (default: `[]` = entire piece)
+- **`:start-measure`** - Begin from this measure (0-based, default: 0)
+- **`:end-measure`** - Stop at this measure (0-based, inclusive, default: nil = no limit)
+- **`:start-position`** and **`:end-position`** - Fine-grained position control within measures
+
+```clojure
+;; Examples of scope control
+(timewalk piece {})                                        ; Entire piece
+(timewalk piece {:boundary-vpd [:musicians 0]})            ; First musician only
+(timewalk piece {:start-measure 10 :end-measure 20})      ; Measures 10-20
+(timewalk piece {:boundary-vpd staff-vpd :start-measure 5}) ; One staff from measure 5
+```
+
 **For Clojure learners**: A **lazy sequence** is one of Clojure's most powerful features. Instead of computing all results upfront and storing them in memory, lazy sequences generate values *on demand* as you consume them. This means you can work with potentially infinite sequences or very large data sets without exhausting memory. When you call `(timewalk piece {})`, it doesn't immediately traverse the entire musical structure—it returns a recipe for traversal that executes incrementally as you request items. This lazy evaluation combines naturally with the `->>` threading macro to build readable, memory-efficient data processing pipelines.
 
 Let's start with practical examples that show the power of this approach.
