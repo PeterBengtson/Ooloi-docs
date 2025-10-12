@@ -331,19 +331,36 @@ The easiest way to use the `timewalk` function is the **2-arity form** that retu
 (timewalk piece options)
 ```
 
-The `options` map controls traversal scope with these keys:
-- **`:boundary-vpd`** - Limit traversal to specific musician/instrument/staff (default: `[]` = entire piece)
-- **`:start-measure`** - Begin from this measure (0-based, default: 0)
-- **`:end-measure`** - Stop at this measure (0-based, inclusive, default: nil = no limit)
-- **`:start-position`** and **`:end-position`** - Fine-grained position control within measures
+### Controlling What Gets Traversed
 
+By default, `timewalk` processes your entire piece. But you often want to work with just a portion:
+
+**Process just one musician's part:**
 ```clojure
-;; Examples of scope control
-(timewalk piece {})                                        ; Entire piece
-(timewalk piece {:boundary-vpd [:musicians 0]})            ; First musician only
-(timewalk piece {:start-measure 10 :end-measure 20})      ; Measures 10-20
-(timewalk piece {:boundary-vpd staff-vpd :start-measure 5}) ; One staff from measure 5
+;; Analyze only the violin I part
+(timewalk piece {:boundary-vpd [:musicians 0]})
 ```
+
+**Process a specific measure range:**
+```clojure
+;; Work with measures 10-20 (useful for editing or analysis)
+(timewalk piece {:start-measure 10 :end-measure 20})
+```
+
+**Combine both - one instrument, specific measures:**
+```clojure
+;; Just the flute part, measures 5-10
+(timewalk piece {:boundary-vpd [:musicians 2 :instruments 0]
+                 :start-measure 5
+                 :end-measure 10})
+```
+
+**Why scope control matters:**
+- **Performance** - Process 10 measures instead of 1,000
+- **Focus** - Work on the section you're editing
+- **Efficiency** - Don't traverse what you don't need
+
+The `:boundary-vpd` parameter takes a Vector Path Descriptor pointing to any level of your piece hierarchy - a musician, instrument, or staff. The `:start-measure` and `:end-measure` parameters let you focus on specific measure ranges. Combined, they give you precise control over what gets processed.
 
 **For Clojure learners**: A **lazy sequence** is one of Clojure's most powerful features. Instead of computing all results upfront and storing them in memory, lazy sequences generate values *on demand* as you consume them. This means you can work with potentially infinite sequences or very large data sets without exhausting memory. When you call `(timewalk piece {})`, it doesn't immediately traverse the entire musical structure—it returns a recipe for traversal that executes incrementally as you request items. This lazy evaluation combines naturally with the `->>` threading macro to build readable, memory-efficient data processing pipelines.
 
