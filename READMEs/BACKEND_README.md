@@ -79,7 +79,6 @@ The backend is a sophisticated server application using **Integrant dependency i
 
 #### gRPC Server Component
 - **Unified API** serving ~193 methods via protocol buffers
-- **Transport optimization** with in-process and network modes
 - **TLS support** with automatic certificate generation
 - **Health monitoring** with built-in gRPC health service
 
@@ -276,18 +275,14 @@ lein run -- --port 8080
 lein run -- --tls true
 lein run -- --tls true --cert-path ./custom.crt --key-path ./custom.key
 
-# gRPC transport optimization ([ADR-0019](../ADRs/0019-In-Process-gRPC-Transport-Optimization.md))
-lein run -- --grpc-transport in-process --health-port 10701
-
 # Multiple options
-lein run -- --port 8080 --timeout-ms 3000 --grpc-transport network --tls true
+lein run -- --port 8080 --timeout-ms 3000 --health-port 10701 --tls true
 ```
 
 **Environment Variables** (recommended for production):
 ```bash
 export OOLOI_PORT=8080
 export OOLOI_TIMEOUT_MS=3000
-export OOLOI_GRPC_TRANSPORT=in-process
 export OOLOI_HEALTH_PORT=10701
 # TLS configuration
 export OOLOI_TLS=true
@@ -305,12 +300,7 @@ lein run
 | **TLS Enabled** | `--tls true/false` | `OOLOI_TLS` | false | Enable/disable TLS encryption |
 | **TLS Certificate** | `--cert-path PATH` | `OOLOI_CERT_PATH` | platform default | Path to TLS certificate file (created if missing) |
 | **TLS Private Key** | `--key-path PATH` | `OOLOI_KEY_PATH` | platform default | Path to TLS private key file (created if missing) |
-| **gRPC Transport** | `--grpc-transport TYPE` | `OOLOI_GRPC_TRANSPORT` | network | Transport mode: `network` or `in-process` |
 | **Health Port** | `--health-port 10701` | `OOLOI_HEALTH_PORT` | 10701 | HTTP health endpoint port for monitoring |
-
-**gRPC Transport Modes** ([ADR-0019](../ADRs/0019-In-Process-gRPC-Transport-Optimization.md)):
-- **`network`** (default): Standard TCP communication for client-server deployments
-- **`in-process`**: High-performance in-JVM communication (37.5-75x faster, 98.7-99.3% latency reduction) for testing or combined deployments
 
 **Health Monitoring**:
 - **Health Port**: HTTP endpoint for external monitoring tools (load balancers, ops dashboards)

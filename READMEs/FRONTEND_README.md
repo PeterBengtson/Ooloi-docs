@@ -224,14 +224,14 @@ lein run
 # With backend connection configuration
 lein run -- --backend-host remote-server --backend-port 10700
 
-# With UI and transport options  
-lein run -- --ui-mode graphical --transport network
+# With UI options
+lein run -- --ui-mode graphical
 
 # With TLS security
 lein run -- --tls true --cert-path /path/to/server-cert.pem
 
 # Complete configuration example
-lein run -- --backend-host localhost --backend-port 10700 --transport network --ui-mode graphical --timeout-ms 5000 --tls false
+lein run -- --backend-host localhost --backend-port 10700 --ui-mode graphical --timeout-ms 5000 --tls false
 ```
 
 #### Available CLI Arguments
@@ -240,7 +240,6 @@ lein run -- --backend-host localhost --backend-port 10700 --transport network --
 |--------------|------------|-------------|-----------------|
 | `--backend-host HOST` | hostname/IP | localhost | Backend server hostname or IP address |
 | `--backend-port PORT` | 1-65535 | 10700 | Backend server port number |
-| `--transport MODE` | network, in-process | network | Communication transport mechanism |
 | `--ui-mode MODE` | graphical, headless | graphical | User interface display mode |
 | `--timeout-ms MS` | milliseconds | 5000 | Backend connection timeout |
 | `--tls FLAG` | true, false | false | Enable TLS encryption for backend connection |
@@ -248,7 +247,7 @@ lein run -- --backend-host localhost --backend-port 10700 --transport network --
 
 **Argument Validation:**
 - Port numbers are validated as integers within valid range
-- Transport and UI modes are validated against allowed values
+- UI mode is validated against allowed values
 - TLS setting accepts only "true" or "false"
 - Certificate path is optional when TLS enabled (auto-discovers from `~/.ooloi/certs/`)
 
@@ -260,7 +259,6 @@ All CLI arguments have corresponding environment variable alternatives:
 |-------------------------|-------------------|-----------------|
 | `OOLOI_FRONTEND_BACKEND_HOST` | --backend-host | Backend server hostname |
 | `OOLOI_FRONTEND_BACKEND_PORT` | --backend-port | Backend server port |
-| `OOLOI_FRONTEND_TRANSPORT` | --transport | Transport mode (network/in-process) |
 | `OOLOI_FRONTEND_UI_MODE` | --ui-mode | UI mode (graphical/headless) |
 | `OOLOI_FRONTEND_TIMEOUT_MS` | --timeout-ms | Connection timeout in milliseconds |
 | `OOLOI_FRONTEND_TLS` | --tls | Enable TLS (true/false) |

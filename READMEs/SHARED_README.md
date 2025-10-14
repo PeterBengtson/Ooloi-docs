@@ -355,23 +355,14 @@ The combined application supports configuration for development and advanced use
 
 ### Command-Line Arguments
 
-The shared project supports orchestration modes with comprehensive configuration:
+The combined application is a simple wrapper around backend and frontend components running in a single JVM:
 
 ```bash
 # Basic combined application
 lein run
 
-# Integration testing mode
-lein run -- --mode integration-test --frontend-port 10800 --backend-port 10700
-
-# Single-process combined deployment
-lein run -- --mode combined --ui-mode graphical --transport in-process
-
-# Distributed coordination mode  
-lein run -- --mode distributed --frontend-host remote-frontend --backend-host remote-backend
-
-# Development orchestration
-lein run -- --mode dev-orchestrator --auto-restart true --log-level debug
+# With custom configuration
+lein run -- --port 10700 --ui-mode graphical
 ```
 
 #### Available CLI Arguments
@@ -460,9 +451,6 @@ Combined mode always uses in-process transport with no network communication:
 ```bash
 # Combined mode - in-process communication (always)
 lein run
-
-# Explicit combined mode
-lein run -- --mode combined
 ```
 
 **No TLS overhead** - components communicate directly in same JVM via method calls, not network.
@@ -491,119 +479,6 @@ lein run -- --mode combined
 - Backend README: Server-side TLS configuration and certificate generation
 - Frontend README: Client-side TLS configuration and certificate trust
 - ADR-0020: TLS Infrastructure and Deployment Architecture
-
-### Deployment Modes
-
-#### integration-test
-**Components:** Integration Orchestrator + Test Frontend + Test Backend  
-**Use Case:** Deep integration testing between frontend and backend components
-```bash
-lein run -- --mode integration-test
-```
-- Starts both frontend and backend in test mode
-- Runs comprehensive integration test suite
-- Validates gRPC communication paths
-- Tests all transport modes and failure scenarios
-
-#### combined
-**Components:** All components in single JVM
-**Use Case:** Single-process deployment with maximum performance
-```bash
-lein run -- --mode combined
-```
-- Ultra-high-performance in-process communication (always)
-- Single JVM with all components
-- Minimal resource usage
-- Ideal for standalone deployments
-- **Transport not configurable** - always in-process for maximum performance
-
-#### distributed
-**Components:** Coordination of remote frontend and backend  
-**Use Case:** Multi-machine deployment coordination
-```bash
-lein run -- --mode distributed --frontend-host client-machine --backend-host server-machine
-```
-- Coordinates remote component deployment
-- Manages inter-machine communication
-- Handles distributed failure scenarios
-- Load balancing and health coordination
-
-#### dev-orchestrator
-**Components:** Development tooling and component management  
-**Use Case:** Development environment management
-```bash
-lein run -- --mode dev-orchestrator --auto-restart true
-```
-- Auto-restart components on code changes
-- Development-friendly logging and debugging
-- Hot reloading coordination
-- Developer productivity optimizations
-
-### Component Architecture
-
-The shared system includes these Integrant components:
-
-#### Integration Orchestrator Component
-- **Component coordination** between frontend and backend
-- **Health monitoring** across all components
-- **Failure detection** and automatic recovery
-- **Transport optimization** based on deployment mode
-
-#### Configuration Manager Component  
-- **Environment detection** and mode selection
-- **Component configuration** propagation
-- **Runtime reconfiguration** support
-- **Deployment validation** and compatibility checking
-
-#### Test Coordination Component
-- **Integration test execution** across frontend-backend boundary
-- **Test data management** using shared generators
-- **Performance benchmarking** of different transport modes
-- **Regression test automation** for gRPC communication
-
-### Integration Testing Architecture
-
-The shared project serves as the **integration testing hub**:
-
-```bash
-# Comprehensive integration testing
-export OOLOI_SHARED_MODE=integration-test
-export OOLOI_SHARED_INTEGRATION_TIMEOUT=60000
-lein run
-
-# Performance benchmarking
-lein run -- --mode integration-test --transport in-process --benchmark true
-
-# Multi-user collaboration testing
-lein run -- --mode integration-test --multi-client true --client-count 5
-```
-
-### Monitoring and Health (Future)
-
-When the shared project gets its own system components, it will provide comprehensive monitoring for the combined application:
-
-**Multi-Component Health Status:**
-- Health aggregation across frontend and backend components
-- Inter-component communication monitoring
-- Distributed system health coordination
-- Cross-boundary error tracking and recovery
-
-**Integration Test Monitoring:**
-- Real-time integration test execution status
-- Performance metrics across transport modes
-- Regression detection and alerting
-- Multi-user collaboration test results
-
-**Application Lifecycle Coordination:**
-- **Startup**: Orchestrates component initialization in correct dependency order
-- **Runtime**: Monitors health across component boundaries, handles partial failures
-- **Shutdown**: Coordinates graceful shutdown of all managed components
-
-**Production Readiness (Future):**
-- **Distributed health endpoints**: Coordination across multiple machines
-- **Integration monitoring**: Real-time gRPC communication health
-- **Performance telemetry**: Transport optimization metrics and recommendations
-- **Component isolation**: Failure isolation preventing cascade failures
 
 ## Development Commands
 
