@@ -105,8 +105,8 @@ See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) f
 - **Startup Order**: Backend components initialize first, then frontend components connect
 
 **Current Status:**
-- Backend system.clj supports only "backend" deployment mode
-- Frontend system.clj supports only "frontend" deployment mode
+- Backend system.clj always starts all backend components (piece-manager, grpc-server, http-server, cache-daemon)
+- Frontend system.clj always starts all frontend components (grpc-clients, ui-manager)
 - Combined deployment will be implemented in shared/system.clj when frontend stabilizes
 - Test helpers (with-server, with-clients) remain fully functional for component-level testing
 
@@ -381,7 +381,6 @@ The combined application accepts the **union** of all backend and frontend CLI a
 | **Argument** | **Values** | **Default** | **Description** |
 |--------------|------------|-------------|-----------------|
 | `--port PORT` | 1-65535 | 10700 | Backend gRPC server port |
-| `--deployment-mode MODE` | backend, frontend, combined | backend | System deployment configuration |
 | `--timeout-ms MS` | milliseconds | 5000 | Network timeout in milliseconds |
 | `--tls FLAG` | true, false | false | Enable/disable TLS encryption (backend) |
 | `--cert-path PATH` | file path | platform default | Path to server's public certificate |
@@ -404,7 +403,6 @@ The combined application accepts the **union** of all backend and frontend CLI a
 
 | **Argument** | **Values** | **Default** | **Description** |
 |--------------|------------|-------------|-----------------|
-| `--deployment-mode MODE` | combined, integration-test | combined | Combined application deployment mode |
 | `--transport MODE` | network, in-process | in-process | Inter-component transport for combined mode |
 
 ### Environment Variables
@@ -416,7 +414,6 @@ The combined application accepts the **union** of all backend and frontend envir
 | **Environment Variable** | **CLI Equivalent** | **Default** | **Description** |
 |-------------------------|-------------------|-------------|-----------------|
 | `OOLOI_PORT` | --port | 10700 | Backend gRPC server port |
-| `OOLOI_DEPLOYMENT_MODE` | --deployment-mode | backend | System deployment configuration |
 | `OOLOI_TIMEOUT_MS` | --timeout-ms | 5000 | Network timeout in milliseconds |
 | `OOLOI_TLS` | --tls | false | Enable/disable TLS encryption (backend) |
 | `OOLOI_CERT_PATH` | --cert-path | platform default | Path to server's public certificate |
@@ -432,7 +429,6 @@ The combined application accepts the **union** of all backend and frontend envir
 | `OOLOI_FRONTEND_BACKEND_PORT` | --backend-port | 10700 | Backend server port |
 | `OOLOI_FRONTEND_TRANSPORT` | --transport | network | Communication transport mode |
 | `OOLOI_FRONTEND_UI_MODE` | --ui-mode | graphical | User interface display mode |
-| `OOLOI_FRONTEND_DEPLOYMENT_MODE` | --deployment-mode | frontend | Frontend deployment configuration |
 | `OOLOI_FRONTEND_TIMEOUT_MS` | --timeout-ms | 5000 | Backend connection timeout |
 | `OOLOI_FRONTEND_TLS` | --tls | false | Enable TLS for backend connection |
 | `OOLOI_FRONTEND_CERT_PATH` | --cert-path | auto-discovered | Path to server's public certificate |

@@ -294,7 +294,6 @@ OOLOI_FRONTEND_CERT_PATH=~/.ooloi/certs/server.crt
 # Backend configuration (behind ALB with TLS termination)
 export OOLOI_TLS=false  # ALB handles TLS termination
 export OOLOI_PORT=8080  # Internal HTTP port
-export OOLOI_DEPLOYMENT_MODE=backend
 java -jar ooloi-backend.jar
 ```
 
