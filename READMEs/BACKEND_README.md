@@ -43,20 +43,29 @@ The backend is a sophisticated server application using **Integrant dependency i
 └─────────────────┘    └──────────────────┘
          │
          ▼
-┌─────────────────┐    ┌──────────────────┐
-│  Piece Manager  │◄──►│   gRPC Server    │
-│   Component     │    │   Component      │
-└─────────────────┘    └──────────────────┘
-         │                       │
-         ▼                       ▼
-┌─────────────────┐    ┌──────────────────┐
-│ STM Transaction │    │ Frontend Client  │
-│ Musical Data    │    │ Communication    │
-└─────────────────┘    └──────────────────┘
+┌─────────────────────────────────────────────────────┐
+│              Piece Manager Component                │
+│         (STM-based Musical Data Store)              │
+└─────────────────────────────────────────────────────┘
+    │                │                │
+    ▼                ▼                ▼
+┌──────────┐  ┌──────────┐  ┌──────────────┐
+│  Cache   │  │  gRPC    │  │ HTTP Server  │
+│  Daemon  │  │  Server  │  │  Component   │
+└──────────┘  └──────────┘  └──────────────┘
+    │              │              │
+    ▼              ▼              ▼
+┌──────────┐  ┌──────────┐  ┌──────────────┐
+│Background│  │ Frontend │  │   Health     │
+│Hash-Cons │  │  Client  │  │  Endpoints   │
+│Optimize  │  │  Comms   │  │& Monitoring  │
+└──────────┘  └──────────┘  └──────────────┘
 ```
 
 **Component Dependencies:**
-- **Application Core** → **Piece Manager** → **gRPC Server**
+- **Application Core** → **Piece Manager** → **{Cache Daemon, gRPC Server}** → **HTTP Server**
+- Cache Daemon, gRPC Server can start in parallel after Piece Manager
+- HTTP Server depends on gRPC Server for health monitoring integration
 - Configuration flows from CLI/environment through all components
 - Clean shutdown ensures proper resource cleanup in reverse dependency order
 
@@ -68,11 +77,25 @@ The backend is a sophisticated server application using **Integrant dependency i
 - **Thread-safe operations** coordinating multiple client requests
 - **Integration with shared models** for consistent data representation
 
-#### gRPC Server Component  
+#### gRPC Server Component
 - **Unified API** serving ~193 methods via protocol buffers
 - **Transport optimization** with in-process and network modes
 - **TLS support** with automatic certificate generation
 - **Health monitoring** with built-in gRPC health service
+
+#### HTTP Server Component
+- **Health monitoring endpoints** for load balancers and operations dashboards
+- **Statistics access** over HTTP for external monitoring tools
+- **Dependency on gRPC Server** for accessing health manager and port configuration
+- **Port configuration** via `--health-port` (default 10701)
+
+#### Cache Daemon Component
+- **Hash-consing optimization** for memory efficiency through object canonicalization
+- **Background maintenance** processes stored pieces to canonicalize duplicate musical objects
+- **Reduces memory footprint** by ensuring identical Pitches, Rests, Chords, and Articulations share canonical instances
+- **Configurable interval** with default 60-second maintenance cycles (`:maintenance-interval-ms`)
+- **STM-safe operations** using proper transaction semantics for cache modifications
+- **Automatic operation** requires no manual intervention once started
 
 #### Application Core
 - **CLI argument parsing** with comprehensive validation
@@ -92,7 +115,9 @@ backend/
 │   ├── system.clj                   ; Integrant system configuration
 │   ├── components/                  ; Integrant system components
 │   │   ├── piece_manager.clj        ; STM-based piece storage and management
-│   │   └── grpc_server.clj          ; gRPC server component
+│   │   ├── grpc_server.clj          ; gRPC server component
+│   │   ├── http_server.clj          ; HTTP health/statistics server component
+│   │   └── cache_daemon.clj         ; Hash-consing optimization daemon
 │   ├── grpc/                        ; gRPC server implementation
 │   │   ├── server.clj               ; Universal ExecuteMethod endpoint
 │   │   └── conversion.clj           ; OoloiValue conversion utilities

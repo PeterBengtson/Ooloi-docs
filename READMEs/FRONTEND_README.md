@@ -67,17 +67,20 @@ frontend/
 ├── docs/                            ; HTML documentation created by Codox
 ├── resources/                       ; Application resources, icons
 ├── src/main/clojure/ooloi/frontend/ ; Frontend consumer source code
-│   ├── components/                  ; UI components using shared data model
-│   │   ├── score_view.clj           ; Score rendering with shared Piece records
-│   │   └── measure_editor.clj       ; Measure editing using shared API
-│   ├── grpc/                        ; gRPC client for remote backend access
-│   │   ├── client.clj               ; OoloiService client wrapper
-│   │   └── connection.clj           ; Connection management
-│   └── core.clj                     ; Application entry point
-├── test/clojure/ooloi/frontend/     ; Frontend consumer tests (131 tests)
-│   ├── components/                  ; UI component tests
+│   ├── api.clj                      ; Frontend API functions (delegates to backend)
+│   ├── core.clj                     ; Application entry point and main function
+│   ├── system.clj                   ; Integrant system configuration
+│   ├── components/                  ; Integrant system components
+│   │   ├── grpc_clients.clj         ; gRPC client component
+│   │   └── ui_manager.clj           ; UI manager component
+│   └── grpc/                        ; gRPC client implementation
+│       ├── api_client.clj           ; API client with connection pooling
+│       ├── event_client.clj         ; Event client for backend communication
+│       └── server_registry.clj      ; Server registry management
+├── test/clojure/ooloi/frontend/     ; Frontend tests (128 tests)
+│   ├── components/                  ; Component tests
 │   ├── grpc/                        ; gRPC client tests
-│   └── integration/                 ; Unified data model integration tests
+│   └── system_integration_test.clj  ; System integration tests
 ├── CHANGELOG.md
 ├── README.md
 └── project.clj                      ; Dependencies: shared/ (complete Ooloi system)

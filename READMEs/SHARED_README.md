@@ -88,12 +88,29 @@ SHARED (Complete Ooloi System)
     (create-pitch "C4" "1/4")           ← IDENTICAL to frontend
     (pitch? some-pitch)                ← IDENTICAL to frontend
 
-KEY: Same data structures, same functions, same everything!
+KEY: Same data structures, same functions, same everything.
 ```
 
 ## Architecture Roles
 
 See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) for complete shared model architecture, unified system design, and multi-project integration details.
+
+### Future Combined System Architecture
+
+**Note:** The shared project will eventually include `system.clj` for combined deployment scenarios:
+
+**Combined System Components (Planned):**
+- **Backend Components**: piece-manager, grpc-server, http-server, cache-daemon (from backend project)
+- **Frontend Components**: grpc-clients, ui-manager (from frontend project)
+- **Startup Order**: Backend components initialize first, then frontend components connect
+
+**Current Status:**
+- Backend system.clj supports only "backend" deployment mode
+- Frontend system.clj supports only "frontend" deployment mode
+- Combined deployment will be implemented in shared/system.clj when frontend stabilizes
+- Test helpers (with-server, with-clients) remain fully functional for component-level testing
+
+**Dependency:** Combined system architecture depends on stable component definitions in both backend and frontend projects. The implementation awaits frontend component stabilization.
 
 ## Directory structure
 

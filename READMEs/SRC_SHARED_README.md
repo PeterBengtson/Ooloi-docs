@@ -34,12 +34,17 @@ This directory contains the **complete Ooloi system** - all data models, busines
 
 ```
 shared/src/main/clojure/ooloi/shared/
+├── api.clj                   ; Public API namespace (external consumers)
 ├── build.clj                 ; Build utilities and packaging
-├── core.clj                  ; Combined application entry point
+├── core.clj                  ; Complete system namespace (internal usage)
 ├── hierarchy.clj             ; Shared type hierarchy and dispatch values
 ├── interfaces.clj            ; Shared multimethod interface contracts
+├── platform.clj              ; Platform-specific utilities (JVM, native, etc.)
 ├── predicates.clj            ; Shared predicate functions (musical?, visual?, etc.)
-├── proto_conversion.clj      ; Clojure ↔ Protocol Buffer conversion utilities
+├── srv_client.clj            ; Server/client utilities for testing
+├── grpc/                     ; gRPC infrastructure
+│   ├── conversion.clj        ; Clojure ↔ Protocol Buffer conversion
+│   └── ...                   ; gRPC client/server components
 ├── models/                   ; **Complete Data Model**
 │   ├── core.clj              ; Model core and macro system
 │   ├── changes.clj           ; ChangeSet data structure for time sigs, key sigs, tempos
