@@ -206,7 +206,7 @@ The build process automatically adjusts version numbers for compatibility with d
 
 ### Application Architecture
 
-The Ooloi Frontend is now a full-featured application with comprehensive system architecture matching the backend. It uses Integrant dependency injection for component lifecycle management and supports multiple deployment scenarios.
+The Ooloi Frontend is now a full-featured application with comprehensive system architecture matching the backend. It uses Integrant dependency injection for component lifecycle management.
 
 **Key Components:**
 - **gRPC Client**: Manages connection to backend server
@@ -231,7 +231,7 @@ lein run -- --ui-mode graphical --transport network
 lein run -- --tls true --cert-path /path/to/server-cert.pem
 
 # Complete configuration example
-lein run -- --backend-host localhost --backend-port 10700 --transport network --ui-mode graphical --deployment-mode frontend --timeout-ms 5000 --tls false
+lein run -- --backend-host localhost --backend-port 10700 --transport network --ui-mode graphical --timeout-ms 5000 --tls false
 ```
 
 #### Available CLI Arguments
@@ -242,7 +242,6 @@ lein run -- --backend-host localhost --backend-port 10700 --transport network --
 | `--backend-port PORT` | 1-65535 | 10700 | Backend server port number |
 | `--transport MODE` | network, in-process | network | Communication transport mechanism |
 | `--ui-mode MODE` | graphical, headless | graphical | User interface display mode |
-| `--deployment-mode MODE` | frontend, combined-client, dev-client-only | frontend | Application deployment configuration |
 | `--timeout-ms MS` | milliseconds | 5000 | Backend connection timeout |
 | `--tls FLAG` | true, false | false | Enable TLS encryption for backend connection |
 | `--cert-path PATH` | file path | auto-discovered | Path to server's public certificate (TLS only) |
@@ -263,7 +262,6 @@ All CLI arguments have corresponding environment variable alternatives:
 | `OOLOI_FRONTEND_BACKEND_PORT` | --backend-port | Backend server port |
 | `OOLOI_FRONTEND_TRANSPORT` | --transport | Transport mode (network/in-process) |
 | `OOLOI_FRONTEND_UI_MODE` | --ui-mode | UI mode (graphical/headless) |
-| `OOLOI_FRONTEND_DEPLOYMENT_MODE` | --deployment-mode | Deployment configuration |
 | `OOLOI_FRONTEND_TIMEOUT_MS` | --timeout-ms | Connection timeout in milliseconds |
 | `OOLOI_FRONTEND_TLS` | --tls | Enable TLS (true/false) |
 | `OOLOI_FRONTEND_CERT_PATH` | --cert-path | Path to server's public certificate |
@@ -285,46 +283,7 @@ export OOLOI_FRONTEND_BACKEND_PORT=443
 export OOLOI_FRONTEND_TLS=true
 export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/certs/ooloi-server.pem
 lein run
-
-# Headless mode for automated testing
-export OOLOI_FRONTEND_UI_MODE=headless
-export OOLOI_FRONTEND_DEPLOYMENT_MODE=dev-client-only
-lein run
 ```
-
-### Deployment Modes
-
-The frontend supports multiple deployment configurations:
-
-#### frontend (Default)
-**Components:** gRPC Client + UI Manager  
-**Use Case:** Standard client deployment connecting to remote backend server
-```bash
-lein run -- --deployment-mode frontend
-```
-- Connects to external backend server
-- Full graphical user interface
-- Typical production client configuration
-
-#### combined-client
-**Components:** All client components  
-**Use Case:** Single-process client with comprehensive functionality
-```bash
-lein run -- --deployment-mode combined-client
-```
-- All available client-side components
-- Enhanced local functionality
-- Suitable for standalone client deployments
-
-#### dev-client-only
-**Components:** gRPC Client only (minimal)  
-**Use Case:** Development and testing scenarios
-```bash
-lein run -- --deployment-mode dev-client-only
-```
-- Minimal client for development
-- No UI components (lightweight)
-- Ideal for integration testing and debugging
 
 ### Error Handling and Exit Codes
 
@@ -488,7 +447,7 @@ The frontend can be started as a separate process for integration testing:
 
 ```bash
 # Start frontend in background for testing
-lein run -- --deployment-mode dev-client-only &
+lein run -- &
 FRONTEND_PID=$!
 
 # Run integration tests

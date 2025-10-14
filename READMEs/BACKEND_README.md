@@ -99,7 +99,6 @@ The backend is a sophisticated server application using **Integrant dependency i
 
 #### Application Core
 - **CLI argument parsing** with comprehensive validation
-- **Configuration management** supporting multiple deployment scenarios
 - **Error handling** with specific exit codes for operational tooling
 - **Lifecycle management** with JVM shutdown hooks
 
@@ -273,9 +272,6 @@ The backend supports flexible configuration through command-line arguments and e
 # Custom port
 lein run -- --port 8080
 
-# Deployment mode
-lein run -- --deployment-mode combined
-
 # TLS configuration ([ADR-0020](../ADRs/0020-TLS-Infrastructure-and-Deployment-Architecture.md))
 lein run -- --tls true
 lein run -- --tls true --cert-path ./custom.crt --key-path ./custom.key
@@ -284,13 +280,12 @@ lein run -- --tls true --cert-path ./custom.crt --key-path ./custom.key
 lein run -- --grpc-transport in-process --health-port 10701
 
 # Multiple options
-lein run -- --port 8080 --deployment-mode backend --timeout-ms 3000 --grpc-transport network --tls true
+lein run -- --port 8080 --timeout-ms 3000 --grpc-transport network --tls true
 ```
 
 **Environment Variables** (recommended for production):
 ```bash
 export OOLOI_PORT=8080
-export OOLOI_DEPLOYMENT_MODE=combined  
 export OOLOI_TIMEOUT_MS=3000
 export OOLOI_GRPC_TRANSPORT=in-process
 export OOLOI_HEALTH_PORT=10701
@@ -306,18 +301,12 @@ lein run
 | Parameter | CLI Flag | Environment Variable | Default | Description |
 |-----------|----------|---------------------|---------|-------------|
 | **Port** | `--port 8080` | `OOLOI_PORT` | 10700 | gRPC server port for frontend communication |
-| **Deployment Mode** | `--deployment-mode MODE` | `OOLOI_DEPLOYMENT_MODE` | backend | System deployment configuration |
 | **Timeout** | `--timeout-ms 3000` | `OOLOI_TIMEOUT_MS` | 5000 | Network timeout in milliseconds |
 | **TLS Enabled** | `--tls true/false` | `OOLOI_TLS` | false | Enable/disable TLS encryption |
 | **TLS Certificate** | `--cert-path PATH` | `OOLOI_CERT_PATH` | platform default | Path to TLS certificate file (created if missing) |
 | **TLS Private Key** | `--key-path PATH` | `OOLOI_KEY_PATH` | platform default | Path to TLS private key file (created if missing) |
 | **gRPC Transport** | `--grpc-transport TYPE` | `OOLOI_GRPC_TRANSPORT` | auto | Transport optimization: `network` or `in-process` |
 | **Health Port** | `--health-port 10701` | `OOLOI_HEALTH_PORT` | 10701 | HTTP health endpoint port for monitoring |
-
-**Deployment Modes**:
-- **`backend`** (default): Piece manager + gRPC server - typical server deployment
-- **`frontend`**: Client-only mode connecting to remote backend
-- **`combined`**: All components including UI support - single-process deployment
 
 **gRPC Transport Optimization** ([ADR-0019](../ADRs/0019-In-Process-gRPC-Transport-Optimization.md)):
 - **`auto`** (default): Automatic selection - `in-process` for combined mode, `network` for backend mode
@@ -472,7 +461,6 @@ For production deployment, use environment variables and proper process manageme
 ```bash
 # Set environment variables
 export OOLOI_PORT=10700
-export OOLOI_DEPLOYMENT_MODE=backend
 export OOLOI_TIMEOUT_MS=5000
 
 # Run with process management (e.g., systemd, supervisor, docker)
@@ -544,7 +532,6 @@ The backend provides comprehensive monitoring capabilities for production deploy
 - Specific exit codes for operational tooling integration
 - Environment variable configuration for containerized deployments
 - TLS support with automatic certificate generation
-- Multiple deployment modes for different operational scenarios
 
 ## Development Commands
 
@@ -638,7 +625,7 @@ The backend can be started as a separate process for integration testing with fr
 
 ```bash
 # Start backend in development mode for testing
-lein run -- --deployment-mode backend --port 10700 &
+lein run -- --port 10700 &
 BACKEND_PID=$!
 
 # Run integration tests with frontend client
@@ -671,7 +658,6 @@ java -jar target/ooloi-backend-*-standalone.jar
 FROM openjdk:22-jre-slim
 COPY target/ooloi-backend-*-standalone.jar /app/ooloi-backend.jar
 ENV OOLOI_PORT=10700
-ENV OOLOI_DEPLOYMENT_MODE=backend
 EXPOSE 10700
 CMD ["java", "-jar", "/app/ooloi-backend.jar"]
 ```
