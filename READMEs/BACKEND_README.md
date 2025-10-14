@@ -305,13 +305,12 @@ lein run
 | **TLS Enabled** | `--tls true/false` | `OOLOI_TLS` | false | Enable/disable TLS encryption |
 | **TLS Certificate** | `--cert-path PATH` | `OOLOI_CERT_PATH` | platform default | Path to TLS certificate file (created if missing) |
 | **TLS Private Key** | `--key-path PATH` | `OOLOI_KEY_PATH` | platform default | Path to TLS private key file (created if missing) |
-| **gRPC Transport** | `--grpc-transport TYPE` | `OOLOI_GRPC_TRANSPORT` | auto | Transport optimization: `network` or `in-process` |
+| **gRPC Transport** | `--grpc-transport TYPE` | `OOLOI_GRPC_TRANSPORT` | network | Transport mode: `network` or `in-process` |
 | **Health Port** | `--health-port 10701` | `OOLOI_HEALTH_PORT` | 10701 | HTTP health endpoint port for monitoring |
 
-**gRPC Transport Optimization** ([ADR-0019](../ADRs/0019-In-Process-gRPC-Transport-Optimization.md)):
-- **`auto`** (default): Automatic selection - `in-process` for combined mode, `network` for backend mode
-- **`in-process`**: Ultra-high-performance direct communication (37.5-75x faster, 98.7-99.3% latency reduction, for combined deployments)
-- **`network`**: Standard TCP communication (for debugging or separate process deployment)
+**gRPC Transport Modes** ([ADR-0019](../ADRs/0019-In-Process-gRPC-Transport-Optimization.md)):
+- **`network`** (default): Standard TCP communication for client-server deployments
+- **`in-process`**: High-performance in-JVM communication (37.5-75x faster, 98.7-99.3% latency reduction) for testing or combined deployments
 
 **Health Monitoring**:
 - **Health Port**: HTTP endpoint for external monitoring tools (load balancers, ops dashboards)

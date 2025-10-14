@@ -46,25 +46,27 @@ Combined deployments must maintain operational capabilities:
 
 ## Decision
 
-We have implemented **automatic in-process gRPC transport optimization** for combined deployments with the following architecture:
+We have implemented **in-process gRPC transport support** as an alternative to network transport with the following architecture:
 
-### 1. Automatic Transport Selection
+### 1. Transport Selection
 
-**Default Behavior:**
-- **Combined mode**: Automatic in-process transport for maximum performance
-- **Backend-only mode**: Network transport for external client access
-- **Frontend-only mode**: Network transport to connect to remote backend
+**Backend Default Behavior:**
+- **Network transport**: Standard TCP communication for client-server deployments
+- **In-process override**: Can be explicitly configured for testing scenarios
 
-**Override Mechanism:**
+**Configuration:**
 ```bash
-# CLI override (highest priority)
-./ooloi-combined --grpc-transport network --health-port 10701
+# Default: network transport
+java -jar ooloi-backend.jar
 
-# Environment variables (fallback)
-OOLOI_GRPC_TRANSPORT=network OOLOI_HEALTH_PORT=10701 ./ooloi-combined
+# Explicit network transport
+java -jar ooloi-backend.jar --grpc-transport network
 
-# Default behavior (automatic optimization)  
-./ooloi-combined
+# In-process transport (for testing)
+java -jar ooloi-backend.jar --grpc-transport in-process
+
+# Environment variable configuration
+OOLOI_GRPC_TRANSPORT=network java -jar ooloi-backend.jar
 ```
 
 ### 2. Dual Health Endpoint Architecture

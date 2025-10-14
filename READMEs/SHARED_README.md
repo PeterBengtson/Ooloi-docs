@@ -349,7 +349,9 @@ This will start the Ooloi combined application.
 
 ## Configuration and Deployment
 
-The shared project supports comprehensive configuration for orchestrating both frontend and backend components:
+**Note:** The combined application described here is the **typical end-user desktop application** - what musicians download and run on their computers. It works like any other desktop application (e.g., Sibelius, MuseScore) with all components in a single process. For distributed deployments (separate backend server + multiple frontend clients), use the backend and frontend projects directly.
+
+The combined application supports configuration for development and advanced use cases:
 
 ### Command-Line Arguments
 
@@ -385,25 +387,15 @@ The combined application accepts the **union** of all backend and frontend CLI a
 | `--tls FLAG` | true, false | false | Enable/disable TLS encryption (backend) |
 | `--cert-path PATH` | file path | platform default | Path to server's public certificate |
 | `--key-path PATH` | file path | platform default | Path to server's private key (backend only) |
-| `--grpc-transport TYPE` | network, in-process, auto | auto | gRPC transport optimization |
 | `--health-port PORT` | 1-65535 | 10701 | HTTP health endpoint port |
 
 **Frontend Component Configuration:**
 
 | **Argument** | **Values** | **Default** | **Description** |
 |--------------|------------|-------------|-----------------|
-| `--backend-host HOST` | hostname/IP | localhost | Backend server hostname or IP address |
-| `--backend-port PORT` | 1-65535 | 10700 | Backend server port number |
-| `--transport MODE` | network, in-process | network | Communication transport mechanism |
 | `--ui-mode MODE` | graphical, headless | graphical | User interface display mode |
-| `--tls FLAG` | true, false | false | Enable TLS encryption for backend connection |
-| `--cert-path PATH` | file path | auto-discovered | Path to server's public certificate |
 
-**Combined Application Specific:**
-
-| **Argument** | **Values** | **Default** | **Description** |
-|--------------|------------|-------------|-----------------|
-| `--transport MODE` | network, in-process | in-process | Inter-component transport for combined mode |
+**Note on Transport:** The combined application always uses in-process transport for maximum performance. Transport is not configurable - if you need network transport, run backend and frontend separately.
 
 ### Environment Variables
 
@@ -418,20 +410,15 @@ The combined application accepts the **union** of all backend and frontend envir
 | `OOLOI_TLS` | --tls | false | Enable/disable TLS encryption (backend) |
 | `OOLOI_CERT_PATH` | --cert-path | platform default | Path to server's public certificate |
 | `OOLOI_KEY_PATH` | --key-path | platform default | Path to server's private key (backend only) |
-| `OOLOI_GRPC_TRANSPORT` | --grpc-transport | auto | gRPC transport optimization |
 | `OOLOI_HEALTH_PORT` | --health-port | 10701 | HTTP health endpoint port |
 
 **Frontend Component Environment Variables:**
 
 | **Environment Variable** | **CLI Equivalent** | **Default** | **Description** |
 |-------------------------|-------------------|-------------|-----------------|
-| `OOLOI_FRONTEND_BACKEND_HOST` | --backend-host | localhost | Backend server hostname |
-| `OOLOI_FRONTEND_BACKEND_PORT` | --backend-port | 10700 | Backend server port |
-| `OOLOI_FRONTEND_TRANSPORT` | --transport | network | Communication transport mode |
 | `OOLOI_FRONTEND_UI_MODE` | --ui-mode | graphical | User interface display mode |
-| `OOLOI_FRONTEND_TIMEOUT_MS` | --timeout-ms | 5000 | Backend connection timeout |
-| `OOLOI_FRONTEND_TLS` | --tls | false | Enable TLS for backend connection |
-| `OOLOI_FRONTEND_CERT_PATH` | --cert-path | auto-discovered | Path to server's public certificate |
+
+**Note on Transport:** The combined application always uses in-process transport. No transport-related environment variables are supported - if you need network transport, run backend and frontend separately.
 
 **Configuration Precedence:** CLI arguments override environment variables, which override application defaults.
 
@@ -466,97 +453,25 @@ The shared project provides the **complete TLS infrastructure** used by both bac
 
 #### Common Scenarios
 
-**1. Combined Mode (Default) - No TLS Needed**
+**Combined Mode - No TLS Needed**
 
-Combined mode uses in-process transport with no network communication:
+Combined mode always uses in-process transport with no network communication:
 
 ```bash
-# Default configuration - in-process communication
+# Combined mode - in-process communication (always)
 lein run
 
-# Explicit combined mode with in-process transport
-lein run -- --mode combined --transport in-process
+# Explicit combined mode
+lein run -- --mode combined
 ```
 
-**No TLS overhead** - components communicate directly in same JVM.
-
-**2. Combined Mode with Network Transport (Testing)**
-
-When testing network transport in combined mode with self-signed certificates:
-
-```bash
-# Backend and frontend use self-signed certificates with insecure mode
-export OOLOI_TLS=true
-export OOLOI_INSECURE_DEV_MODE=true
-export OOLOI_FRONTEND_TLS=true
-export OOLOI_FRONTEND_INSECURE_DEV_MODE=true
-lein run -- --mode combined --transport network
-```
-
-**Why insecure mode?** Self-signed certificates cannot be validated through a trust chain.
-
-**3. Integration Testing with TLS**
-
-When running integration tests with TLS-enabled backend and frontend:
-
-```bash
-# Integration test mode with TLS (self-signed)
-export OOLOI_TLS=true
-export OOLOI_INSECURE_DEV_MODE=true
-export OOLOI_FRONTEND_TLS=true
-export OOLOI_FRONTEND_INSECURE_DEV_MODE=true
-lein run -- --mode integration-test
-```
-
-**4. Production Combined Mode (Network Transport)**
-
-For combined deployment with CA-signed certificates:
-
-```bash
-# Backend with Let's Encrypt certificate
-export OOLOI_TLS=true
-export OOLOI_CERT_PATH=/etc/letsencrypt/live/ooloi.example.com/fullchain.pem
-export OOLOI_KEY_PATH=/etc/letsencrypt/live/ooloi.example.com/privkey.pem
-
-# Frontend uses system trust store
-export OOLOI_FRONTEND_TLS=true
-export OOLOI_FRONTEND_BACKEND_HOST=ooloi.example.com
-export OOLOI_FRONTEND_BACKEND_PORT=443
-
-lein run -- --mode combined --transport network
-```
-
-**Fully secure** - standard PKI validation, encrypted communication.
-
-**5. Enterprise with Custom CA**
-
-For enterprise environments with internal certificate authority:
-
-```bash
-# Backend with company-issued certificate
-export OOLOI_TLS=true
-export OOLOI_CERT_PATH=/etc/ssl/company/ooloi-server.crt
-export OOLOI_KEY_PATH=/etc/ssl/company/ooloi-server.key
-
-# Frontend trusts company CA
-export OOLOI_FRONTEND_TLS=true
-export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/company/company-ca.crt
-export OOLOI_FRONTEND_BACKEND_HOST=ooloi.internal
-
-lein run -- --mode combined --transport network
-```
-
-**Uses proper validation** - no insecure mode needed.
+**No TLS overhead** - components communicate directly in same JVM via method calls, not network.
 
 #### TLS Configuration Summary
 
-| **Scenario** | **Transport** | **Backend TLS** | **Frontend TLS** | **Insecure Mode** | **Security** |
-|--------------|---------------|-----------------|------------------|-------------------|--------------|
-| Combined (Default) | in-process | N/A | N/A | N/A | N/A (no network) |
-| Testing Network TLS | network | `true` | `true` | `true` | ⚠️  Development only |
-| Integration Testing | network | `true` | `true` | `true` | ⚠️  Development only |
-| Production (Let's Encrypt) | network | `true` | `true` | `false` | ✅ Fully secure |
-| Enterprise Custom CA | network | `true` | `true` | `false` | ✅ Fully secure |
+| **Scenario** | **Transport** | **Backend TLS** | **Frontend TLS** | **Security** |
+|--------------|---------------|-----------------|------------------|--------------|
+| Combined (Always) | in-process | N/A | N/A | N/A (no network) |
 
 #### TLS Implementation Details
 
@@ -591,15 +506,16 @@ lein run -- --mode integration-test
 - Tests all transport modes and failure scenarios
 
 #### combined
-**Components:** All components in single JVM  
+**Components:** All components in single JVM
 **Use Case:** Single-process deployment with maximum performance
 ```bash
-lein run -- --mode combined --transport in-process
+lein run -- --mode combined
 ```
-- Ultra-high-performance in-process communication
+- Ultra-high-performance in-process communication (always)
 - Single JVM with all components
 - Minimal resource usage
 - Ideal for standalone deployments
+- **Transport not configurable** - always in-process for maximum performance
 
 #### distributed
 **Components:** Coordination of remote frontend and backend  
