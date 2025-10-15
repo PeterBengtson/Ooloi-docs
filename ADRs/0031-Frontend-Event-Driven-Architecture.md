@@ -636,6 +636,20 @@ The architecture supports multiple strategies:
 
 Event Router is agnostic to loading policy.
 
+**Steady-State Behavior (Efficiency Over Time):**
+
+The system naturally converges to high efficiency through gradual accumulation:
+- **Complete paintlist coverage**: Over time, frontend builds complete piece representation with all paintlists fetched and stored locally
+- **Perfect cache stability**: Paintlists remain valid indefinitely unless piece changes - 100% of paintlists stay fresh between edits
+- **Zero fetch on reopen**: Once fully loaded, reopening a layout window requires no network fetches (all data already local)
+- **Targeted refreshes only**: When piece changes, only affected VPD hierarchy levels marked stale and refetched
+- **No download onslaught**: Opening a piece triggers no downloads; opening a layout triggers only viewport fetches
+- **Minimal network traffic**: After initial viewport load, network activity limited to sparse invalidation events and targeted refetches
+
+This creates a **write-once, read-many** pattern where paintlist data is fetched lazily as needed, cached permanently, and only refreshed when explicitly invalidated by piece modifications. Between edits, the cache is perfectly stable - no spontaneous invalidations, no cache thrashing, no unnecessary refetches. The architecture optimizes for the common case: viewing existing notation requires zero network activity after initial load.
+
+**Source of Truth:** The backend piece (via STM) is always authoritative and contains complete graphical information down to every line, dot, and glyph. Backend rendering pipeline (ADR-0028) precomputes all paintlists - the frontend never computes layout. Frontend simply downloads what it needs through **idempotent reads** via normal gRPC API calls (ADR-0018 generated methods), **lazily** fetching only visible viewport paintlists as required. Same fetch request always returns identical paintlist data unless piece changed. This functional purity enables perfect cache stability and eliminates cache coherence complexity.
+
 ### Tradeoffs and Limitations
 
 **Complexity:** Two event models require bridge/adapter code (Event Router). Developers must understand which events flow through which system. Testing requires two strategies - JavaFX event simulation for local events, mock gRPC streams for backend events.
