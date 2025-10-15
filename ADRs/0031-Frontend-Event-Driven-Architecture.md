@@ -469,7 +469,7 @@ Event arrives → Single Platform.runLater() → Format message (i18n) → Show 
 
 **Category Aggregation Pattern:** One Platform.runLater() per category batch, not per event. Multiple events in same category coalesce into single JAT pass. Dramatically reduces scene graph update overhead. Example: 10 cursor movements → 1 scene graph update.
 
-**Pull-Based Data Model:** Events are notifications of staleness, not data carriers. Actual paintlist data comes from fetch requests (normal gRPC API calls). Client requests what it needs, when it needs it. No complex synchronization protocol required.
+**Pull-Based Data Model:** Events are notifications of staleness, not data carriers. Actual paintlist data comes from fetch requests (normal gRPC API calls). Client requests what it needs, when it needs it. No complex synchronization protocol required. **Lazy fetching at layout window level:** Opening a piece subscribes to events but downloads no graphical data. Only when a layout window opens does the frontend fetch paintlists for that layout's viewport. Events may mark paintlists stale at various hierarchy levels, but fetching remains lazy - triggered by viewport visibility or explicit user navigation.
 
 **Guaranteed Event Ordering:** ADR-0024 per-client drainer threads ensure FIFO delivery. Events arrive in exact STM transaction order. Each client has dedicated queue with strict ordering. gRPC streaming provides reliable, ordered transport. No sequence numbers or ordering logic needed in Event Router.
 
@@ -523,7 +523,14 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 2. Windowing System (Phase 8) calls Event Router: subscribe-to-piece(piece-id)
 3. Event Router calls backend API: subscribe-to-piece-events(piece-id)
 4. Backend acknowledges subscription, starts streaming events for that piece
-5. UI component begins loading viewport (triggers initial fetches via Fetch Coordinator)
+5. **No paintlist data downloaded yet** - piece subscription only enables event reception
+
+**Opening a Layout Window:**
+1. User opens layout window (within an already-opened piece)
+2. UI component begins loading viewport (triggers initial fetches via Fetch Coordinator)
+3. Fetch Coordinator queues HIGH priority requests for visible paintlists
+4. Background threads fetch paintlists at appropriate hierarchy levels (Page/System/Staff/Measure)
+5. Paintlists arrive → Platform.runLater() → Rendering Data Manager → trigger repaint
 
 **Closing a Piece:**
 1. User closes piece window
