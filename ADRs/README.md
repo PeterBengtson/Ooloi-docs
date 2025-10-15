@@ -34,13 +34,14 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0027-Plugin-Based-Audio-Architecture](0027-Plugin-Based-Audio-Architecture.md)**: Frontend plugin-based audio architecture with complete backend-frontend audio separation
 - **[0029-Global-Hash-Consing](0029-Global-Hash-Consing.md)**: Global hash-consing for immutable musical objects with Nippy integration
 - **[0030-MusicXML](0030-MusicXML.md)**: MusicXML interoperability excellence with best-in-class importer/exporter
+- **[0031-Frontend-Event-Driven-Architecture](0031-Frontend-Event-Driven-Architecture.md)**: Separate event systems with Event Router for frontend-backend event synchronization
 
 ## Decisions by Technical Area
 
 | **Technical Area** | **ADRs** | **Key Decisions** |
 |-------------------|----------|-------------------|
 | **Core Language & Runtime** | [0000](0000-Clojure.md), [0004](0004-STM-for-concurrency.md), [0007](0007-Nippy.md) | Clojure functional programming, STM concurrency, high-performance serialization |
-| **Client-Server Architecture** | [0001](0001-Frontend-Backend-Separation.md), [0002](0002-gRPC.md), [0018](0018-API-gRPC-Interface-and-Events.md), [0019](0019-In-Process-gRPC-Transport-Optimization.md), [0022](0022-Lazy-Frontend-Backend-Architecture.md), [0023](0023-Shared-Model-Contracts.md), [0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md), [0025](0025-Server-Statistics-Architecture.md) | Clean separation, gRPC communication, event streaming, performance optimization, operational monitoring |
+| **Client-Server Architecture** | [0001](0001-Frontend-Backend-Separation.md), [0002](0002-gRPC.md), [0018](0018-API-gRPC-Interface-and-Events.md), [0019](0019-In-Process-gRPC-Transport-Optimization.md), [0022](0022-Lazy-Frontend-Backend-Architecture.md), [0023](0023-Shared-Model-Contracts.md), [0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md), [0025](0025-Server-Statistics-Architecture.md), [0031](0031-Frontend-Event-Driven-Architecture.md) | Clean separation, gRPC communication, event streaming, frontend event routing with category aggregation, performance optimization, operational monitoring |
 | **User Interface & Rendering** | [0005](0005-JavaFX-and-Skija.md), [0006](0006-SMuFL.md), [0013](0013-Slur-Formatting.md) | JavaFX+Skija graphics, professional music fonts, advanced curve rendering |
 | **Audio Architecture** | [0027](0027-Plugin-Based-Audio-Architecture.md) | Frontend plugin-based audio processing, complete backend-frontend audio separation |
 | **Data Architecture & Storage** | [0008](0008-VPDs.md), [0010](0010-Pure-Trees.md), [0011](0011-Shared-Structure.md), [0012](0012-Persisting-Pieces.md), [0029](0029-Global-Hash-Consing.md) | Hierarchical addressing, immutable trees, memory optimization, persistence, global hash-consing |
