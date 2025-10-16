@@ -501,6 +501,7 @@ rpc CollaborateOnPiece(stream CollaborationInput) returns (stream CollaborationO
 - [ADR-0009: Collaboration](0009-Collaboration.md) - Collaboration features requiring real-time server-to-client event notifications
 - [ADR-0017: System Architecture](0017-System-Architecture.md) - Component architecture and production deployment patterns
 - [ADR-0024: gRPC Concurrency and Flow Control Architecture](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Flow control architecture for event streaming performance
+- [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Frontend event routing and subscription management using the event streaming infrastructure defined here
 
 ### Technical Documentation
 - [API Guide](../guides/POLYMORPHIC_API_GUIDE.md) - Complete API usage patterns and VPD integration

@@ -111,6 +111,7 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
 - [ADR-0000: Clojure](0000-Clojure.md) - Language choice enabling JavaFX integration through excellent Java interop
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural decision requiring frontend GUI framework choice
 - [ADR-0006: SMuFL](0006-SMuFL.md) - Musical symbol standard that will be rendered through JavaFX/Skija
+- [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - JavaFX Application Thread integration with backend event streams using Platform.runLater() patterns
 
 ## Theme Implementation
 

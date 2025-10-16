@@ -582,3 +582,4 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 - [ADR-0023: Shared Model Contracts](0023-Shared-Model-Contracts.md) - Multi-project architecture enabling frontend-backend integration
 - [ADR-0024: gRPC Concurrency and Flow Control Architecture](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Event streaming flow control for collaborative synchronization
 - [ADR-0025: Server Statistics Architecture](0025-Server-Statistics-Architecture.md) - Collaborative session analytics and performance monitoring
+- [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Complete implementation of the event-driven synchronization architecture specified here
