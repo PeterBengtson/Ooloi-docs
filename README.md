@@ -7,8 +7,9 @@ See **[WELCOME.md](WELCOME.md)** for a personal welcome from founder Peter Bengt
 ## Contents
 
 - **[ADRs/](ADRs/)**: Architectural decision records documenting key technical choices
-- **[guides/](guides/)**: User tutorials and developer guides  
+- **[guides/](guides/)**: User tutorials and developer guides
 - **[READMEs/](READMEs/)**: Project introductions and overview documents
+- **[LICENSE.md](LICENSE.md)**: Mozilla Public License v2.0
 
 Ooloi will be open-sourced after reaching basic note entry and printing capabilities.
 
