@@ -61,14 +61,16 @@ Musical items that can appear within Measures include:
 
 VPDs are used for efficient navigation and serialization of the nested piece structure:
 
-- Compact form: `[:m 2 0 0 0 46]` (for musical elements)
-- Verbose form: `[:musicians 2 :instruments 0 :staves 0 :measures 4 :voices 06]`
-- Layout elements use `:l` instead of `:m`
+- **VPD form (compact)**: `[:m 2 0 0 0 46]` - The standard notation used in all code (for musical elements)
+- **Navigator form (expanded)**: `[:musicians 2 :instruments 0 :staves 0 :measures 4 :voices 06]` - Internal form for Specter operations
+- Layout elements use `:l` instead of `:m` as the VPD prefix
+
+The compact VPD form is what you always write in code. The navigator form is only used internally by Specter for path navigation.
 
 Key VPD operations:
 ```clojure
-(defn compact-to-verbose [descriptor])
-(defn canonicalize [descriptor])
+(defn navigator [descriptor])  ; Converts VPD to navigator form
+(defn compact [descriptor])    ; Converts navigator to VPD form
 (defn retrieve [piece descriptor])
 ```
 

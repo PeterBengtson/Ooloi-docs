@@ -54,7 +54,7 @@ This guide combines API documentation with functional architecture principles de
 
 ;; VPD-based operations
 (api/add-musician [] piece-id new-musician)              ; VPD path, then piece reference
-(api/get-measure [:musicians 0 :instruments 0 :staves 0 :voices 0] piece-id 5)  ; VPD navigation
+(api/get-measure [:m 0 0 0] piece-id 5)  ; VPD navigation (compact form)
 
 ;; Direct object operations  
 (api/add-musician piece-object new-musician)             ; Direct object operation
@@ -81,7 +81,7 @@ Ooloi's polymorphic API represents a type-driven software architecture approach 
 **The API achieves musical abstraction by eliminating the gap between musical concepts and computational operations:**
 
 - **Musical vocabulary**: `add-musician`, `set-tempo`, `(make-transposer :up :major :second)` - functions use terms musicians understand
-- **Musical hierarchy**: VPD paths like `[:musicians 0 :instruments 0 :staves 0]` mirror how musicians navigate scores  
+- **Musical hierarchy**: VPD paths like `[:m 0 0 0]` mirror how musicians navigate scores  
 - **Musical operations**: Actions respect musical relationships and constraints automatically
 - **Musical predicates**: `pitch?`, `chord?`, `rhythmic-item?` enable musical reasoning in code
 
@@ -95,7 +95,7 @@ Ooloi's polymorphic API represents a type-driven software architecture approach 
 ;; Musical thinking maps directly to code
 (api/add-musician [] piece-id violin-musician)      ; "Add violin to the piece"
 (api/set-tempo [] piece-id 0 allegro-tempo)         ; "Set opening tempo"
-(api/get-measure [:m 0 0 0 0] piece-id 5)          ; "Get measure 5 from first voice"
+(api/get-measure [:m 0 0 0] piece-id 5)           ; "Get measure 5 from first staff"
 
 ;; Complex operations through simple composition
 (sequence (comp (timewalk {:boundary-vpd melody-voice})
@@ -162,9 +162,9 @@ The **VPD vs object dispatch** solves fundamental problems in musical software a
 
 ;; Ooloi's approach: ONE function works at ANY level (natural musical thinking)
 (api/add-musician [] piece-id musician)                              ; "Add musician to piece"
-(api/add-instrument [:musicians 0] piece-id instrument)              ; "Add instrument to first musician"  
-(api/add-staff [:musicians 0 :instruments 0] piece-id staff)         ; "Add staff to instrument"
-(api/add-measure [:musicians 0 :instruments 0 :staves 0 :voices 0] piece-id measure)  ; "Add measure to voice"
+(api/add-instrument [:m 0] piece-id instrument)              ; "Add instrument to first musician"
+(api/add-staff [:m 0 0] piece-id staff)         ; "Add staff to instrument"
+(api/add-measure [:m 0 0 0 0] piece-id measure)  ; "Add measure to voice"
 
 ;; This mirrors how musicians think: "add X to Y" regardless of hierarchy level
 ```
@@ -202,7 +202,7 @@ The **VPD vs object dispatch** solves fundamental problems in musical software a
 ;; VPD pattern provides convenience AND composability
 (dosync
   (api/add-musician [] piece-id musician1)      ; All VPD operations participate
-  (api/add-instrument [:musicians 0] piece-id instrument)  ; in the same transaction
+  (api/add-instrument [:m 0] piece-id instrument)  ; in the same transaction
   (api/set-tempo [] piece-id 0 new-tempo))      ; atomically
 ```
 
@@ -238,11 +238,11 @@ The VPD API handles STM complexity automatically, providing the benefits of Oolo
 ;; Low-level approach: Manual STM management (implementation focus)
 (let [piece-ref (api/get-piece-ref piece-id)]
   (dosync
-    (alter piece-ref assoc-in [:musicians 0 :instruments 0 :staves 0 :measures 5] new-measure)))
+    (alter piece-ref assoc-in [:m 0 0 0 5] new-measure)))
 ;; Developer thinks about: refs, transactions, paths, error handling
 
 ;; Platform approach: VPD operations (musical focus)
-(api/set-measure [:musicians 0 :instruments 0 :staves 0] piece-id 5 new-measure)
+(api/set-measure [:m 0 0 0] piece-id 5 new-measure)
 ;; Developer thinks about: "set measure 5 in the first voice"
 
 ;; The VPD API abstracts away implementation complexity while providing musical clarity
@@ -262,7 +262,7 @@ The VPD API handles STM complexity automatically, providing the benefits of Oolo
 ;; 😎 Compose multiple VPD operations in one transaction - best of both worlds
 (dosync
   (api/add-musician [] piece-id musician1)
-  (api/add-instrument [:musicians 0] piece-id instrument)  
+  (api/add-instrument [:m 0] piece-id instrument)  
   (api/set-tempo [] piece-id 0 new-tempo))
 ;; You get atomic composition without the STM complexity!
 ```
@@ -276,11 +276,11 @@ For distributed applications or when you need ACID guarantees across network bou
 ```clojure
 ;; Execute multiple operations atomically, even across network boundaries
 (api/atomic [{:method-name :set-name 
-              :vpd [:musicians 0]
+              :vpd [:m 0]
               :piece-id "symphony-1" 
               :parameters ["Violin I"]}
              {:method-name :set-key-signature
-              :vpd [:musicians 0 :instruments 0 :staves 0 :measures 0 :voices 0]
+              :vpd [:m 0 0 0 0 0]
               :piece-id "symphony-1"
               :parameters ["G major"]}])
 ```
@@ -467,13 +467,13 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 (api/add-musician [] piece-id musician)                              
 
 ;; Add at musician level  
-(api/add-instrument [:musicians 0] piece-id instrument)              
+(api/add-instrument [:m 0] piece-id instrument)              
 
 ;; Add at instrument level
-(api/add-staff [:musicians 0 :instruments 0] piece-id staff)         
+(api/add-staff [:m 0 0] piece-id staff)         
 
 ;; Add at voice level
-(api/add-measure [:musicians 0 :instruments 0 :staves 0 :voices 0] piece-id measure)
+(api/add-measure [:m 0 0 0 0] piece-id measure)
 
 ;; Traditional APIs would need different functions for each level!
 ```
@@ -483,13 +483,13 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 ```clojure
 ;; VPD pattern automatically handles STM coordination:
 (api/add-musician [] piece-id musician1)              ; Automatic dosync
-(api/add-instrument [:musicians 0] piece-id inst)     ; Automatic dosync  
+(api/add-instrument [:m 0] piece-id inst)     ; Automatic dosync  
 (api/set-tempo [] piece-id 0 new-tempo)               ; Automatic dosync
 
 ;; Multiple VPD operations compose in outer transaction:
 (dosync
   (api/add-musician [] piece-id musician1)            ; All participate in
-  (api/add-instrument [:musicians 0] piece-id inst)   ; same atomic transaction
+  (api/add-instrument [:m 0] piece-id inst)   ; same atomic transaction
   (api/set-tempo [] piece-id 0 new-tempo))            ; automatically!
 ```
 
@@ -828,9 +828,9 @@ The type system makes VPD operations polymorphic at multiple levels:
 
 ```clojure
 ;; VPD operations work with any piece reference type:
-(api/get-measure [:musicians 0 :instruments 0 :staves 0] "piece-id" 5)      ; String ID
-(api/get-measure [:musicians 0 :instruments 0 :staves 0] piece-ref 5)       ; Piece ref
-(api/get-measure [:musicians 0 :instruments 0 :staves 0] piece-object 5)    ; Piece object
+(api/get-measure [:m 0 0 0] "piece-id" 5)      ; String ID
+(api/get-measure [:m 0 0 0] piece-ref 5)       ; Piece ref
+(api/get-measure [:m 0 0 0] piece-object 5)    ; Piece object
 
 ;; The mechanism uses automatic piece resolution:
 (defn get-measure [vpd piece-thing measure-index]
@@ -858,11 +858,11 @@ The type system makes VPD operations polymorphic at multiple levels:
         (alter piece-ref update-in vpd conj item)))))
 
 ;; Usage - automatic type validation
-(add-item [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0] 
+(add-item [:m 0 0 0 2 0] 
           "piece-id" 
           new-pitch)  ; ✓ Works - measures implement HasItems
 
-(add-item [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 0]
+(add-item [:m 0 0 0 2 0 :items 0]
           "piece-id"
           new-pitch)  ; ✗ Error - pitches don't implement HasItems
 ```
@@ -886,9 +886,9 @@ A key aspect is how **every operation** gets VPD capability automatically:
                 (apply ~(symbol getter-name) resolved-item# args#)))))))
 
 ;; This means ALL 200+ operations automatically work with VPDs:
-(get-musician [:musicians 0] piece-ref)           ; Auto-generated VPD method
-(get-measure [:musicians 0 :instruments 0 :staves 0 :voices 0] piece-ref 5)  ; Auto-generated
-(get-pitch [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 1] piece-ref)  ; Auto-generated
+(get-musician [:m 0] piece-ref)           ; Auto-generated VPD method
+(get-measure [:m 0 0 0] piece-ref 5)    ; Auto-generated
+(get-pitch [:m 0 0 0 2 0 :items 1] piece-ref)  ; Auto-generated
 ```
 
 ### VPD Path Type Coordination
@@ -899,11 +899,11 @@ A key aspect is how **every operation** gets VPD capability automatically:
   "Update both musical and visual hierarchies atomically."
   (dosync
     ;; Musical hierarchy update
-    (api/set-measure [:musicians 0 :instruments 0 :staves 0 :voices 0] 
+    (api/set-measure [:m 0 0 0 0] 
                      piece-id measure-num new-measure)
     
     ;; Visual hierarchy update  
-    (api/set-measure-view [:layouts 0 :page-views 0 :system-views 0 :staff-views 0]
+    (api/set-measure-view [:l 0 0 0 0]
                          piece-id measure-num new-measure-view)))
 
 ;; Type system ensures both hierarchies stay coordinated
@@ -948,7 +948,7 @@ A key aspect is how **every operation** gets VPD capability automatically:
 (api/set-duration ornament-instance 1/8)  ; Uses Ornament method
 
 ;; VPD operations work immediately
-(api/add-item [:musicians 0 :instruments 0 :staves 0 :measures 5 :voices 0]
+(api/add-item [:m 0 0 0 5 0]
               piece-id
               ornament-instance)  ; Works automatically
 
@@ -1049,8 +1049,8 @@ Once defined, your operations automatically get:
 (set-transposition chord-object 4)    ; Uses Chord implementation
 
 ;; VPD operations work immediately  
-(get-transposition [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0] piece-ref)
-(set-transposition [:staves 0] piece-ref 7)  ; Automatic STM transactions
+(get-transposition [:m 0 0 0 2 0] piece-ref)
+(set-transposition [:m 0 0 0] piece-ref 7)  ; Automatic STM transactions
 
 ;; API access works immediately
 (api/get-transposition pitch)         ; Exported through api.clj
@@ -1518,11 +1518,11 @@ Understanding when to use each dispatch mechanism:
   "Update both musical and visual hierarchies with type coordination."
   (dosync
     ;; Musical system update
-    (let [musical-vpd [:musicians 0 :instruments 0 :staves 0 :voices 0]]
+    (let [musical-vpd [:m 0 0 0 0]]
       (api/set-measure musical-vpd piece-id measure-num new-content))
     
     ;; Visual system update - dispatch on content type
-    (let [visual-vpd [:layouts 0 :page-views 0 :system-views 0 :staff-views 0]
+    (let [visual-vpd [:l 0 0 0 0]
           measure-view (generate-measure-view new-content)]  ; Polymorphic generation
       (api/set-measure-view visual-vpd piece-id measure-num measure-view))))
 
@@ -1700,7 +1700,7 @@ Understanding when to use each dispatch mechanism:
 **3. VPD Type Validation Failures**
 ```clojure
 ;; Problem: VPD points to wrong type
-(api/add-item [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 0]
+(api/add-item [:m 0 0 0 2 0 :items 0]
               piece-id item)  ; Error: Pitch doesn't implement HasItems
 
 ;; Solution: Check VPD target type
@@ -1819,11 +1819,11 @@ The VPD pattern proves convenient, so core developers often choose it over direc
 ;; Core developers could write this (direct object operations):
 (dosync
   (alter piece-ref update :musicians conj musician)
-  (alter piece-ref assoc-in [:layouts 0 :page-views 0] new-page))
+  (alter piece-ref assoc-in [:l 0 0] new-page))
 
 ;; But they prefer this (VPD operations):
 (api/add-musician [] piece-id musician)               ; Automatic transaction
-(api/set-page-view [:layouts 0] piece-id 0 new-page) ; Automatic transaction
+(api/set-page-view [:l 0] piece-id 0 new-page) ; Automatic transaction
 
 ;; Why? They get uniformity and transactions for free!
 ```

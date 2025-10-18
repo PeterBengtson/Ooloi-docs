@@ -76,7 +76,7 @@ This tuple gives you **complete context** for any musical element:
 
 ```clojure
 ;; Example tuple for a pitch
-[#Pitch{:note "C4" :duration 1/4} [:musicians 0 :instruments 0 :staves 0 :measures 2 :voices 0 :items 1] 1/4]
+[#Pitch{:note "C4" :duration 1/4} [:m 0 0 0 2 0 :items 1] 1/4]
 ;;   ^actual pitch                  ^exact location in piece structure (staff → measure → voice → item)  ^beat position
 ```
 
@@ -1064,11 +1064,11 @@ Don't process the entire symphony when you only need one part:
 ```clojure
 ;; ❌ INEFFICIENT - Traverses all 29 instruments, then filters
 (->> (timewalk large-symphony {})
-     (filter #(= (vpd %) [:musicians 0 :instruments 0]))  ; Filter after processing
+     (filter #(= (vpd %) [:m 0 0]))  ; Filter after processing
      (filter pitch??))
 
 ;; ✅ EFFICIENT - Only traverses the one instrument you need
-(->> (timewalk large-symphony {:boundary-vpd [:musicians 0 :instruments 0]})
+(->> (timewalk large-symphony {:boundary-vpd [:m 0 0]})
      (filter pitch??))
 ```
 
@@ -1081,7 +1081,7 @@ Working on measures 10-15 of the flute part? Tell the timewalker exactly what yo
 ```clojure
 ;; Just measures 10-15 of the flute (musician 2, instrument 0)
 ;; Note: end-measure is INCLUSIVE - this processes measures 10, 11, 12, 13, 14, AND 15
-(->> (timewalk piece {:boundary-vpd [:musicians 2 :instruments 0]
+(->> (timewalk piece {:boundary-vpd [:m 2 0]
                       :start-measure 10
                       :end-measure 15})
      (filter pitch??))
@@ -1115,7 +1115,7 @@ Even with scope limiting, use `take` to stop as soon as you find what you need:
 
 ```clojure
 ;; Find first forte passage in violin I, measures 10-50
-(->> (timewalk piece {:boundary-vpd [:musicians 0 :instruments 0]
+(->> (timewalk piece {:boundary-vpd [:m 0 0]
                       :start-measure 10
                       :end-measure 50})
      (filter forte-passage??)

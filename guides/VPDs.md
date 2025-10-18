@@ -8,7 +8,22 @@ For background on why VPDs were chosen as the primary addressing mechanism in Oo
 
 ## What are VPDs?
 
-VPDs are vectors that describe a path to a specific element within the nested structure of a Ooloi piece. They can be used to navigate both the musical hierarchy (musicians, instruments, staves, voices, measures) and the visual hierarchy (layouts, page views, system views, staff views, measure views).
+VPDs are vectors that describe a path to a specific element within the nested structure of a Ooloi piece. They come in two forms:
+
+- **VPD Form (Compact)** - The default notation using prefix keywords: `[:m 0 1 0 3 0]` or `[:l 0 2 1]`
+- **Navigator Form** - The expanded notation for Specter operations: `[:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0]`
+
+VPDs can navigate both the musical hierarchy (musicians, instruments, staves, measures, voices) and the visual hierarchy (layouts, page views, system views, staff views, measure views).
+
+### Key Concept: VPDs vs Navigators
+
+**VPDs** are the compact form you use in code. **Navigators** are what Specter uses internally. The conversion happens automatically:
+
+```clojure
+[:m 0 1 0 3 0]  ; VPD (compact) - what you write
+       ↓
+[:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0]  ; Navigator - for Specter
+```
 
 ## Why Use VPDs?
 
@@ -19,48 +34,61 @@ VPDs are vectors that describe a path to a specific element within the nested st
 
 ## How VPDs Work
 
-VPDs use a combination of keywords and indices to navigate the piece structure. Here's a basic example:
+### VPD Form (Default - Always Use This)
+
+Use the compact VPD form in all your code:
+
+```clojure
+[:m 0 1 0 3 0]  ; Musical: musician 0, instrument 1, staff 0, measure 3, voice 0
+[:l 0 2 1 0 3]  ; Layout: layout 0, page-view 2, system-view 1, staff-view 0, measure-view 3
+```
+
+The prefix keywords map to hierarchical structures:
+- `:m` expands to `[:musicians :instruments :staves :measures :voices]`
+- `:l` expands to `[:layouts :page-views :system-views :staff-views :measure-views]`
+
+### Navigator Form (Internal - Rarely Needed)
+
+The navigator form is what gets used internally with Specter:
 
 ```clojure
 [:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0]
-```
-
-This VPD points to the 4th measure of the first voice of the first staff of the second instrument of the first musician.
-
-For the layout hierarchy, a VPD might look like this:
-
-```clojure
 [:layouts 0 :page-views 2 :system-views 1 :staff-views 0 :measure-views 3]
 ```
 
-This points to the 4th measure view of the first staff view of the second system view of the third page view of the first layout.
+You rarely need to work with this form directly. The conversion happens automatically when you use VPD operations.
 
-## Compact Form
+### Converting Between Forms
 
-Ooloi also supports a compact form of VPDs for brevity:
-
-```clojure
-[:m 0 1 0 0 3]  ; Equivalent to [:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0]
-[:l 0 2 1 0 3]  ; Equivalent to [:layouts 0 :page-views 2 :system-views 1 :staff-views 0 :measure-views 3]
-```
-
-## Accessing Measure Contents
-
-VPDs can be extended to access the contents of measures, which may have an ad-hoc structure. The general format for accessing measure contents is:
+If you need to convert (rare), use these functions:
 
 ```clojure
-[:m 0 1 0 0 3 :items <item-selector>]
+(require '[ooloi.shared.ops.vpd :as vpd])
+
+;; VPD → Navigator
+(vpd/navigator [:m 0 1 0 3 0])
+; => [:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0]
+
+;; Navigator → VPD
+(vpd/compact [:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0])
+; => [:m 0 1 0 3 0]
 ```
 
-VPDs support simple path navigation with numeric indices. For example, `[:m 0 1 0 0 3 :items 2]` gets the 3rd item in the measure.
+Both functions are idempotent - calling them multiple times is safe.
 
-For nested structures like tuplets, the VPD can be further extended:
+## Accessing Voice Contents
+
+VPDs can be extended to access the contents of voices (which contain items). Use the compact form:
 
 ```clojure
-[:m 0 1 0 0 3 :items 0 :items 1]
+[:m 0 1 0 3 0 :items 2]  ; 3rd item in voice 0 of measure 3
 ```
 
-This selects the second item in the first tuplet (assuming the first item in the measure is a tuplet) of the specified measure.
+For nested structures like tuplets, extend the path further:
+
+```clojure
+[:m 0 1 0 3 0 :items 5 :items 1]  ; 2nd item inside item 5 (if it's a tuplet)
+```
 
 ## Using VPDs in the API
 
@@ -74,18 +102,27 @@ The piece argument can be either:
 - A Piece instance (typically used in backend operations)
 - A string piece ID (typically used by the frontend to reference a specific piece)
 
-Here are examples of using VPDs with API functions:
+Here are examples of using VPDs with API functions (always use compact form):
 
 ```clojure
-(add-attachment [:m 0 1 0 0 3] piece-or-id :staccato)
-(get-items [:m 0 1 0 0 3] piece-or-id)
-(get-measure [:m 0 1 0 0 3] piece-or-id)
-(set-time-signature [:m 0 1 0 0 3] piece-or-id [4 4])
-(get-key-signature [:m 0 1 0 0 3] piece-or-id)
-(set-tempo [:m 0 1 0 0 3] piece-or-id 120)
+(add-attachment [:m 0 1 0 3 0] piece-or-id :staccato)
+(get-items [:m 0 1 0 3 0] piece-or-id)
+(get-voice [:m 0 1 0 3 0] piece-or-id)
+(set-name [:m 0 1] piece-or-id "Violin I")
+(set-time-signature [] piece-or-id 0 [4 4])  ; Root piece, measure 0
+(set-tempo [] piece-or-id 0 120)              ; Root piece, measure 0
 ```
 
 In these examples, `piece-or-id` can be either a Piece instance or a string piece ID. The API will handle the resolution of the piece ID to a Piece instance internally when necessary.
+
+### Important: Always Use Compact VPD Form
+
+```clojure
+✅ CORRECT:  (get-voice [:m 0 1 0 3 0] piece)
+❌ WRONG:    (get-voice [:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0] piece)
+```
+
+The compact form is the standard. Navigator form is only for internal Specter operations.
 
 ## VPDs and Transactions
 
@@ -93,19 +130,37 @@ VPDs are designed to work seamlessly with Ooloi's transaction system. When using
 
 ## VPDs and Specter
 
-Internally, Ooloi uses the Specter library to resolve VPDs and perform operations. This allows for efficient and powerful manipulation of the piece structure. For measure contents, Specter's powerful selection and transformation capabilities are leveraged to handle the ad-hoc structure efficiently.
+Internally, Ooloi uses the Specter library for path-based operations. Here's how it works:
+
+1. **You write**: `[:m 0 1 0 3 0]` (compact VPD)
+2. **System converts**: `[:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0]` (navigator)
+3. **Specter navigates**: Uses the navigator form to access/modify the data
+
+### Path Extension Pattern
+
+Internal operations extend VPDs with attribute names to build Specter paths:
+
+```clojure
+;; Setting the name of instrument 1 in musician 0
+;; Internally: (conj [:m 0 1] :name) => [:musicians 0 :instruments 1 :name]
+(set-name [:m 0 1] piece "Violin I")
+```
+
+This pattern (`conj vpd attr-name`) is how VPDs interface with Specter for attribute access.
 
 ## Best Practices
 
-1. **💡 Prefer VPD operations over manual STM** - Use convenient VPD-based API operations like `(api/set-measure vpd piece-id 5 measure)` instead of manual STM like `(alter piece-ref assoc-in vpd measure)`. Why make life difficult when the VPD API handles transactions, validation, and error handling for you? See [API Convenience](POLYMORPHIC_API_GUIDE.md#-api-convenience-why-use-vpd-operations) for details.
+1. **💡 Always use compact VPD form** - Use `[:m 0 1 0 3 0]` not `[:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0]`. The compact form is the standard notation for all user code. Navigator form is only for internal Specter operations.
 
-2. Know that VPDs are an option when referencing elements within a piece. You don't need to use them for everything.
+2. **💡 Prefer VPD operations over manual STM** - Use convenient VPD-based API operations like `(api/set-measure vpd piece-id 5 measure)` instead of manual STM like `(alter piece-ref assoc-in vpd measure)`. Why make life difficult when the VPD API handles transactions, validation, and error handling for you? See [API Convenience](POLYMORPHIC_API_GUIDE.md#-api-convenience-why-use-vpd-operations) for details.
 
-3. Prefer the verbose form of VPDs in code for readability, unless space is a significant constraint.
+3. Know that VPDs are an option when referencing elements within a piece. You don't need to use them for everything.
 
 4. When creating new API functions, you must support VPDs as arguments for consistency with the rest of the system. The macros in models.core are a great help.
 
 5. Always provide the piece or piece ID when using API functions with VPDs.
+
+6. **💡 Conversion is idempotent** - Both `vpd/navigator` and `vpd/compact` can be called multiple times safely. The system handles this correctly.
 
 ## Related Guides
 

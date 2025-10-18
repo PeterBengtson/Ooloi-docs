@@ -101,7 +101,7 @@ The `timewalk` function follows the established Clojure pattern used by core fun
 
 ```clojure
 ;; 2-arity: Returns lazy sequence directly
-(timewalk piece {:boundary-vpd [:musicians 0 :instruments 0]})
+(timewalk piece {:boundary-vpd [:m 0 0]})
 
 ;; 1-arity: Returns transducer for composition
 (sequence (comp (timewalk {:boundary-vpd staff-boundary})
@@ -353,29 +353,35 @@ The timewalk provides temporal coordination through a breadth-first traversal st
 
 ### 2. Boundary-VPD Scope Limiting
 
-The system uses Vector Path Descriptors (VPDs) to define traversal boundaries:
+The system uses Vector Path Descriptors (VPDs) to define traversal boundaries. **VPDs are always specified in compact form** (with `:m` or `:l` prefixes) throughout the API:
 
 ```clojure
 ;; Full piece traversal
 {:boundary-vpd nil}
 
-;; Single musician traversal  
-{:boundary-vpd [:musicians 2]}
+;; Single musician traversal
+{:boundary-vpd [:m 2]}
 
 ;; Single instrument traversal
-{:boundary-vpd [:musicians 0 :instruments 1]}
+{:boundary-vpd [:m 0 1]}
 
 ;; Single staff traversal
-{:boundary-vpd [:musicians 0 :instruments 1 :staves 0]}
+{:boundary-vpd [:m 0 1 0]}
 ```
 
 Boundary-VPDs provide precise control over traversal scope while maintaining the temporal coordination guarantee within the specified boundary.
+
+**VPD vs Navigator Distinction:**
+- **VPD (compact form)**: What you write in code - `[:m 0 1 0]`
+- **Navigator (expanded form)**: What Specter uses internally - `[:musicians 0 :instruments 1 :staves 0]`
+
+The system automatically converts compact VPDs to navigator form when needed for internal traversal operations. This conversion is transparent to users - always use compact VPD form in your code.
 
 ### 3. Transducer Integration Examples
 
 ```clojure
 ;; MIDI generation with early termination
-(sequence (comp (timewalk {:boundary-vpd [:musicians 0]})
+(sequence (comp (timewalk {:boundary-vpd [:m 0]})
                 (filter rhythmic-item?)
                 (map item->midi-event)
                 (remove nil?)
@@ -390,7 +396,7 @@ Boundary-VPDs provide precise control over traversal scope while maintaining the
       [piece])
 
 ;; Layout calculation with running totals
-(sequence (comp (timewalk {:boundary-vpd [:musicians 0 :instruments 0]})
+(sequence (comp (timewalk {:boundary-vpd [:m 0 0]})
                 (map calculate-width)
                 (scan +)
                 (take-while #(< % page-width)))
