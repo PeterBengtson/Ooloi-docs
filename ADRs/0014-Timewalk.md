@@ -371,11 +371,12 @@ The system uses Vector Path Descriptors (VPDs) to define traversal boundaries. *
 
 Boundary-VPDs provide precise control over traversal scope while maintaining the temporal coordination guarantee within the specified boundary.
 
-**VPD vs Navigator Distinction:**
-- **VPD (compact form)**: What you write in code - `[:m 0 1 0]`
-- **Navigator (expanded form)**: What Specter uses internally - `[:musicians 0 :instruments 1 :staves 0]`
+**VPD Format in Timewalk:**
+- **Input**: Accepts both compact (`[:m 0 1 0]`) and navigator (`[:musicians 0 :instruments 1 :staves 0]`) boundaries
+- **Output**: Always returns compact VPDs in result tuples `[item vpd position]`
+- **Internal**: Navigator form only used internally for Specter operations when needed
 
-The system automatically converts compact VPDs to navigator form when needed for internal traversal operations. This conversion is transparent to users - always use compact VPD form in your code.
+Timewalk results always contain compact VPDs, making them efficient for transmission and storage. Use VPD accessors (`vpd/measure`, `vpd/voice`, etc.) to extract information from result VPDs - these work with both compact and navigator forms.
 
 ### 3. Transducer Integration Examples
 
