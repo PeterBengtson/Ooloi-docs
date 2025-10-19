@@ -122,7 +122,7 @@ MusicXML import/export will be implemented as a **backend plugin** (`ooloi-music
 - Core backend remains format-agnostic
 
 **Plugin Dependencies:**
-- Single XML parsing library (e.g., `musicxml-java`, `proxymusic`)
+- Single XML parsing library (ProxyMusic recommended, or custom JAXB-generated bindings)
 - XSD validation library
 - Standard JVM libraries (no exotic dependencies)
 
@@ -149,10 +149,25 @@ All existing VPD-based operations are sufficient:
 **Not multiple libraries.** One generic MusicXML parser + configuration-driven vendor-specific repairs.
 
 ### Library Selection
-Use single JVM-compatible XML parsing library:
-- `musicxml-java` (reference implementation)
-- `proxymusic` (JAXB-based)
-- Or similar generic MusicXML parser
+
+**Primary Option: ProxyMusic (Recommended)**
+- **Repository**: https://github.com/Audiveris/proxymusic
+- **License**: LGPL-3.0 (compatible with Ooloi's MPL 2.0)
+- **Status**: Actively maintained (last updated September 2024)
+- **Coverage**: Complete MusicXML 4.0 support (~325 auto-generated Java classes from W3C schemas)
+- **Maven**: `org.audiveris:proxymusic:4.0.3`
+- **Approach**: JAXB-based marshal/unmarshal
+
+**Alternative: Roll Your Own**
+- Generate Java bindings directly from W3C MusicXML XSD schemas using JAXB `xjc` compiler
+- Provides maximum control but requires maintaining schema-to-code generation pipeline
+- More maintenance burden vs. proven ProxyMusic implementation
+
+**Why ProxyMusic:**
+- Schema-generated = stays current with MusicXML spec updates automatically
+- Battle-tested by Audiveris OMR project (processes thousands of real-world scores)
+- LGPL-3.0 weak copyleft license allows commercial use and MPL 2.0 compatibility
+- Active maintenance and community support
 
 **All vendor handling is post-parse normalization, not different parsing libraries.**
 
