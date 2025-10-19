@@ -148,28 +148,49 @@ All existing VPD-based operations are sufficient:
 
 **Not multiple libraries.** One generic MusicXML parser + configuration-driven vendor-specific repairs.
 
-### Library Selection
+### Library Selection: ProxyMusic
 
-**Primary Option: ProxyMusic (Recommended)**
+**Decision: Use ProxyMusic as the MusicXML parsing library.**
+
+**Justification:**
+
+ProxyMusic is the **only production-ready, actively-maintained Java MusicXML library**:
+
 - **Repository**: https://github.com/Audiveris/proxymusic
-- **License**: LGPL-3.0 (compatible with Ooloi's MPL 2.0)
+- **License**: LGPL-3.0 (weak copyleft, compatible with Ooloi's MPL 2.0)
 - **Status**: Actively maintained (last updated September 2024)
 - **Coverage**: Complete MusicXML 4.0 support (~325 auto-generated Java classes from W3C schemas)
 - **Maven**: `org.audiveris:proxymusic:4.0.3`
-- **Approach**: JAXB-based marshal/unmarshal
+- **Approach**: JAXB-based marshal/unmarshal (auto-generated from official W3C XSD schemas)
 
-**Alternative: Roll Your Own**
-- Generate Java bindings directly from W3C MusicXML XSD schemas using JAXB `xjc` compiler
-- Provides maximum control but requires maintaining schema-to-code generation pipeline
-- More maintenance burden vs. proven ProxyMusic implementation
+**Why ProxyMusic is the only viable option:**
 
-**Why ProxyMusic:**
-- Schema-generated = stays current with MusicXML spec updates automatically
-- Battle-tested by Audiveris OMR project (processes thousands of real-world scores)
-- LGPL-3.0 weak copyleft license allows commercial use and MPL 2.0 compatibility
-- Active maintenance and community support
+1. **No alternatives exist**: Survey of Java MusicXML ecosystem reveals:
+   - **JMusicXML**: Minimal, unmaintained, incomplete coverage
+   - **JFugue**: Event-based parser only (no export), poorly maintained
+   - **libmusicxml**: C/C++ only (not JVM-compatible)
+   - **No "reference implementation"**: W3C provides only XSD schemas, not code
 
-**All vendor handling is post-parse normalization, not different parsing libraries.**
+2. **Battle-tested**: Audiveris OMR project uses ProxyMusic to process thousands of real-world scores from IMSLP and other sources
+
+3. **Schema-generated**: Auto-generated from official W3C schemas means:
+   - Stays current with MusicXML spec updates
+   - Complete coverage of all elements/attributes
+   - No manual maintenance of XML bindings
+
+4. **License compatible**: LGPL-3.0 weak copyleft permits:
+   - Commercial use
+   - Linking from MPL 2.0 code (Ooloi)
+   - Distribution without viral copyleft
+
+5. **Community support**: Active maintenance, issue tracking, used by multiple projects
+
+**Alternative considered and rejected:**
+- **DIY JAXB generation**: Generate bindings directly from W3C XSD using `xjc` compiler
+  - **Rejected because**: Reinvents proven solution, adds maintenance burden, provides zero additional value over ProxyMusic (which is already schema-generated)
+  - **When justified**: Only if ProxyMusic becomes unmaintained or incompatibly licensed
+
+**All vendor handling is post-parse normalization, not different parsing libraries.** ProxyMusic provides generic MusicXML parsing; vendor-specific repairs are implemented as composable functions applied after parsing.
 
 ### Vendor Detection
 
