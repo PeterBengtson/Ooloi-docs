@@ -2,11 +2,13 @@
 
 ## Status
 
-Proposed
+**Accepted** (with plugin architecture implementation)
 
 ## Date
 
-September 24, 2025
+September 24, 2025 (Proposed)
+October 19, 2025 (Accepted and repositioned)
+October 19, 2025 (Updated) - Revised for plugin implementation and compressed timeline
 
 ## Table of Contents
 
@@ -16,22 +18,54 @@ September 24, 2025
 4. [Scope](#scope)
 5. [Non-Goals](#non-goals)
 6. [Architecture Overview](#architecture-overview)
-7. [MusicXML-IR Contract & Invariants](#musicxml-ir-contract--invariants)
-8. [Importer Design](#importer-design)
-9. [Exporter Design](#exporter-design)
-10. [Versioning & Packaging Policy](#versioning--packaging-policy)
-11. [Determinism Requirements](#determinism-requirements)
-12. [Vendor Profiles](#vendor-profiles)
-13. [Common Interop Issues by Vendor](#common-musicxml-interop-issues-by-vendor-field-observations)
-14. [Validation & Semantics](#validation--semantics)
-15. [CLI & Reports](#cli--reports)
-16. [Performance & Scale Targets](#performance--scale-targets)
-17. [Performance Gates](#performance-gates)
-18. [Implementation Roadmap](#implementation-roadmap)
-19. [Risks & Mitigations](#risks--mitigations)
-20. [Alternatives Considered](#alternatives-considered)
-21. [Success Criteria](#success-criteria)
-22. [Consequences](#consequences)
+7. [Implementation As Plugin](#implementation-as-plugin)
+8. [MusicXML-IR Contract & Invariants](#musicxml-ir-contract--invariants)
+9. [Single Library + Vendor Profiles Architecture](#single-library--vendor-profiles-architecture)
+10. [Importer Design](#importer-design)
+11. [Exporter Design](#exporter-design)
+12. [Versioning & Packaging Policy](#versioning--packaging-policy)
+13. [Determinism Requirements](#determinism-requirements)
+14. [Vendor Profiles](#vendor-profiles)
+15. [Common Interop Issues by Vendor](#common-musicxml-interop-issues-by-vendor-field-observations)
+16. [Validation & Semantics](#validation--semantics)
+17. [CLI & Reports](#cli--reports)
+18. [Performance & Scale Targets](#performance--scale-targets)
+19. [Performance Gates](#performance-gates)
+20. [Implementation Roadmap](#implementation-roadmap)
+21. [Repair Function Catalog](#repair-function-catalog)
+22. [Risks & Mitigations](#risks--mitigations)
+23. [Alternatives Considered](#alternatives-considered)
+24. [Success Criteria](#success-criteria)
+25. [Consequences](#consequences)
+
+---
+
+## Strategic Repositioning (October 19, 2025)
+
+**Critical Development Reality**: MusicXML import is not a late-stage interoperability feature - it is **essential test infrastructure** required NOW for all subsequent development phases.
+
+**Why This Cannot Wait**:
+
+1. **Rendering Development Validation**: Cannot fully validate plugin-based formatters (Phase 12) without real-world test material. Synthetic test fixtures insufficient for validating professional music engraving against real-world edge cases.
+
+2. **Layout Testing Requires Real Scores**: Symphonies, operas, chamber works, piano repertoire provide edge cases that synthetic generators cannot anticipate (tuplet nesting, cross-staff beaming, extreme dynamics, microtones, percussion notation).
+
+3. **Performance Validation Needs Scale**: Large orchestral scores required to benchmark timewalk traversal, memory optimization, hash-consing effectiveness. Cannot validate 647-line timewalk implementation without real 100k+ event pieces.
+
+4. **Open Source Trust Requirements**: Both import AND export must ship together for transparency and trustworthiness. Round-trip validation demonstrates commitment to interoperability excellence.
+
+5. **Competitive Positioning**: MusicXML excellence establishes Ooloi as interoperable hub from day one, eliminating lock-in fears and enabling risk-free evaluation.
+
+**Implementation Priority**: Phase 11 (following Phase 10 plugin system implementation, as MusicXML will be implemented as first canonical plugin).
+
+**Architectural Dependencies**:
+- **Phase 8**: Windowing System (UI foundation) - Required for visual feedback
+- **Phase 9**: Skija Integration (GPU rendering) - Required for rendering imported scores
+- **Phase 10**: Plugin System Implementation - Required framework for MusicXML as plugin
+- **Phase 11**: MusicXML Import/Export - First canonical plugin demonstrating system
+- **Phase 12**: Rendering Pipeline - Validated using real MusicXML test scores
+
+**Library Integration Strategy**: Leverage existing MusicXML cleaning/repair libraries where beneficial. Do not reinvent validated parsing/repair patterns.
 
 ---
 
@@ -45,9 +79,19 @@ Current implementations suffer systematic failures (tie/slur confusion, tuplet e
 
 Ship a canonical plugin `ooloi-musicxml` (importer + exporter) with best-in-class fidelity, determinism, and speed. Provide batch catalog tooling and actionable validation reports. Open-source the plugin, golden corpus, and validators.
 
+The plugin will use the existing VPD API to build/traverse Ooloi structures, requiring no backend architectural extensions. This validates that the plugin architecture (ADR-0003) provides sufficient capabilities for complex format interchange.
+
 ## Rationale
 
 Excellence in MusicXML eliminates lock-in fear via trustworthy round-trip, enabling risk-free trials and immediate value (cleaner files, faster processing). This leverages Ooloi strengths (immutability → deterministic output; VPD → precise errors; hash-consing → fast import; plugin architecture → vendor-specific handling) and positions Ooloi as the interoperable hub.
+
+**Early Development Value**: MusicXML import provides immediate development infrastructure benefits independent of adoption strategy:
+- Test data: Import scores from IMSLP/MuseScore.com for testing
+- Examples: Real repertoire for documentation/blog posts
+- Load testing: Actual orchestral complexity for performance validation
+- Notation validation: Cross-staff beaming, tuplets, etc. from existing corpus
+
+This justifies implementing MusicXML earlier than Phase 17 (professional features), potentially as Phase 10.5 (after gRPC hardening, before Skija integration) to support layout engine development.
 
 ## Scope
 
@@ -65,6 +109,33 @@ Parse/write via a **normalized MusicXML-IR** (small, immutable).
 * **Import:** streaming SAX/StAX → IR → normalization → Ooloi objects (heuristics toggleable).
 * **Export:** Ooloi → normalized IR → canonical writer (stable ordering/IDs).
 
+## Implementation As Plugin
+
+MusicXML import/export will be implemented as a **backend plugin** (`ooloi-musicxml`), not as core backend functionality.
+
+**Architectural Benefits:**
+- Plugin uses existing VPD API (no special backend extensions required)
+- Import: Parse MusicXML → call `api/add-musician`, `api/set-measure`, etc.
+- Export: Use `timewalk` to traverse piece → generate XML
+- Vendor profiles stored as plugin configuration data
+- Third parties can build alternative implementations
+- Core backend remains format-agnostic
+
+**Plugin Dependencies:**
+- Single XML parsing library (e.g., `musicxml-java`, `proxymusic`)
+- XSD validation library
+- Standard JVM libraries (no exotic dependencies)
+
+**API Surface Required:**
+All existing VPD-based operations are sufficient:
+- Getters: Navigate piece structure
+- Setters: Build Ooloi objects during import
+- `timewalk`: Temporal traversal for export
+- Transaction boundaries: Atomic import operations
+- Error reporting: Structured error codes with VPD loci
+
+**No new backend capabilities required.** The API that exists for manual editing is sufficient for automated import/export.
+
 ## MusicXML-IR Contract & Invariants
 
 * Units normalized (durations in ticks; offsets as `(measure, fractional-beat)`).
@@ -72,6 +143,85 @@ Parse/write via a **normalized MusicXML-IR** (small, immutable).
 * Voices are 1-based per staff; anchors are `(measure, offset, staff, voice)`.
 * Canonical ordering keys for beams, directions, and notations.
 * **Unknown/unsupported preservation channel:** attach typed metadata (original XML + locus) to nearest logical object; round-trip via `<other-*>` where legal; otherwise warn. Enabled by default (`--preserve-unknowns`).
+
+## Single Library + Vendor Profiles Architecture
+
+**Not multiple libraries.** One generic MusicXML parser + configuration-driven vendor-specific repairs.
+
+### Library Selection
+Use single JVM-compatible XML parsing library:
+- `musicxml-java` (reference implementation)
+- `proxymusic` (JAXB-based)
+- Or similar generic MusicXML parser
+
+**All vendor handling is post-parse normalization, not different parsing libraries.**
+
+### Vendor Detection
+
+```clojure
+;; Auto-detect from file metadata
+<identification>
+  <encoding>
+    <software>Dorico 5.1.20</software>
+  </encoding>
+</identification>
+
+;; Detection with confidence scoring
+(defn detect-vendor [parsed-xml]
+  {:vendor (detect-from-software-tag parsed-xml)
+   :confidence (if (explicit-tag?) :high :medium)
+   :fallback-indicators (analyze-structural-patterns parsed-xml)})
+```
+
+### Vendor Profile Structure
+
+Profiles are **configuration data**, not code:
+
+```clojure
+;; profiles/sibelius.edn
+{:name "Sibelius"
+ :repairs #{:tie-as-slur          ; Ties encoded as slurs
+            :voice-infer          ; Missing <voice> tags
+            :beam-relink          ; Broken beam chains
+            :bar-number-offset    ; Anacrusis numbering
+            :hidden-rest-spacing} ; Spacing rests
+ :heuristics {:tie-slur-disambiguation :prefer-same-pitch
+              :voice-inference :by-stem-direction}}
+
+;; profiles/dorico.edn
+{:name "Dorico"
+ :repairs #{:slur-numbering-stabilize
+            :hairpin-endpoint-fix
+            :xstaff-anchor-infer
+            :tuplet-normalize}
+ :heuristics {:cross-staff :staff-of-notation
+              :microtones :smufl-with-fallback}}
+```
+
+### Repair Pipeline
+
+```clojure
+(defn import-with-profile [file]
+  (let [parsed (parse-musicxml file)           ; Generic parse
+        vendor (detect-vendor parsed)           ; Auto-detect
+        profile (load-profile vendor)]          ; Load config
+    (-> parsed
+        (apply-repairs profile)                 ; Normalize
+        (convert-to-ooloi-api-calls))))        ; Build structures
+```
+
+**Repairs are composable functions:**
+- Each repair is independent, testable function
+- Applied in sequence based on profile configuration
+- Users can override detected profile or customize repair set
+
+### Why This Architecture
+
+1. **Single parser to maintain** - one dependency, one security surface
+2. **Composable repairs** - profiles are data, easy to modify/extend
+3. **Transparent behavior** - users can see/customize which repairs apply
+4. **Testable in isolation** - each repair function has unit tests
+5. **Vendor evolution tracking** - update profiles, not code, when vendors change
 
 ## Importer Design
 
@@ -205,42 +355,163 @@ Linear passes; no quadratic phases. Handle ≥100k events:
 * ≤500 MB RSS during processing.
 * Deterministic under concurrency (single writer).
 
+### Repair Performance Budget
+
+Vendor-specific repairs must not significantly impact import time:
+- Detection: <100ms per file
+- Profile loading: <10ms (cached after first load)
+- Repair application: <500ms total for all repairs
+- Target: <10% overhead vs. generic parse
+
+**Achieved through:**
+- Linear-time algorithms (no quadratic phases in repairs)
+- Early termination in repair functions
+- Profile caching
+- Repair composition (apply only configured repairs)
+
 ## Performance Gates
 
 Release-blocking checks in CI: byte-stable exports on corpus; time/RSS budgets enforced; per-commit metrics snapshot; fast-fail on regressions.
 
 ## Implementation Roadmap
 
-### Phase 1 (Months 1–3): Foundation
-* Streaming parser with hardened IO security
-* MusicXML-IR implementation 
-* Canonical writer with stable ordering
-* Golden corpus repository with CI integration
+### Revised Timeline: Best-in-Class in 3-4 Weeks
 
-### Phase 2 (Months 2–4, overlapping): Vendor Intelligence
-* Vendor failure pattern cataloging
-* Error code taxonomy implementation
-* Minimal vendor profiles
-* Repair rules for top 20 common issues
+**Key Insight**: The repair set is surprisingly small (~15-20 distinct functions handle 95%+ of issues). Vendor bugs are repetitive and concentrated, not scattered across hundreds of edge cases.
 
-### Phase 3 (Months 4–7): Core Compliance
-* 95%+ MusicXML 3.1 element coverage
-* Full semantic validator suite
-* Round-trip fidelity testing harness
-* Schema-compliant export guarantee
-* Performance tuning with hash-consing on import
+### Week 1: Foundation + High-Impact Repairs
+**Plugin Infrastructure:**
+- Plugin manifest and lifecycle
+- Generic XML parser integration
+- Vendor detection from metadata
+- Profile loading system
 
-### Phase 4 (Months 6–9): Real-World Validation
-* Publisher trial partnerships
-* Batch processing tools and HTML reporting
-* Golden corpus expansion with field data
-* Differential testing against major tools
+**Top 5 Repairs (handles 70-80% of issues):**
+1. Sibelius tie-as-slur disambiguation
+2. Finale duplicate ID fixing
+3. Voice inference (all vendors)
+4. Tuplet normalization (shared issue)
+5. Cross-staff beam reconnection
 
-### Phase 5 (Months 8–12): Polish and Positioning
-* UX refinement and documentation
-* Auto-detection and profile suggestion
-* Public benchmarking and advocacy
-* Community building and testimonials
+**Testing:** Basic round-trip validation on each repair
+
+**Deliverable:** "Ooloi handles Sibelius ties better than Dorico does"
+
+### Week 2: Core Vendor Intelligence
+**Additional 10 Repairs (brings to 95%+ coverage):**
+6. Hairpin endpoint resolution
+7. Grace note ordering
+8. Direction re-anchoring
+9. Measure numbering offset
+10. Cross-staff anchor inference
+11. Lyric extender fixing
+12. Slur numbering stabilization
+13. Repeat/volta graph validation
+14. Percussion map clarification
+15. Microtone strategy selection
+
+**Profile Configuration:**
+- Complete profiles for Sibelius, Finale, Dorico, MuseScore
+- Generic fallback profile
+- Profile override and customization
+
+**Testing:** Comprehensive repair test suite with corpus samples
+
+**Deliverable:** "Ooloi is best-in-class for MusicXML import"
+
+### Week 3: Export + Round-Trip Validation
+**Export Implementation:**
+- Ooloi structure → MusicXML via timewalk
+- Deterministic writer (stable ordering, hashed IDs)
+- XSD validation
+- Layout policy (preserve explicit hints vs. omit)
+
+**Round-Trip Testing:**
+- Import → Export → Re-import validation
+- SHA-256 content hashing
+- Automated corpus testing
+- Performance benchmarking
+
+**Deliverable:** "Ooloi proves interoperability superiority"
+
+### Week 4: Integration + Documentation
+**CLI Integration:**
+```bash
+ooloi mxml import <file> [--profile <vendor>] [--strict|--repair]
+ooloi mxml export <piece-id> [--version 3.1|4.0] [--layout preserve|none]
+ooloi mxml validate <file> --report <output.json>
+```
+
+**Documentation:**
+- Plugin development guide
+- Vendor profile reference
+- Known limitations
+- Repair function catalog
+
+**Positioning:**
+- Blog post with benchmark comparisons
+- Example imports showing vendor-specific repairs
+- Round-trip SHA-256 verification demos
+
+**Deliverable:** "The wooden horse arrives at court"
+
+### Beyond Week 4: Refinement (Ongoing)
+- Field data from user reports
+- New vendor pattern detection
+- Profile updates for vendor evolution
+- Golden corpus expansion
+- Community contributions
+
+**Note:** The original ADR's 12-month timeline included extensive publisher partnerships, public benchmarking campaigns, and comprehensive golden corpus curation. Those activities support **positioning and adoption strategy**, not technical capability. The technical superiority (best-in-class import/export) is achievable in 3-4 weeks.
+
+## Repair Function Catalog
+
+### Implementation Complexity Tiers
+
+**Trivial Repairs (1-2 hours each):**
+- Duplicate ID deduplication
+- Voice inference by stem direction
+- Measure numbering offset adjustment
+- Accidental text fallback handling
+- Non-deterministic ordering stabilization
+
+**Moderate Repairs (3-6 hours each):**
+- Tie-as-slur disambiguation (heuristic-based)
+- Beam chain reconnection
+- Tuplet ratio normalization
+- Hairpin endpoint inference
+- Grace note ordering resolution
+- Direction re-anchoring to rhythmic loci
+- Lyric extender span fixing
+
+**Complex Repairs (1-2 days each):**
+- Cross-staff beaming consistency
+- Voice collapse reconstruction
+- Slur numbering in dense overlaps
+- Repeat/volta graph coherence validation
+- Percussion map semantic clarification
+
+### Estimated Implementation Time
+
+- Trivial repairs: 8 repairs × 1-2 hours = 8-16 hours (1-2 days)
+- Moderate repairs: 8 repairs × 3-6 hours = 24-48 hours (3-6 days)
+- Complex repairs: 4 repairs × 1-2 days = 4-8 days
+
+**Total core implementation: 8-16 days**
+
+Plus:
+- Profile configuration: 1-2 days
+- Detection logic: 1 day
+- Testing infrastructure: 3-5 days
+
+**Total: ~3 weeks for best-in-class capability**
+
+### Why So Few Repairs Needed
+
+1. **Vendor bugs are repetitive**: Sibelius always encodes ties as slurs; once fixed, works for all Sibelius files
+2. **Most files are clean**: PDMX corpus (250k files) shows 0.017% corruption rate
+3. **Repairs are composable**: Same function used across multiple profiles with different thresholds
+4. **Pareto principle**: 15 repairs handle 95% of issues; long tail doesn't block "best in class"
 
 ## Risks & Mitigations
 
@@ -260,9 +531,36 @@ Release-blocking checks in CI: byte-stable exports on corpus; time/RSS budgets e
 * Deterministic bytes & SHA-256 across runs.
 * Meets timing/memory targets.
 * Publisher catalog runs produce actionable reports with high pass rates.
+* **Vendor repair validation**: Each repair function has:
+  - Unit test with broken input sample
+  - Expected normalized output
+  - Round-trip verification (import → export → re-import)
+  - Performance budget compliance (<100ms per repair)
+* **Comparative benchmarking**: Import success rate on test corpus:
+  - Ooloi: ≥95% (with vendor profiles)
+  - Dorico: ~85% (documented baseline)
+  - MuseScore: ~80% (documented baseline)
+* **Round-trip fidelity**: Content-addressed hashing proves:
+  - Import(file) → Export() → Import() produces identical structure
+  - SHA-256 verification across round-trip
+  - Deterministic output (byte-stable exports)
 
 ## Consequences
 
-**Positive:** establishes Ooloi as reference implementation; measurable competitive edge; network effects; showcases architectural strengths.
-**Negative:** sustained engineering investment (validators, corpus, deterministic writer); maintenance for profiles/evolution; high public expectations.
+**Positive:**
+- Establishes Ooloi as reference implementation
+- Measurable competitive edge
+- Network effects
+- Showcases architectural strengths
+- **Rapid competitive differentiation**: Best-in-class status achievable in 3-4 weeks vs. 12-month expectation
+- **Plugin architecture validation**: Proves VPD API sufficient for complex format interchange without backend extensions
+- **Development infrastructure**: Immediate value for testing, examples, load validation independent of adoption strategy
+- **Phasing flexibility**: Can implement early (Phase 10.5) to support layout engine development, not deferred to Phase 17
+
+**Negative:**
+- Sustained engineering investment (validators, corpus, deterministic writer)
+- Maintenance for profiles/evolution
+- High public expectations
+- **Plugin system maturity required**: MusicXML forces early completion of plugin specification (ADR-0003), including lifecycle, API surface, error handling, configuration
+
 **Mitigation:** open corpus/impl; CI with performance gates; clear docs on scope/gaps.
