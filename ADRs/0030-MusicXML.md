@@ -134,7 +134,7 @@ All existing VPD-based operations are sufficient:
 - Transaction boundaries: Atomic import operations
 - Error reporting: Structured error codes with VPD loci
 
-**No new backend capabilities required.** The API that exists for manual editing is sufficient for automated import/export.
+**No new backend capabilities required.** The VPD API is designed for sustained high-rate operations - streaming thousands of API calls during import is exactly the use case it's built for. Automated import/export leverages the same high-performance API that powers all piece construction and traversal.
 
 ## MusicXML-IR Contract & Invariants
 
