@@ -91,13 +91,13 @@ Click Mode is **simplistic but necessary** – it provides discoverability and w
 
 ## Decision
 
-**Ooloi will implement Flow Mode to revive Igor Engraver's stateful modal keyboard input paradigm as a competitive differentiator.**
+**Ooloi will implement Flow Mode to revive Igor Engraver's stateful modal keyboard input paradigm because it's essential for professional-grade notation input.**
 
-This is not innovation – it's **memory + implementation**. We are restoring a proven design that worked, users loved, and no competitor has copied in 23 years.
+This is not innovation – it's **memory + implementation**. We are restoring a proven design that worked and users loved, because it's the right way to enable professional speed and efficiency.
 
 ### Why This Decision Matters
 
-**Genuine competitive advantage**: Research validates this is a **unique market position** in 2025. Not incremental improvement over competitors' versions – there are no competitors' versions to improve upon.
+**Professional necessity**: Professional composers, arrangers, and engravers need speed. Flow Mode delivers 5-10x improvement in input speed – that's not a competitive feature, it's a professional requirement.
 
 **Professional user need**: Composers, arrangers, engravers work with notation daily. Speed matters enormously. A 5-10x improvement in input speed is compelling enough to justify learning a new tool.
 
@@ -181,7 +181,7 @@ Without this documentation, we must **reconstruct through archaeology** – exam
 
 ### Positive
 
-**Unique competitive position**: 23-year market gap validated through comprehensive research. First-mover advantage in uncontested space.
+**Fulfilling the vision**: Flow Mode is part of Ooloi's vision for professional-grade notation software. 23-year absence from the market doesn't make it competitive – it makes it necessary.
 
 **Professional speed gains**: 5-10x faster input than Click Mode for experienced users. Write music at the speed of thought.
 
@@ -199,7 +199,7 @@ Without this documentation, we must **reconstruct through archaeology** – exam
 
 **Communication focus**: Accurately describing Flow Mode's historical context (disappeared 2001, no modern equivalent) and genuine capabilities (5-10x speed improvement, ~30 second learning time) to help users understand why this matters.
 
-**Open source advantage**: Community can extend/customize key bindings, share binding schemes. Flow Mode becomes freely available power-user feature that competitors cannot easily replicate.
+**Open source strength**: Community can extend/customize key bindings, share binding schemes. Flow Mode becomes freely available for all who need professional-grade input speed.
 
 ### Negative
 
@@ -260,21 +260,20 @@ Flow Mode is successful when:
 
 ## Strategic Reality
 
-**What was expected**: "We'll need to innovate beyond competitors' improvements on Igor."
+**What was expected**: "We'll need to innovate beyond what Igor did."
 
 **What research revealed**: "No one copied it. We just need to remember how Igor worked."
 
-This transforms Flow Mode from an innovation challenge into a **memory + implementation challenge**. Every detail remembered (Enter creates notes, Shift selects ranges, `/` cuts beams) is competitive intelligence that no competitor has because they never experienced Igor.
+This transforms Flow Mode from an innovation challenge into a **memory + implementation challenge**. Every detail remembered (Enter creates notes, Shift selects ranges, `/` cuts beams) is knowledge that disappeared when Igor died.
 
-**The competitive moat isn't innovation – it's memory + implementation.**
+**The task isn't innovation – it's restoration.**
 
-Flow Mode is a major USP simply by existing, not by being better than competitors' versions, because there are no competitors' versions.
+Flow Mode delivers what professionals need, and the implementation approach is known from Igor.
 
-The 23-year market gap is a gift:
-1. **No moving target** – Competitors aren't iterating on this paradigm
-2. **Proven design** – Igor's approach worked; users loved it; business failures killed it, not UX problems
-3. **Low bar** – Don't need to be revolutionary, just competent at implementing what Igor proved worked
-4. **Immediate differentiation** – Day one release with Flow Mode = genuinely unique in 2025 market
+Why the 23-year absence doesn't matter:
+1. **Proven design** – Igor's approach worked; users loved it; business failures killed it, not UX problems
+2. **Clear path** – Don't need to innovate, just implement what Igor proved worked
+3. **Professional necessity** – Speed matters for professional notation work, regardless of what others build
 
 ### Radical Transparency and Open Documentation
 
@@ -284,7 +283,7 @@ The 23-year market gap is a gift:
 
 1. **Benefit to musicians**: If Dorico, MuseScore, or others implement Flow Mode first, professional users benefit immediately – that's a win regardless of who delivers it
 2. **Open source advantage persists**: Even if others implement it, Ooloi's version will be freely available, community-extensible, and modifiable – commercial software cannot match this
-3. **Not traditional competition**: Ooloi doesn't operate on secrecy and surprise. Documenting solutions publicly contributes to the field even if others benefit
+3. **Not competing**: Ooloi builds what professionals need, openly. Documenting solutions publicly contributes to the field even if others benefit
 4. **Paradigm gap remains**: The 23-year gap reflects conceptual and philosophical barriers, not technical complexity. Documentation may not overcome different design priorities
 5. **Multiple implementations benefit everyone**: Different approaches to Flow Mode would validate the paradigm and create a rising tide for modal notation input
 
@@ -337,7 +336,7 @@ The 23-year market gap is a gift:
 ## References
 
 **Research:**
-- Comprehensive competitive analysis documented in `research/OOLOI_FLOW_MODE.md`
+- Comprehensive market research documented in `research/OOLOI_FLOW_MODE.md`
 - 532 sources validate 23-year market gap (2001-2025)
 - Academic literature search (ISMIR, NIME, SMC, TENOR, ACM CHI) – zero papers on modal notation input
 
