@@ -1,14 +1,14 @@
 # Welcome to Ooloi
 
-Greetings, and welcome to Ooloi, the spiritual successor to Igor Engraver. If you're seeking yet another conventional music notation software, I'm afraid you've taken a wrong turn. Ooloi aims to be something rather different — and there's a story behind why that matters.
+Greetings, and welcome to Ooloi, the spiritual successor to Igor Engraver. If you're seeking yet another conventional music notation software, I'm afraid you've taken a wrong turn. Ooloi aims to be something rather different – and there's a story behind why that matters.
 
 ## A Quarter-Century in the Making
 
-Twenty-five years ago, I created Igor Engraver, which became rather successful in the music notation world. When that project ended, it left something unfinished — not just the software, but the understanding of what music notation software could truly become. Ooloi represents the completion of that circle, built with decades of accumulated insight about both music and programming.
+Twenty-five years ago, I created Igor Engraver, which became rather successful in the music notation world. When that project ended, it left something unfinished – not just the software, but the understanding of what music notation software could truly become. Ooloi represents the completion of that circle, built with decades of accumulated insight about both music and programming.
 
-In the intervening years, I became an AWS Solutions Architect Professional and created systems like Ocean and OpenSecOps. I have always thought in systems — this shift simply allowed me to give that instinct full rein, to focus entirely on designing foundations that can handle complexity and scale over time through elegant abstraction layers.
+In the intervening years, I became an AWS Solutions Architect Professional and created systems like Ocean and OpenSecOps. I have always thought in systems – this shift simply allowed me to give that instinct full rein, to focus entirely on designing foundations that can handle complexity and scale over time through elegant abstraction layers.
 
-Ooloi represents a sustained effort to distill everything I've learned into an architecture that doesn't just work, but works elegantly. This isn't my first attempt at solving these problems, but it's the first time I've had the right tools — functional programming, immutable data structures, enterprise-scale systems thinking, and the kind of patience that comes with experience — to solve them properly.
+Ooloi distills everything I've learned into an architecture that doesn't just work, but works elegantly. This isn't my first attempt at solving these problems, but it's the first time I've had the right tools – functional programming, immutable data structures, enterprise-scale systems thinking, and the kind of patience that comes with experience – to solve them properly.
 
 ## What is Ooloi?
 
@@ -22,59 +22,71 @@ What makes it different:
   * **Professional output**: High-quality rendering and printing that works identically across platforms
   * **Cross-platform**: Mac OS X, Windows, Linux
 
-## Why Ooloi Matters
+## What Ooloi Attempts
 
-The world of music notation software has been rather stagnant for too long, content with incremental updates and feature bloat. Most existing software suffers from fundamental architectural problems that can't be fixed with patches — they require starting over with better foundations.
+Music notation software has long struggled with certain problems: temporal synchronization across complex scores, collaborative editing without conflicts, memory efficiency with large orchestral works, and extensibility that doesn't compromise the core.
 
-Ooloi solves problems that have plagued music software for decades: proper temporal synchronization, efficient collaborative editing, memory-efficient handling of large scores, and clean extensibility. These aren't just nice features — they're qualitatively different capabilities enabled by choosing the right abstractions.
+These aren't failures of vision or effort – they're consequences of architectural choices made when different technologies were available. Ooloi bets everything on one presupposition: that functional programming techniques, now mature enough for production use, can address these pain points in ways that weren't practical before.
+
+This isn't disruption or competition for market share. It's an attempt to create an open platform using different foundations, then see whether that approach proves useful. First-class MusicXML import means you can try Ooloi with your existing scores without migration risk. Sit, straddle, hang? Come and have a look.
 
 ## The Architecture You'll Inherit
 
-What you'll find here is the result of taking time to get the abstractions right. The backend is conceptually complete, with over 15,000 tests proving it works correctly. The temporal coordination system, the pure tree data structures, the STM-based concurrency — these represent solutions to genuinely hard problems.
+What you'll find here is the result of taking time to get the abstractions right. The engine is conceptually complete, with comprehensive testing proving it works correctly. The temporal coordination system, the pure tree data structures, the STM-based concurrency – these represent solutions to genuinely hard problems.
 
-But here's the thing: good architecture should be invisible to those who use it. The complexity is handled for you, hidden behind interfaces that make difficult things simple. You can focus on the problems you want to solve — whether that's creating plugins, improving the user interface, or adding new musical capabilities.
+But here's the thing: good architecture should be invisible to those who use it. The complexity is handled for you, hidden behind interfaces that make difficult things simple. You can focus on the problems you want to solve – whether that's creating plugins, improving the user interface, or adding new musical capabilities.
+
+## On Collaboration and Realism
+
+The engine's musical and architectural foundations are complete. Work at the intersection of music notation, functional programming, and distributed systems has solved the genuinely hard problems. Comprehensive testing proves correctness.
+
+This foundational work happened alone because that particular intersection – professional music notation, functional programming, and architectural discipline – is rare enough to make collaboration impractical. That's reality, not complaint.
+
+But Ooloi is more than music theory in Clojure. There's server infrastructure, asynchronous processing, streaming, printing, build pipelines across platforms, deployment, performance optimization. These are distributed systems problems, not music problems. If you're experienced with Clojure and interested in these domains, there's work here that doesn't require understanding figured bass or tuplet scaling.
+
+Most importantly, the plugin architecture exists precisely because different contributors have different strengths and work in different languages. That's the primary contribution path, and intentionally so.
 
 ## How You Can Contribute
 
-If you're here, you probably have an interest in music, programming, or ideally both. Here's how you can be part of this:
+Ooloi's architecture recognizes that different contributors bring different expertise. Here's what's realistic:
 
-1. **Core Development**: Help improve core functionality or add new features. Clojure experience is valuable, but the architecture is designed to be learnable.
+**1. Plugin Development**: This is the primary and most practical contribution path. The plugin system supports any JVM language – Java, Kotlin, Scala, Groovy, whatever you're already using. Bring your own tools, libraries, and build system. If you're yearning for your endofunctors in a religiously strict environment of the Opus Dei type, you can have them. Commercial plugins are explicitly permitted under MPL 2.0. You don't need to understand Clojure or music notation internals; you just need to work with the published interfaces.
 
-2. **Plugin Development**: Create plugins to extend Ooloi's capabilities. The plugin system supports any JVM language — Java, Kotlin, Scala, even proprietary commercial plugins.
+**2. Infrastructure and Platform Work**: Build pipelines need testing on Windows and Linux. Deployment scenarios need validation. Performance characteristics need measurement across platforms. If you're comfortable with Clojure but uninterested in music theory, this matters.
 
-3. **Documentation**: Help make complex concepts accessible. The goal is clarity without dumbing down.
+**3. Core Development**: The musical foundations are complete, but there's ongoing work in server infrastructure, asynchronous processing, streaming, printing, and cross-platform concerns. If you're experienced with Clojure and interested in distributed systems or real-time processing, contributions are realistic here. If you're learning Clojure or unfamiliar with these domains, the plugin path is more practical.
 
-4. **User Experience**: Contribute to interface design. The aim is intuitive interaction that serves creative work.
+**4. Testing and Quality Assurance**: Help ensure reliability across platforms, configurations, and use cases. Testing matters as much as features.
 
-5. **Testing**: Help ensure reliability. With this level of architectural complexity, comprehensive testing isn't optional.
+**5. Documentation**: Make the architecture understandable. Explain concepts clearly without dumbing them down. Documentation is contribution.
 
-6. **Ideas and Vision**: Share your thoughts on how we can improve. Constructive feedback shapes the future.
+**6. User Interface and Experience**: The frontend needs refinement. JavaFX expertise is valuable here.
 
 ## Getting Started
 
 1. Read our [Code of Conduct](CODE_OF_CONDUCT.md) and [Contribution Guidelines](CONTRIBUTING.md). They set the tone for how we work together.
 
-2. Start with the backend in the `backend/` directory. That's where the architectural foundations live.
+2. **For core work**: Start with `shared/` – that's where the engine lives. Both `backend/` and `frontend/` are relatively thin wrappers around it. The musical foundations are complete; ongoing work centers on infrastructure, server concerns, and cross-platform deployment. **For plugin work**: Review the plugin architecture documentation and choose your preferred JVM language.
 
-3. Explore the documentation, especially the ADRs (Architecture Decision Records) that explain why certain choices were made.
+3. Explore the documentation, especially the ADRs (Architecture Decision Records) that explain architectural decisions and their rationale.
 
-4. Use the REPL extensively. Clojure's interactive development environment is powerful for understanding how the system works.
+4. If working with Clojure, use the REPL extensively. Interactive development is powerful for understanding system behaviour.
 
-5. Review open issues or create new ones. The architecture is solid, but there's always more to build.
+5. Review open issues or create new ones. The architecture is solid, but there's always more to build, test, and refine.
 
-## What You're Joining
+## What You're Building On
 
-This isn't just another open-source project. It's the culmination of decades of understanding what music notation software needs to be, combined with the architectural discipline to build it right. 
+This is architecturally sound software built for durability. The core is complete, tested, and documented. The plugin system provides extensibility that lets you solve your problems with your tools.
 
-You're joining something that's designed to outlast its creator, to enable work that hasn't been imagined yet, to solve problems that matter to musicians and developers alike. The foundations are solid; now we build the future on top of them.
+Whether Ooloi becomes widely used depends on whether it's useful. The architecture doesn't require adoption to validate its approach – the problems are solved correctly regardless. But if it proves useful, the foundations support whatever gets built on them.
 
-The architecture is complete, but the work is just beginning. There are plugins to write, interfaces to design, capabilities to add. Most importantly, there are problems to solve that only emerge when you put powerful tools in the hands of creative people.
+The work continues. What gets built next depends on who finds it worth building.
 
 ## A Personal Note
 
 At 64, carrying more than five decades of programming experience and a parallel career as a composer, I've tried to encode into this architecture not just technical solutions, but the aesthetic judgments and performance intuitions that come from actually making music. 
 
-The creative energy that might have gone into another opera has found expression in software architecture. It's a different kind of composition — one that enables other people's creative work rather than expressing my own. And who knows, maybe Ooloi is what I need to finally write that modern *opera seria* set in China in the 700s. 
+The creative energy that might have gone into another opera has found expression in software architecture. It's a different kind of composition – one that enables other people's creative work rather than expressing my own. And who knows, maybe Ooloi is what I need to finally write that modern *opera seria* set in China in the 700s. 
 
 This is what happens when you take the time to get it right, when you resist the urge to rush, when you're willing to solve the hard problems properly. The result is something that can grow and evolve through the contributions of others while maintaining its essential character.
 
@@ -85,7 +97,7 @@ It is not designed to please a community, or to flatter opinion.<br>
 It stands on architecture, tests, and documentation.<br>
 
 If you see the value, you will find it here, intact and intelligible.<br>
-If you don’t, nothing is lost.
+If you don't, nothing is lost.
 
 *"Nun denn, allein."*
 
