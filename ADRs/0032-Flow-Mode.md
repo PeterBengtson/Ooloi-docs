@@ -169,7 +169,7 @@ Without this documentation, we must **reconstruct through archaeology** – exam
 
 **Academic opportunity**: First to formally document this HCI paradigm – no papers exist. Potential for publication and recognition.
 
-**Communication focus**: Accurately describing Flow Mode's historical context (disappeared 2001, no modern equivalent) and genuine capabilities (5-10x speed improvement, intuitive learning curve) to help users understand why this matters.
+**Communication focus**: Accurately describing Flow Mode's historical context (disappeared 2001, no modern equivalent) and genuine capabilities (5-10x speed improvement, ~30 second learning time) to help users understand why this matters.
 
 **Open source advantage**: Community can extend/customize key bindings, share binding schemes. Flow Mode becomes freely available power-user feature that competitors cannot easily replicate.
 
@@ -212,7 +212,7 @@ Flow Mode implementation advances in lockstep with rendering (Phase 12) and Musi
 Flow Mode is successful when:
 
 1. **Speed**: Experienced user can input music 5-10x faster than Click Mode
-2. **Adoption**: Professional users prefer Flow Mode after learning period
+2. **Adoption**: Professional users prefer Flow Mode once they discover its capabilities
 3. **Muscle memory**: Common operations become automatic
 4. **MIDI integration**: Combined keyboard + MIDI workflow feels natural
 5. **Expanding elements**: Slurs/crescendos extend predictably and intuitively
@@ -268,7 +268,7 @@ The 23-year market gap is a gift:
 
 **Development Effort vs. Speed**: Flow Mode's development effort is justified by professional speed gains. The 5-10x improvement in input speed for daily users makes the development investment worthwhile.
 
-**Learning Curve Reality**: While lower than vim/emacs, there is still a learning period. However, Click Mode remains available – users can adopt Flow Mode gradually as they learn commands.
+**Intuitive Discovery**: Commands map naturally to musical symbols (`. = staccato`, `> = accent`). Users discover functionality through doing, not memorization. Click Mode remains available for those preferring mouse-driven workflows.
 
 **Discoverability vs. Efficiency**: Flow Mode optimizes for efficiency over discoverability. This is acceptable because Click Mode serves the discoverability need.
 
