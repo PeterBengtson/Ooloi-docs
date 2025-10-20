@@ -171,9 +171,7 @@ Without this documentation, we must **reconstruct through archaeology** – exam
 
 **Marketing angle**: "Revolutionary input paradigm that disappeared in 2001 – reborn with modern technology."
 
-**Premium justification**: Unique capability justifies professional pricing tier.
-
-**Open source advantage**: Community can extend/customize key bindings, share binding schemes.
+**Open source advantage**: Community can extend/customize key bindings, share binding schemes. Flow Mode becomes freely available power-user feature that competitors cannot easily replicate.
 
 ### Negative
 
