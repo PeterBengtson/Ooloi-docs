@@ -827,8 +827,6 @@ When modifying a piece during traversal, each modification creates a new piece o
 
 ## 🟠 Understanding Timewalk's Architecture: Push vs Pull
 
-*"Yes, Janet, but isn't it **nice**?" - Frank N Furter*
-
 **For Clojure learners**: This architectural distinction affects performance in real-world applications. Understanding push vs. pull models is the difference between processing 100,000 items to find one result versus stopping immediately when found. This choice ripples through your entire application design, affecting memory usage, latency, and scalability.
 
 You've been using two approaches to consume timewalking results:
@@ -1146,6 +1144,8 @@ For more examples and advanced usage patterns, see:
 
 ## Envoi
 
-*I’ve seen blue skies through the tears in my eyes,<br>
-And I realise... I’m going home.<br>
+*I’ve seen blue skies<br>
+through the tears in my eyes,<br>
+And I realise<br>
+I’m going home.<br>
 —Frank N. Furter*
