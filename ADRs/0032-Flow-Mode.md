@@ -85,7 +85,7 @@ Ooloi will support **two fundamentally different input modes**:
 1. **Ooloi Click Mode** – Mouse-driven, palette-based, tool-switching (standard modern approach)
 2. **Ooloi Flow Mode** – Modal, stateful keyboard entry with real-time WYSIWYG feedback (Igor's lost paradigm)
 
-Click Mode is **simplistic but necessary** – it provides discoverability and works for casual users. Flow Mode is where professional speed and efficiency live.
+Click Mode exists for initial familiarity and for placing esoteric elements. Flow Mode is the primary input method – where real music notation work happens.
 
 ---
 
@@ -207,7 +207,7 @@ Without this documentation, we must **reconstruct through archaeology** – exam
 
 ### Neutral
 
-**Optional feature**: Click Mode remains fully functional and primary entry method. Flow Mode is opt-in power-user feature.
+**Two modes, one primary**: Flow Mode is the primary input method once users are shown it (~30 seconds to grasp). Click Mode exists for familiarity and for placing esoteric/unusual elements that don't have obvious keyboard mappings.
 
 **Phased implementation**: Click Mode implemented first (validates architecture). Flow Mode layered on top after basic rendering works.
 
@@ -240,7 +240,7 @@ Flow Mode implementation advances in lockstep with rendering (Phase 12) and Musi
 Flow Mode is successful when:
 
 1. **Speed**: Experienced user can input music 5-10x faster than Click Mode
-2. **Adoption**: Professional users prefer Flow Mode once they discover its capabilities
+2. **Adoption**: Users work primarily in Flow Mode after being shown it (~30 seconds)
 3. **Muscle memory**: Common operations become automatic
 4. **MIDI integration**: Combined keyboard + MIDI workflow feels natural
 5. **Expanding elements**: Slurs/crescendos extend predictably and intuitively
@@ -295,9 +295,9 @@ Why the 23-year absence doesn't matter:
 
 **Development Effort vs. Speed**: Flow Mode's development effort is justified by professional speed gains. The 5-10x improvement in input speed for daily users makes the development investment worthwhile.
 
-**Intuitive Discovery**: Commands map naturally to musical symbols (`. = staccato`, `> = accent`). Users discover functionality through doing, not memorization. Click Mode remains available for those preferring mouse-driven workflows.
+**Directed introduction**: Users are shown Flow Mode during onboarding (~30 seconds to grasp essentials). Commands map naturally to musical symbols (`. = staccato`, `> = accent`). Click Mode handles esoteric elements without obvious key mappings.
 
-**Discoverability vs. Efficiency**: Flow Mode optimizes for efficiency over discoverability. This is acceptable because Click Mode serves the discoverability need.
+**Primary vs. Fallback**: Flow Mode is the primary input method. Click Mode is the fallback for rare/esoteric notation elements.
 
 **Documentation Archaeology**: Incomplete Igor documentation is a risk, but partial knowledge + logical musical inference + user testing can fill gaps. The paradigm's core principles are well-understood.
 
