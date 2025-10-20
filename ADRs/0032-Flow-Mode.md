@@ -169,7 +169,7 @@ Without this documentation, we must **reconstruct through archaeology** – exam
 
 **Academic opportunity**: First to formally document this HCI paradigm – no papers exist. Potential for publication and recognition.
 
-**Marketing angle**: "Revolutionary input paradigm that disappeared in 2001 – reborn with modern technology."
+**Communication focus**: Accurately describing Flow Mode's historical context (disappeared 2001, no modern equivalent) and genuine capabilities (5-10x speed improvement, intuitive learning curve) to help users understand why this matters.
 
 **Open source advantage**: Community can extend/customize key bindings, share binding schemes. Flow Mode becomes freely available power-user feature that competitors cannot easily replicate.
 
