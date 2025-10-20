@@ -81,14 +81,6 @@ This is not innovation – it's **memory + implementation**. We are restoring a 
 
 Musical notation itself suggests the keystrokes – no artificial memorization required.
 
-**Modern implementation advantages**:
-- Real-time WYSIWYG with modern GPUs (Skija) far beyond 2001 capabilities
-- Event-driven architecture (ADR-0031) supports expanding elements cleanly
-- Sophisticated undo/redo systems handle modal complexity
-- Functional programming (Clojure) ideal for modal state management
-- Better documentation/tutorial systems reduce learning curve
-- Modern MIDI integration more sophisticated than 2001
-
 ---
 
 ## What We Remember (Partial Knowledge)
@@ -101,10 +93,10 @@ The following keyboard commands are confirmed from user memory of Igor Engraver:
 - `-` – Tenuto mode (remains active)
 - `>` – Accent mode (remains active or cycles through accent variants)
 - Heavy accent mode (marcato – looks like A without crossbar)
-- **Stacking rules**: Some articulations combine, others are mutually exclusive
-  - Can combine: `-` + `.` + `>` (tenuto + staccato + accent)
+- **Stacking rules**: Articulations can stack in pairs, triples, or more (with logical exclusions)
+  - Triple combinations: marcato + tenuto + staccato, tenuto + staccato + accent
+  - Pair combinations: `-` + `.`, `-` + `>`, `.` + `>`, `'` + `>`, heavy accent + most others
   - Mutually exclusive pairs: `.` ↔ `'` (staccato ↔ staccatissimo), `'` ↔ `-` (staccatissimo ↔ tenuto)
-  - Compatible: `-` + `.`, `-` + `>`, `.` + `>`, `'` + `>`, heavy accent with most others
   - System renders combined glyphs with proper vertical spacing
 
 **Structural Elements:**
