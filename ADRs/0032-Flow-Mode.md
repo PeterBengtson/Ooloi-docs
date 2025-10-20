@@ -173,7 +173,7 @@ The following keyboard commands are confirmed from user memory of Igor Engraver:
 5. **Expanding element mechanics**: Slur start/end/extension, crescendo behavior, lyrics melismas
 6. **Mode combination rules**: Which modes can coexist, visual feedback for stacked modes
 
-Without this documentation, we must **reconstruct through archaeology** – examining any remaining Igor materials, interviewing former users, and designing missing pieces based on musical logic and ergonomic principles.
+Without this documentation, we must **reconstruct through archaeology** – examining any remaining Igor materials, personal memory from original use, and designing missing pieces based on musical logic and ergonomic principles.
 
 ---
 
@@ -328,7 +328,6 @@ Why the 23-year absence doesn't matter:
 
 **Supporting:**
 - **ADR-0014: Timewalk** – Three-stage workflow (position → select → create) uses timewalk for cursor positioning and element resolution
-- **ADR-0017: Integrant Component Lifecycle** – Flow Mode state management as Integrant component with proper lifecycle
 
 ---
 
@@ -341,7 +340,7 @@ Why the 23-year absence doesn't matter:
 
 **Historical:**
 - Igor Engraver (1996-2009) – original implementation, contemporary documentation fragments
-- Former Igor beta testers – user memory of keyboard commands and workflow
+- Personal memory of Igor's keyboard commands and workflow from original use
 
 **Design Philosophy:**
 - Vim/Emacs modal editing paradigms applied to music notation domain
