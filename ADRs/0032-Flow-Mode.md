@@ -175,11 +175,7 @@ Without this documentation, we must **reconstruct through archaeology** – exam
 
 ### Negative
 
-**Implementation complexity**: Sophisticated state machine for modal interactions, expanding elements (slurs that grow), MIDI integration, three-stage workflow with cursor system.
-
 **Archaeology required**: Must reconstruct Igor's complete implementation details from incomplete documentation, user memory, and logical inference.
-
-**Competitive moat barrier**: The 23-year gap suggests high barriers (complexity, conceptual gap, platform conflicts) – implementation will be challenging.
 
 ### Neutral
 
@@ -261,7 +257,7 @@ The 23-year market gap is a gift:
 1. **Benefit to musicians**: If Dorico, MuseScore, or others implement Flow Mode first, professional users benefit immediately – that's a win regardless of who delivers it
 2. **Open source advantage persists**: Even if others implement it, Ooloi's version will be freely available, community-extensible, and modifiable – commercial software cannot match this
 3. **Not traditional competition**: Ooloi doesn't operate on secrecy and surprise. Documenting solutions publicly contributes to the field even if others benefit
-4. **Implementation barrier is real**: The 23-year gap suggests genuine complexity. Documentation alone may not be sufficient for rapid implementation
+4. **Paradigm gap remains**: The 23-year gap reflects conceptual and philosophical barriers, not technical complexity. Documentation may not overcome different design priorities
 5. **Multiple implementations benefit everyone**: Different approaches to Flow Mode would validate the paradigm and create a rising tide for modal notation input
 
 **The value isn't in hiding the idea – it's in executing it well and making it freely available.**
@@ -270,7 +266,7 @@ The 23-year market gap is a gift:
 
 ## Tradeoffs and Considerations
 
-**Complexity vs. Speed**: Flow Mode's implementation complexity is justified by professional speed gains. The 5-10x improvement in input speed for daily users makes the development investment worthwhile.
+**Development Effort vs. Speed**: Flow Mode's development effort is justified by professional speed gains. The 5-10x improvement in input speed for daily users makes the development investment worthwhile.
 
 **Learning Curve Reality**: While lower than vim/emacs, there is still a learning period. However, Click Mode remains available – users can adopt Flow Mode gradually as they learn commands.
 
