@@ -97,8 +97,15 @@ The following keyboard commands are confirmed from user memory of Igor Engraver:
 
 **Articulations:**
 - `.` – Staccato mode (remains active)
+- `'` – Staccatissimo wedge mode (remains active)
+- `-` – Tenuto mode (remains active)
 - `>` – Accent mode (remains active or cycles through accent variants)
-- Modes can stack: `>` + `.` = accent + staccato combined glyph
+- Heavy accent mode (marcato – looks like A without crossbar)
+- **Stacking rules**: Some articulations combine, others are mutually exclusive
+  - Can combine: `-` + `.` + `>` (tenuto + staccato + accent)
+  - Mutually exclusive pairs: `.` ↔ `'` (staccato ↔ staccatissimo), `'` ↔ `-` (staccatissimo ↔ tenuto)
+  - Compatible: `-` + `.`, `-` + `>`, `.` + `>`, `'` + `>`, heavy accent with most others
+  - System renders combined glyphs with proper vertical spacing
 
 **Structural Elements:**
 - `T` – Ties next note
