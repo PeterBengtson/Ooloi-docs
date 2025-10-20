@@ -732,6 +732,7 @@ None - all implementation questions resolved.
 - **ADR-0014: Timewalk** - Temporal traversal for hit-testing and element discovery. Frontend uses timewalk to resolve clicks to VPDs for backend operations.
 - **ADR-0017: Integrant Component Lifecycle** - Event Router is Integrant component. Depends on gRPC client component. Manages subscription lifecycle. Proper cleanup on shutdown.
 - **ADR-0018: API-gRPC Interface Generation** - Event streams defined in ADR-0018. Two event categories: Server events, Piece events. Event Router subscribes to both streams.
+- **ADR-0032: Flow Mode** - Modal keyboard input integrates with JavaFX event system. Keyboard events processed immediately, modal state changes trigger backend updates via gRPC, invalidation events refresh display.
 
 ---
 

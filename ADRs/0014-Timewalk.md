@@ -603,6 +603,7 @@ The benchmarks confirm that the push-based transducer architecture delivers genu
 - [ADR-0012: Persisting Pieces](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0012-Persisting-Pieces.md) - Establishes the ID reference system that timewalk respects during traversal
 - [ADR-0011: Shared Structure](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0011-Shared-Structure.md) - Shared structure algorithms use timewalk for element collection and processing
 - [ADR-0013: Slur Formatting](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0013-Slur-Formatting.md) - Slur formatting demonstrates timewalk application for point collection
+- [ADR-0032: Flow Mode](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0032-Flow-Mode.md) - Flow Mode's three-stage workflow (position → select → create) uses timewalk for cursor positioning and element resolution
 
 ## Documentation
 

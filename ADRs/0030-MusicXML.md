@@ -42,19 +42,79 @@ October 19, 2025 (Updated) - Revised for plugin implementation and compressed ti
 
 ## Strategic Repositioning (October 19, 2025)
 
-**Critical Development Reality**: MusicXML import is not a late-stage interoperability feature - it is **essential test infrastructure** required NOW for all subsequent development phases.
+**Critical Development Reality**: MusicXML is not a late-stage interoperability feature or an addon like any other—it is **the integral plugin that drives Ooloi's core implementation to feature-completeness**.
+
+**MusicXML as Development Driver (October 20, 2025)**:
+
+MusicXML import is **the mechanism** by which Ooloi reaches feature-completeness. It's not "build all notation elements, then add import/export"—it's "import drives which notation elements get implemented and when."
+
+This makes MusicXML import unique among plugins:
+- **First canonical plugin**: Implemented before full on-screen rendering exists
+- **Core development driver**: Defines implementation order (atoms → simple extent → complex extent)
+- **Battle-tested foundation**: By the time of open source release, this plugin will have driven implementation of all core notation elements
+- **Quality gate**: Round-trip validation of spectral-complexity works proves architectural soundness before public release
 
 **Why This Cannot Wait**:
 
-1. **Rendering Development Validation**: Cannot fully validate plugin-based formatters (Phase 12) without real-world test material. Synthetic test fixtures insufficient for validating professional music engraving against real-world edge cases.
+1. **Core Implementation Strategy**: MusicXML import defines which Ooloi elements (pitches, slurs, beams, dynamics, lyrics) get implemented and in what order. Start with atomic elements (no extent), progress to simple spanning elements, finish with complex spanning elements.
 
-2. **Layout Testing Requires Real Scores**: Symphonies, operas, chamber works, piano repertoire provide edge cases that synthetic generators cannot anticipate (tuplet nesting, cross-staff beaming, extreme dynamics, microtones, percussion notation).
+2. **Rendering Development Validation**: Cannot fully validate plugin-based formatters (Phase 12) without real-world test material. Synthetic test fixtures insufficient for validating professional music engraving against real-world edge cases.
 
-3. **Performance Validation Needs Scale**: Large orchestral scores required to benchmark timewalk traversal, memory optimization, hash-consing effectiveness. Cannot validate 647-line timewalk implementation without real 100k+ event pieces.
+3. **Layout Testing Requires Real Scores**: Symphonies, operas, chamber works, piano repertoire provide edge cases that synthetic generators cannot anticipate (tuplet nesting, cross-staff beaming, extreme dynamics, microtones, percussion notation).
 
-4. **Open Source Trust Requirements**: Both import AND export must ship together for transparency and trustworthiness. Round-trip validation demonstrates commitment to interoperability excellence.
+4. **Performance Validation Needs Scale**: Large orchestral scores required to benchmark timewalk traversal, memory optimization, hash-consing effectiveness. Cannot validate 647-line timewalk implementation without real 100k+ event pieces.
 
-5. **Competitive Positioning**: MusicXML excellence establishes Ooloi as interoperable hub from day one, eliminating lock-in fears and enabling risk-free evaluation.
+5. **Open Source Trust Requirements**: Both import AND export must ship together for transparency and trustworthiness. Round-trip validation demonstrates commitment to interoperability excellence.
+
+6. **Competitive Positioning**: MusicXML excellence establishes Ooloi as interoperable hub from day one, eliminating lock-in fears and enabling risk-free evaluation.
+
+## MusicXML as External Definition of Done (October 20, 2025)
+
+**MusicXML isn't just about adoption—it's the external definition of "core complete."**
+
+When Ooloi can import contemporary spectral works comparable to Gérard Grisey's *Vortex Temporum* from MusicXML (cross-staff spectral notation, microtonal inflections, rhythmic complexity, spatial notation) and export them perfectly for Finale, Sibelius, Dorico, and MuseScore—**THAT'S when the core is complete.**
+
+**Why Vortex Temporum-Class Complexity as the Benchmark**:
+
+1. **Objective Validation**: Not "does it work for our test cases?" but "can it handle what professional engravers actually publish?"
+
+2. **Real-World Complexity Litmus Test**: Contemporary spectral notation isn't exotic corner cases—it's legitimate professional notation that any serious system must handle:
+   - Cross-staff beaming with spectral clusters
+   - Microtonal accidentals (quarter-tones and beyond)
+   - Complex polyrhythms and metric modulation
+   - Spatial/proportional notation elements
+   - Extensive articulation and dynamic markings spanning multiple staves
+
+3. **Bidirectional Round-Trip Proof**: Import from MusicXML → manipulate in Ooloi → export to MusicXML → open in Finale/Sibelius/Dorico/MuseScore with perfect fidelity. Either it works or it doesn't—no hand-waving possible.
+
+4. **Forces Architectural Completeness**: You can't fake this. Every data structure, every transformation, every rendering decision must be production-ready. No shortcuts, no "good enough for simple cases."
+
+5. **Industry Interoperability**: Not building an island, but a node in the professional music notation ecosystem. Real publishers work with real complexity.
+
+**Success Criteria**:
+- Import spectral works of Vortex Temporum-level complexity from MusicXML with zero semantic loss
+- Export to all major notation software with perfect visual fidelity
+- Round-trip validation: import → export → re-import produces identical structure
+- SHA-256 content verification across round-trip cycle
+
+**Reference Recording**: [Vortex Temporum - Score and Audio](https://www.youtube.com/watch?v=rXaNFBzgDWI) - Visual and sonic example of the complexity ceiling that defines "complete."
+
+**Note on Availability**: Vortex Temporum itself is not available in MusicXML format (copyright restrictions, publisher strategy, and likely no successful digitization exists). We use it as the **complexity benchmark**—the architectural target defining what "complete" means. Test corpus will include available spectral works exhibiting comparable notation challenges.
+
+**Vortex Temporum-Class Complexity as Coverage Proof (Not Aesthetic Choice)**:
+
+This complexity level wasn't chosen for artistic reasons—it's a **mathematical coverage theorem**. The logic:
+
+- **If** Ooloi handles spectral notation at Vortex Temporum complexity (spectral clusters, microtonality, extreme rhythmic complexity, spatial notation)
+- **And** Ooloi handles lyrics (text underlay, melismas, verse numbering)
+- **Then** Ooloi necessarily handles:
+  - All Classical/Romantic repertoire (Mozart through Mahler)
+  - Most avant-garde composition (Boulez, Ligeti, Ferneyhough)
+  - Contemporary commercial notation needs
+
+Vortex Temporum-class complexity sits at the ceiling. Commercial/pop notation requirements are covered well before reaching this benchmark. This is engineering validation through upper-bound proof, not aesthetic preference.
+
+This is the falsifiable milestone that prevents scope drift and "perpetual beta" syndrome. When Grisey's spectral notation round-trips perfectly, the core architectural work is done.
 
 **Implementation Priority**: Phase 11 (following Phase 10 plugin system implementation, as MusicXML will be implemented as first canonical plugin).
 
