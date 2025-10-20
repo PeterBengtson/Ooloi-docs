@@ -6,6 +6,34 @@
 
 ---
 
+## Table of Contents
+
+- [Context](#context)
+  - [The Lost Paradigm](#the-lost-paradigm)
+  - [What Happened to Flow Mode](#what-happened-to-flow-mode)
+  - [Why the 23-Year Gap Exists](#why-the-23-year-gap-exists)
+  - [The Two-Mode Reality](#the-two-mode-reality)
+- [Decision](#decision)
+  - [Why This Decision Matters](#why-this-decision-matters)
+- [What We Remember (Partial Knowledge)](#what-we-remember-partial-knowledge)
+  - [Archaeology Required](#archaeology-required)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+  - [Neutral](#neutral)
+- [Implementation Strategy](#implementation-strategy)
+  - [Parallel Development](#parallel-development)
+  - [Success Criteria](#success-criteria)
+  - [Modern Improvements Over Igor](#modern-improvements-over-igor)
+- [Strategic Reality](#strategic-reality)
+  - [Radical Transparency and Open Documentation](#radical-transparency-and-open-documentation)
+- [Tradeoffs and Considerations](#tradeoffs-and-considerations)
+- [Open Questions (Deferred to Implementation)](#open-questions-deferred-to-implementation)
+- [Related ADRs](#related-adrs)
+- [References](#references)
+
+---
+
 ## Context
 
 ### The Lost Paradigm
