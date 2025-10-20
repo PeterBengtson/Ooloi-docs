@@ -251,10 +251,9 @@ Flow Mode is successful when:
 
 1. **Enhanced mode indicator HUD**: Clear visual display of all active modes without obstructing score view
 2. **Advanced cursor system**: Smoother animation and better visual feedback via modern GPU rendering
-3. **Customizable bindings**: User-configurable key mappings (Igor likely had fixed bindings)
+3. **Customizable bindings**: User-configurable key mappings (Igor had fixed bindings)
 4. **Mode presets**: Save/load mode configurations for different workflows
-5. **Undo/redo integration**: Every modal action undoable with full state restoration
-6. **Tutorial mode**: Interactive learning system with on-screen hints
+5. **Tutorial mode**: Interactive learning system with on-screen hints
 
 ---
 
