@@ -60,6 +60,7 @@ shared/src/main/clojure/ooloi/shared/
 │   │   ├── rest.clj          ; Rest - musical rest
 │   │   ├── tuplet.clj        ; Tuplet - rhythmic grouping
 │   │   ├── tremolando.clj    ; Tremolando - rapid repetition
+│   │   ├── grace.clj         ; Grace - ornamental notes
 │   │   └── attachments/      ; Musical attachments
 │   │       ├── articulation.clj ; Articulation markings
 │   │       ├── dynamic.clj   ; Dynamic markings (forte, piano, etc.)
@@ -133,7 +134,7 @@ Piece
 │       └── staves
 │           └── measures
 │               └── voices
-│                   └── items (Pitch, Chord, Rest, Tuplet, Tremolando, etc.)
+│                   └── items (Pitch, Chord, Rest, Tuplet, Tremolando, Grace, etc.)
 └── layouts
     └── page-views
         └── system-views

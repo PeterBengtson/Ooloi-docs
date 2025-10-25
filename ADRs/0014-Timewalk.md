@@ -407,7 +407,7 @@ Timewalk results always contain compact VPDs, making them efficient for transmis
 ### 4. Deep Traversal Support
 
 The walker performs deep traversal within each measure, finding all nested items including:
-- Direct measure items (rests, pitches, chords)
+- Direct measure items (rests, pitches, chords, grace notes)
 - Tuplet-contained items (items within tuplets)
 - Tremolando-contained items (items within tremolandos)
 - Arbitrarily nested structures

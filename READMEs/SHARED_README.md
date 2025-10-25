@@ -144,6 +144,7 @@ shared/
 │       │   │   ├── rest.clj          ; Rest - musical rest
 │       │   │   ├── tuplet.clj        ; Tuplet - rhythmic grouping
 │       │   │   ├── tremolando.clj    ; Tremolando - rapid repetition
+│       │   │   ├── grace.clj         ; Grace - ornamental notes
 │       │   │   └── attachments/      ; Musical attachments
 │       │   │       ├── articulation.clj ; Articulation markings
 │       │   │       ├── dynamic.clj   ; Dynamic markings (forte, piano, etc.)

@@ -1096,10 +1096,11 @@ Clojure's multimethod system enables uniform extensibility: define once, works e
 
 ;;                    Capabilities
 ;; Pitch              Musical, RhythmicItem, Transposable, TakesAttachment
-;; Chord              Musical, RhythmicItem, Transposable, TakesAttachment  
+;; Chord              Musical, RhythmicItem, Transposable, TakesAttachment
 ;; Rest               Musical, RhythmicItem
 ;; Tuplet             Musical, RhythmicItem, Transposable, HasItems
 ;; Tremolando         Musical, RhythmicItem, Transposable, HasItems
+;; Grace              Musical, RhythmicItem, HasItems
 
 ;; Each capability enables specific operations:
 (filter rhythmic-item? elements)                        ; All have duration
