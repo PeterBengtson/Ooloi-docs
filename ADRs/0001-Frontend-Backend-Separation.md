@@ -20,21 +20,22 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 
 ## Rationale
 
-1. **Clear Separation of Concerns**: 
+1. **Clear Separation of Concerns**:
    - **Frontend**: User interface, local preferences, client-specific state, visual interactions
-   - **Backend**: Musical content, collaborative coordination, business logic, piece data integrity
+   - **Backend**: Musical content, business logic, piece data integrity, concurrent state coordination
    - **Boundary Analysis**: [ADR-0015](0015-Undo-and-Redo.md) undo/redo analysis confirmed no legitimate backend application settings exist
 
 2. **Technology Optimization**:
    - Frontend can leverage JavaFX and Skija for high-performance GUI rendering
    - Backend can focus on efficient musical data processing without GUI overhead
-   - STM concurrency model optimized for collaborative musical content coordination
+   - STM concurrency model optimized for correctness and deterministic behavior
 
 3. **Deployment Flexibility**:
-   - Backend can be scaled independently for collaborative editing scenarios
-   - Supports both distributed client-server and standalone deployments
-   - Allows for future cloud-based deployments or desktop-only usage
+   - Supports both local and remote server configurations
+   - Primary use case: Single-user desktop (99.99% of scenarios)
+   - Specialized scenarios: Classroom playback, occasional multi-user editing
    - Backend-only deployments for API servers or headless processing
+   - Server location (local vs. remote) is transparent to architecture
 
 4. **Development Workflow**:
    - Frontend and backend components can be developed independently
@@ -50,13 +51,14 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 
 6. **Performance and Scalability**:
    - Reduced memory footprint for specialized deployments
-   - STM-based backend optimized for high-throughput collaborative scenarios (100,000+ operations/second)
+   - STM-based backend optimized for high-throughput operations (100,000+ operations/second)
    - Frontend optimized for responsive UI without blocking on musical computations
 
-7. **Collaboration Architecture**:
+7. **Multi-Client Architecture**:
    - Backend coordinates all musical content changes using STM transactions
    - Frontend clients receive real-time updates via gRPC streaming
-   - Clear separation enables multiple clients editing same piece simultaneously
+   - Architecture naturally supports multiple clients when needed (classroom, teacher-student scenarios)
+   - Immutability and STM make multi-client access architecturally straightforward
    - UI state remains local while musical changes are coordinated
 
 8. **Future Extensibility**:
@@ -109,7 +111,7 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 ### 1. Communication Architecture
 - **gRPC with Java interop** for frontend-backend communication (see [ADR-0002: gRPC](0002-gRPC.md))
 - **Protocol Buffers** for efficient serialization of musical data structures
-- **Server-to-client event notifications** for real-time score updates and collaboration
+- **Server-to-client event notifications** for real-time score updates
 
 ### 2. Component Management
 - **Integrant** for lifecycle management in all projects (see [ADR-0017: System Architecture](0017-System-Architecture.md))
@@ -153,9 +155,9 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 
 **Backend Responsibilities**:
 - **Musical Content**: Authoritative piece data, musical structures, attachments, time signatures
-- **Coordination**: STM-based coordination for collaborative editing and conflict resolution
+- **Coordination**: STM-based coordination ensuring correctness and deterministic behavior
 - **Business Logic**: Musical algorithms, formatting, validation, and processing
-- **Real-time Updates**: Streaming gRPC for live collaboration features
+- **Real-time Updates**: Streaming gRPC for client synchronization
 - **Piece Settings**: Configuration attributes that travel with piece data (as part of musical content)
 
 **Frontend Responsibilities**:

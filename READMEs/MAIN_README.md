@@ -39,7 +39,9 @@ Ooloi addresses fundamental challenges that have plagued music notation software
 
 **Scalability Through Functional Design**: Traditional object-oriented notation software hits performance walls with large orchestral scores, requiring workarounds like reducing visible staves or using special views. Ooloi's immutable data structures and STM-based concurrency enable linear performance scaling, handling complex scores efficiently without architectural limitations.
 
-**Natural Collaboration**: Most notation software struggles with collaborative editing due to mutable state synchronization challenges. Ooloi's functional architecture enables natural multi-user editing through immutable data structures and automatic conflict resolution, eliminating the complex operational transform algorithms required by traditional systems.
+**Correctness and Determinism**: Ooloi's architecture prioritizes predictable behavior through immutability and pure functions. Operations produce consistent results regardless of execution order or timing, eliminating entire categories of concurrency bugs that plague traditional mutable architectures. STM transactions provide ACID guarantees for all musical operations.
+
+**Separation of Concerns**: The client-server architecture cleanly separates user interface from musical logic, enabling flexible deployment—from traditional single-user desktop scenarios (99.99% of use cases) to specialized scenarios like classroom playback or occasional teacher-student editing sessions. The server can run locally or remotely; the architecture remains identical.
 
 **Market Opportunity**: The discontinuation of Finale in 2024 after 35+ years of accumulated technical debt validates the need for modern architectural approaches. Finale's demise, attributed to unmaintainable legacy code and performance limitations, creates space for next-generation systems built on sound functional programming principles.
 

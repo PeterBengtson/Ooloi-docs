@@ -259,7 +259,7 @@ The application will display startup messages:
 ```
 Starting Ooloi backend server...
 ✅ All components started successfully
-🎵 Ooloi backend ready for musical collaboration
+🎵 Ooloi backend ready for musical operations
 ```
 
 #### Configuration Options

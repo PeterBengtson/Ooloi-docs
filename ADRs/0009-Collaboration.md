@@ -1,4 +1,4 @@
-# ADR: Implementation of Real-Time Collaboration in Ooloi
+# ADR-0009: Multi-Client Collaboration Support
 
 ## Status
 
@@ -6,48 +6,65 @@ Accepted
 
 ## Context
 
-Real-time collaboration on musical scores is a highly requested feature that is currently not well-supported by existing music notation software. Musicians, composers, and educators need the ability to work simultaneously on the same piece, seeing each other's changes in real-time, similar to collaborative document editing platforms. Ooloi's architecture provides a unique opportunity to implement this feature effectively.
+Ooloi's architecture—built around immutability, STM transactions, and client-server separation—makes multi-user collaboration architecturally straightforward to implement. While the primary use case remains single-user desktop notation (99.99% of scenarios), specialized scenarios benefit from multi-client access:
+
+- **Classroom environments**: Teacher and students viewing/editing scores simultaneously
+- **Remote instruction**: Teacher guiding student work in real-time
+- **Ensemble preparation**: Multiple musicians reviewing parts together with synchronized playback
+
+Traditional notation software struggles with collaboration due to mutable state synchronization challenges, requiring complex operational transform algorithms. Ooloi's immutable data structures and STM transactions eliminate these complexities—collaboration becomes a natural consequence of the architecture rather than a bolted-on feature.
 
 ## Decision
 
-We will implement real-time collaboration as a core feature of Ooloi, leveraging our existing architecture and technologies to provide a seamless, efficient, and reliable collaborative editing experience.
+We will implement multi-client collaboration support in Ooloi by extending our existing architecture with session management, real-time synchronization, and collaborative UI features. This leverages the architectural foundation already in place (immutability, STM, gRPC streaming) to provide reliable multi-user editing when needed, without compromising the primary single-user desktop experience.
 
 ## Rationale
 
-1. Existing Architecture Advantages:
-   - Separation of frontend and backend allows for a cloud-hosted backend that can manage concurrent edits.
-   - The Piece Manager can handle multiple concurrent connections to the same piece.
+1. **Architectural Foundation Already Exists**:
+   - Client-server separation designed for separation of concerns naturally supports multiple clients
+   - Piece Manager already handles concurrent access through STM—adding clients requires no fundamental changes
+   - Server location (local vs. remote) is transparent to the architecture
 
-2. Transactional Model:
-   - Ooloi's existing transactional system with automatic retries is well-suited for handling concurrent edits and resolving conflicts.
+2. **Immutability Eliminates Collaboration Complexity**:
+   - No complex operational transform algorithms needed
+   - STM transactions provide automatic conflict resolution with ACID guarantees
+   - Immutable data structures make state synchronization straightforward
 
-3. Efficient Communication:
-   - gRPC's binary protocol ensures low-latency communication between clients and the server, crucial for real-time collaboration.
-   - Nippy's efficient serialization can be used for larger data transfers when saving and loading music files.
+3. **Efficient Communication Infrastructure**:
+   - gRPC streaming already implemented for client synchronization
+   - Binary protocol ensures low-latency updates between clients
+   - VPDs provide efficient change communication
 
-4. Immutable Data Structures:
-   - Clojure's immutable data structures simplify the implementation of conflict resolution and change merging.
+4. **Natural Extension, Not Retrofit**:
+   - Collaboration leverages existing architectural decisions made for correctness and determinism
+   - No architectural compromises required—the foundation enables it naturally
+   - Adding collaboration features doesn't complicate single-user scenarios
 
-5. Market Differentiation:
-   - Implementing this highly requested feature will significantly differentiate Ooloi from competitors.
+5. **Specialized Use Case Support**:
+   - Enables classroom teaching scenarios without requiring dedicated "education mode"
+   - Supports remote instruction naturally through same architecture
+   - Occasional multi-user needs addressed without architectural overhead
 
-6. Extensibility:
-   - The collaboration system can be designed to work with Ooloi's plugin architecture, allowing for custom collaborative features.
+6. **Plugin Ecosystem Benefits**:
+   - Plugins work identically in single-user and multi-user contexts
+   - No special "collaboration-aware" plugin APIs required
 
 ## Consequences
 
 ### Positive
 
-- Unique feature offering in the music notation software market.
-- Enhanced user experience for collaborative composition and education.
-- Leverages and validates Ooloi's core architectural decisions.
-- Potential for new use cases and market opportunities (e.g., remote music education, distributed orchestras).
+- **Architectural validation**: Multi-client support demonstrates correctness of immutability and STM design decisions
+- **Educational scenarios**: Enables classroom and remote instruction use cases naturally
+- **Zero architectural tax**: Collaboration features don't compromise single-user performance or complexity
+- **Simplified implementation**: No operational transform complexity—STM handles conflict resolution automatically
+- **Market differentiation**: Reliable multi-user editing in scenarios where competitors struggle
 
 ### Negative
 
-- Increased complexity in backend logic to manage concurrent edits.
-- Potential for increased server infrastructure costs.
-- Need for additional security measures to manage access control and data privacy.
+- **Session management complexity**: Requires user presence tracking, access control, and invitation mechanisms
+- **UI complexity**: Collaborative indicators, remote cursors, and presence display add frontend complexity
+- **Infrastructure considerations**: Multi-user scenarios may require remote server hosting (though local remains default)
+- **Security requirements**: Access control and data privacy considerations for shared sessions
 
 ## Implementation Approach
 
@@ -119,8 +136,8 @@ We will implement real-time collaboration as a core feature of Ooloi, leveraging
 
 ## Related Decisions
 
-- [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural foundation enabling distributed collaboration
-- [ADR-0002: gRPC Communication](0002-gRPC.md) - Real-time streaming protocol supporting collaborative features
-- [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model enabling automatic conflict resolution in collaborative editing
-- [ADR-0008: VPDs](0008-VPDs.md) - Addressing system used to communicate precise change locations between collaborators
-- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture for collaborative editing scenarios
+- [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Separation of concerns architecture that naturally accommodates multiple clients
+- [ADR-0002: gRPC Communication](0002-gRPC.md) - Communication protocol providing efficient client-server streaming
+- [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model designed for correctness that naturally enables multi-client coordination
+- [ADR-0008: VPDs](0008-VPDs.md) - Addressing system enabling precise change communication across clients
+- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture supporting multi-client scenarios
