@@ -241,6 +241,35 @@ The unified system results in clear, succinct code that works identically across
     ...)
 ```
 
+**Expressive Musical Operations:**
+
+The API abstracts away implementation details like endpoint IDs and graph management, letting developers focus on musical intent:
+
+```clojure
+;; Developer expresses musical structure, not implementation mechanics
+(-> piece
+    (add-attachment [:m 0 0 0 0 0 :items 0] "p")              ; Piano
+    (add-attachment [:m 0 0 0 0 0 :items 0] "slur"            ; Slur from first
+                    [:m 0 0 0 0 0 :items 3])                  ;   to fourth note
+    (add-attachment [:m 0 0 0 0 0 :items 2] "accent")         ; Accent
+    (add-attachment [:m 0 0 0 0 0 :items 4] "<"               ; Crescendo
+                    [:m 0 0 0 0 0 :items 7])
+    (add-attachment [:m 0 0 0 0 0 :items 7] "f"))             ; Forte
+
+;; Behind the scenes: endpoint IDs generated, pure tree maintained, cross-references resolved
+;; Developer sees: musical intent clearly expressed
+
+;; Simple attachments
+(add-attachment pitch "staccato")              ; Articulation
+(add-attachment chord :f)                       ; Dynamic (keyword form works too)
+
+;; Span attachments – endpoints specified via VPDs
+(add-attachment start-vpd piece "tie" end-vpd)
+(add-attachment start-vpd piece "8va" end-vpd)
+```
+
+Natural musical vocabulary available: articulations (`staccato`, `tenuto`, `marcato`), dynamics (`ffff` through `pppp`, `sf`, `sfz`), hairpins (`<`, `>`, `<>`), span markings (`slur`, `tie`, `glissando`), and octave shifts (`15ma`, `8va`, `8vb`, `15mb`).
+
 **Local Usage Pattern** (direct object manipulation):
 - Frontend can use this pattern for local data manipulation
 - Backend can use this pattern for direct object operations

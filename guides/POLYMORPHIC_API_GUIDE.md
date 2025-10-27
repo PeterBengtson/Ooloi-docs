@@ -28,6 +28,10 @@ This guide combines API documentation with functional architecture principles de
 - [🟢 Type System Foundations](#-type-system-foundations)
 - [🟢 The Canonical Example: VPD vs Object Dispatch](#-the-canonical-example-vpd-vs-object-dispatch)
 - [🟢 Basic Polymorphic Operations](#-basic-polymorphic-operations)
+  - [Duration Operations Across Types](#duration-operations-across-types)
+  - [Expressive Attachment API – Musical Thinking in Code](#expressive-attachment-api--musical-thinking-in-code)
+  - [Attachment Operations with Type Constraints](#attachment-operations-with-type-constraints)
+  - [Collection Operations with HasItems](#collection-operations-with-hasitems)
 - [🟡 Multimethod Architecture](#-multimethod-architecture)
 - [🟡 VPD Integration with Type System](#-vpd-integration-with-type-system)
 - [🟡 Extension Mechanisms](#-extension-mechanisms)
@@ -528,24 +532,108 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 (api/set-duration rest-object 1/2)     ; Creates half rest
 ```
 
+### Expressive Attachment API – Musical Thinking in Code
+
+> 💡 **API Design Philosophy**: The API abstracts away implementation details, allowing developers to focus on musical meaning. Endpoint IDs, object wiring, and graph management become internal concerns – code expresses musical intent directly.
+
+The attachment API demonstrates how Ooloi separates musical semantics from implementation mechanics. Compare adding a slur:
+
+```clojure
+;; Traditional approach: Developer manages implementation details
+(def slur (new Slur()))
+(.setStartNote slur start-note)
+(.setEndNote slur end-note)
+(.setStartId slur (getId start-note))  ; Manual ID management
+(.setEndId slur (getId end-note))
+(.addToScore score slur)
+
+;; Ooloi: Developer expresses musical intent
+(add-attachment start-vpd piece "slur" end-vpd)
+```
+
+**What the API hides:** Behind the scenes, Ooloi generates endpoint IDs, maintains the pure tree structure, and handles cross-reference resolution. The developer never sees these implementation details.
+
+**What the API reveals:** Musical structure and intent – "add slur from this note to that note."
+
+**Musical Expression Through Direct Terminology:**
+
+```clojure
+;; Local operations – direct object manipulation
+(add-attachment pitch "staccato")        ; "Make this note staccato"
+(add-attachment pitch "f")                ; "Make this note forte"
+(add-attachment chord "accent")           ; "Accent this chord"
+
+;; VPD operations – navigation + action in one expression
+(add-attachment [:m 0 0 0 2 0 :items 3] piece "tenuto")         ; "Third note: tenuto"
+(add-attachment [:m 0 0 0 2 0 :items 0] piece "slur"            ; "Slur from first note
+                [:m 0 0 0 2 0 :items 5])                        ;  to sixth note"
+
+;; Span attachments – start and end points clearly expressed
+(add-attachment start-vpd piece "<" end-vpd)      ; "Crescendo from here to there"
+(add-attachment start-vpd piece "8va" end-vpd)    ; "Play octave higher from here to there"
+(add-attachment start-vpd piece "tie" end-vpd)    ; "Tie these two notes"
+```
+
+**Abstraction in Practice – Building Musical Phrases:**
+
+```clojure
+;; The developer focuses on musical intent
+(-> piece
+    (add-attachment [:m 0 0 0 0 0 :items 0] "p")              ; Piano dynamic
+    (add-attachment [:m 0 0 0 0 0 :items 0] "slur"            ; Opening slur
+                    [:m 0 0 0 0 0 :items 3])
+    (add-attachment [:m 0 0 0 0 0 :items 2] "accent")         ; Accent second note
+    (add-attachment [:m 0 0 0 0 0 :items 4] "<"               ; Crescendo to end
+                    [:m 0 0 0 0 0 :items 7])
+    (add-attachment [:m 0 0 0 0 0 :items 7] "f"))             ; Forte at climax
+
+;; No endpoint IDs, no graph wiring, no object lifecycle management
+;; The API handles all implementation mechanics automatically
+```
+
+**Flexible Input Forms** (keywords, symbols, or strings):
+
+```clojure
+;; All three forms work identically – use what reads best in context
+(add-attachment pitch "staccato")   ; String – clear and explicit
+(add-attachment pitch :f)           ; Keyword – concise for short markings
+(add-attachment pitch 'tenuto)      ; Symbol – alternative style
+```
+
+**Available Musical Vocabulary:**
+
+The API provides 100+ musical terms covering standard notation:
+- **Articulations**: `staccato`, `tenuto`, `marcato`, `accent`
+- **Dynamics**: `ffff` through `pppp`, sforzando combinations (`sf`, `sfz`, `sfp`)
+- **Hairpins**: `<`/`cresc`, `>`/`dim`, `<>` (crescendo-diminuendo)
+- **Span markings**: `slur`, `tie`, `glissando`
+- **Octave shifts**: `15ma`, `8va`, `8vb`, `15mb`
+
+For specialized cases not covered by shortcuts, use constructor functions directly:
+
+```clojure
+(def custom-marking (create-dynamic :name "custom" :velocity 85))
+(add-attachment pitch custom-marking)
+```
+
 ### Attachment Operations with Type Constraints
 
 ```clojure
 ;; Attachments work only with elements that support them:
-(api/add-attachment pitch-object slur)      ; ✓ Works (Pitch implements TakesAttachment)
-(api/add-attachment chord-object dynamic)   ; ✓ Works (Chord implements TakesAttachment)
-(api/add-attachment rest-object slur)       ; ✓ Works (Rest implements TakesAttachment)
+(api/add-attachment pitch-object "staccato")    ; ✓ Works (Pitch implements TakesAttachment)
+(api/add-attachment chord-object "f")           ; ✓ Works (Chord implements TakesAttachment)
+(api/add-attachment rest-object "tenuto")       ; ✓ Works (Rest implements TakesAttachment)
 
 ;; Type-safe filtering before operations
-(defn add-slur-to-compatible [elements slur]
-  "Add slur only to elements that can take attachments."
+(defn add-marking-to-compatible [elements marking]
+  "Add marking only to elements that can take attachments."
   (->> elements
-       (filter takes-attachment?)                     ; Type-safe filtering
-       (map #(api/add-attachment % slur))))           ; Safe operation
+       (filter takes-attachment?)                          ; Type-safe filtering
+       (map #(api/add-attachment % marking))))             ; Safe operation
 
 ;; Usage with mixed elements
 (def mixed [pitch1 chord1 rest1 tuplet1])
-(add-slur-to-compatible mixed new-slur)  ; Only pitch1 and chord1 get slur
+(add-marking-to-compatible mixed "staccato")  ; Only pitch1, chord1, rest1 get marking
 ```
 
 ### Collection Operations with HasItems

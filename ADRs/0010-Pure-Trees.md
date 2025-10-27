@@ -96,8 +96,22 @@ These elements use integer IDs to reference their endpoints. The IDs are unique 
 ### 8. Attachments and References
 
 - Elements that can be referenced (e.g., Pitches, Chords) implement the TakesAttachment trait.
-- TakesAttachment elements have an `end-id` field to store their unique ID.
-- Elements that reference others (e.g., Slurs) store the ID of their endpoint in an `end` field.
+- TakesAttachment elements have an `endpoint-id` field to store their unique ID.
+- Elements that reference others (e.g., Slurs) store the ID of their endpoint in an `endpoint-id` field.
+
+**API Abstraction**: The user-facing API abstracts away endpoint-id complexity entirely. Users work with VPDs to specify attachment locations, and the system handles ID generation and resolution automatically:
+
+```clojure
+;; User provides VPDs – system manages endpoint-ids internally
+(add-attachment start-vpd piece "slur" end-vpd)
+(add-attachment start-vpd piece "tie" end-vpd)
+(add-attachment start-vpd piece "8va" end-vpd)
+
+;; Behind the scenes: endpoint-ids are automatically assigned and resolved
+;; Users never need to work with integer IDs directly
+```
+
+This design allows the API to mirror musical thinking ("add slur from this note to that note") while maintaining the pure tree structure with integer ID cross-references internally.
 
 ### 9. Serialization and Deserialization
 

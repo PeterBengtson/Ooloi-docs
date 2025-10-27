@@ -271,6 +271,13 @@ response = stub.ExecuteMethod(request)
 (let [pitch (create-pitch :note "C4" :duration 1/4)]  ; ← Native Clojure record
   (when (pitch? pitch)                  ; ← Shared predicate validation
     (grpc-call :create-pitch pitch)))   ; ← Automatic OoloiValue conversion
+
+;; Expressive musical operations using shared API
+(-> piece
+    (add-attachment [:m 0 0 0 0 0 :items 0] "p")              ; Piano
+    (add-attachment [:m 0 0 0 0 0 :items 0] "slur"            ; Slur
+                    [:m 0 0 0 0 0 :items 3])
+    (add-attachment [:m 0 0 0 0 0 :items 7] "f"))             ; Forte
 ```
 
 ### Benefits by Language Type
