@@ -6,6 +6,36 @@
 
 ---
 
+## Table of Contents
+
+- [Context](#context)
+  - [Frontend-Local Events](#frontend-local-events)
+  - [Backend Events (via gRPC)](#backend-events-via-grpc)
+- [Decision](#decision)
+  - [Why This Decision](#why-this-decision)
+  - [Alternatives Considered](#alternatives-considered)
+- [Consequences](#consequences)
+  - [Core Pattern](#core-pattern)
+  - [Component Architecture](#component-architecture)
+  - [Visual Architecture](#visual-architecture)
+  - [Event Envelope Structure](#event-envelope-structure)
+  - [Event Type Taxonomy and Category Derivation](#event-type-taxonomy-and-category-derivation)
+  - [Event Categories and Routing](#event-categories-and-routing)
+  - [Event Flow Examples](#event-flow-examples)
+  - [Key Architectural Properties](#key-architectural-properties)
+  - [Connection Management](#connection-management)
+  - [Subscription Lifecycle](#subscription-lifecycle)
+  - [Performance Considerations](#performance-considerations)
+  - [Frontend State Model (ADR-0022 Architecture)](#frontend-state-model-adr-0022-architecture)
+  - [Tradeoffs and Limitations](#tradeoffs-and-limitations)
+- [Implementation Questions](#implementation-questions)
+  - [Resolved](#resolved)
+  - [Outstanding](#outstanding)
+- [Related ADRs](#related-adrs)
+- [References](#references)
+
+---
+
 ## Context
 
 The frontend must handle two fundamentally different event sources with incompatible timing and failure characteristics:
