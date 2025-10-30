@@ -329,27 +329,167 @@ graph LR
 
 ### Event Envelope Structure
 
-Every backend event carries:
+Backend events arrive with the following structure (per ADR-0018):
 
 ```clojure
-{:piece-id "uuid"
- :server-ts-ns 1729800000000000000 ; Nanosecond timestamp
- :category :cache-invalidation     ; or :presence, :playback, :system, :notification
- :vpd [...]                        ; Vector Path Descriptor to affected element
- :data {...}}                      ; Category-specific payload
+{:type :piece-invalidation        ; Required keyword, validated by backend
+ :timestamp 1729800000000000000   ; Required nanosecond timestamp (auto-added)
+ :piece-id "symphony-123"         ; Required for piece-* events (validated)
+ :vpd [:layouts 0 :page-views 2 :system-views 1 :staff-views 0 :measure-views 47]
+ :message "Human readable text"   ; Optional string
+ :client-id "client-uuid"         ; Optional string
+ ...additional-fields...}
 ```
 
-**Purpose:**
-- piece-id: Which piece this event concerns
-- server-ts-ns: Event age for batching decisions (nanoseconds)
-- vpd: Precise location of change (for targeted invalidation)
-- Events are notifications, not commands - they inform about state changes
+**Backend Validation Guarantees** (per ADR-0018 `validate-event-structure`):
+
+Events received by frontend are **pre-validated** and guaranteed to have:
+- `:type` field exists and is a keyword
+- `:type` matches pattern: `server-*`, `client-*`, `piece-*`, `collaboration-*`, or contains `/`
+- `:timestamp` field exists and is a number (nanoseconds, added by `send-*-event`)
+- `:piece-id` field exists and is a string (for piece-* and collaboration-* events)
+- All field names are keywords (kebab-case)
+- `:message` is a string if present
+- `:client-id` is a string if present
+
+**Frontend Event Router does NOT need to re-validate** - backend guarantees correctness.
+
+### Event Type Taxonomy and Category Derivation
+
+The Event Router derives routing categories from backend event types. This mapping is deterministic and based on the `:type` field prefix.
+
+#### Backend Event Types → Frontend Categories
+
+**Cache Invalidation** (`:cache-invalidation` category):
+```clojure
+:piece-invalidation  ; Visual hierarchy invalidation at any level
+```
+
+**Required fields**: `:piece-id` (string), `:timestamp` (number)
+**Scope fields** (one of): `:vpd` (single VPD vector), `:vpds` (multiple VPD vectors), `:measures` (measure numbers)
+**VPD depth indicates level**: `[:layouts 0]` = layout, `[:layouts 0 :page-views 2]` = page, etc.
+
+---
+
+**Presence/Collaboration** (`:presence` category):
+```clojure
+:collaboration-user-joined
+:collaboration-user-left
+:collaboration-cursor-moved
+:collaboration-selection-changed
+```
+
+**Required fields**: `:piece-id` (string), `:timestamp` (number)
+**Context fields**: `:vpd` (for cursor position), `:vpds` (for selections), `:user-id`, `:user-name`
+
+---
+
+**Playback** (`:playback` category):
+```clojure
+:piece-playback-position
+:piece-playback-started
+:piece-playback-stopped
+```
+
+**Required fields**: `:piece-id` (string), `:timestamp` (number)
+**Context fields**: `:vpd` (current playback position), `:tempo`, `:time-signature`
+
+---
+
+**System** (`:system` category):
+```clojure
+:server-maintenance
+:server-shutdown
+:server-status
+:server-client-connected
+:server-client-disconnected
+```
+
+**Required fields**: `:type` (keyword), `:timestamp` (number)
+**Context fields**: `:message` (human-readable), `:client-count`, `:affected-services`
+
+---
+
+**Notification** (`:notification` category):
+```clojure
+:piece-validation-error
+:piece-operation-failed
+:server-warning
+:server-info
+:client-registration-confirmed
+```
+
+**Required fields**: `:type` (keyword), `:timestamp` (number)
+**Context fields**: `:message` (human-readable), `:severity`, `:piece-id` (if piece-related)
+
+---
+
+#### Category Derivation Logic
+
+```clojure
+(defn derive-category
+  "Derives routing category from validated backend event type.
+   Frontend can trust event structure - backend validation guarantees correctness."
+  [event]
+  (case (:type event)
+    ;; Cache invalidation
+    :piece-invalidation :cache-invalidation
+
+    ;; Presence/Collaboration
+    (:collaboration-user-joined
+     :collaboration-user-left
+     :collaboration-cursor-moved
+     :collaboration-selection-changed) :presence
+
+    ;; Playback
+    (:piece-playback-position
+     :piece-playback-started
+     :piece-playback-stopped) :playback
+
+    ;; System
+    (:server-maintenance
+     :server-shutdown
+     :server-status
+     :server-client-connected
+     :server-client-disconnected) :system
+
+    ;; Everything else defaults to notification
+    :notification))
+```
+
+#### Scope Extraction for Invalidation Events
+
+```clojure
+(defn extract-invalidation-scope
+  "Extracts VPDs from various scope field formats.
+   Returns vector of VPD vectors for uniform processing."
+  [event]
+  (cond
+    ;; Single VPD
+    (:vpd event)
+    [(:vpd event)]
+
+    ;; Multiple VPDs
+    (:vpds event)
+    (:vpds event)
+
+    ;; Measure numbers (expand to VPDs using piece context)
+    (:measures event)
+    (map #(measure-number->vpd (:piece-id event) %) (:measures event))
+
+    ;; Layout-level invalidation
+    (:layout-id event)
+    [[:layouts (layout-id->index (:layout-id event))]]
+
+    ;; No scope specified (shouldn't happen with valid events)
+    :else []))
+```
 
 ### Event Categories and Routing
 
 #### 1. Cache Invalidation Events
 
-**Examples:** :measure-view-updated, :layout-invalidated, :piece-changed
+**Event Type:** `:piece-invalidation`
 
 **Route to:** Rendering Data Manager → Fetch Coordinator
 
@@ -361,7 +501,7 @@ Event arrives → VPD lookup in rendering data → Mark element at that VPD leve
 
 #### 2. Presence/Collaboration Events
 
-**Examples:** :user-joined, :user-left, :cursor-moved, :selection-changed
+**Event Types:** `:collaboration-user-joined`, `:collaboration-user-left`, `:collaboration-cursor-moved`, `:collaboration-selection-changed`
 
 **Route to:** Collaboration UI Manager
 
@@ -373,7 +513,7 @@ Event arrives → Add to category aggregator → After 33ms window: flush batch 
 
 #### 3. Playback Events
 
-**Examples:** :playback-position, :playback-started, :playback-stopped
+**Event Types:** `:piece-playback-position`, `:piece-playback-started`, `:piece-playback-stopped`
 
 **Route to:** Playback UI Controller
 
@@ -385,7 +525,7 @@ Event arrives → Add to category aggregator → After ≤16ms window: flush bat
 
 #### 4. System Events
 
-**Examples:** :server-shutdown, :connection-lost, :reconnected
+**Event Types:** `:server-maintenance`, `:server-shutdown`, `:server-status`, `:server-client-connected`, `:server-client-disconnected`
 
 **Route to:** Connection Manager + Notification Manager
 
@@ -397,7 +537,7 @@ Event arrives → Update connection state immediately → Single Platform.runLat
 
 #### 5. Error/Notification Events
 
-**Examples:** :validation-error, :operation-failed, :warning, :info
+**Event Types:** `:piece-validation-error`, `:piece-operation-failed`, `:server-warning`, `:server-info`, `:client-registration-confirmed`
 
 **Route to:** Notification Manager
 
@@ -412,9 +552,10 @@ Event arrives → Single Platform.runLater() → Format message (i18n) → Show 
 #### Example 1: Collaborative Edit (Measure-Level Change)
 
 1. Another user edits measure 47
-2. Backend broadcasts :measure-view-updated event with piece-id, VPD [:layouts 0 :page-views 2 :staff-views 0 :measure-views 47], and category :cache-invalidation
+2. Backend broadcasts `:piece-invalidation` event with `:piece-id` "symphony-123", `:vpd` [:layouts 0 :page-views 2 :staff-views 0 :measure-views 47]
 3. Event Router receives via gRPC stream
-4. Routes to category aggregator for :cache-invalidation
+4. Derives category `:cache-invalidation` from event type
+5. Routes to category aggregator for :cache-invalidation
 5. Aggregator batches for 50-100ms
 6. Window expires → flush batch
 7. Single Platform.runLater() with all invalidations

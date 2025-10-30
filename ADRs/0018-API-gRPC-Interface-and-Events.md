@@ -181,11 +181,39 @@ All events in Ooloi's gRPC system follow a consistent structure to ensure predic
 - **Kebab-case naming**: Use dashes for multi-word types (`:client-registration-confirmed`)
 - **Hierarchical naming**: Use namespace-style for complex events (`:piece/content-changed`)
 
-**Core Event Categories**:
-- **Server events**: `:server-maintenance`, `:server-shutdown`, `:server-status`
-- **Client events**: `:client-registration-confirmed`, `:client-connected`, `:client-disconnected`
-- **Piece events**: `:piece-updated`, `:piece-created`, `:piece-deleted`
-- **Collaboration events**: `:user-joined`, `:user-left`, `:concurrent-edit`
+**Event Type Taxonomy** (Complete Catalog):
+
+All event types must follow naming pattern enforced by `validate-event-structure`:
+- Prefix with `server-`, `client-`, `piece-`, or `collaboration-`
+- OR use namespace-style with `/` separator
+
+**Cache Invalidation Events**:
+- `:piece-invalidation` - Visual hierarchy invalidation at any level (Layout/PageView/SystemView/StaffView/MeasureView)
+
+**Presence/Collaboration Events**:
+- `:collaboration-user-joined` - User joins collaborative session
+- `:collaboration-user-left` - User leaves collaborative session
+- `:collaboration-cursor-moved` - User cursor position updated
+- `:collaboration-selection-changed` - User selection updated
+
+**Playback Events**:
+- `:piece-playback-position` - Playback position updated
+- `:piece-playback-started` - Playback started
+- `:piece-playback-stopped` - Playback stopped
+
+**System Events**:
+- `:server-maintenance` - Server maintenance notification
+- `:server-shutdown` - Server shutting down
+- `:server-status` - Server status update
+- `:server-client-connected` - Client connected to server
+- `:server-client-disconnected` - Client disconnected from server
+
+**Notification Events**:
+- `:piece-validation-error` - Validation error occurred
+- `:piece-operation-failed` - Operation failed
+- `:server-warning` - Warning message
+- `:server-info` - Informational message
+- `:client-registration-confirmed` - Client registration successful
 
 ### Event Lifecycle and Processing
 
@@ -198,9 +226,9 @@ All events in Ooloi's gRPC system follow a consistent structure to ensure predic
 
 ;; Piece events (broadcast to subscribed clients) - automatic piece-id extraction
 (send-piece-event server-component
-  {:type :piece-content-changed
+  {:type :piece-invalidation
    :piece-id "symphony-123"
-   :measures [1 2 3]})
+   :measures [47 48 49]})
 
 ;; Internal event creation (for framework use)
 (create-and-queue-event queue observer event-data event-type timestamp source)
@@ -255,6 +283,104 @@ Both `send-server-event` and `send-piece-event` feature simplified signatures wi
 - Use `:client-id` for client-specific events
 - Include relevant entity IDs (`:piece-id`, `:user-id`) for context
 - Keep event data flat when possible; nest only when semantically grouped
+
+### Event Validation Guarantees
+
+All events emitted by `send-server-event` and `send-piece-event` are validated by `validate-event-structure` before transmission. Clients can rely on the following guarantees:
+
+**Structural Guarantees** (all events):
+- Event data is a map (not nil, not a scalar)
+- `:type` field exists and is a keyword
+- `:type` matches naming pattern: `server-*`, `client-*`, `piece-*`, `collaboration-*`, or contains `/`
+- All field names are keywords (kebab-case)
+- `:timestamp` field added automatically (nanosecond precision number)
+
+**Type-Specific Guarantees**:
+- **Piece events** (sent via `send-piece-event`): `:piece-id` field exists and is a string
+- **Collaboration events** (sent via `send-piece-event`): `:piece-id` field exists and is a string
+
+**Optional Field Type Guarantees** (when present):
+- `:client-id` is a string if present
+- `:message` is a string if present
+
+**What Clients Do NOT Need to Validate**:
+- Event structure (guaranteed to be a map)
+- Presence of `:type` field (guaranteed)
+- Type of `:type` field (guaranteed keyword)
+- Naming pattern of `:type` (guaranteed to match validation rules)
+- Presence of `:piece-id` for piece-* events (guaranteed)
+- Type correctness of optional fields (guaranteed if present)
+
+**Validation Failures**:
+Events that fail validation throw `ex-info` with descriptive error data and never reach clients. Clients can trust all received events are structurally valid.
+
+### Event Scope Fields
+
+Certain events include scope fields to specify the extent of their impact:
+
+**Invalidation Scope** (`:piece-invalidation` events):
+
+Visual hierarchy invalidation events use one of these scope patterns:
+
+```clojure
+;; Single VPD - invalidates one specific hierarchy element
+{:type :piece-invalidation
+ :piece-id "symphony-123"
+ :vpd [:layouts 0 :page-views 2 :system-views 1 :staff-views 0 :measure-views 47]
+ :timestamp ...}
+
+;; Multiple VPDs - invalidates several specific elements
+{:type :piece-invalidation
+ :piece-id "symphony-123"
+ :vpds [[:layouts 0 ... :measure-views 47]
+        [:layouts 0 ... :measure-views 48]
+        [:layouts 0 ... :measure-views 49]]
+ :timestamp ...}
+
+;; Measure numbers - shorthand for common case (clients expand to VPDs)
+{:type :piece-invalidation
+ :piece-id "symphony-123"
+ :measures [47 48 49]
+ :timestamp ...}
+
+;; Layout-level - entire layout invalidated
+{:type :piece-invalidation
+ :piece-id "symphony-123"
+ :layout-id "layout-uuid"
+ :timestamp ...}
+```
+
+**VPD Depth Indicates Hierarchy Level**:
+- `[:layouts 0]` → Layout-level invalidation
+- `[:layouts 0 :page-views 2]` → PageView-level invalidation
+- `[:layouts 0 :page-views 2 :system-views 1]` → SystemView-level invalidation
+- `[:layouts 0 :page-views 2 :system-views 1 :staff-views 0]` → StaffView-level invalidation
+- `[:layouts 0 ... :measure-views 47]` → MeasureView-level invalidation
+
+**Position Scope** (collaboration and playback events):
+
+```clojure
+;; Cursor position
+{:type :collaboration-cursor-moved
+ :piece-id "symphony-123"
+ :vpd [:layouts 0 ... :measure-views 47]
+ :user-id "user-456"
+ :timestamp ...}
+
+;; Selection (multiple VPDs)
+{:type :collaboration-selection-changed
+ :piece-id "symphony-123"
+ :vpds [[:layouts 0 ... :measure-views 47]
+        [:layouts 0 ... :measure-views 48]]
+ :user-id "user-456"
+ :timestamp ...}
+
+;; Playback position
+{:type :piece-playback-position
+ :piece-id "symphony-123"
+ :vpd [:layouts 0 ... :measure-views 12]
+ :timestamp ...}
+```
 
 ### Event Broadcasting API
 
