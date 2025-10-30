@@ -10,6 +10,8 @@
   - [Event Type Conventions](#event-type-conventions)
   - [Event Lifecycle and Processing](#event-lifecycle-and-processing)
   - [Event Consistency Requirements](#event-consistency-requirements)
+  - [Event Validation Guarantees](#event-validation-guarantees)
+  - [Event Scope Fields](#event-scope-fields)
   - [Event Broadcasting API](#event-broadcasting-api)
   - [Testing Event Structure](#testing-event-structure)
 - [Implementation Approach](#implementation-approach)
