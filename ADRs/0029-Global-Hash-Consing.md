@@ -262,9 +262,7 @@ Performance testing demonstrates that the optimization system scales linearly - 
 
 ### Trade-offs
 
-None. The optimization is transparent to application code, operates correctly on immutable data structures, and delivers measurable benefits (69% file size reduction, substantial memory savings). The implementation complexity is internal to the hash-consing system and does not affect other components.
-
-Like JVM string deduplication in G1GC, this is a pure optimization with no observable downsides beyond the resources required to implement it.
+Minimal and well-mitigated (bounded LRU memory, configurable daemon CPU, comprehensive test coverage). Like JVM string deduplication, the optimization is a net-positive with no user-visible downsides.
 
 ### Risk Mitigation
 - **Comprehensive testing**: Extensive validation ensures shared instances maintain correctness
