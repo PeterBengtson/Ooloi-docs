@@ -189,14 +189,16 @@ When cached objects are modified (such as adding a staccato to a C4 pitch), the 
 
 (defn ^:private optimize-piece-once [piece]
   (transduce
-    (comp (timewalk {})                                                          ; Traverse piece, emit [item vpd position] tuples
-          (filter #(p/hash-cons-cacheable? (item %)))                            ; Keep only cacheable items
-          (map (fn [tuple] [tuple (get-or-cache-object (item tuple))]))          ; Fetch/create cached version for each item
-          (filter (fn [[tuple cached]] (not (identical? cached (item tuple)))))) ; Keep only items needing replacement
-    (completing                                                                  ; Wrap reducing fn to provide completion arity
-      (fn [piece [tuple cached]]                                                 ; Reducing fn: thread piece state through
-        (vpd-ops/mutate (vpd tuple) piece cached)))                              ; Replace with cached version at VPD location
-    piece                                                                        ; Initial accumulator value
+    (comp (timewalk {})                                ; Traverse piece, emit [item vpd position] tuples
+          (filter #(p/hash-cons-cacheable? (item %)))) ; Keep only cacheable items
+    (completing                                        ; Wrap reducing fn to provide completion arity
+      (fn [piece tuple]                                ; Reducing fn: thread piece state through
+        (let [it (item tuple)
+              cached (get-or-cache-object it)]         ; Fetch/create cached version
+          (if (identical? cached it)                   ; Already identical?
+            piece                                      ; No change needed
+            (vpd-ops/mutate (vpd tuple) piece cached))))) ; Replace with cached version at VPD location
+    piece                                              ; Initial accumulator value
     [piece]))
 ```
 
