@@ -3,7 +3,7 @@
 ## Table of Contents
 - [Status](#status)
 - [Context](#context)
-  - [Memory Usage Patterns](#memory-usage-patterns)
+  - [Object Duplication Characteristics](#object-duplication-characteristics)
   - [Functional Programming Advantage](#functional-programming-advantage)
 - [Decision](#decision)
 - [Design Rationale](#design-rationale)
@@ -45,16 +45,16 @@ Since over 99% of musical objects are duplicates with identical parameter values
 
 This optimization is straightforward in functional programming with immutable data structures, where sharing identical objects is safe. The same optimization is complex in procedural/object-oriented programming where mutable state makes object sharing require synchronization and defensive copying.
 
-### Memory Usage Patterns
+### Object Duplication Characteristics
 
-Musical compositions exhibit highly repetitive patterns:
+Musical compositions create enormous numbers of duplicate identical objects:
 
-- **Common notes**: C4, D4, E4 appear thousands of times per piece
-- **Standard durations**: Quarter notes (1/4), eighth notes (1/8) dominate most music
-- **Frequent articulations**: Staccato, accent, legato are reused extensively
-- **Contextual elements**: Dynamics (forte, piano) and relationships (slurs, ties) are more situational
+- **Common notes**: C4, D4, E4 appear thousands of times per piece - identical pitch objects with same parameters
+- **Standard durations**: Quarter notes (1/4), eighth notes (1/8) dominate most music - identical duration values
+- **Frequent articulations**: Staccato, accent, legato objects are reused extensively - identical attachment objects
+- **Contextual elements**: Dynamics (forte, piano) and relationships (slurs, ties) tend to be unique due to endpoint-ids
 
-This repetition pattern suggests that selective caching based on object type would be more effective than universal caching.
+Since immutable objects with identical parameters can safely share a single instance, selective caching based on object type and structure enables substantial memory reduction.
 
 ### Functional Programming Advantage
 
@@ -73,7 +73,7 @@ This approach leverages functional programming principles to enable optimization
 
 We implement a **Selective Hash-Consing System** that caches objects based on their type and structural properties, rather than attempting to cache all objects universally.
 
-The key architectural principle is that hash-consing effectiveness depends on **repetition likelihood** - certain object types (articulations, basic pitches, rests) naturally occur many times in musical compositions, while others (dynamics, relationship objects) are more contextual and unique. A simple structural predicate determines eligibility without requiring runtime frequency analysis.
+The key architectural principle is that hash-consing effectiveness depends on **object identity** - identical immutable objects can share a single instance. Certain object types (articulations, pitches without relationships, rests) tend to have many identical instances, while others (objects with endpoint-ids, dynamics) tend to be unique. A simple structural predicate determines caching eligibility based on type and properties, not on pattern recognition or usage analysis.
 
 ## Design Rationale
 
@@ -99,7 +99,7 @@ The predicate uses recursive checking: a TakesAttachment object is cacheable onl
 
 ### Selective Caching System
 
-The hash-consing system employs a central predicate function (`hash-cons-cacheable?`) that performs a simple, lightweight structural check on objects to determine caching eligibility. The predicate examines object type and immediate properties only—no usage analysis or frequency tracking is required. This approach ensures that only high-repetition objects participate in caching, while low-frequency objects are excluded to avoid unnecessary overhead.
+The hash-consing system employs a central predicate function (`hash-cons-cacheable?`) that performs a simple, lightweight structural check on objects to determine caching eligibility. The predicate examines object type and immediate properties only—no usage analysis, pattern recognition, or frequency tracking is required. This approach ensures that only object types likely to have many identical instances participate in caching, while object types that tend to be unique are excluded to avoid unnecessary overhead.
 
 ### Constructor-Level Implementation
 
@@ -124,7 +124,7 @@ This selective approach provides significant memory reduction by targeting the h
 
 The hash-consing system operates through constructor-level caching with selective eligibility determined by the `hash-cons-cacheable?` predicate. Each cacheable object type maintains its own global LRU cache using `clojure.core.cache/lru-cache-factory` with configurable thresholds (typically 1,000-10,000 entries).
 
-Core musical objects (pitches, rests, chords) and high-repetition attachments (articulations) use global LRU caches, while contextual objects (dynamics) and relationship objects (slurs, ties) remain uncached based on the `hash-cons-cacheable?` predicate.
+Core musical objects (pitches, rests, chords) without endpoint-ids and articulation attachments use global LRU caches, while objects with endpoint-ids (participating in relationships) and non-articulation attachments (dynamics, slurs, ties) remain uncached based on the `hash-cons-cacheable?` predicate.
 
 ### Cache Key Strategy
 
@@ -221,7 +221,7 @@ The system implements a registry-based serialization format that replaces cached
 - **Varied uncached objects**: 24,590 bytes
 - **Compression improvement**: **69% better** (1.69x file size reduction)
 
-The registry system scales excellently - compression effectiveness actually **improves** with larger datasets containing more identical cached objects. Musical pieces with repetitive patterns (common in real compositions) benefit most significantly from this optimization.
+The registry system scales excellently - compression effectiveness actually **improves** with larger datasets containing more duplicate identical objects. Musical pieces naturally contain many duplicate objects (multiple C4 pitches, quarter-note rests, staccato markings), and larger pieces amplify these benefits.
 
 ### Serialization Performance Gains
 
@@ -255,7 +255,7 @@ The complete implementation has been verified through comprehensive testing:
 - **Cache identity preservation** through constructor-based reconstruction
 - **Structured file format** with metadata and registry-first layout
 
-Performance testing demonstrates that the optimization system scales linearly - larger datasets with more repetitive patterns achieve proportionally better compression and speed improvements.
+Performance testing demonstrates that the optimization system scales linearly - larger datasets with more duplicate identical objects achieve proportionally better compression and speed improvements.
 
 ## Consequences
 
@@ -268,7 +268,7 @@ Performance testing demonstrates that the optimization system scales linearly - 
 - **Transparent implementation**: Existing code benefits without requiring modifications
 - **Functional programming benefit**: Leverages immutability for safe object sharing
 - **Network efficiency**: Client-server communication benefits from smaller data payloads
-- **Selective targeting**: Caching focuses on high-repetition patterns, avoiding cache pollution
+- **Selective targeting**: Caching focuses on object types likely to have many identical instances, avoiding cache pollution
 
 ### Trade-offs
 - **Cache management**: LRU caches require tuning and monitoring to maintain effectiveness
