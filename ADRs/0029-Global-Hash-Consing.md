@@ -96,7 +96,7 @@ Objects are categorized into two groups based on empirical analysis of musical u
 
 ### Selective Caching System
 
-The hash-consing system employs a central predicate function that analyzes object types and content to determine caching eligibility. This approach ensures that only high-repetition objects participate in caching, while low-frequency objects are excluded to avoid unnecessary overhead.
+The hash-consing system employs a central predicate function (`hash-cons-cacheable?`) that performs a simple, lightweight structural check on objects to determine caching eligibility. The predicate examines object type and immediate properties only—no usage analysis or frequency tracking is required. This approach ensures that only high-repetition objects participate in caching, while low-frequency objects are excluded to avoid unnecessary overhead.
 
 ### Constructor-Level Implementation
 
@@ -262,7 +262,6 @@ Performance testing demonstrates that the optimization system scales linearly - 
 - **Selective targeting**: Caching focuses on high-repetition patterns, avoiding cache pollution
 
 ### Trade-offs
-- **Selective complexity**: System requires analysis of object usage patterns to determine caching eligibility
 - **Cache management**: LRU caches require tuning and monitoring to maintain effectiveness
 - **Memory profile changes**: Different allocation patterns may shift performance bottlenecks to other areas
 - **Debugging considerations**: Shared object instances may require different debugging approaches
