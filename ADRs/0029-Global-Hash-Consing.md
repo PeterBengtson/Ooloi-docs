@@ -11,15 +11,12 @@
 - [Architecture](#architecture)
   - [Selective Caching System](#selective-caching-system)
   - [Constructor-Level Implementation](#constructor-level-implementation)
-  - [Cache Key Strategy](#cache-key-strategy)
   - [Memory Optimization Benefits](#memory-optimization-benefits)
 - [Implementation Strategy](#implementation-strategy)
   - [Constructor-Level Caching Architecture](#constructor-level-caching-architecture)
-  - [Cache Key Strategy](#cache-key-strategy-1)
+  - [Cache Key Strategy](#cache-key-strategy)
   - [Serialization Integration with Nippy](#serialization-integration-with-nippy)
-  - [Background Consolidation Process](#background-consolidation-process)
-  - [Dynamic Cache Population Through Background Daemon](#dynamic-cache-population-through-background-daemon)
-  - [Background Cache Optimization Daemon Implementation](#background-cache-optimization-daemon-implementation)
+  - [Background Cache Optimization Daemon](#background-cache-optimization-daemon)
 - [Measured Performance Results](#measured-performance-results)
   - [Registry-Based File Size Optimization](#registry-based-file-size-optimization)
   - [Serialization Performance Gains](#serialization-performance-gains)
@@ -103,11 +100,7 @@ The hash-consing system employs a central predicate function (`hash-cons-cacheab
 
 ### Constructor-Level Implementation
 
-Hash-consing is implemented at the object constructor level, where each cacheable type maintains its own global LRU cache. When objects are created, the system first checks if an identical instance exists in the cache before creating a new one.
-
-### Cache Key Strategy
-
-The system uses constructor arguments directly as cache keys, eliminating the need for complex hash key construction while ensuring that identical parameter combinations map to shared instances.
+Hash-consing is implemented at the object constructor level, where each cacheable type maintains its own global LRU cache. When objects are created, the system first checks if an identical instance exists in the cache before creating a new one. See [Cache Key Strategy](#cache-key-strategy-1) in Implementation Strategy for details on how cache keys are constructed.
 
 ### Memory Optimization Benefits
 
@@ -142,13 +135,11 @@ Constructor arguments are used directly as cache keys, eliminating the need for 
 
 The system integrates with Nippy serialization to preserve shared object structure across save/load cycles. Nippy automatically handles object deduplication during serialization, ensuring that shared instances in memory remain shared in the serialized form. Upon deserialization, objects are reconstructed through the same constructor caching mechanism, maintaining the hash-consing benefits.
 
-### Background Consolidation Process
+### Background Cache Optimization Daemon
 
-Similar to JVM String Deduplication (JEP 192), the system employs a background consolidation approach where object sharing occurs transparently during normal operation without requiring explicit consolidation phases. The LRU cache management handles memory pressure automatically by evicting least-recently-used entries when cache thresholds are exceeded, maintaining bounded memory usage while preserving frequently-accessed shared instances.
+**Concept and JVM Parallel:**
 
-### Dynamic Cache Population Through Background Daemon
-
-The system includes a background daemon that performs dynamic hash-consing of objects created through mutations, **directly paralleling JVM string consolidation**. Just as the JVM string consolidation daemon identifies duplicate strings created during program execution and consolidates them in the background, our musical object daemon identifies duplicate musical objects and consolidates them asynchronously.
+Similar to JVM String Deduplication (JEP 192), the system employs a background consolidation approach where object sharing occurs transparently during normal operation without requiring explicit consolidation phases. The daemon performs dynamic hash-consing of objects created through mutations, **directly paralleling JVM string consolidation**. Just as the JVM string consolidation daemon identifies duplicate strings created during program execution and consolidates them in the background, our musical object daemon identifies duplicate musical objects and consolidates them asynchronously.
 
 **JVM String Consolidation Parallel:**
 - JVM: String concatenation creates `"Hello" + " " + "World"` → daemon later consolidates identical results
@@ -162,11 +153,7 @@ When cached objects are modified (such as adding a staccato to a C4 pitch), the 
 - Future creations of "C4 with staccato" will return the same cached instance
 - This process continues recursively - cached objects that are mutated can produce new cached objects
 
-**This parallels JVM string consolidation:** rather than trying to predict all possible object combinations at creation time, the daemon traverses stored pieces and consolidates duplicate cacheable objects it encounters. The `hash-cons-cacheable?` predicate determines eligibility through simple structural checks, not usage frequency analysis.
-
-**Implementation Complete (September 26, 2025):** The background cache optimization daemon has been fully implemented as an Integrant component with proper lifecycle management, background thread operations, STM transaction coordination, and timewalker integration. The daemon performs single-pass optimization using reduce over timewalk traversal, achieving identity sharing restoration for identical musical objects across pieces. Complete test validation demonstrates successful cache optimization with 610 backend tests passing.
-
-### Background Cache Optimization Daemon Implementation
+Rather than trying to predict all possible object combinations at creation time, the daemon traverses stored pieces and consolidates duplicate cacheable objects it encounters. The `hash-cons-cacheable?` predicate determines eligibility through simple structural checks, not usage frequency analysis. The LRU cache management handles memory pressure automatically by evicting least-recently-used entries when cache thresholds are exceeded, maintaining bounded memory usage while preserving frequently-accessed shared instances.
 
 **Component Architecture:**
 - **Integrant Component**: `ooloi.backend.components/cache-daemon` with proper init/halt lifecycle
@@ -206,6 +193,8 @@ When cached objects are modified (such as adding a staccato to a C4 pitch), the 
 - **Identity Sharing Achieved**: Test verification shows identical objects become `(identical? obj1 obj2) => true` after daemon processing
 - **All Test Types Pass**: 4 behavioral tests (19 total checks) including component lifecycle, safe access, thread management, and cache optimization
 - **System Integration**: Full backend test suite (610 checks) passes with daemon enabled
+
+**Implementation Complete (September 26, 2025):** The background cache optimization daemon has been fully implemented as an Integrant component with proper lifecycle management, background thread operations, STM transaction coordination, and timewalker integration. The daemon performs single-pass optimization using reduce over timewalk traversal, achieving identity sharing restoration for identical musical objects across pieces.
 
 ## Measured Performance Results
 
