@@ -79,18 +79,21 @@ The key architectural principle is that hash-consing effectiveness depends on **
 
 ### Type-Based Caching Strategy
 
-Objects are categorized into two groups based on their type and structural properties:
+The `hash-cons-cacheable?` predicate determines caching eligibility through simple structural checks:
 
-**High-Frequency Objects (Cached)**:
-- **Core musical elements**: Basic pitches, rests, and chords with common parameter combinations
-- **Articulation markings**: Staccato, accent, tenuto - these are reused extensively across musical pieces
-- **Objects with articulation-only attachments**: Musical elements that have only articulation markings
+**Cacheable Objects:**
+- **Articulation attachments**: Always cacheable (staccato, accent, tenuto, etc.)
+- **TakesAttachment objects with articulation-only attachments**: Pitches, rests, chords that have:
+  - No `:endpoint-id` (not part of a relationship)
+  - All attachments recursively cacheable (which means articulations only)
 
-**Low-Frequency Objects (Not Cached)**:
-- **Dynamic markings**: Forte, piano, crescendo - these are contextual and less frequently duplicated
-- **Relationship objects**: Slurs and ties that connect specific musical elements
-- **Mixed attachment objects**: Elements with combinations of different attachment types
-- **Unique relationship objects**: Any object with endpoint identifiers indicating specific relationships
+**Not Cacheable:**
+- **TakesAttachment objects with endpoint-id**: Any object participating in a relationship (slurs, ties, glissandos)
+- **TakesAttachment objects with non-articulation attachments**: Objects with dynamics, hairpins, or mixed attachment types
+- **Non-articulation attachments**: Dynamics, slurs, ties, hairpins, glissandos
+- **All other object types**: Measures, voices, staves, musicians, instruments, pieces, etc.
+
+The predicate uses recursive checking: a TakesAttachment object is cacheable only if all its attachments are themselves cacheable, which implicitly means they must all be articulations.
 
 ## Architecture
 
