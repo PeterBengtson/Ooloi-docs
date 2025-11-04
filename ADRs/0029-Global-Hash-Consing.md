@@ -181,6 +181,9 @@ When cached objects are modified (such as adding a staccato to a C4 pitch), the 
 - **All Object Types**: Support for Pitch, Rest, Chord, and Articulation optimization
 
 **Technical Implementation:**
+
+Since the timewalker is a true push-based transducer, we can write this as a transducer pipeline and achieve zero consing:
+
 ```clojure
 (defn daemon-maintenance-cycle [_daemon]
   (dosync
