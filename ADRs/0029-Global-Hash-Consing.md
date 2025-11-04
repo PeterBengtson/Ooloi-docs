@@ -175,15 +175,12 @@ When cached objects are modified (such as adding a staccato to a C4 pitch), the 
 - **Piece Manager Dependency**: Access to all stored pieces for system-wide optimization
 
 **Optimization Algorithm:**
-- **Single-Pass Traversal**: Efficient `reduce` operation over `timewalk` results
+- **Single-Pass Traversal**: Zero-allocation `transduce` with push-based transducer composition
 - **Cache Integration**: Direct usage of existing global cache infrastructure
 - **Identity Restoration**: VPD mutations using value branch for identity-preserving writes
 - **All Object Types**: Support for Pitch, Rest, Chord, and Articulation optimization
 
 **Technical Implementation:**
-
-Since the timewalker is a true push-based transducer, we can write this as a transducer pipeline and achieve zero consing:
-
 ```clojure
 (defn daemon-maintenance-cycle [_daemon]
   (dosync
