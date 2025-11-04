@@ -49,9 +49,9 @@ This optimization is straightforward in functional programming with immutable da
 
 Musical compositions create enormous numbers of duplicate identical objects:
 
-- **Common notes**: C4, D4, E4 appear thousands of times per piece - identical pitch objects with same parameters
-- **Standard durations**: Quarter notes (1/4), eighth notes (1/8) dominate most music - identical duration values
-- **Frequent articulations**: Staccato, accent, legato objects are reused extensively - identical attachment objects
+- **Common notes**: Notes like C4, D4, E4 appear thousands of times per piece - identical pitch objects with same parameters
+- **Limited duration set**: Musical durations are few in number (e.g., 1/4, 1/8, 1/2) - identical duration values appear repeatedly
+- **Frequent articulations**: Articulations like staccato, accent, legato are reused extensively - identical attachment objects
 - **Contextual elements**: Dynamics (forte, piano) and relationships (slurs, ties) tend to be unique due to endpoint-ids
 
 Since immutable objects with identical parameters can safely share a single instance, selective caching based on object type and structure enables substantial memory reduction.
