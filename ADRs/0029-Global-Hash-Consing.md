@@ -7,7 +7,7 @@
   - [Functional Programming Advantage](#functional-programming-advantage)
 - [Decision](#decision)
 - [Design Rationale](#design-rationale)
-  - [Frequency-Based Caching Strategy](#frequency-based-caching-strategy)
+  - [Type-Based Caching Strategy](#type-based-caching-strategy)
 - [Architecture](#architecture)
   - [Selective Caching System](#selective-caching-system)
   - [Constructor-Level Implementation](#constructor-level-implementation)
@@ -54,7 +54,7 @@ Musical compositions exhibit highly repetitive patterns:
 - **Frequent articulations**: Staccato, accent, legato are reused extensively
 - **Contextual elements**: Dynamics (forte, piano) and relationships (slurs, ties) are more situational
 
-This repetition pattern suggests that selective caching based on frequency would be more effective than universal caching.
+This repetition pattern suggests that selective caching based on object type would be more effective than universal caching.
 
 ### Functional Programming Advantage
 
@@ -71,15 +71,15 @@ This approach leverages functional programming principles to enable optimization
 
 ## Decision
 
-We implement a **Selective Hash-Consing System** that caches objects based on their repetition frequency in musical usage patterns, rather than attempting to cache all objects universally.
+We implement a **Selective Hash-Consing System** that caches objects based on their type and structural properties, rather than attempting to cache all objects universally.
 
-The key architectural principle is that hash-consing effectiveness depends on **repetition frequency** - only objects that appear many times benefit from shared instances, while low-repetition objects add cache overhead without meaningful benefit.
+The key architectural principle is that hash-consing effectiveness depends on **repetition likelihood** - certain object types (articulations, basic pitches, rests) naturally occur many times in musical compositions, while others (dynamics, relationship objects) are more contextual and unique. A simple structural predicate determines eligibility without requiring runtime frequency analysis.
 
 ## Design Rationale
 
-### Frequency-Based Caching Strategy
+### Type-Based Caching Strategy
 
-Objects are categorized into two groups based on empirical analysis of musical usage:
+Objects are categorized into two groups based on their type and structural properties:
 
 **High-Frequency Objects (Cached)**:
 - **Core musical elements**: Basic pitches, rests, and chords with common parameter combinations
@@ -119,7 +119,7 @@ This selective approach provides significant memory reduction by targeting the h
 
 ### Constructor-Level Caching Architecture
 
-The hash-consing system operates through constructor-level caching with selective eligibility based on object repetition patterns. Each cacheable object type maintains its own global LRU cache using `clojure.core.cache/lru-cache-factory` with configurable thresholds (typically 1,000-10,000 entries).
+The hash-consing system operates through constructor-level caching with selective eligibility determined by the `hash-cons-cacheable?` predicate. Each cacheable object type maintains its own global LRU cache using `clojure.core.cache/lru-cache-factory` with configurable thresholds (typically 1,000-10,000 entries).
 
 Core musical objects (pitches, rests, chords) and high-repetition attachments (articulations) use global LRU caches, while contextual objects (dynamics) and relationship objects (slurs, ties) remain uncached based on the `hash-cons-cacheable?` predicate.
 
@@ -145,20 +145,21 @@ Similar to JVM String Deduplication (JEP 192), the system employs a background c
 
 ### Dynamic Cache Population Through Background Daemon
 
-The system includes a background daemon that performs sophisticated dynamic hash-consing of objects created through mutations, **directly paralleling JVM string consolidation**. Just as the JVM string consolidation daemon identifies duplicate strings created during program execution and consolidates them in the background, our musical object daemon identifies duplicate musical objects and consolidates them asynchronously.
+The system includes a background daemon that performs dynamic hash-consing of objects created through mutations, **directly paralleling JVM string consolidation**. Just as the JVM string consolidation daemon identifies duplicate strings created during program execution and consolidates them in the background, our musical object daemon identifies duplicate musical objects and consolidates them asynchronously.
 
 **JVM String Consolidation Parallel:**
 - JVM: String concatenation creates `"Hello" + " " + "World"` → daemon later consolidates identical results
 - Ooloi: Cached C4 pitch + staccato attachment → daemon later consolidates identical "C4 with staccato" objects
 
-When cached objects are modified (such as adding a staccato to a C4 pitch), the resulting new objects can themselves become cached if they occur frequently enough:
+When cached objects are modified (such as adding a staccato to a C4 pitch), the resulting new objects can themselves become cached if they pass the `hash-cons-cacheable?` predicate:
 
 - A cached C4 pitch receives a staccato attachment, creating a "C4 with staccato" object
-- The background daemon monitors object creation patterns and identifies this new combination as frequently occurring
+- This new object passes the caching predicate (it's a TakesAttachment with only articulation attachments)
+- The background daemon identifies this duplicate cacheable object during traversal
 - Future creations of "C4 with staccato" will return the same cached instance
 - This process continues recursively - cached objects that are mutated can produce new cached objects
 
-**This is identical in approach to JVM string consolidation:** rather than trying to predict all possible string combinations at compile time, the JVM daemon observes actual runtime patterns and consolidates what actually occurs. Similarly, our daemon eliminates the need to track all mutation points synchronously in the codebase, instead asynchronously analyzing object creation patterns and promoting frequently-created objects to cached status based on actual usage patterns.
+**This parallels JVM string consolidation:** rather than trying to predict all possible object combinations at creation time, the daemon traverses stored pieces and consolidates duplicate cacheable objects it encounters. The `hash-cons-cacheable?` predicate determines eligibility through simple structural checks, not usage frequency analysis.
 
 **Implementation Complete (September 26, 2025):** The background cache optimization daemon has been fully implemented as an Integrant component with proper lifecycle management, background thread operations, STM transaction coordination, and timewalker integration. The daemon performs single-pass optimization using reduce over timewalk traversal, achieving identity sharing restoration for identical musical objects across pieces. Complete test validation demonstrates successful cache optimization with 610 backend tests passing.
 
