@@ -179,6 +179,11 @@ When cached objects are modified (such as adding a staccato to a C4 pitch), the 
 
 **Technical Implementation:**
 ```clojure
+(defn daemon-maintenance-cycle [_daemon]
+  (dosync
+    (doseq [piece-ref (vals @(var-get #'pm/piece-store))]
+      (alter piece-ref optimize-piece-once))))
+
 (defn ^:private optimize-piece-once [piece]
   (reduce
     (fn [p t]
@@ -191,11 +196,6 @@ When cached objects are modified (such as adding a staccato to a C4 pitch), the 
           p)))
     piece
     (timewalk piece {})))
-
-(defn daemon-maintenance-cycle [_daemon]
-  (dosync
-    (doseq [piece-ref (vals @(var-get #'pm/piece-store))]
-      (alter piece-ref optimize-piece-once))))
 ```
 
 **Verification Results:**
