@@ -14,12 +14,12 @@
   - [Dotted Units](#dotted-units)
   - [Fractional Beat Counts (Halves)](#fractional-beat-counts-halves)
   - [Irrational Meters](#irrational-meters)
+  - [Alternate Descriptors](#alternate-descriptors)
 - [Architecture](#architecture)
   - [String Notation Format](#string-notation-format)
   - [Internal Representation](#internal-representation)
   - [Duration Computation](#duration-computation)
   - [Presentation Modes](#presentation-modes)
-  - [Alternate Descriptors](#alternate-descriptors)
 - [Implementation Details](#implementation-details)
   - [Parsing Pipeline](#parsing-pipeline)
   - [Validation Strategy](#validation-strategy)
@@ -87,11 +87,22 @@ We implement a **comprehensive string-based time signature system** that:
 
 **Common/simple meters** with single numerator and denominator:
 
+![Standard time signatures](../img/timesigs_standard.png)
+
 ```clojure
 "4/4"   ; Common time (quarter note = 1 beat, 4 beats per measure)
 "3/4"   ; Waltz time
 "6/8"   ; Compound meter (eighth note = 1 beat, 6 beats per measure)
 "2/2"   ; Cut time / alla breve
+```
+
+**Special notation shortcuts** (case-insensitive):
+
+```clojure
+"C"     ; Common time symbol (equivalent to 4/4)
+"c"     ; Lowercase also accepted
+"cut"   ; Cut time / alla breve (equivalent to 2/2)
+"CUT"   ; Any casing accepted
 ```
 
 **Internal representation:**
@@ -100,9 +111,21 @@ We implement a **comprehensive string-based time signature system** that:
  :groups [{:count [4] :duration 1/4}]
  :duration 1
  :unit-form :default}
+
+{:descriptor "C"        ; Original notation preserved for display
+ :groups [{:count [4] :duration 1/4}]  ; Parsed as 4/4
+ :duration 1
+ :unit-form :default}
+
+{:descriptor "cut"      ; Original notation preserved
+ :groups [{:count [2] :duration 1/2}]  ; Parsed as 2/2
+ :duration 1
+ :unit-form :default}
 ```
 
 ### Additive Meters
+
+![Additive Meters](../img/timesigs_3+2+3.png)   ![](../img/timesigs_2+2+2+3.png) 
 
 **Grouped counts within single unit** showing metric subdivision:
 
@@ -120,6 +143,8 @@ We implement a **comprehensive string-based time signature system** that:
 ```
 
 ### Multiple Groups (Cross-Unit Additive)
+
+![Multiple Groups](../img/timesigs_multiple.png)   ![](../img/timesigs_mixed.png) 
 
 **Multiple groups with different denominators** for complex additive meters:
 
@@ -156,26 +181,35 @@ We implement a **comprehensive string-based time signature system** that:
 
 ### Dotted Units
 
-**Orff notation** with dotted denominators for pedagogical clarity:
+**Orff notation** with optional dotted denominators for pedagogical clarity:
+
+![Orff notation](../img/timesigs_orff.png)   ![](../img/timesigs_orff_dotted.png) 
 
 ```clojure
-"4/4."   ; Quarter note (dotted) as beat unit
-"2/4."   ; Dotted quarter as beat unit
-"3/8."   ; Dotted eighth as beat unit
+"3/4"    ; Quarter note as beat unit (no dot)
+"2/4."   ; Dotted quarter as beat unit (with dot)
+"3/8"    ; Eighth note as beat unit (no dot)
+"4/4."   ; Dotted quarter as beat unit (with dot)
 ```
 
 **Internal representation:**
 ```clojure
-{:descriptor "4/4."
- :groups [{:count [4] :duration [1/4 1]}]  ; [base-duration dots]
- :duration 3/2}
+{:descriptor "3/4"
+ :groups [{:count [3] :duration 1/4}]  ; Simple duration
+ :duration 3/4}
+
+{:descriptor "2/4."
+ :groups [{:count [2] :duration [1/4 1]}]  ; [base-duration dots]
+ :duration 3/4}
 ```
 
-**Note**: Dotted duration `[1/4 1]` computes as `1/4 * (2 - 1/2^1) = 3/8` per dot.
+**Note**: Dotted duration `[1/4 1]` computes as `1/4 * (2 - 1/2^1) = 3/8` per dot. The dot is optional in Orff notation - both dotted and non-dotted forms are valid.
 
 ### Fractional Beat Counts (Halves)
 
 **Fractional numerators** appearing in Grainger, Chávez, and other 20th-century composers:
+
+![Fractional numerators](../img/timesigs_fractional.png)
 
 ```clojure
 "2.5/4"     ; Decimal notation (easy to type)
@@ -212,6 +246,8 @@ We implement a **comprehensive string-based time signature system** that:
 
 **Fully supported** - irrational denominators (non-power-of-2):
 
+![Fractional numerators](../img/timesigs_irrational.png)
+
 ```clojure
 "4/3"    ; 4 beats, each 1/3 of whole note
 "5/7"    ; 5 beats, each 1/7 of whole note
@@ -232,13 +268,54 @@ We implement a **comprehensive string-based time signature system** that:
 
 These appear in Boulez, Ferneyhough, and Finnissy scores. The implementation accepts any positive integer denominator, making all mathematical time signatures representable.
 
+### Alternate Descriptors
+
+**Support for displaying alternate metric interpretations** shown in parentheses to the right of the primary time signature.
+
+![Alternate time signatures](../img/timesigs_alternate.png)
+
+**Two primary use cases:**
+
+**1. Metric stress relationships** - Same duration, different grouping:
+```clojure
+{:descriptor "6/8"
+ :alternate-descriptor "3/4"
+ :alternate-groups [{:count [3] :duration 1/4}]}
+```
+Display: **6/8** with **(3/4)** in parentheses below. Indicates compound meter (6/8) can be felt as simple meter (3/4) with different stress pattern.
+
+**2. Triplet relationships** - Proportional tempo indication:
+```clojure
+{:descriptor "3/8"
+ :alternate-descriptor "9/16"
+ :alternate-groups [{:count [9] :duration 1/16}]}
+```
+Display: **3/8** with **(9/16)** in parentheses below. Indicates triplet relationship: 3 eighth notes equal 9 sixteenth notes in preceding tempo.
+
+**Common scenarios:**
+- **6/8 ↔ 3/4**: Compound vs simple meter interpretation
+- **3/4 ↔ 6/8**: Simple meter felt in compound grouping
+- **3/8 ↔ 9/16**: Triplet proportion for tempo transitions
+- **2/4 ↔ 6/8**: Duple vs compound duple relationships
+
+**Benefits:**
+- **Performance clarity**: Conductors see both metric and proportional relationships
+- **Pedagogical value**: Students understand metric equivalencies
+- **Historical accuracy**: Preserves composer's notational choices
+- **Engraving flexibility**: Switch between interpretations without data loss
+
+**Important note:**
+The alternate descriptor and its parsed `:alternate-groups` are **purely presentational**. The duration computed from the alternate descriptor is never used for any musical calculations. Only the primary `:descriptor` and its `:duration` field determine measure length and temporal behavior. Triplet proportions for tempo relationships are calculated elsewhere in the system.
+
 ## Architecture
 
 ### String Notation Format
 
 **Grammar** (EBNF-style):
 ```
-time-signature ::= group ('+' group)*
+time-signature ::= special-symbol | standard-notation
+special-symbol ::= ('C' | 'c') | ('CUT' | 'cut' | 'Cut' | ...)  ; case-insensitive
+standard-notation ::= group ('+' group)*
 group          ::= counts '/' unit dotted?
 counts         ::= count ('+' count)*
 count          ::= integer | fractional-decimal | fractional-unicode
@@ -249,9 +326,16 @@ unit           ::= integer | 'B' | 'L'
 dotted         ::= '.'
 ```
 
+**Special symbols**:
+- `C` or `c` (case-insensitive) - Common time, equivalent to 4/4
+- `cut` (case-insensitive) - Cut time / alla breve, equivalent to 2/2
+- **Must appear standalone** - cannot be combined with other notation
+
 **Whitespace**: Ignored around operators (`+`, `/`, `.`)
 
 **Examples**:
+- `"C"` or `"c"` - common time (special symbol)
+- `"cut"` or `"CUT"` - cut time (special symbol)
 - `"4/4"` - basic
 - `"2+3/4"` - additive
 - `"2/4+3/8"` - multiple groups
@@ -318,43 +402,6 @@ dotted         ::= '.'
 - **:default** - Standard numeric notation (`"4/4"`)
 - **:note** - Orff-style note symbol as denominator
 - **:none** - No unit shown (unconventional, supported for completeness)
-
-### Alternate Descriptors
-
-**Support for displaying alternate metric interpretations** shown in parentheses below the primary time signature.
-
-**Two primary use cases:**
-
-**1. Metric stress relationships** - Same duration, different grouping:
-```clojure
-{:descriptor "6/8"
- :alternate-descriptor "3/4"
- :alternate-groups [{:count [3] :duration 1/4}]}
-```
-Display: **6/8** with **(3/4)** in parentheses below. Indicates compound meter (6/8) can be felt as simple meter (3/4) with different stress pattern.
-
-**2. Triplet relationships** - Proportional tempo indication:
-```clojure
-{:descriptor "3/8"
- :alternate-descriptor "9/16"
- :alternate-groups [{:count [9] :duration 1/16}]}
-```
-Display: **3/8** with **(9/16)** in parentheses below. Indicates triplet relationship: 3 eighth notes equal 9 sixteenth notes in preceding tempo.
-
-**Common scenarios:**
-- **6/8 ↔ 3/4**: Compound vs simple meter interpretation
-- **3/4 ↔ 6/8**: Simple meter felt in compound grouping
-- **3/8 ↔ 9/16**: Triplet proportion for tempo transitions
-- **2/4 ↔ 6/8**: Duple vs compound duple relationships
-
-**Benefits:**
-- **Performance clarity**: Conductors see both metric and proportional relationships
-- **Pedagogical value**: Students understand metric equivalencies
-- **Historical accuracy**: Preserves composer's notational choices
-- **Engraving flexibility**: Switch between interpretations without data loss
-
-**Important architectural note:**
-The alternate descriptor and its parsed `:alternate-groups` are **purely presentational**. The duration computed from the alternate descriptor is never used for any musical calculations. Only the primary `:descriptor` and its `:duration` field determine measure length and temporal behavior. Triplet proportions for tempo relationships are calculated elsewhere in the system.
 
 ## Implementation Details
 
