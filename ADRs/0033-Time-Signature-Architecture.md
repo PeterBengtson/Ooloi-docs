@@ -20,11 +20,6 @@
   - [Internal Representation](#internal-representation)
   - [Duration Computation](#duration-computation)
   - [Presentation Modes](#presentation-modes)
-- [Implementation Details](#implementation-details)
-  - [Parsing Pipeline](#parsing-pipeline)
-  - [Validation Strategy](#validation-strategy)
-  - [Heterogeneous Count Vectors](#heterogeneous-count-vectors)
-  - [Notation Preservation](#notation-preservation)
 - [Integration with Musical System](#integration-with-musical-system)
   - [RhythmicItem Trait](#rhythmicitem-trait)
   - [Piece-Level vs Measure-Level](#piece-level-vs-measure-level)
@@ -372,6 +367,26 @@ dotted         ::= '.'
 [5/2 "2½"]    ; Unicode notation
 ```
 
+**Heterogeneous count vectors:**
+The count vector supports both integers and `[ratio string]` pairs in the same vector. This design enables:
+- **Backward compatibility**: Existing integer-only code unchanged
+- **Notation preservation**: `2.5` and `2½` both compute to `5/2` but render differently
+- **Minimal overhead**: Type check with `(if (vector? c) (first c) c)` extracts rational value
+
+**Example heterogeneous vector:**
+```clojure
+{:descriptor "1.5+2½+3/4"
+ :groups [{:count [[3/2 "1.5"] [5/2 "2½"] 3] :duration 1/4}]}
+```
+
+**Display extraction:**
+```clojure
+(defn display-count [c]
+  (if (vector? c)
+    (second c)  ; Return notation string for fractional
+    (str c)))   ; Convert integer to string
+```
+
 **Important: `:groups` is an internal implementation detail.** The structure of group maps may evolve to support additional features such as automatic beam breaking based on metric subdivision patterns. Client code should not depend on the specific structure of this field. Access time signature properties through the public API (`api/get-descriptor`, `api/get-duration`, `api/get-unit-form`, `api/get-alternate-descriptor`, `api/set-descriptor`, etc.) rather than directly inspecting `:groups`.
 
 ### Duration Computation
@@ -401,111 +416,6 @@ dotted         ::= '.'
 - **:default** - Standard numeric notation (`"4/4"`)
 - **:note** - Orff-style note symbol as denominator
 - **:none** - No unit shown (unconventional, supported for completeness)
-
-## Implementation Details
-
-### Parsing Pipeline
-
-**1. Validation** (string → boolean):
-```clojure
-(defn valid? [sig-str]
-  ;; Regex validates syntax before parsing
-  ;; Rejects invalid patterns early
-  )
-```
-
-**2. Parsing** (string → internal representation):
-```clojure
-(defn parse-time-signature [sig-str]
-  ;; Splits into groups
-  ;; Parses each group
-  ;; Computes total duration
-  {:groups [...] :duration ratio})
-```
-
-**3. Count parsing** (string → integer or [ratio string]):
-```clojure
-(defn parse-count [count-str]
-  (cond
-    (re-matches #"\d*½" s)     ; Unicode half
-    (re-matches #"\d*\.5" s)   ; Decimal half
-    :else                       ; Integer
-    ))
-```
-
-**4. Duration computation** (groups → ratio):
-```clojure
-(defn compute-group-duration [{:keys [count duration]}]
-  ;; Extracts rational values from heterogeneous counts
-  ;; Sums and multiplies by unit duration
-  )
-```
-
-### Validation Strategy
-
-**Regex-based validation** before parsing ensures only valid strings reach parser:
-
-```clojure
-#"(?x)
-  (([1-9][0-9]*\.5|\.5|[1-9][0-9]*½|½|[1-9][0-9]*)  # Count (int/decimal/Unicode)
-   (\+([1-9][0-9]*\.5|\.5|[1-9][0-9]*½|½|[1-9][0-9]*))*  # Additional counts
-   /
-   ([1-9][0-9]*|[BL])  # Unit
-   \.?                 # Optional dot
-  )
-  (\+...)*  # Additional groups
-```
-
-**Benefits:**
-- **Early rejection**: Invalid syntax caught before parsing
-- **Clear error messages**: Validation failure provides specific feedback
-- **Performance**: Regex validation faster than parser error recovery
-
-### Heterogeneous Count Vectors
-
-**Design challenge**: Supporting mixed integer and fractional counts in same vector.
-
-**Solution**: Type-based polymorphism
-```clojure
-;; Integer: stored as-is
-2
-
-;; Fractional: stored as [ratio notation] pair
-[5/2 "2.5"]
-```
-
-**Type detection:**
-```clojure
-(defn extract-count-value [c]
-  (if (vector? c)
-    (first c)   ; Extract ratio from fractional
-    c))         ; Use integer directly
-```
-
-**Benefits:**
-- **Backward compatible**: Existing integer-only code unchanged
-- **Minimal overhead**: Type check on small vectors (typically 1-5 elements)
-- **Notation preservation**: String component maintains display fidelity
-
-### Notation Preservation
-
-**Critical requirement**: Preserve exact notation for display.
-
-**Problem**: `2.5` and `2½` both compute to `5/2`, but must render differently.
-
-**Solution**: Store notation string alongside rational value:
-```clojure
-[5/2 "2.5"]   ; Decimal notation preserved
-[5/2 "2½"]    ; Unicode notation preserved
-```
-
-**Display extraction:**
-```clojure
-(defn display-count [c]
-  (if (vector? c)
-    (second c)  ; Return notation string
-    (str c)))   ; Convert integer
-```
 
 ## Integration with Musical System
 
