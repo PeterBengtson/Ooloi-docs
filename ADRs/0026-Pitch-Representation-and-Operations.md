@@ -526,3 +526,8 @@ This ADR establishes pitch operations as a stable, high-performance foundation f
 - Interactive editing and playback features
 
 The string-based representation decision enables all of Ooloi's sophisticated musical capabilities whilst maintaining simplicity and performance at the core.
+
+## See Also
+
+- [ADR-0023: Shared Model Contracts](0023-Shared-Model-Contracts.md) - Unified data model architecture
+- [ADR-0033: Time Signature Architecture](0033-Time-Signature-Architecture.md) - String-based time signature representation following same pattern

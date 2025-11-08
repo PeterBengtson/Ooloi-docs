@@ -324,3 +324,8 @@ This architecture ensures that enhancing the Clojure development experience does
 ## Summary
 
 This ADR establishes the foundation for a true client-server contract that leverages the unified gRPC architecture's type fidelity capabilities while maintaining clear architectural boundaries and preserving universal multi-language gRPC compatibility.
+
+## See Also
+
+- [ADR-0026: Pitch Representation and Operations](0026-Pitch-Representation-and-Operations.md) - String-based representation pattern for musical data
+- [ADR-0033: Time Signature Architecture](0033-Time-Signature-Architecture.md) - TimeSignature model implementing RhythmicItem trait

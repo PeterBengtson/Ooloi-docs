@@ -1105,7 +1105,7 @@ Need items starting from beat 2 of measure 5 through beat 3 of measure 7?
      (filter pitch??))
 ```
 
-The `:start-position` and `:end-position` parameters use **rationals representing position within the measure**. Position 0 is the downbeat. The measure length equals the time signature: 4/4 = 1 (four quarters), 3/4 = 3/4 (three quarters), 5/8 = 5/8 (five eighths), 6/8 = 6/8 = 3/4 (six eighths), etc. Remember: `:end-position` is **inclusive**, so items at exactly that position are included in the results.
+The `:start-position` and `:end-position` parameters use **rationals representing position within the measure**. Position 0 is the downbeat. The measure length equals the time signature duration (see [ADR-0033: Time Signature Architecture](../ADRs/0033-Time-Signature-Architecture.md)): 4/4 = 1 (four quarters), 3/4 = 3/4 (three quarters), 5/8 = 5/8 (five eighths), 6/8 = 6/8 = 3/4 (six eighths), 2.5/4 = 5/8 (fractional), etc. Remember: `:end-position` is **inclusive**, so items at exactly that position are included in the results.
 
 ### Early Termination
 
