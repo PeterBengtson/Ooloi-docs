@@ -284,18 +284,18 @@ These appear in Boulez, Ferneyhough, and Finnissy scores. The implementation acc
 ```
 Display: **6/8** with **(3/4)** in parentheses below. Indicates compound meter (6/8) can be felt as simple meter (3/4) with different stress pattern.
 
-**2. Triplet relationships** - Proportional tempo indication:
+**2. Triplet relationships** - Metric transformation indication:
 ```clojure
 {:descriptor "3/8"
  :alternate-descriptor "9/16"
  :alternate-groups [{:count [9] :duration 1/16}]}
 ```
-Display: **3/8** with **(9/16)** in parentheses below. Indicates triplet relationship: 3 eighth notes equal 9 sixteenth notes in preceding tempo.
+Display: **3/8** with **(9/16)** in parentheses below. Indicates metric relationship where the 3/8 measure may have an implicit triplet relationship to the preceding meter (3 eighth notes containing 9 sixteenth-note subdivisions).
 
 **Common scenarios:**
 - **6/8 ↔ 3/4**: Compound vs simple meter interpretation
 - **3/4 ↔ 6/8**: Simple meter felt in compound grouping
-- **3/8 ↔ 9/16**: Triplet proportion for tempo transitions
+- **3/8 ↔ 9/16**: Triplet subdivision relationship
 - **2/4 ↔ 6/8**: Duple vs compound duple relationships
 
 **Benefits:**
@@ -305,7 +305,7 @@ Display: **3/8** with **(9/16)** in parentheses below. Indicates triplet relatio
 - **Engraving flexibility**: Switch between interpretations without data loss
 
 **Important note:**
-The alternate descriptor and its parsed `:alternate-groups` are **purely presentational**. The duration computed from the alternate descriptor is never used for any musical calculations. Only the primary `:descriptor` and its `:duration` field determine measure length and temporal behavior. Triplet proportions for tempo relationships are calculated elsewhere in the system.
+The alternate descriptor and its parsed `:alternate-groups` are **purely presentational**. The duration computed from the alternate descriptor is never used for any musical calculations. Only the primary `:descriptor` and its `:duration` field determine measure length and temporal behavior. The alternate descriptor provides visual indication of metric relationships (stress patterns, implied tuplet subdivisions) but does not affect tempo or duration calculations.
 
 ## Architecture
 
