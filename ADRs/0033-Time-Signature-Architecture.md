@@ -8,12 +8,12 @@
 - [Decision](#decision)
 - [Supported Time Signature Types](#supported-time-signature-types)
   - [Basic Signatures](#basic-signatures)
-  - [Additive Meters](#additive-meters)
+  - [Additive metres](#additive-metres)
   - [Multiple Groups (Cross-Unit Additive)](#multiple-groups-cross-unit-additive)
   - [Breve and Longa Units](#breve-and-longa-units)
   - [Dotted Units](#dotted-units)
   - [Fractional Beat Counts (Halves)](#fractional-beat-counts-halves)
-  - [Irrational Meters](#irrational-meters)
+  - [Irrational metres](#irrational-metres)
   - [Alternate Descriptors](#alternate-descriptors)
 - [Architecture](#architecture)
   - [String Notation Format](#string-notation-format)
@@ -26,13 +26,6 @@
   - [Accessor/Mutator Methods](#accessormutator-methods)
 - [Design Rationale](#design-rationale)
   - [Why String-Based Entry](#why-string-based-entry)
-  - [Why Preserve Notation Exactly](#why-preserve-notation-exactly)
-  - [Why Halves-Only Initially](#why-halves-only-initially)
-  - [Why Not Universal Fractions](#why-not-universal-fractions)
-- [Consequences](#consequences)
-  - [Benefits](#benefits)
-  - [Trade-offs](#trade-offs)
-  - [Migration Considerations](#migration-considerations)
 - [Future Extensions](#future-extensions)
 - [References](#references)
 
@@ -43,14 +36,14 @@ Accepted and implemented - November 8, 2025
 
 ### Time Signature Complexity in Professional Notation
 
-Modern music notation requires sophisticated time signature support spanning from common meters (4/4, 3/4) to highly specialized notations used in contemporary classical music. Professional engraving software must handle:
+Modern music notation requires sophisticated time signature support spanning from common metres (4/4, 3/4) to highly specialized notations used in contemporary classical music. Professional engraving software must handle:
 
-1. **Standard meters**: Common time, cut time, numeric time signatures (4/4, 3/4, 6/8)
-2. **Additive meters**: Bulgarian and Balkan music (7/8 as 2+2+3, 5/4 as 3+2)
+1. **Standard metres**: Common time, cut time, numeric time signatures (4/4, 3/4, 6/8)
+2. **Additive metres**: Bulgarian and Balkan music (7/8 as 2+2+3, 5/4 as 3+2)
 3. **Historical notation**: Breve (B) and longa (L) as time units from early music
 4. **Contemporary notation**: Fractional beat counts (Grainger, Chávez: 2½/4)
 5. **Pedagogical notation**: Orff-style note symbols as denominators
-6. **Irrational meters**: Boulez, Ferneyhough, Finnissy (4/3, 5/7)
+6. **Irrational metres**: Boulez, Ferneyhough, Finnissy (4/3, 5/7)
 
 The challenge is providing a unified architecture that handles all these cases consistently while maintaining simplicity for common use cases.
 
@@ -59,7 +52,7 @@ The challenge is providing a unified architecture that handles all these cases c
 Following Ooloi's architectural principle of human-readable string representations (established in ADR-0026 for pitches), time signatures use simple string notation for all input and storage. This provides:
 
 - **Intuitive entry**: Users type exactly what they see in the score
-- **Consistent syntax**: Same pattern handles simple and complex meters
+- **Consistent syntax**: Same pattern handles simple and complex metres
 - **Parseable structure**: Unambiguous grammar enables robust parsing
 - **Readable persistence**: Stored files remain human-inspectable
 
@@ -79,14 +72,14 @@ We implement a **comprehensive string-based time signature system** that:
 
 ### Basic Signatures
 
-**Common/simple meters** with single numerator and denominator:
+**Common/simple metres** with single numerator and denominator:
 
 ![Standard time signatures](../img/timesigs_standard.png)
 
 ```clojure
 "4/4"   ; Common time (quarter note = 1 beat, 4 beats per measure)
 "3/4"   ; Waltz time
-"6/8"   ; Compound meter (eighth note = 1 beat, 6 beats per measure)
+"6/8"   ; Compound metre (eighth note = 1 beat, 6 beats per measure)
 "2/2"   ; Cut time / alla breve
 ```
 
@@ -109,17 +102,17 @@ We implement a **comprehensive string-based time signature system** that:
 {:descriptor "C"        ; Original notation preserved for display
  :groups [{:count [4] :duration 1/4}]  ; Parsed as 4/4
  :duration 1
- :unit-form :default}
+ :unit-form :none}
 
 {:descriptor "cut"      ; Original notation preserved
  :groups [{:count [2] :duration 1/2}]  ; Parsed as 2/2
  :duration 1
- :unit-form :default}
+ :unit-form :none}
 ```
 
-### Additive Meters
+### Additive metres
 
-![Additive Meters](../img/timesigs_3+2+3.png)   ![](../img/timesigs_2+2+2+3.png) 
+![Additive metres](../img/timesigs_3+2+3.png)   ![](../img/timesigs_2+2+2+3.png) 
 
 **Grouped counts within single unit** showing metric subdivision:
 
@@ -140,7 +133,7 @@ We implement a **comprehensive string-based time signature system** that:
 
 ![Multiple Groups](../img/timesigs_multiple.png)   ![](../img/timesigs_mixed.png) 
 
-**Multiple groups with different denominators** for complex additive meters:
+**Multiple groups with different denominators** for complex additive metres:
 
 ```clojure
 "2/4+3/8"       ; Two quarter notes + three eighths = 7/8
@@ -170,7 +163,8 @@ We implement a **comprehensive string-based time signature system** that:
 ```clojure
 {:descriptor "2/B"
  :groups [{:count [2] :duration 2}]
- :duration 4}
+ :duration 4
+ :unit-form :note}
 ```
 
 ### Dotted Units
@@ -190,11 +184,13 @@ We implement a **comprehensive string-based time signature system** that:
 ```clojure
 {:descriptor "3/4"
  :groups [{:count [3] :duration 1/4}]  ; Simple duration
- :duration 3/4}
+ :duration 3/4
+ :unit-form :note}
 
 {:descriptor "2/4."
  :groups [{:count [2] :duration [1/4 1]}]  ; [base-duration dots]
- :duration 3/4}
+ :duration 3/4
+ :unit-form :note}
 ```
 
 **Note**: Dotted duration `[1/4 1]` computes as `1/4 * (2 - 1/2^1) = 3/8` per dot. The dot is optional in Orff notation - both dotted and non-dotted forms are valid.
@@ -236,7 +232,7 @@ We implement a **comprehensive string-based time signature system** that:
 - **Rejected**: Quarters (`.25`, `¼`), three-quarters (`.75`, `¾`), arbitrary decimals (`.3`, `.7`)
 - **Rationale**: Halves appear in published repertoire (Grainger, Chávez); quarters are theoretical
 
-### Irrational Meters
+### Irrational metres
 
 **Fully supported** - irrational denominators (non-power-of-2):
 
@@ -276,7 +272,7 @@ These appear in Boulez, Ferneyhough, and Finnissy scores. The implementation acc
  :alternate-descriptor "3/4"
  :alternate-groups [{:count [3] :duration 1/4}]}
 ```
-Display: **6/8** with **(3/4)** in parentheses below. Indicates compound meter (6/8) can be felt as simple meter (3/4) with different stress pattern.
+Display: **6/8** with **(3/4)** in parentheses to the right of the main metre. Indicates compound metre (6/8) can be felt as simple metre (3/4) with different stress pattern.
 
 **2. Triplet relationships** - Metric transformation indication:
 ```clojure
@@ -284,19 +280,13 @@ Display: **6/8** with **(3/4)** in parentheses below. Indicates compound meter (
  :alternate-descriptor "9/16"
  :alternate-groups [{:count [9] :duration 1/16}]}
 ```
-Display: **3/8** with **(9/16)** in parentheses below. Indicates metric relationship where the 3/8 measure may have an implicit triplet relationship to the preceding meter (3 eighth notes containing 9 sixteenth-note subdivisions).
+Display: **3/8** with **(9/16)** in parentheses to the right. Indicates metric relationship where the 3/8 measure may have an implicit triplet relationship to the preceding metre (3 eighth notes containing 9 sixteenth-note subdivisions).
 
 **Common scenarios:**
-- **6/8 ↔ 3/4**: Compound vs simple meter interpretation
-- **3/4 ↔ 6/8**: Simple meter felt in compound grouping
+- **6/8 ↔ 3/4**: Compound vs simple metre interpretation
+- **3/4 ↔ 6/8**: Simple metre felt in compound grouping
 - **3/8 ↔ 9/16**: Triplet subdivision relationship
 - **2/4 ↔ 6/8**: Duple vs compound duple relationships
-
-**Benefits:**
-- **Performance clarity**: Conductors see both metric and proportional relationships
-- **Pedagogical value**: Students understand metric equivalencies
-- **Historical accuracy**: Preserves composer's notational choices
-- **Engraving flexibility**: Switch between interpretations without data loss
 
 **Important note:**
 The alternate descriptor and its parsed `:alternate-groups` are **purely presentational**. The duration computed from the alternate descriptor is never used for any musical calculations. Only the primary `:descriptor` and its `:duration` field determine measure length and temporal behavior. The alternate descriptor provides visual indication of metric relationships (stress patterns, implied tuplet subdivisions) but does not affect tempo or duration calculations.
@@ -490,88 +480,10 @@ TimeSignature implements RhythmicItem trait from ADR-0023 (Shared Model Contract
 
 **String advantages:**
 - **Direct transcription**: Type exactly what appears in score
-- **Universal syntax**: Same pattern for simple and complex meters
+- **Universal syntax**: Same pattern for simple and complex metres
 - **Copy-paste friendly**: Can paste from text documents
 - **Human readable**: No object serialization abstraction
 - **Consistent with Ooloi philosophy**: Follows pitch string pattern (ADR-0026)
-
-### Why Preserve Notation Exactly
-
-**Requirement**: Distinguish between `2.5` and `2½` even though both = 5/2.
-
-**Use cases:**
-- **Historical accuracy**: Preserve composer's original notation choice
-- **Regional conventions**: Some publishers prefer decimal, others Unicode
-- **Typographic clarity**: Unicode may render better in certain fonts
-- **User preference**: Let users choose notation style without data loss
-
-**Implementation cost**: Minimal - storing string alongside ratio adds ~20 bytes per fractional count, negligible compared to overall TimeSignature object size.
-
-### Why Halves-Only Initially
-
-**Published repertoire analysis:**
-- **Halves**: Grainger ("Lincolnshire Posy"), Chávez (Symphony No. 2) - **documented usage**
-- **Quarters**: Boulez writings - **theoretical discussion**, no confirmed score usage
-- **Arbitrary fractions**: Ferneyhough, Finnissy - **irrational denominators** (4/3), not arbitrary numerators
-
-**Decision rationale:**
-Implement halves only (`.5`, `½`) based on documented repertoire. Quarters (`.25`, `¼`) and three-quarters (`.75`, `¾`) are not implemented due to lack of confirmed usage in published scores.
-
-**Benefits of this constraint:**
-- Simpler validation regex with clearer error messages
-- Fewer parsing branches for better performance
-- Easier testing and verification
-- Architecture remains extensible if quarters are needed later
-
-### Why Not Universal Fractions
-
-**Tempting**: Support arbitrary fractions like `3.75` or `5/7` in numerator.
-
-**Problems:**
-1. **No repertoire**: Cannot find published scores using arbitrary numerator fractions
-2. **Notation ambiguity**: How to display `5/7` numerator? As decimal? Mixed number?
-3. **Validation complexity**: Unlimited patterns make error messages unclear
-4. **Testing explosion**: Infinite combinations impossible to test comprehensively
-
-**Principle**: Implement features when encountering **actual use cases** in professional repertoire, not theoretical possibilities.
-
-## Consequences
-
-### Benefits
-
-1. **Comprehensive coverage**: Handles standard through contemporary notation
-2. **Intuitive entry**: String syntax matches printed score notation
-3. **Extensible design**: Adding quarters/irrational meters requires minimal changes
-4. **Type safety**: Validation catches errors before parsing
-5. **Display fidelity**: Preserves exact notation for rendering
-6. **Immutable semantics**: Computed duration prevents inconsistent state
-7. **Performance**: Rational arithmetic exact, regex validation fast
-8. **Integration**: RhythmicItem trait provides polymorphic operations
-
-### Trade-offs
-
-1. **String parsing overhead**: Every time signature construction requires parsing
-2. **Validation complexity**: Regex maintenance as new patterns added
-3. **Display logic**: Rendering must interpret both `:descriptor` and `:unit-form`
-4. **Documentation burden**: Complex feature requires comprehensive examples
-5. **Incremental fractional support**: Only halves initially may confuse users expecting full fractional support
-
-### Migration Considerations
-
-**Existing pieces** using string descriptors migrate automatically:
-- All previous valid descriptors remain valid
-- New fractional syntax is additive, not breaking
-- Pieces without fractional counts parse identically
-
-**Serialization** (Nippy - ADR-0007):
-- TimeSignature record serializes with new `:groups` structure
-- Heterogeneous count vectors serialize correctly (Clojure data)
-- No special serialization logic required
-
-**Frontend rendering**:
-- Must extract notation strings from `[ratio notation]` pairs
-- `(if (vector? c) (second c) (str c))` pattern extracts display value
-- Minimal changes to existing rendering code
 
 ## Future Extensions
 
@@ -597,8 +509,8 @@ Implement halves only (`.5`, `½`) based on documented repertoire. Quarters (`.2
 
 - [ADR-0023: Shared Model Contracts](0023-Shared-Model-Contracts.md) - RhythmicItem trait integration
 - [ADR-0026: Pitch Representation and Operations](0026-Pitch-Representation-and-Operations.md) - String-based representation pattern
-- Grainger, Percy: "Lincolnshire Posy" (1937) - Fractional meters
-- Chávez, Carlos: Symphony No. 2 "Sinfonía India" (1935) - Fractional meters
-- Boulez, Pierre: Theoretical writings on fractional meters
+- Grainger, Percy: "Lincolnshire Posy" (1937) - Fractional metres
+- Chávez, Carlos: Symphony No. 2 "Sinfonía India" (1935) - Fractional metres
+- Boulez, Pierre: Theoretical writings on fractional metres
 - Orff, Carl & Keetman, Gunild: "Music for Children" (Orff-Schulwerk) - Note-symbol time signatures
 - Jaques-Dalcroze, Émile: "Le Rythme, la musique et l'éducation" (1920) - Pedagogical note-based time signatures
