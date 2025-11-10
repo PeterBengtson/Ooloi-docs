@@ -270,13 +270,13 @@ Key signature changes can occur:
 
 ```clojure
 ;; Set G major at the beginning
-(set-key-signature piece [0 0] (create-key-signature :mode "ionian" :tonic "G"))
+(set-key-signature piece [0 0] (create-key-signature :mode "major" :tonic "G"))
 
 ;; Change to E minor at measure 16, beat 0
-(set-key-signature piece [16 0] (create-key-signature :mode "aeolian" :tonic "E"))
+(set-key-signature piece [16 0] (create-key-signature :mode "minor" :tonic "E"))
 
 ;; Change to D major at measure 16, beat 3 (mid-measure change)
-(set-key-signature piece [16 3] (create-key-signature :mode "ionian" :tonic "D"))
+(set-key-signature piece [16 3] (create-key-signature :mode "major" :tonic "D"))
 ```
 
 **Rationale:**
