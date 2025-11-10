@@ -17,7 +17,6 @@
 - [Validation](#validation)
 - [Consequences](#consequences)
 - [References](#references)
-- [Related Decisions](#related-decisions)
 
 ## Status
 Proposed
@@ -317,9 +316,3 @@ Validation rules vary by mode type:
 - ADR-0026: Pitch Representation (establishes sounding pitch principle)
 - ADR-0033: Time Signature Architecture (similar ChangeSet usage pattern)
 - ADR-0035: Remembered Alterations (accidental display algorithm and temporal tracking)
-
-## Related Decisions
-
-- **Transposition:** Key signatures do not participate in transposition; all pitches are transposed as sounding pitches, and key signatures must be updated separately (or automatically by layout system for transposing instruments)
-- **Layouts:** Transposing instrument parts will need automatic key signature transposition based on instrument transposition interval
-- **Enharmonic spelling:** Key signature choice affects default accidental display but does not alter pitch spelling stored in Pitch records
