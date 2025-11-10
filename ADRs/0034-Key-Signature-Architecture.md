@@ -313,6 +313,6 @@ Validation rules vary by mode type:
 
 ## References
 
-- ADR-0026: Pitch Representation (establishes sounding pitch principle)
-- ADR-0033: Time Signature Architecture (similar ChangeSet usage pattern)
+- [ADR-0026: Pitch Representation](0026-Pitch-Representation-and-Operations.md) (establishes sounding pitch principle)
+- [ADR-0033: Time Signature Architecture](0033-Time-Signature-Architecture.md) (similar ChangeSet usage pattern)
 - ADR-0035: Remembered Alterations (accidental display algorithm and temporal tracking)
