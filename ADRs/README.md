@@ -37,6 +37,7 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0031-Frontend-Event-Driven-Architecture](0031-Frontend-Event-Driven-Architecture.md)**: Separate event systems with Event Router for frontend-backend event synchronization
 - **[0032-Flow-Mode](0032-Flow-Mode.md)**: Ooloi Flow Mode – stateful modal keyboard input paradigm revival (see [research/OOLOI_FLOW_MODE.md](../research/OOLOI_FLOW_MODE.md))
 - **[0033-Time-Signature-Architecture](0033-Time-Signature-Architecture.md)**: Comprehensive time signature system supporting standard, additive, fractional, and irrational meters with string-based notation
+- **[0034-Key-Signature-Architecture](0034-Key-Signature-Architecture.md)**: Key signature architecture supporting standard modes, keyless notation, custom accidentals, per-octave variations, and microtonal systems
 
 ## Decisions by Technical Area
 
@@ -48,7 +49,7 @@ Technical decisions that shaped Ooloi's architecture.
 | **Audio Architecture** | [0027](0027-Plugin-Based-Audio-Architecture.md) | Frontend plugin-based audio processing, complete backend-frontend audio separation |
 | **Data Architecture & Storage** | [0008](0008-VPDs.md), [0010](0010-Pure-Trees.md), [0011](0011-Shared-Structure.md), [0012](0012-Persisting-Pieces.md), [0029](0029-Global-Hash-Consing.md) | Hierarchical addressing, immutable trees, memory optimization, persistence, global hash-consing |
 | **Musical Domain & Collaboration** | [0009](0009-Collaboration.md), [0014](0014-Timewalk.md), [0015](0015-Undo-and-Redo.md) | Multi-user editing, temporal coordination, undo/redo implementation |
-| **Musical Representation** | [0026](0026-Pitch-Representation-and-Operations.md), [0033](0033-Time-Signature-Architecture.md) | String-based pitch representation, microtonal support, diatonic/chromatic transposition, comprehensive time signature system with fractional and irrational meters |
+| **Musical Representation** | [0026](0026-Pitch-Representation-and-Operations.md), [0033](0033-Time-Signature-Architecture.md), [0034](0034-Key-Signature-Architecture.md) | String-based pitch representation, microtonal support, diatonic/chromatic transposition, comprehensive time signature system with fractional and irrational meters, key signature architecture with standard modes and custom accidentals |
 | **System Infrastructure** | [0016](0016-Settings.md), [0017](0017-System-Architecture.md), [0020](0020-TLS-Infrastructure-and-Deployment-Architecture.md), [0021](0021-Authentication.md) | Configuration management, component lifecycle, security infrastructure, authentication |
 | **Extensibility & Interoperability** | [0003](0003-Plugins.md), [0030](0030-MusicXML.md) | Plugin architecture for third-party integration, MusicXML interoperability excellence |
 
