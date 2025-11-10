@@ -29,6 +29,8 @@ Proposed
 
 Key signatures in music notation serve as engraving instructions that define which notes are considered "normal" (without printed accidentals) within a given musical context. In Ooloi, all pitches are stored as sounding pitches (ADR-0026), so key signatures are purely presentational constructs that guide the engraving engine in deciding when to print accidentals.
 
+![Without key signature](../img/keysigs/b_major_without_keysig.png)  -->  ![With key signature](../img/keysigs/b_major_with_keysig.png)
+
 The system must support:
 - Traditional Western key signatures (major, minor, modal)
 - Keyless notation (no tonal center, all accidentals explicit)
@@ -55,6 +57,8 @@ Key signatures are represented by the `KeySignature` record:
 ### Standard Modes
 
 Standard modes use the traditional Western diatonic system based on the circle of fifths. The mode determines the intervallic pattern, and the tonic determines which pitch classes are altered.
+
+![Example 1](../img/keysigs/g_clef_Bb_Eb.png) ![Example 2](../img/keysigs/g_clef_Cs_Fs.png)
 
 **Supported modes:**
 
@@ -90,6 +94,10 @@ For standard modes, accidentals are computed using the circle-of-fifths algorith
 | E | phrygian | `{}` | Natural mode of C |
 | F | lydian | `{}` | Natural mode of C |
 
+![Clef arrangements](../img/keysigs/clef_arrangements.png)
+
+![Complex](../img/keysigs/custom_double.png)
+
 ### Keyless Mode
 
 Keyless notation represents music without a tonal center, where every accidental must be explicitly notated.
@@ -111,6 +119,8 @@ Keyless notation is essential for music where traditional key signatures are mea
 ### Custom Key Signatures
 
 Custom key signatures allow users to specify accidentals explicitly, supporting non-standard systems that cannot be represented by traditional modes.
+
+![Custom 2](../img/keysigs/custom_Fs_Gs.jpg) ![Custom 3](../img/keysigs/custom_mixed.png) ![Custom 4](../img/keysigs/custom_mixed_2.jpg)
 
 **Architecture:**
 For custom mode, the user provides the `:accidentals` map directly rather than having it computed. This enables arbitrary combinations of sharps, flats, and microtonal accidentals.
@@ -172,6 +182,8 @@ Per-octave specifications enable Bartók-style notation where the same letter na
 ### Microtonal Key Signatures
 
 Microtonal systems require accidentals beyond the standard sharp/flat system. The architecture supports arbitrary accidental types within the constraints of staff-based notation.
+
+![Custom 1](../img/keysigs/custom_microtonal.png)
 
 **Notational Constraint:**
 Key signatures assume staff-based notation with 7 letter names (A-G). The `:edo` field describes the tuning system, but all pitches must still be spelled using letter names with appropriate accidentals. Systems that require fundamentally different spelling systems (e.g., 19-EDO, 22-EDO with native spelling) are outside the scope of this architecture.
@@ -296,25 +308,12 @@ Validation rules vary by mode type:
 
 ## Consequences
 
-### Positive
-
 1. **Unified representation** — Standard and custom key signatures use the same `:accidentals` field, simplifying engraving logic
 2. **Extensible microtonal support** — Arbitrary accidental keywords enable any microtonal system without code changes
 3. **Per-octave flexibility** — Bartók-style and other octave-dependent systems are first-class citizens
 4. **Clear separation of concerns** — Key signatures are purely presentational; all pitches remain sounding pitches
 5. **Automatic structure detection** — Simple vs per-octave maps detected automatically, no explicit flags needed
 6. **Composability** — Key signatures work seamlessly with ChangeSet system for mid-piece key changes
-
-### Negative
-
-1. **Custom signatures require explicit octave specification** — Users must provide accidental maps for all relevant octaves if using per-octave structure
-2. **No automatic enharmonic correction** — Custom accidentals are stored exactly as provided; no normalization occurs
-3. **Glyph responsibility external** — The system accepts arbitrary accidental keywords but doesn't validate that corresponding glyphs exist
-
-### Neutral
-
-1. **Two-phase implementation** — Standard key signatures can be implemented independently from custom signatures
-2. **Mode aliases supported** — `:major`/`:ionian` and `:minor`/`:aeolian` are equivalent but stored distinctly, preserving user intent
 
 ## References
 
