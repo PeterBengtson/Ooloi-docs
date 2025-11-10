@@ -95,9 +95,9 @@ Use string-based pitch representation as the canonical format throughout Ooloi. 
 
 ### Extreme Ranges and Edge Cases
 ```
-"C-1"       ; Sub-contra octave
+"C-1"       ; Sub-sub-contra octave
 "G9"        ; Highest MIDI range
-"C0"        ; Contra octave (16.35 Hz)
+"C0"        ; Sub-contra octave (16.35 Hz)
 "B11"       ; Beyond MIDI range
 ```
 
