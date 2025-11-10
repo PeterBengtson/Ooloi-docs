@@ -16,9 +16,6 @@
 - [Storage in Piece](#storage-in-piece)
 - [Validation](#validation)
 - [Consequences](#consequences)
-  - [Positive](#positive)
-  - [Negative](#negative)
-  - [Neutral](#neutral)
 - [References](#references)
 - [Related Decisions](#related-decisions)
 
