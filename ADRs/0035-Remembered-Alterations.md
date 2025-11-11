@@ -11,7 +11,7 @@
   - [House Style Settings](#house-style-settings)
   - [Performance Architecture](#performance-architecture)
 - [Integration with Key Signatures](#integration-with-key-signatures)
-- [Multi-Voice Considerations](#multi-voice-considerations)
+- [Instrument-Level Scope](#instrument-level-scope)
 - [Architectural Implications](#architectural-implications)
 - [Consequences](#consequences)
 - [References](#references)
@@ -179,22 +179,22 @@ The algorithm separates the core decision logic from these stylistic variations,
 
 ```clojure
 (defn accidental-decisions-for-measure
-  [piece measure-index staff-vpd key-sig prev-final house-settings]
+  [piece measure-index instrument-vpd key-sig prev-final house-settings]
   (let [baseline (baseline-from-key key-sig)
         initial-remembered (if (:french-ties? house-settings)
                             baseline
                             prev-final)
 
-        ;; Collect all pitch tuples from measure (all voices)
+        ;; Collect all pitch tuples from measure (all staves, all voices)
         all-pitch-tuples (sequence
                            (comp
-                             (timewalk {:boundary-vpd staff-vpd
+                             (timewalk {:boundary-vpd instrument-vpd
                                         :start-measure measure-index
                                         :end-measure measure-index})
                              (filter pitch??))
                            [piece])
 
-        ;; Sort by position for temporal order across voices
+        ;; Sort by position for temporal order across all staves and voices
         sorted-tuples (sort-by position all-pitch-tuples)]
 
     ;; Process sorted tuples with reduce
@@ -208,7 +208,6 @@ The algorithm separates the core decision logic from these stylistic variations,
                                      assoc
                                      (:letter parsed)
                                      (:accidental parsed))
-              ;; Preserve complete tuple for layout storage
               new-decision (assoc decision :tuple tuple)]
           [new-remembered (conj decisions new-decision)]))
       [initial-remembered []]
@@ -222,11 +221,17 @@ Each decision preserves the complete `[item vpd position]` tuple from timewalk:
 - VPD uniquely identifies each pitch in the piece hierarchy
 - Position enables sorting for temporal ordering
 
-**Performance:**
-Clojure's `sort-by` uses Java's TimSort (adaptive O(n) to O(n log n)). For typical measures containing 4-20 pitches, sorting overhead is negligible regardless of algorithm details.
+**Instrument-level scope:**
+The timewalk boundary is always at the **instrument level**, not staff level. This means:
+- Single-staff instruments (flute, violin): one staff, all voices share accidental memory
+- Multi-staff instruments (piano, harp): all staves share accidental memory, enabling proper cross-staff notation handling
+- Choir SATB on grand staff: all four staves share accidental memory
+- Organ with multiple manuals: all staves of the instrument share memory
 
-**Future extensibility:**
-The collect-sort-reduce pattern extends naturally to cross-staff remembered alterations (e.g., piano left and right hand sharing accidental memory) by adjusting the timewalk boundary to instrument level.
+The final remembered state at measure end includes all pitches from all staves and voices of that instrument.
+
+**Performance:**
+Clojure's `sort-by` uses Java's TimSort (adaptive O(n) to O(n log n)). Even for instruments with multiple staves, typical measures contain 4-50 total pitches, making sorting overhead negligible.
 
 **No caching required:**
 State flows naturally through sequential measure processing. Each measure receives the previous measure's final state, processes it, and returns the new final state for the next measure. Timewalk's transducer efficiency ensures no unnecessary recomputation - each pitch is visited exactly once per rendering pass.
@@ -237,7 +242,7 @@ State flows naturally through sequential measure processing. Each measure receiv
   (fn [prev-final measure-index]
     (let [[new-final decisions]
           (accidental-decisions-for-measure
-            piece measure-index staff-vpd key-sig prev-final house-settings)]
+            piece measure-index instrument-vpd key-sig prev-final house-settings)]
       ;; Decisions are musical semantics - apply to all layouts
       ;; Layouts can override these decisions as needed
       new-final))
@@ -271,13 +276,15 @@ When a key signature changes at position `[measure beat]`:
 - Key changes to E minor (same signature: F#)
 - F# appears after change → compares against remembered (:natural) → prints sharp
 
-## Multi-Voice Considerations
+## Instrument-Level Scope
 
-In multi-voice music, all voices contribute to the shared remembered state based on **rhythmic position** (horizontal placement), not voice separation.
+Remembered alterations operate at the **instrument level**, encompassing all staves and voices of that instrument. All pitches contribute to the shared remembered state based on **rhythmic position** (horizontal placement).
 
-**Rationale**: Accidentals affect the staff position visually. A performer reading the staff sees all voices simultaneously. If voice 1 has F# at position 1/4 and voice 2 has F natural at position 1/2, the F natural affects the visual memory for subsequent notes in either voice.
+**Rationale**: A performer reading an instrument's notation sees all staves and voices simultaneously. If the piano's right hand has F# at position 1/4 and the left hand has F natural at position 1/2 (on a different staff), the F natural affects the visual memory for subsequent F notes in either staff.
 
-**Implementation note**: Timewalk processes voices sequentially with position counting restarting at 0 for each voice. Therefore the algorithm collects all pitch tuples from the measure, sorts by position to establish left-to-right reading order, then processes the sorted sequence.
+**Multi-staff instruments**: For piano, harp, organ, and choir (SATB on grand staff), all staves share accidental memory. Cross-staff notation works naturally because the entire instrument is scanned together.
+
+**Implementation note**: Timewalk processes voices sequentially with position counting restarting at 0 for each voice. Therefore the algorithm collects all pitch tuples from all staves and voices of the instrument, sorts by position to establish left-to-right reading order, then processes the sorted sequence.
 
 **Example** (two voices, G major):
 ```clojure
@@ -328,15 +335,7 @@ This separation of semantic decisions from visual presentation enables consisten
 
 1. **Settings complexity** - Multiple settings needed for different engraving traditions
 2. **Sequential dependency** - Each measure depends on previous measure's final state (inherent in the problem domain)
-
-**Future Extensions:**
-
-The collect-sort-reduce architecture naturally extends to cross-staff remembered alterations:
-- **Piano left/right hand** - Change `boundary-vpd` from staff to instrument level
-- **Organ multiple manuals** - Same pattern, instrument-level scope
-- **Shared visual context** - Any scope where notation proximity suggests shared accidental memory
-
-No algorithmic changes required - simply adjust the `boundary-vpd` parameter to control scope.
+3. **Instrument-level scope** - Scanning all staves of multi-staff instruments (e.g., piano, organ, choir) increases the number of pitches to sort, though still negligible for typical measures
 
 ## References
 
