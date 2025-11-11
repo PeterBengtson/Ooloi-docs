@@ -38,6 +38,9 @@ The system must support:
 
 ### Core Architecture
 
+**Note on Internal vs. User-Facing Interface:**
+This ADR describes the **internal representation** of key signatures within Ooloi's data model. This is not what end users encounter in dialog boxes or the UI. Like time signatures (ADR-0033), which use an intuitive descriptor string (e.g., `"4/4"`, `"3+2+3/8"`), key signatures may also support a `:descriptor` field for standard cases, enabling simple user input like `"Eb major"` or `"D Dorian"`. However, key signatures are considerably more complex than time signatures when custom key signatures, per-octave variations, and microtonal systems are considered. Therefore, the full internal representation described here is necessary to support all use cases, while the user interface can provide simplified input methods for common scenarios.
+
 Key signatures are represented by the `KeySignature` record:
 
 ```clojure
@@ -100,7 +103,7 @@ Keyless notation represents music without a tonal center, where every accidental
 
 ![Complex](../img/keysigs/keysigs_vienna_2.png)
 
-In the above example from Alban Berg's *Wozzeck*, each note has an accidental. This can further be controlled through settings on the piece, instrument, or staff to show accidentals (a) only where necessary, (b) for all notes except repeated notes, or (c) for all notes _including_ repeated notes.
+In the above example from Alban Berg's *Wozzeck*, each note has an accidental. This can further be controlled through settings on the piece, instrument, or staff to show accidentals (a) only where necessary, (b) for all notes except repeated notes, or (c) for all notes _including_ repeated notes. The *Wozzeck* example uses (b), which was typical for the 2nd Vienna School during this period.
 
 **Specification:**
 - `:mode` = `"keyless"`
