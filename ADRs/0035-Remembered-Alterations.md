@@ -164,18 +164,14 @@ That final F# is a courtesy accidental—technically correct by the key signatur
 
 ### House Style Settings
 
-Multiple settings control accidental presentation:
+House styles vary significantly across publishers, historical periods, and musical genres. The remembered alterations algorithm provides the framework for determining when accidentals are semantically required, but presentation details vary:
 
-| Setting | Effect |
-|---------|--------|
-| `:french-ties?` | Tied notes restate accidentals at barlines |
-| `:courtesy-accidentals?` | Show courtesy accidentals at measure boundaries |
-| `:parenthesize-courtesy?` | Use parentheses for courtesy accidentals |
-| `:courtesy-across-octaves?` | Show courtesy when different octave was altered |
-| `:grace-notes-participate?` | Grace notes update remembered alterations |
-| `:repeated-notes-style` | `:all`, `:except-repeated`, or `:necessary-only` (Berg Wozzeck example) |
+- **Measure boundary behavior**: Some traditions (French style) restate accidentals at barlines even for tied notes; others carry the remembered state across
+- **Courtesy accidentals**: Whether to show accidentals that match the key signature after recent contradictions
+- **Cross-octave behavior**: Whether alterations in one octave affect other octaves, and how to indicate this visually
+- **Grace note participation**: Whether grace notes update the remembered alterations state
 
-**Rationale**: House styles vary significantly across publishers, historical periods, and musical genres. The algorithm provides the framework; settings control the specific behavior. This separation enables the same codebase to handle Baroque figured bass, Viennese atonal music, and contemporary microtonal scores.
+The algorithm separates the core decision logic from these stylistic variations, enabling the same codebase to handle Baroque figured bass, Viennese atonal music, and contemporary microtonal scores with different house style configurations.
 
 ### Performance Architecture
 
