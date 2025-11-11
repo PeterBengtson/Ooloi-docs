@@ -179,12 +179,6 @@ Multiple settings control accidental presentation:
 
 ### Performance Architecture
 
-The algorithm processes every pitch in every measure during rendering. Performance is critical.
-
-**Multi-voice temporal ordering requirement:**
-
-Timewalk processes voices sequentially, with position counting restarting at 0 for each voice. For remembered alterations, we need true temporal ordering across all voices (left-to-right reading order).
-
 **Solution: Collect, sort, reduce**
 
 ```clojure
@@ -227,21 +221,16 @@ Timewalk processes voices sequentially, with position counting restarting at 0 f
 
 **Tuple preservation:**
 
-Each decision preserves the complete `[item vpd position]` tuple from timewalk because:
-- **VPD for identification** — uniquely identifies each pitch in the piece hierarchy
-- **Item reference** — the actual pitch object with its musical properties
-- **Position** — temporal position used for sorting, useful for debugging
+Each decision preserves the complete `[item vpd position]` tuple from timewalk:
+- VPD uniquely identifies each pitch in the piece hierarchy
+- Item reference provides the actual pitch object
+- Position enables sorting for temporal ordering
 
-**Performance characteristics:**
-- O(n) complexity for collection
-- O(n log n) for sorting by position
-- O(n) for reduce processing
-- Overall: O(n log n) dominated by sort
-- In practice: n is small (typical measure has 4-20 pitches across all voices)
-- No repeated traversals - single collection phase
+**Performance:**
+Clojure's `sort-by` uses Java's TimSort (adaptive O(n) to O(n log n)). For typical measures containing 4-20 pitches, sorting overhead is negligible regardless of algorithm details.
 
 **Future extensibility:**
-The collect-sort-reduce pattern enables future cross-staff remembered alterations (e.g., piano left and right hand sharing accidental memory). Implementation: timewalk at instrument level instead of staff level, sort all pitches from both staves by position, process in unified temporal order. No algorithmic changes required.
+The collect-sort-reduce pattern extends naturally to cross-staff remembered alterations (e.g., piano left and right hand sharing accidental memory) by adjusting the timewalk boundary to instrument level.
 
 **No caching required:**
 State flows naturally through sequential measure processing. Each measure receives the previous measure's final state, processes it, and returns the new final state for the next measure. Timewalk's transducer efficiency ensures no unnecessary recomputation - each pitch is visited exactly once per rendering pass.
@@ -292,9 +281,7 @@ In multi-voice music, all voices contribute to the shared remembered state based
 
 **Rationale**: Accidentals affect the staff position visually. A performer reading the staff sees all voices simultaneously. If voice 1 has F# at position 1/4 and voice 2 has F natural at position 1/2, the F natural affects the visual memory for subsequent notes in either voice.
 
-**Critical implementation detail**: Timewalk processes voices sequentially with position counting restarting at 0 for each voice. This means we cannot rely on timewalk's emission order for temporal ordering.
-
-**Solution**: Collect all pitch tuples from the measure, then sort by position to establish true left-to-right reading order across all voices.
+**Implementation note**: Timewalk processes voices sequentially with position counting restarting at 0 for each voice. Therefore the algorithm collects all pitch tuples from the measure, sorts by position to establish left-to-right reading order, then processes the sorted sequence.
 
 **Example** (two voices, G major):
 ```clojure
@@ -310,10 +297,6 @@ In multi-voice music, all voices contribute to the shared remembered state based
 ;; Position 1/2: C natural contradicts remembered (C#) → print natural
 ```
 
-**Timewalk position semantics:**
-- Within each voice: positions are correct (0, 1/4, 1/2, 3/4 for quarter notes)
-- Across voices: positions restart per voice
-- For temporal ordering: collect all tuples, then sort by position field
 
 ## Architectural Implications
 
@@ -348,8 +331,7 @@ This separation of semantic decisions from visual presentation enables consisten
 **Neutral:**
 
 1. **Settings complexity** - Multiple settings needed for different engraving traditions
-2. **Sorting required** - Must sort by position for temporal ordering (negligible cost for typical measure sizes)
-3. **Sequential dependency** - Each measure depends on previous measure's final state (inherent in the problem domain)
+2. **Sequential dependency** - Each measure depends on previous measure's final state (inherent in the problem domain)
 
 **Future Extensions:**
 
