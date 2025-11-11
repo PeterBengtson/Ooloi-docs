@@ -317,7 +317,7 @@ In multi-voice music, all voices contribute to the shared remembered state based
 
 ## Implementation Functions
 
-The remembered alterations system consists of six core functions:
+The remembered alterations system consists of core functions:
 
 **1. parse-pitch** - Extract `{:letter :accidental :octave}` from pitch string (leverages memoized `convert`)
 
@@ -329,11 +329,9 @@ The remembered alterations system consists of six core functions:
 
 **5. Helper predicates** - `altered-in-other-octaves?` for cross-octave courtesy detection
 
-Implementation details are specified in issue #123 (Accidental Calculations & Engraving Support).
-
 **Decision structure:**
 
-Each decision returned by `accidental-decisions-for-measure` contains:
+Each decision contains:
 ```clojure
 {:tuple [pitch-obj [:m 4 0 2 3 0 :items 2] 1/4]  ; Complete timewalk tuple
  :print? true                                     ; Should accidental be printed?
