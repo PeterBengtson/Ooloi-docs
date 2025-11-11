@@ -222,8 +222,8 @@ Multiple settings control accidental presentation:
 **Tuple preservation:**
 
 Each decision preserves the complete `[item vpd position]` tuple from timewalk:
-- VPD uniquely identifies each pitch in the piece hierarchy
 - Item reference provides the actual pitch object
+- VPD uniquely identifies each pitch in the piece hierarchy
 - Position enables sorting for temporal ordering
 
 **Performance:**
