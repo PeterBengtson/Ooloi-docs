@@ -12,7 +12,7 @@
   - [Performance Architecture](#performance-architecture)
 - [Integration with Key Signatures](#integration-with-key-signatures)
 - [Multi-Voice Considerations](#multi-voice-considerations)
-- [Implementation Functions](#implementation-functions)
+- [Architectural Implications](#architectural-implications)
 - [Consequences](#consequences)
 - [References](#references)
 
@@ -315,33 +315,20 @@ In multi-voice music, all voices contribute to the shared remembered state based
 - Across voices: positions restart per voice
 - For temporal ordering: collect all tuples, then sort by position field
 
-## Implementation Functions
-
-The remembered alterations system consists of core functions:
-
-**1. parse-pitch** - Extract `{:letter :accidental :octave}` from pitch string (leverages memoized `convert`)
-
-**2. baseline-from-key** - Convert key signature to `{octave {letter accidental}}` structure
-
-**3. accidental-decisions-for-measure** - Full pipeline with multi-voice temporal ordering, returns `[final-alterations decisions]` where each decision includes complete `[item vpd position]` tuple
-
-**4. make-accidental-decision** - Core logic determining print/courtesy/parenthesized
-
-**5. Helper predicates** - `altered-in-other-octaves?` for cross-octave courtesy detection
-
-**Decision structure:**
-
-Each decision contains:
-```clojure
-{:tuple [pitch-obj [:m 4 0 2 3 0 :items 2] 1/4]  ; Complete timewalk tuple
- :print? true                                     ; Should accidental be printed?
- :courtesy? false                                 ; Is this a courtesy accidental?
- :parenthesized? false                            ; Should it be parenthesized?
- :reason :required}                               ; Why: :required, :courtesy-measure, etc.
-```
+## Architectural Implications
 
 **Musical semantics, not layout:**
-These decisions represent the **musical requirement** for accidentals based on key signature and temporal context. They apply universally to all layouts of this piece, regardless of transposition (keys transpose with the music). Individual layouts may override these decisions for visual reasons, but the remembered alterations algorithm provides the semantic baseline.
+The remembered alterations decisions represent the **musical requirement** for accidentals based on key signature and temporal context. They apply universally to all layouts of this piece, regardless of transposition (keys transpose with the music). Individual layouts may override these decisions for visual reasons, but the remembered alterations algorithm provides the semantic baseline.
+
+**Decision output:**
+The system produces decisions containing:
+- Which pitch requires consideration
+- Whether an accidental should be printed
+- Whether it's a courtesy accidental
+- Whether it should be parenthesized
+- The reason for the decision
+
+This separation of semantic decisions from visual presentation enables consistent musical interpretation across all visual representations.
 
 ## Consequences
 
