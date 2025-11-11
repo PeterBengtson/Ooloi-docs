@@ -23,7 +23,7 @@ Proposed
 
 ## Context
 
-Key signatures in music notation serve as engraving instructions that define which notes are considered "normal" (without printed accidentals) within a given musical context. In Ooloi, all pitches are stored as sounding pitches (ADR-0026), so key signatures are purely presentational constructs that guide the engraving engine in deciding when to print accidentals.
+Key signatures in music notation serve as engraving instructions that define which notes are considered "normal" (without printed accidentals) within a given musical context. In Ooloi, all pitches are stored as sounding pitches ([ADR-0026](0026-Pitch-Representation-and-Operations.md)), so key signatures are purely presentational constructs that guide the engraving engine in deciding when to print accidentals.
 
 ![Without key signature](../img/keysigs/b_major_without_keysig.png)  -->  ![With key signature](../img/keysigs/b_major_with_keysig.png)
 
@@ -39,7 +39,7 @@ The system must support:
 ### Core Architecture
 
 **Note on Internal vs. User-Facing Interface:**
-This ADR describes the **internal representation** of key signatures within Ooloi's data model. This is not what end users encounter in dialog boxes or the UI. Like time signatures (ADR-0033), which use an intuitive descriptor string (e.g., `"4/4"`, `"3+2+3/8"`), key signatures may also support a `:descriptor` field for standard cases, enabling simple user input like `"Eb major"` or `"D Dorian"`. However, key signatures are considerably more complex than time signatures when custom key signatures, per-octave variations, and microtonal systems are considered. Therefore, the full internal representation described here is necessary to support all use cases, while the user interface can provide simplified input methods for common scenarios.
+This ADR describes the **internal representation** of key signatures within Ooloi's data model. This is not what end users encounter in dialog boxes or the UI. Like time signatures ([ADR-0033](0033-Time-Signature-Architecture.md)), which use an intuitive descriptor string (e.g., `"4/4"`, `"3+2+3/8"`), key signatures may also support a `:descriptor` field for standard cases, enabling simple user input like `"Eb major"` or `"D Dorian"`. However, key signatures are considerably more complex than time signatures when custom key signatures, per-octave variations, and microtonal systems are considered. Therefore, the full internal representation described here is necessary to support all use cases, while the user interface can provide simplified input methods for common scenarios.
 
 Key signatures are represented by the `KeySignature` record:
 
