@@ -103,7 +103,7 @@ Keyless notation represents music without a tonal center, where every accidental
 
 ![Complex](../img/keysigs/keysigs_vienna_2.png)
 
-In the above example from Alban Berg's *Wozzeck*, each note has an accidental. This can further be controlled through settings on the piece, instrument, or staff to show accidentals (a) only where necessary, (b) for all notes except repeated notes, or (c) for all notes _including_ repeated notes. The *Wozzeck* example uses (b), which was typical for the 2nd Vienna School during this period.
+In the above example from Alban Berg's *Wozzeck* (1914-1922), each note has an accidental. This can further be controlled through settings on the piece, instrument, or staff to show accidentals (a) only where necessary, (b) for all notes except repeated notes, or (c) for all notes _including_ repeated notes. The *Wozzeck* example uses (b), which was typical for the 2nd Vienna School during this period.
 
 **Specification:**
 - `:mode` = `"keyless"`
