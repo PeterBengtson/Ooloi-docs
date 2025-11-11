@@ -96,7 +96,11 @@ For standard modes, accidentals are computed using the circle-of-fifths algorith
 
 ### Keyless Mode
 
-Keyless notation represents music without a tonal center, where every accidental must be explicitly notated.
+Keyless notation represents music without a tonal center, where every accidental must be explicitly notated. 
+
+![Complex](../img/keysigs/keysigs_vienna_2.png)
+
+In the above example from Alban Berg's *Wozzeck*, each note has an accidental. This can further be controlled through settings on the piece, instrument, or staff to show accidentals (a) only where necessary, (b) for all notes except repeated notes, or (c) for all notes _including_ repeated notes.
 
 **Specification:**
 - `:mode` = `"keyless"`
@@ -110,7 +114,7 @@ Keyless notation represents music without a tonal center, where every accidental
 ```
 
 **Rationale:**
-Keyless notation is essential for music where traditional key signatures are meaningless or misleading. By setting accidentals to an empty map, the engraving engine treats all notes as requiring explicit accidentals when they differ from natural.
+Keyless notation is essential for music where traditional key signatures are meaningless or misleading. By setting accidentals to an empty map, the engraving engine treats all notes as requiring explicit accidentals when they differ from natural (according to a, b, and c above).
 
 ### Custom Key Signatures
 
