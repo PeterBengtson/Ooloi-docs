@@ -17,7 +17,7 @@
 - [References](#references)
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 
