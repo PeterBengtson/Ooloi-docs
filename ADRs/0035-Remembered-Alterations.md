@@ -284,21 +284,26 @@ Remembered alterations operate at the **instrument level**, encompassing all sta
 
 **Multi-staff instruments**: For piano, harp, organ, and choir (SATB on grand staff), all staves share accidental memory. Cross-staff notation works naturally because the entire instrument is scanned together.
 
+**System-level separation**: Instruments in the same system do NOT share accidental memory. An oboe's F# does not affect a flute's F natural, even though they appear visually proximate on the page. The boundary is strictly at instrument level - accidental memory is an instrument property, not a system property or score property.
+
 **Implementation note**: Timewalk processes voices sequentially with position counting restarting at 0 for each voice. Therefore the algorithm collects all pitch tuples from all staves and voices of the instrument, sorts by position to establish left-to-right reading order, then processes the sorted sequence.
 
-**Example** (two voices, G major):
+**Example** (piano cross-staff, G major):
 ```clojure
-;; Voice 1: F# at position 0, C# at position 1/4
-;; Voice 2: F natural at position 1/8, C natural at position 1/2
+;; Piano (two staves):
+;; Right hand (treble staff): F# at position 0
+;; Left hand (bass staff): F natural at position 1/4
+;; Right hand: F at position 1/2
 
-;; After sorting by position: F#(0), F-natural(1/8), C#(1/4), C-natural(1/2)
+;; After sorting by position: F#(0), F-natural(1/4), F(1/2)
 
 ;; Result:
-;; Position 0: F# matches key → no print
-;; Position 1/8: F natural contradicts key AND remembered → print natural
-;; Position 1/4: C# contradicts key → print sharp
-;; Position 1/2: C natural contradicts remembered (C#) → print natural
+;; Position 0: F# (treble) matches key → no print
+;; Position 1/4: F natural (bass) contradicts remembered → print natural
+;; Position 1/2: F (treble) contradicts remembered (:natural) → print natural (courtesy)
 ```
+
+The bass F natural at position 1/4 forces a courtesy natural on the treble F at position 1/2, demonstrating cross-staff memory sharing.
 
 
 ## Architectural Implications
