@@ -261,7 +261,7 @@ The `baseline-from-key` function detects the structure by examining map keys:
 
 Key signatures provide the baseline for accidental display decisions. The key signature's `:accidentals` field defines which notes are considered "normal" (without printed accidentals) in a given musical context.
 
-The engraving engine uses this baseline in combination with temporal tracking of alterations within measures to determine when accidentals must be printed. The complete algorithm for accidental display, including remembered alterations and measure-crossing behavior, is described in ADR-0035 (Remembered Alterations).
+The engraving engine uses this baseline in combination with temporal tracking of alterations within measures to determine when accidentals must be printed. The complete algorithm for accidental display, including remembered alterations and measure-crossing behavior, is described in [ADR-0035](0035-Remembered-Alterations.md) (Remembered Alterations).
 
 Key signatures interact with the engraving system through two primary functions:
 
@@ -272,7 +272,7 @@ Converts the key signature into a `{octave {letter accidental}}` structure that 
 Determines whether a note needs a printed accidental by comparing:
 - The note's accidental
 - The key signature baseline
-- The "remembered alterations" from earlier in the measure (see ADR-0035)
+- The "remembered alterations" from earlier in the measure (see [ADR-0035](0035-Remembered-Alterations.md))
 
 ## Storage in Piece
 
@@ -322,4 +322,4 @@ Validation rules vary by mode type:
 
 - [ADR-0026: Pitch Representation](0026-Pitch-Representation-and-Operations.md) (establishes sounding pitch principle)
 - [ADR-0033: Time Signature Architecture](0033-Time-Signature-Architecture.md) (similar ChangeSet usage pattern)
-- ADR-0035: Remembered Alterations (accidental display algorithm and temporal tracking)
+- [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (accidental display algorithm and temporal tracking)

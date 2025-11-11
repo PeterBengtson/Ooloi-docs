@@ -531,3 +531,5 @@ The string-based representation decision enables all of Ooloi's sophisticated mu
 
 - [ADR-0023: Shared Model Contracts](0023-Shared-Model-Contracts.md) - Unified data model architecture
 - [ADR-0033: Time Signature Architecture](0033-Time-Signature-Architecture.md) - String-based time signature representation following same pattern
+- [ADR-0034: Key Signature Architecture](0034-Key-Signature-Architecture.md) - Key signatures using pitch representation for tonic specification
+- [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) - Accidental display logic leveraging pitch string parsing
