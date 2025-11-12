@@ -55,30 +55,55 @@ The remembered alterations system uses a **wave pattern** where accidental memor
 
 ### Data Structure
 
-Remembered alterations use the structure:
+Remembered alterations use an optimized structure that minimizes memory usage while enabling efficient lookups:
 
 ```clojure
-{octave {letter accidental}}
+{"default" {letter accidental}  ; Baseline from key signature (non-naturals only)
+ octave {letter accidental}}    ; Per-octave deviations from default
 ```
 
-**Example** (C# major with 7 sharps, after C natural appears in octave 4):
+**Example** (C# major with 7 sharps, initially):
 ```clojure
-{4 {"C" :natural, "D" :sharp, "E" :sharp, "F" :sharp,
-    "G" :sharp, "A" :sharp, "B" :sharp}}
+{"default" {"C" :sharp, "D" :sharp, "E" :sharp, "F" :sharp,
+            "G" :sharp, "A" :sharp, "B" :sharp}}
+```
+
+**After C natural appears in octave 4** (deviation from default):
+```clojure
+{"default" {"C" :sharp, "D" :sharp, "E" :sharp, "F" :sharp,
+            "G" :sharp, "A" :sharp, "B" :sharp}
+ 4 {"C" :natural}}  ; Only the deviation stored
 ```
 
 **Why this structure:**
 
-1. **Starts from key signature baseline**: All letters begin with their key signature accidentals
-2. **Updates incrementally**: As notes appear, their alterations replace baseline values
-3. **Octave separation**: Enables different house styles for octave-specific behavior
-4. **Complete state**: Contains all letters (A-G), not just alterations
+1. **Memory efficient**: Default stores 7 entries for key signature; octave deviations only store differences (vs 70 entries for all octaves × all letters)
+2. **Starts from key signature baseline**: "default" key contains non-natural accidentals from key signature
+3. **Updates incrementally**: Deviations stored per octave, matching default removes deviation
+4. **Octave separation**: Enables different house styles for octave-specific behavior
+5. **Absence means natural**: If letter not found in octave or default, assume `:natural`
+
+**Lookup algorithm:**
+```clojure
+(or (get-in remembered [octave letter])     ; Check octave-specific first
+    (get-in remembered ["default" letter])  ; Fall back to default
+    :natural)                                ; Assume natural if absent
+```
+
+**Update algorithm:**
+```clojure
+(let [default-acc (get-in remembered ["default" letter] :natural)]
+  (if (= accidental default-acc)
+    (update remembered octave dissoc letter)         ; Matches default, remove deviation
+    (assoc-in remembered [octave letter] accidental))) ; Store deviation
+```
 
 **Octave separation rationale:**
 - Some house styles apply accidentals across all octaves
 - Others treat each octave independently
 - The structure supports both without code changes
-- Helper predicates (`altered-in-same-octave?`, `altered-in-other-octaves?`) enable house style logic
+- Helper predicates (`altered-in-other-octaves?`) can efficiently check only octaves with explicit deviations
+- Cross-octave searches are faster: only check keys present in map, not all 10 octaves
 
 ### Measure Boundary Behavior
 
@@ -111,12 +136,13 @@ Reset completely to the key signature baseline. Tied notes must have their accid
 
 C# major, C natural tied through measures 2, 3, 4, then C# in measure 5:
 
-- Measure 1 final: `{4 {"C" :natural, "D" :sharp, ...}}`
-- Measure 2 initial: `prev-final` (C natural preserved)
-- Measure 2 final: `{4 {"C" :natural, "D" :sharp, ...}}` (tie continues)
-- Measures 3, 4: Same pattern, C natural flows through
-- Measure 5 initial: `{4 {"C" :natural, "D" :sharp, ...}}`
-- C# appears: differs from remembered (:natural) → print sharp
+- Measure 1 final: `{"default" {"C" :sharp, "D" :sharp, ...}, 4 {"C" :natural}}`
+- Measure 2 initial: `prev-final` (C natural deviation preserved)
+- Measure 2 final: `{"default" {"C" :sharp, "D" :sharp, ...}, 4 {"C" :natural}}` (tie continues)
+- Measures 3, 4: Same pattern, C natural deviation flows through
+- Measure 5 initial: `{"default" {"C" :sharp, "D" :sharp, ...}, 4 {"C" :natural}}`
+- C# appears in octave 4: differs from remembered (:natural) → print sharp
+- Measure 5 final: `{"default" {"C" :sharp, "D" :sharp, ...}}` (C now matches default, deviation removed)
 
 The wave carries correctly regardless of how many measures the tie spans.
 
@@ -148,18 +174,23 @@ That final F# is a courtesy accidental—technically correct by the key signatur
 
 **Decision logic**:
 ```clojure
-(or
-  ;; Required: differs from current remembered state
-  (not= accidental (get-in remembered [octave letter]))
+(let [current-acc (or (get-in remembered [octave letter])
+                     (get-in remembered ["default" letter])
+                     :natural)]
+  (or
+    ;; Required: differs from current remembered state
+    (not= accidental current-acc)
 
-  ;; Courtesy: matches baseline but differs from previous measure
-  (and courtesy-setting?
-       (= accidental (get-in baseline [octave letter]))
-       (not= accidental (get-in prev-final [octave letter])))
+    ;; Courtesy: matches baseline but differs from previous measure
+    (and courtesy-setting?
+         (= accidental (get-in baseline ["default" letter] :natural))
+         (not= accidental (or (get-in prev-final [octave letter])
+                              (get-in prev-final ["default" letter])
+                              :natural)))
 
-  ;; Cross-octave courtesy: altered in other octaves
-  (and cross-octave-courtesy?
-       (altered-in-other-octaves? remembered octave letter accidental)))
+    ;; Cross-octave courtesy: altered in other octaves
+    (and cross-octave-courtesy?
+         (altered-in-other-octaves? remembered octave letter accidental))))
 ```
 
 ### House Style Settings
@@ -271,10 +302,11 @@ When a key signature changes at position `[measure beat]`:
 4. Subsequent notes compare against merged state
 
 **Example** (G major → E minor mid-measure):
-- Initial: `{4 {"F" :sharp, ...}}`
-- F natural appears before change → updates remembered
-- Key changes to E minor (same signature: F#)
-- F# appears after change → compares against remembered (:natural) → prints sharp
+- Initial: `{"default" {"F" :sharp}}`
+- F natural appears in octave 4 before change → updates remembered to `{"default" {"F" :sharp}, 4 {"F" :natural}}`
+- Key changes to E minor (same signature: F#) → baseline remains `{"default" {"F" :sharp}}`
+- F# appears in octave 4 after change → compares against remembered (:natural) → prints sharp
+- After F# processed: `{"default" {"F" :sharp}}` (deviation removed, matches default again)
 
 ## Instrument-Level Scope
 

@@ -107,7 +107,7 @@ In the above example from Alban Berg's *Wozzeck* (1914-1922), each note has an a
 
 **Specification:**
 - `:mode` = `"keyless"`
-- `:tonic` must be `nil` or `false`
+- `:tonic` must be `nil`
 - `:accidentals` = `{}` (empty map)
 
 **Example:**
@@ -129,7 +129,7 @@ Custom key signatures allow users to specify accidentals explicitly, supporting 
 For custom mode, the user provides the `:accidentals` map directly rather than having it computed. This enables arbitrary combinations of sharps, flats, and microtonal accidentals.
 
 **Tonic specification:**
-Custom key signatures can optionally specify a `:tonic` (e.g., `"C"`, `"F#"`), or the tonic can be `nil` or `false` for atonal or non-tonal systems. The tonic serves as metadata for display or theoretical analysis but does not affect the accidentals.
+Custom key signatures can optionally specify a `:tonic` (e.g., `"C"`, `"F#"`), or the tonic can be `nil` for atonal or non-tonal systems. The tonic serves as metadata for display or theoretical analysis but does not affect the accidentals.
 
 **Simple custom (same for all octaves):**
 ```clojure
@@ -148,7 +148,7 @@ Custom key signatures can optionally specify a `:tonic` (e.g., `"C"`, `"F#"`), o
 The accidentals map uses string keys (letter names) and keyword values (accidental types). All octaves follow the same specification.
 
 **Rationale:**
-Mixed sharp/flat signatures appear in some 20th-century works and are necessary for certain non-Western systems. By accepting explicit accidental specifications, the system supports any arbitrary combination. The optional tonic allows theoretical labeling without constraining the accidental structure.
+Mixed sharp/flat signatures appear in some 20th-century works and are necessary for certain non-Western systems. By accepting explicit accidental specifications, the system supports any arbitrary combination. The optional tonic (or `nil`) allows theoretical labeling without constraining the accidental structure.
 
 ### Per-Octave Custom Key Signatures
 
@@ -304,7 +304,7 @@ Validation rules vary by mode type:
 | Field | Standard Modes | Keyless Mode | Custom Mode |
 |-------|----------------|--------------|-------------|
 | `:mode` | ionian, dorian, phrygian, lydian, mixolydian, aeolian, locrian (or major/minor) | `"keyless"` | `"custom"` |
-| `:tonic` | **Required** (valid pitch letter) | **Must be** `nil` or `false` | **Optional** (pitch letter, `nil`, or `false`) |
+| `:tonic` | **Required** (valid pitch letter) | **Must be** `nil` | **Optional** (pitch letter or `nil`) |
 | `:accidentals` param | **Forbidden** (computed) | **Forbidden** (computed to `{}`) | **Required** (user-provided) |
 | `:custom` param | **Forbidden** | **Forbidden** | **Optional** (metadata) |
 | Accidentals source | Computed via circle of fifths | Empty map `{}` | User-provided simple or per-octave map |
