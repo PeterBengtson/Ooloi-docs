@@ -210,9 +210,9 @@ The algorithm separates the core decision logic from these stylistic variations,
 
 ```clojure
 (defn accidental-decisions-for-measure
-  [piece measure-index instrument-vpd key-sig prev-final house-settings]
+  [piece measure-index instrument-vpd key-sig prev-final]
   (let [baseline (baseline-from-key key-sig)
-        initial-remembered (if (:french-ties? house-settings)
+        initial-remembered (if (french-ties? piece)
                             baseline
                             prev-final)
 
@@ -233,7 +233,7 @@ The algorithm separates the core decision logic from these stylistic variations,
       (fn [[remembered decisions] tuple]
         (let [parsed (parse-pitch (:note (item tuple)))
               decision (make-accidental-decision
-                         parsed remembered prev-final baseline house-settings)
+                         parsed remembered prev-final baseline piece)
               new-remembered (update remembered
                                      (:octave parsed)
                                      assoc
@@ -273,7 +273,7 @@ State flows naturally through sequential measure processing. Each measure receiv
   (fn [prev-final measure-index]
     (let [[final-alts decisions]
           (accidental-decisions-for-measure
-            piece measure-index instrument-vpd key-sig prev-final house-settings)]
+            piece measure-index instrument-vpd key-sig prev-final)]
       ;; Apply decisions to rendering pipeline
       (apply-accidental-decisions piece decisions)
       ;; Return final state for next measure
