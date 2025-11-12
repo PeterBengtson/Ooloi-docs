@@ -48,7 +48,7 @@ Key signatures are represented by the `KeySignature` record:
 ```
 
 **Fields:**
-- `:mode` — String identifying the mode type (`"ionian"`, `"aeolian"`, `"dorian"`, etc., or `"custom"`)
+- `:mode` — Keyword identifying the mode type (`:ionian`, `:aeolian`, `:dorian`, etc., or `:custom`)
 - `:tonic` — String representing the tonic pitch (e.g., `"G"`, `"F#"`, `"Bb"`), octave ignored
 - `:accidentals` — Map specifying which accidentals are "normal" for this key
 - `:custom` — Optional metadata map (only for custom mode)
@@ -63,13 +63,13 @@ Standard modes use the traditional Western diatonic system based on the circle o
 
 | Mode | Aliases | Mode Offset | Natural Mode of C |
 |------|---------|-------------|-------------------|
-| `"ionian"` | `"major"` | 0 | C |
-| `"dorian"` | — | -2 | D |
-| `"phrygian"` | — | -4 | E |
-| `"lydian"` | — | +1 | F |
-| `"mixolydian"` | — | -1 | G |
-| `"aeolian"` | `"minor"` | -3 | A |
-| `"locrian"` | — | -5 | B |
+| `:ionian` | `:major` | 0 | C |
+| `:dorian` | — | -2 | D |
+| `:phrygian` | — | -4 | E |
+| `:lydian` | — | +1 | F |
+| `:mixolydian` | — | -1 | G |
+| `:aeolian` | `:minor` | -3 | A |
+| `:locrian` | — | -5 | B |
 
 **Accidentals derivation:**
 For standard modes, accidentals are computed using the circle-of-fifths algorithm:
@@ -106,13 +106,13 @@ Keyless notation represents music without a tonal center, where every accidental
 In the above example from Alban Berg's *Wozzeck* (1914-1922), each note has an accidental. This can further be controlled through settings on the piece, instrument, or staff to show accidentals (a) only where necessary, (b) for all notes except repeated notes, or (c) for all notes _including_ repeated notes. The *Wozzeck* example uses (b), which was typical for the 2nd Vienna School during this period.
 
 **Specification:**
-- `:mode` = `"keyless"`
+- `:mode` = `:keyless`
 - `:tonic` must be `nil`
 - `:accidentals` = `{}` (empty map)
 
 **Example:**
 ```clojure
-(create-key-signature :mode "keyless")
+(create-key-signature :mode :keyless)
 ;; => :accidentals {}
 ```
 
@@ -135,13 +135,13 @@ Custom key signatures can optionally specify a `:tonic` (e.g., `"C"`, `"F#"`), o
 ```clojure
 ;; With tonic
 (create-key-signature
-  :mode "custom"
+  :mode :custom
   :tonic "C"
   :accidentals {"F" :sharp, "B" :flat})
 
 ;; Without tonic (atonal)
 (create-key-signature
-  :mode "custom"
+  :mode :custom
   :accidentals {"F" :sharp, "B" :flat})
 ```
 
@@ -167,7 +167,7 @@ The structure **must** include a `"default"` key that specifies the baseline acc
 **Example:**
 ```clojure
 (create-key-signature
-  :mode "custom"
+  :mode :custom
   :accidentals {"default" {"F" :sharp}        ; F# in all octaves by default
                 3 {"F" :natural}              ; Override: F natural in octave 3
                 5 {"F" :double-sharp}})       ; Override: F## in octave 5
@@ -214,7 +214,7 @@ Microtonal accidentals used in custom key signatures require the `:accidentals` 
 **Example (quarter-tone system):**
 ```clojure
 (create-key-signature
-  :mode "custom"
+  :mode :custom
   :accidentals {"D" :quarter-sharp, "E" :quarter-flat}
   :custom {:name "Quarter-tone System", :edo 24})
 ```
@@ -285,13 +285,13 @@ Key signature changes can occur:
 
 ```clojure
 ;; Set G major at the beginning
-(set-key-signature piece [0 0] (create-key-signature :mode "major" :tonic "G"))
+(set-key-signature piece [0 0] (create-key-signature :mode :major :tonic "G"))
 
 ;; Change to E minor at measure 16, beat 0
-(set-key-signature piece [16 0] (create-key-signature :mode "minor" :tonic "E"))
+(set-key-signature piece [16 0] (create-key-signature :mode :minor :tonic "E"))
 
 ;; Change to D major at measure 16, beat 3 (mid-measure change)
-(set-key-signature piece [16 3] (create-key-signature :mode "major" :tonic "D"))
+(set-key-signature piece [16 3] (create-key-signature :mode :major :tonic "D"))
 ```
 
 **Rationale:**
@@ -303,7 +303,7 @@ Validation rules vary by mode type:
 
 | Field | Standard Modes | Keyless Mode | Custom Mode |
 |-------|----------------|--------------|-------------|
-| `:mode` | ionian, dorian, phrygian, lydian, mixolydian, aeolian, locrian (or major/minor) | `"keyless"` | `"custom"` |
+| `:mode` | ionian, dorian, phrygian, lydian, mixolydian, aeolian, locrian (or major/minor) | `:keyless` | `:custom` |
 | `:tonic` | **Required** (valid pitch letter) | **Must be** `nil` | **Optional** (pitch letter or `nil`) |
 | `:accidentals` param | **Forbidden** (computed) | **Forbidden** (computed to `{}`) | **Required** (user-provided) |
 | `:custom` param | **Forbidden** | **Forbidden** | **Optional** (metadata) |
