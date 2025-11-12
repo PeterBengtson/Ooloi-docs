@@ -256,13 +256,23 @@ The algorithm separates the core decision logic from these stylistic variations,
 **Complete function with branching:**
 
 ```clojure
+(defn- process-pitch-tuple
+  "Reducing function that processes a single pitch tuple.
+   Updates remembered state and accumulates decisions."
+  [piece baseline]
+  (fn [[remembered decisions] tuple]
+    (let [[new-remembered decision] (make-accidental-decision
+                                      remembered tuple piece baseline)]
+      [new-remembered (cond-> decisions decision (conj decision))])))
+
 (defn accidental-decisions-for-measure
   [piece measure-index instrument-vpd key-sig prev-final]
   (let [baseline (baseline-from-key key-sig)
         initial-remembered (if (french-ties? piece)
                             baseline
                             prev-final)
-        voice-count (count (get-voices-at-vpd piece instrument-vpd))]
+        voice-count (count (get-voices-at-vpd piece instrument-vpd))
+        reducer (process-pitch-tuple piece baseline)]
 
     (if (<= voice-count 1)
       ;; Single voice: transduce directly (zero allocation)
@@ -272,13 +282,7 @@ The algorithm separates the core decision logic from these stylistic variations,
                      :start-measure measure-index
                      :end-measure measure-index})
           (filter pitch??))
-
-        (completing
-          (fn [[remembered decisions] tuple]
-            (let [[new-remembered decision] (make-accidental-decision
-                                              remembered tuple piece baseline)]
-              [new-remembered (cond-> decisions decision (conj decision))])))
-
+        (completing reducer)
         [initial-remembered []]
         [piece])
 
@@ -291,14 +295,7 @@ The algorithm separates the core decision logic from these stylistic variations,
                                  (filter pitch??))
                                [piece])
             sorted-tuples (sort-by position all-pitch-tuples)]
-
-        (reduce
-          (fn [[remembered decisions] tuple]
-            (let [[new-remembered decision] (make-accidental-decision
-                                              remembered tuple piece baseline)]
-              [new-remembered (cond-> decisions decision (conj decision))]))
-          [initial-remembered []]
-          sorted-tuples)))))
+        (reduce reducer [initial-remembered []] sorted-tuples)))))
 ```
 
 **Tuple preservation:**
