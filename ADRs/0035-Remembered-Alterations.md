@@ -262,7 +262,7 @@ The timewalk boundary is always at the **instrument level**, not staff level. Th
 The final remembered state at measure end includes all pitches from all staves and voices of that instrument.
 
 **Performance:**
-Clojure's `sort-by` uses Java's TimSort (adaptive O(n) to O(n log n)). Even for instruments with multiple staves, typical measures contain 4-50 total pitches, making sorting overhead negligible.
+Sorting is only necessary when multiple voices exist. With a single voice, pitches are already in temporal order from timewalk. The implementation can optimize by skipping the sort when `(count all-pitch-tuples) <= 1` or when the instrument has only one voice. Clojure's `sort-by` uses Java's TimSort (adaptive O(n) to O(n log n)). Even for instruments with multiple staves, typical measures contain 4-50 total pitches, making sorting overhead negligible when needed.
 
 **State threading:**
 State flows naturally through sequential measure processing. Each measure receives the previous measure's final state, processes it, and returns the new final state for the next measure. Timewalk's transducer efficiency ensures each pitch is visited exactly once per rendering pass.
