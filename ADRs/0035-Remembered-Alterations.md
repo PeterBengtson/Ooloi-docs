@@ -265,16 +265,30 @@ The algorithm separates the core decision logic from these stylistic variations,
                                       remembered tuple piece baseline)]
       [new-remembered (cond-> decisions decision (conj decision))])))
 
+(defn- can-transduce?
+  "Check if we can use transduce path (0 or 1 voice) vs collect/sort/reduce path (2+ voices).
+   Short-circuits after finding second voice.
+
+   Returns: true for 0-1 voices (transduce path), false for 2+ voices (reduce path)"
+  [piece instrument-vpd]
+  (transduce
+    (comp (timewalk {:boundary-vpd instrument-vpd})
+          (filter voice??))
+    (fn
+      ([] 0)
+      ([n] (<= n 1))
+      ([n _] (if (>= n 2) (reduced false) (inc n))))
+    [piece]))
+
 (defn accidental-decisions-for-measure
   [piece measure-index instrument-vpd key-sig prev-final]
   (let [baseline (baseline-from-key key-sig)
         initial-remembered (if (french-ties? piece)
                             baseline
                             prev-final)
-        voice-count (count (get-voices-at-vpd piece instrument-vpd))
         reducer (process-pitch-tuple piece baseline)]
 
-    (if (<= voice-count 1)
+    (if (can-transduce? piece instrument-vpd)
       ;; Single voice: transduce directly (zero allocation)
       (transduce
         (comp
