@@ -208,10 +208,10 @@ The algorithm separates the core decision logic from these stylistic variations,
 
 **Solution: Two paths based on voice count**
 
-**Single voice (0-1 voices): Direct transduce (zero allocation)**
+**Single voice (≤1 voices): Direct transduce (zero allocation)**
 
 ```clojure
-;; When instrument has 0 or 1 voice, timewalk yields in temporal order
+;; When instrument has single voice or no voices, timewalk yields in temporal order
 ;; Use transduce directly - no collection, no sorting needed
 (transduce
   (comp
