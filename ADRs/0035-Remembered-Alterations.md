@@ -206,7 +206,54 @@ The algorithm separates the core decision logic from these stylistic variations,
 
 ### Performance Architecture
 
-**Solution: Collect, sort, reduce**
+**Solution: Two paths based on voice count**
+
+**Single voice (0-1 voices): Direct transduce (zero allocation)**
+
+```clojure
+;; When instrument has 0 or 1 voice, timewalk yields in temporal order
+;; Use transduce directly - no collection, no sorting needed
+(transduce
+  (comp
+    (timewalk {:boundary-vpd instrument-vpd
+               :start-measure measure-index
+               :end-measure measure-index})
+    (filter pitch??))
+
+  (completing
+    (fn [[remembered decisions] tuple]
+      (let [[new-remembered decision] (make-accidental-decision
+                                        remembered tuple piece baseline)]
+        [new-remembered (cond-> decisions decision (conj decision))])))
+
+  [initial-remembered []]
+  [piece])
+```
+
+**Multiple voices: Collect, sort, reduce**
+
+```clojure
+;; When instrument has multiple voices, timewalk yields voice-by-voice
+;; Must collect all pitches, sort by position, then reduce
+(let [all-pitch-tuples (sequence
+                         (comp
+                           (timewalk {:boundary-vpd instrument-vpd
+                                      :start-measure measure-index
+                                      :end-measure measure-index})
+                           (filter pitch??))
+                         [piece])
+      sorted-tuples (sort-by position all-pitch-tuples)]
+
+  (reduce
+    (fn [[remembered decisions] tuple]
+      (let [[new-remembered decision] (make-accidental-decision
+                                        remembered tuple piece baseline)]
+        [new-remembered (cond-> decisions decision (conj decision))]))
+    [initial-remembered []]
+    sorted-tuples))
+```
+
+**Complete function with branching:**
 
 ```clojure
 (defn accidental-decisions-for-measure
@@ -215,36 +262,43 @@ The algorithm separates the core decision logic from these stylistic variations,
         initial-remembered (if (french-ties? piece)
                             baseline
                             prev-final)
+        voice-count (count (get-voices-at-vpd piece instrument-vpd))]
 
-        ;; Collect all pitch tuples from measure (all staves, all voices)
-        all-pitch-tuples (sequence
-                           (comp
-                             (timewalk {:boundary-vpd instrument-vpd
-                                        :start-measure measure-index
-                                        :end-measure measure-index})
-                             (filter pitch??))
-                           [piece])
+    (if (<= voice-count 1)
+      ;; Single voice: transduce directly (zero allocation)
+      (transduce
+        (comp
+          (timewalk {:boundary-vpd instrument-vpd
+                     :start-measure measure-index
+                     :end-measure measure-index})
+          (filter pitch??))
 
-        ;; Sort by position for temporal order (skip if single voice - already ordered)
-        sorted-tuples (if (> (count all-pitch-tuples) 1)
-                        (sort-by position all-pitch-tuples)
-                        all-pitch-tuples)]
+        (completing
+          (fn [[remembered decisions] tuple]
+            (let [[new-remembered decision] (make-accidental-decision
+                                              remembered tuple piece baseline)]
+              [new-remembered (cond-> decisions decision (conj decision))])))
 
-    ;; Process sorted tuples with reduce
-    (reduce
-      (fn [[remembered decisions] tuple]
-        (let [parsed (parse-pitch (:note (item tuple)))
-              decision (make-accidental-decision
-                         parsed remembered prev-final baseline piece)
-              new-remembered (update remembered
-                                     (:octave parsed)
-                                     assoc
-                                     (:letter parsed)
-                                     (:accidental parsed))
-              new-decision (assoc decision :tuple tuple)]
-          [new-remembered (conj decisions new-decision)]))
-      [initial-remembered []]
-      sorted-tuples)))
+        [initial-remembered []]
+        [piece])
+
+      ;; Multiple voices: collect, sort, reduce
+      (let [all-pitch-tuples (sequence
+                               (comp
+                                 (timewalk {:boundary-vpd instrument-vpd
+                                            :start-measure measure-index
+                                            :end-measure measure-index})
+                                 (filter pitch??))
+                               [piece])
+            sorted-tuples (sort-by position all-pitch-tuples)]
+
+        (reduce
+          (fn [[remembered decisions] tuple]
+            (let [[new-remembered decision] (make-accidental-decision
+                                              remembered tuple piece baseline)]
+              [new-remembered (cond-> decisions decision (conj decision))]))
+          [initial-remembered []]
+          sorted-tuples)))))
 ```
 
 **Tuple preservation:**
@@ -264,7 +318,9 @@ The timewalk boundary is always at the **instrument level**, not staff level. Th
 The final remembered state at measure end includes all pitches from all staves and voices of that instrument.
 
 **Performance:**
-Sorting is only necessary when multiple voices exist. With a single voice, pitches are already in temporal order from timewalk. The implementation can optimize by skipping the sort when `(count all-pitch-tuples) <= 1` or when the instrument has only one voice. Clojure's `sort-by` uses Java's TimSort (adaptive O(n) to O(n log n)). Even for instruments with multiple staves, typical measures contain 4-50 total pitches, making sorting overhead negligible when needed.
+Two distinct code paths optimize for different scenarios:
+- **Single voice (0-1 voices)**: Uses `transduce` directly with zero allocation. Timewalk already yields pitches in temporal order for single-voice contexts.
+- **Multiple voices**: Requires collection and sorting by position since timewalk yields voice-by-voice. Uses `sequence` + `sort-by position` + `reduce`. Clojure's `sort-by` uses Java's TimSort (adaptive O(n) to O(n log n)). Even for instruments with multiple staves, typical measures contain 4-50 total pitches, making sorting overhead negligible.
 
 **State threading:**
 State flows naturally through sequential measure processing. Each measure receives the previous measure's final state, processes it, and returns the new final state for the next measure. Timewalk's transducer efficiency ensures each pitch is visited exactly once per rendering pass.
