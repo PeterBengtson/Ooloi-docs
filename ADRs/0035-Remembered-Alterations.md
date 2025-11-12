@@ -225,8 +225,10 @@ The algorithm separates the core decision logic from these stylistic variations,
                              (filter pitch??))
                            [piece])
 
-        ;; Sort by position for temporal order across all staves and voices
-        sorted-tuples (sort-by position all-pitch-tuples)]
+        ;; Sort by position for temporal order (skip if single voice - already ordered)
+        sorted-tuples (if (> (count all-pitch-tuples) 1)
+                        (sort-by position all-pitch-tuples)
+                        all-pitch-tuples)]
 
     ;; Process sorted tuples with reduce
     (reduce
