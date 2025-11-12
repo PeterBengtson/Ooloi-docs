@@ -264,19 +264,20 @@ The final remembered state at measure end includes all pitches from all staves a
 **Performance:**
 Clojure's `sort-by` uses Java's TimSort (adaptive O(n) to O(n log n)). Even for instruments with multiple staves, typical measures contain 4-50 total pitches, making sorting overhead negligible.
 
-**No caching required:**
-State flows naturally through sequential measure processing. Each measure receives the previous measure's final state, processes it, and returns the new final state for the next measure. Timewalk's transducer efficiency ensures no unnecessary recomputation - each pitch is visited exactly once per rendering pass.
+**State threading:**
+State flows naturally through sequential measure processing. Each measure receives the previous measure's final state, processes it, and returns the new final state for the next measure. Timewalk's transducer efficiency ensures each pitch is visited exactly once per rendering pass.
 
 ```clojure
 ;; Process measures sequentially, threading state
 (reduce
   (fn [prev-final measure-index]
-    (let [[new-final decisions]
+    (let [[final-alts decisions]
           (accidental-decisions-for-measure
             piece measure-index instrument-vpd key-sig prev-final house-settings)]
-      ;; Decisions are musical semantics - apply to all layouts
-      ;; Layouts can override these decisions as needed
-      new-final))
+      ;; Apply decisions to rendering pipeline
+      (apply-accidental-decisions piece decisions)
+      ;; Return final state for next measure
+      final-alts))
   (baseline-from-key key-sig)  ; Initial state
   (range start-measure end-measure))
 ```
