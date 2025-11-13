@@ -74,7 +74,7 @@ We implement a **comprehensive string-based time signature system** that:
 
 **Common/simple metres** with single numerator and denominator:
 
-![Standard time signatures](../img/timesigs_standard.png)
+![Standard time signatures](../img/timesigs/timesigs_standard.png)
 
 ```clojure
 "4/4"   ; Common time (quarter note = 1 beat, 4 beats per measure)
@@ -112,7 +112,7 @@ We implement a **comprehensive string-based time signature system** that:
 
 ### Additive metres
 
-![Additive metres](../img/timesigs_3+2+3.png)   ![](../img/timesigs_2+2+2+3.png) 
+![Additive metres](../img/timesigs/timesigs_3+2+3.png)   ![](../img/timesigs/timesigs_2+2+2+3.png) 
 
 **Grouped counts within single unit** showing metric subdivision:
 
@@ -131,7 +131,7 @@ We implement a **comprehensive string-based time signature system** that:
 
 ### Multiple Groups (Cross-Unit Additive)
 
-![Multiple Groups](../img/timesigs_multiple.png)   ![](../img/timesigs_mixed.png) 
+![Multiple Groups](../img/timesigs/timesigs_multiple.png)   ![](../img/timesigs/timesigs_mixed.png) 
 
 **Multiple groups with different denominators** for complex additive metres:
 
@@ -171,7 +171,7 @@ We implement a **comprehensive string-based time signature system** that:
 
 **Orff notation** with optional dotted denominators for pedagogical clarity:
 
-![Orff notation](../img/timesigs_orff.png)   ![](../img/timesigs_orff_dotted.png) 
+![Orff notation](../img/timesigs/timesigs_orff.png)   ![](../img/timesigs/timesigs_orff_dotted.png) 
 
 ```clojure
 "3/4"    ; Quarter note as beat unit (no dot)
@@ -199,7 +199,7 @@ We implement a **comprehensive string-based time signature system** that:
 
 **Fractional numerators** appearing in Grainger, Chávez, and other 20th-century composers:
 
-![Fractional numerators](../img/timesigs_fractional.png)
+![Fractional numerators](../img/timesigs/timesigs_fractional.png)
 
 ```clojure
 "2.5/4"     ; Decimal notation (easy to type)
@@ -236,7 +236,7 @@ We implement a **comprehensive string-based time signature system** that:
 
 **Fully supported** - irrational denominators (non-power-of-2):
 
-![Fractional numerators](../img/timesigs_irrational.png)
+![Irrational metres](../img/timesigs/timesigs_irrational.png)
 
 ```clojure
 "4/3"    ; 4 beats, each 1/3 of whole note
@@ -262,7 +262,7 @@ These appear in Boulez, Ferneyhough, and Finnissy scores. The implementation acc
 
 **Support for displaying alternate metric interpretations** shown in parentheses to the right of the primary time signature.
 
-![Alternate time signatures](../img/timesigs_alternate.png)
+![Alternate time signatures](../img/timesigs/timesigs_alternate.png)
 
 **Two primary use cases:**
 

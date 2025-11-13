@@ -24,10 +24,10 @@ Key considerations:
 7. **Composability**: Processing operations should compose efficiently without intermediate collections.
 
 Additional context:
-- Connecting elements can vary greatly in length and complexity, from simple ties and short slurs (see [slur-1.png](../img/slur-1.png)) to longer slurs within and across measures (see [slur-2.jpeg](../img/slur-2.jpeg)).
-- In complex musical pieces, slurs can span across multiple staves and voices (see [slur-3.png](../img/slur-3.png)).
+- Connecting elements can vary greatly in length and complexity, from simple ties and short slurs (see [slur-1.png](../img/slurs/slur-1.png)) to longer slurs within and across measures (see [slur-2.jpeg](../img/slurs/slur-2.jpeg)).
+- In complex musical pieces, slurs can span across multiple staves and voices (see [slur-3.png](../img/slurs/slur-3.png)).
 - Dynamic hairpins and ties can span across multiple measures (see [hairpin-1.png](../img/hairpin-1.png)), requiring efficient handling of measure boundaries.
-- Extreme cases exist where slurs can span entire systems or pages (see [slur-4.png](../img/slur-4.png)), as seen in Sorabji's "Opus Clavicembalisticum IX".
+- Extreme cases exist where slurs can span entire systems or pages (see [slur-4.png](../img/slurs/slur-4.png)), as seen in Sorabji's "Opus Clavicembalisticum IX".
 - Ties always connect to the next identical pitch, making them a special case for optimization.
 - Formatting slurs and dynamic hairpins requires special consideration: When these elements are encountered, all relevant musical elements under them must be collected to calculate the required presentation data.
 - The timewalker system provides temporal coordination guarantees essential for musical processing.

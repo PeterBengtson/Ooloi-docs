@@ -19,15 +19,15 @@ Analysis of professional musical scores reveals these key slur formatting princi
 
 ### Visual Examples
 
-![Basic slur and tie examples](../img/slur-1.png)
+![Basic slur and tie examples](../img/slurs/slur-1.png)
 
 *Figure 1: Basic slur vs. tie comparison showing thickness and curvature differences*
 
-![Slur placement examples](../img/slur-2.jpeg)  
+![Slur placement examples](../img/slurs/slur-2.jpeg)
 
 *Figure 2: Professional slur placement examples showing proper curvature and positioning*
 
-![Complex multi-slur passage](../img/slur-3.png)
+![Complex multi-slur passage](../img/slurs/slur-3.png)
 
 *Figure 3: Overlapping slurs in professional piano score showing nested curves and collision avoidance*
 
