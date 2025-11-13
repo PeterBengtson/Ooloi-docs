@@ -25,7 +25,7 @@ Accepted
 
 The decision of when to print an accidental in music notation is not simply "show an accidental when the note differs from the key signature." Accidentals have **temporal memory** within measures—once an accidental is used, it affects subsequent notes on the same staff position until the barline. This memory system, called "remembered alterations," is fundamental to readable music notation and has historically been one of the most complex aspects of notation software.
 
-Conventional approaches to this problem rely on combinations of rules and heuristics, often tied to layout decisions made during engraving. These approaches can produce incorrect notation in complex scenarios involving multiple staves, multiple voices, or cross-staff notation, because the accidental decisions depend on the order in which visual elements are processed rather than on the musical timeline.
+Accidental decisions tied to layout or rendering order cannot guarantee correctness, because the sequence in which visual elements are laid out does not correspond to musical time. For multi-staff and multi-voice instruments, the problem requires a representation where musical time-order is explicit and independent of visual presentation.
 
 Since Ooloi's internal representation is semantic, Ooloi can solve this problem algorithmically. The solution is deterministic: given the same musical input, the algorithm produces the same accidental decisions regardless of layout, staff assignment, number of staves in the instrument, or rendering order. The approach guarantees correctness for the domain of Western staff notation without relying on heuristics or special-case logic.
 
@@ -95,7 +95,7 @@ The remembered-alterations system maintains the following invariants:
 6. **Measure-boundary rules**
    At measure boundaries, the initial remembered state is either the previous measure's final state or the key-signature baseline, depending on house-style settings. Courtesy-accidental detection always has access to the previous measure's final state.
 
-These invariants hold for any number of staves, any number of voices, and any accidental vocabulary supported by the key-signature system.
+These six invariants, combined with the single comparison rule, constitute a complete solution to accidental rendering for Western staff notation. The algorithm handles all scenarios—single-staff, multi-staff, multi-voice, cross-staff, atonal, mid-measure key changes—through the same mechanism. No heuristics are required beyond configurable house-style settings.
 
 ### Data Structure
 
