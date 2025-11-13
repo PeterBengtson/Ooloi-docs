@@ -6,12 +6,12 @@
   - [Problem Statement](#problem-statement)
 - [Decision](#decision)
   - [Core Algorithm](#core-algorithm)
+  - [Correctness Invariants](#correctness-invariants)
   - [Data Structure](#data-structure)
   - [Measure Boundary Behavior](#measure-boundary-behavior)
   - [Courtesy Accidentals](#courtesy-accidentals)
   - [House Style Settings](#house-style-settings)
   - [Performance Architecture](#performance-architecture)
-  - [Correctness Invariants](#correctness-invariants)
 - [Integration with Key Signatures](#integration-with-key-signatures)
 - [Instrument-Level Scope](#instrument-level-scope)
 - [Architectural Implications](#architectural-implications)
@@ -23,9 +23,15 @@ Accepted
 
 ## Context
 
+The decision of when to print an accidental in music notation is not simply "show an accidental when the note differs from the key signature." Accidentals have **temporal memory** within measures—once an accidental is used, it affects subsequent notes on the same staff position until the barline. This memory system, called "remembered alterations," is fundamental to readable music notation and has historically been one of the most complex aspects of notation software.
+
+Conventional approaches to this problem rely on combinations of rules and heuristics, often tied to layout decisions made during engraving. These approaches can produce incorrect notation in complex scenarios involving multiple staves, multiple voices, or cross-staff notation, because the accidental decisions depend on the order in which visual elements are processed rather than on the musical timeline.
+
+Since Ooloi's internal representation is semantic, Ooloi can solve this problem algorithmically. The solution is deterministic: given the same musical input, the algorithm produces the same accidental decisions regardless of layout, staff assignment, number of staves in the instrument, or rendering order. The approach guarantees correctness for the domain of Western staff notation without relying on heuristics or special-case logic.
+
 ### Problem Statement
 
-Accidental rendering depends on the state of previously encountered pitches. The rules for remembered alterations apply to the musical timeline, not to visual layout. In an instrument with multiple staves and voices, the sequence in which pitches appear rhythmically is not the same as the sequence implied by staff order or voice structure.
+Accidental rendering depends on the state of previously encountered pitches. The rules for remembered alterations apply to the musical timeline, not to visual layout. In an instrument with multiple staves and voices, the sequence in which pitches appear rhythmically is not the same as the sequence implied by staff order or voice structure: it's still strictly left-to-right across all voices and staves.
 
 The core problem is therefore:
 
@@ -33,9 +39,9 @@ The core problem is therefore:
 * to determine how that state evolves when a new pitch is encountered, and
 * to apply these rules consistently across all staves and voices of an instrument, independent of layout.
 
-This requires a model in which the musical time-order of pitches is explicit, and in which all pitches belonging to the same instrument contribute to a single accidental-memory state.
+This requires a model in which the musical time-order of pitches is explicit, and in which all pitches belonging to the same instrument contribute to a single accidental-memory state across the entire instrument.
 
-In music notation, accidentals have **temporal memory** within measures—once an accidental is used, it affects subsequent notes on the same staff position until the barline. This memory system, called "remembered alterations," is fundamental to readable music notation.
+The domain's complexity arises from established practices and modern extensions:
 
 Historical engraving practice:
 - Accidentals apply within the measure in which they appear
@@ -45,8 +51,8 @@ Historical engraving practice:
 
 Modern notation adds complexity:
 - Mid-measure key signature changes
-- Polytonal and atonal music (Berg, Schoenberg, Webern)
-- Contemporary notation with extensive accidentals
+- Polytonal and atonal music
+- Contemporary notation with non-standard accidentals
 - Cross-octave interactions
 - Grace notes and their participation in the memory system
 
@@ -66,6 +72,30 @@ The remembered alterations system uses a **wave pattern** where accidental memor
 **The central decision**: A note requires a printed accidental when its accidental differs from the **current remembered state** for that letter/octave combination.
 
 **Key insight**: This single rule handles both required accidentals (contradicting key signature) and courtesy accidentals (restating key signature after alteration). The complexity lies in what constitutes the "current remembered state."
+
+### Correctness Invariants
+
+The remembered-alterations system maintains the following invariants:
+
+1. **Deterministic evaluation**
+   For a given piece state, key-signature baseline, and measure-initial remembered state, the algorithm produces the same accidental decisions regardless of layout, staff assignment, or rendering order.
+
+2. **Position-based ordering**
+   All pitches belonging to an instrument are evaluated in strictly increasing temporal order determined by their rhythmic position, independent of voice or staff structure.
+
+3. **Single comparison rule**
+   A printed accidental is required exactly when the pitch's accidental differs from the current remembered state for its letter and octave.
+
+4. **Instrument-level memory**
+   Remembered state is shared across all staves and voices of an instrument. Alterations from any staff or voice contribute to a single state threaded through the instrument's timeline.
+
+5. **Baseline + deviation model**
+   The remembered state at any point is the combination of the key-signature baseline and any per-octave deviations accumulated earlier in the measure. Deviations always override baseline; removal of deviation reverts to baseline.
+
+6. **Measure-boundary rules**
+   At measure boundaries, the initial remembered state is either the previous measure's final state or the key-signature baseline, depending on house-style settings. Courtesy-accidental detection always has access to the previous measure's final state.
+
+These invariants hold for any number of staves, any number of voices, and any accidental vocabulary supported by the key-signature system.
 
 ### Data Structure
 
@@ -251,30 +281,6 @@ State flows naturally through sequential measure processing. Each measure receiv
   (baseline-from-key key-sig)  ; Initial state
   (range start-measure end-measure))
 ```
-
-### Correctness Invariants
-
-The remembered-alterations system maintains the following invariants:
-
-1. **Deterministic evaluation**
-   For a given piece state, key-signature baseline, and measure-initial remembered state, the algorithm produces the same accidental decisions regardless of layout, staff assignment, or rendering order.
-
-2. **Position-based ordering**
-   All pitches belonging to an instrument are evaluated in strictly increasing temporal order determined by their rhythmic position, independent of voice or staff structure.
-
-3. **Single comparison rule**
-   A printed accidental is required exactly when the pitch's accidental differs from the current remembered state for its letter and octave.
-
-4. **Instrument-level memory**
-   Remembered state is shared across all staves and voices of an instrument. Alterations from any staff or voice contribute to a single state threaded through the instrument's timeline.
-
-5. **Baseline + deviation model**
-   The remembered state at any point is the combination of the key-signature baseline and any per-octave deviations accumulated earlier in the measure. Deviations always override baseline; removal of deviation reverts to baseline.
-
-6. **Measure-boundary rules**
-   At measure boundaries, the initial remembered state is either the previous measure's final state or the key-signature baseline, depending on house-style settings. Courtesy-accidental detection always has access to the previous measure's final state.
-
-These invariants hold for any number of staves, any number of voices, and any accidental vocabulary supported by the key-signature system.
 
 ## Integration with Key Signatures
 
