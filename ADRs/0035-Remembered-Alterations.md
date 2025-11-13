@@ -23,15 +23,15 @@ Accepted
 
 ## Context
 
-In music notation, the decision of when to print an accidental is surprisingly complex. It's not simply "show an accidental when the note differs from the key signature." Accidentals have **temporal memory** within measures—once an accidental is used, it affects subsequent notes on the same staff position until the barline. This memory system, called "remembered alterations," is fundamental to readable music notation.
+In music notation, accidentals have **temporal memory** within measures—once an accidental is used, it affects subsequent notes on the same staff position until the barline. This memory system, called "remembered alterations," is fundamental to readable music notation.
 
-Historical engraving practice established several principles:
+Historical engraving practice:
 - Accidentals apply within the measure in which they appear
 - Memory resets at barlines (with exceptions for tied notes)
 - Courtesy (cautionary) accidentals clarify ambiguous situations
 - House styles vary in how strictly these rules are applied
 
-Modern notation adds further complexity:
+Modern notation adds complexity:
 - Mid-measure key signature changes
 - Polytonal and atonal music (Berg, Schoenberg, Webern)
 - Contemporary notation with extensive accidentals
@@ -162,18 +162,11 @@ The wave carries correctly regardless of how many measures the tie spans.
 
 ### Courtesy Accidentals
 
-Courtesy (cautionary) accidentals occur when a note matches the key signature baseline but differs from what was recently altered. These appear **throughout measures**, not just at barlines.
+Courtesy (cautionary) accidentals occur when a note matches the key signature baseline but differs from what was recently altered. The single comparison rule handles these cases uniformly:
 
-**Within-measure courtesy accidental** (C# major):
-- F# appears (matches key signature)
-- F natural appears (contradicts key → prints natural, updates remembered)
-- F# appears (matches key signature BUT differs from remembered :natural → prints sharp)
-
-That final F# is a courtesy accidental—technically correct by the key signature, but shown for clarity after the F natural.
-
-**Cross-measure courtesy accidental**: When a note in measure N+1 matches the key signature but differs from the final remembered state in measure N, it may require a courtesy accidental depending on house style settings.
-
-**Cross-octave courtesy accidental** (house style dependent): When an alteration appears in one octave (e.g., C#3), subsequent notes on the same letter in other octaves (e.g., C4 natural) may show courtesy accidentals, optionally parenthesized.
+- **Within-measure**: A note matching the key signature but differing from the current remembered state prints an accidental
+- **Cross-measure**: Dependent on house style settings and previous measure's final state
+- **Cross-octave**: Dependent on house style settings; alterations in one octave may trigger courtesy accidentals in other octaves, optionally parenthesized
 
 ### House Style Settings
 
