@@ -23,6 +23,18 @@ Accepted
 
 ## Context
 
+### Problem Statement
+
+Accidental rendering depends on the state of previously encountered pitches. The rules for remembered alterations apply to the musical timeline, not to visual layout. In an instrument with multiple staves and voices, the sequence in which pitches appear rhythmically is not the same as the sequence implied by staff order or voice structure.
+
+The core problem is therefore:
+
+* to define a representation of "remembered accidental state" at each temporal point,
+* to determine how that state evolves when a new pitch is encountered, and
+* to apply these rules consistently across all staves and voices of an instrument, independent of layout.
+
+This requires a model in which the musical time-order of pitches is explicit, and in which all pitches belonging to the same instrument contribute to a single accidental-memory state.
+
 In music notation, accidentals have **temporal memory** within measures—once an accidental is used, it affects subsequent notes on the same staff position until the barline. This memory system, called "remembered alterations," is fundamental to readable music notation.
 
 Historical engraving practice:
@@ -37,18 +49,6 @@ Modern notation adds complexity:
 - Contemporary notation with extensive accidentals
 - Cross-octave interactions
 - Grace notes and their participation in the memory system
-
-### Problem Statement
-
-Accidental rendering depends on the state of previously encountered pitches. The rules for remembered alterations apply to the musical timeline, not to visual layout. In an instrument with multiple staves and voices, the sequence in which pitches appear rhythmically is not the same as the sequence implied by staff order or voice structure.
-
-The core problem is therefore:
-
-* to define a representation of "remembered accidental state" at each temporal point,
-* to determine how that state evolves when a new pitch is encountered, and
-* to apply these rules consistently across all staves and voices of an instrument, independent of layout.
-
-This requires a model in which the musical time-order of pitches is explicit, and in which all pitches belonging to the same instrument contribute to a single accidental-memory state.
 
 Ooloi's key signature system ([ADR-0034](0034-Key-Signature-Architecture.md)) provides the **baseline** of which accidentals are "normal" for a given context. The remembered alterations system determines when that baseline has been **overridden** by explicit accidentals in the music, and when those overrides should be made explicit in the notation.
 
@@ -146,20 +146,6 @@ Reset completely to the key signature baseline. Tied notes must have their accid
 
 **Critical insight**: Regardless of tie style, the **previous measure's final state** must always be available for courtesy accidental detection. In French style, we reset the remembered state but still compare against the previous measure when deciding whether to show courtesy accidentals.
 
-**Example: Tied notes across multiple measures**
-
-C# major, C natural tied through measures 2, 3, 4, then C# in measure 5:
-
-- Measure 1 final: `{:default {"C" :sharp, "D" :sharp, ...}, 4 {"C" :natural}}`
-- Measure 2 initial: `prev-final` (C natural deviation preserved)
-- Measure 2 final: `{:default {"C" :sharp, "D" :sharp, ...}, 4 {"C" :natural}}` (tie continues)
-- Measures 3, 4: Same pattern, C natural deviation flows through
-- Measure 5 initial: `{:default {"C" :sharp, "D" :sharp, ...}, 4 {"C" :natural}}`
-- C# appears in octave 4: differs from remembered (:natural) → print sharp
-- Measure 5 final: `{:default {"C" :sharp, "D" :sharp, ...}}` (C now matches default, deviation removed)
-
-The wave carries correctly regardless of how many measures the tie spans.
-
 ### Courtesy Accidentals
 
 Courtesy (cautionary) accidentals occur when a note matches the key signature baseline but differs from what was recently altered. The single comparison rule handles these cases uniformly:
@@ -181,54 +167,7 @@ The algorithm separates the core decision logic from these stylistic variations,
 
 ### Performance Architecture
 
-**Solution: Two paths based on voice count**
-
-**Single voice (≤1 voices): Direct transduce (zero allocation)**
-
-```clojure
-;; When instrument has single voice or no voices, timewalk yields in temporal order
-;; Use transduce directly - no collection, no sorting needed
-(transduce
-  (comp
-    (timewalk {:boundary-vpd instrument-vpd
-               :start-measure measure-index
-               :end-measure measure-index})
-    (filter pitch??))
-
-  (completing
-    (fn [[remembered decisions] tuple]
-      (let [[new-remembered decision] (make-accidental-decision
-                                        remembered tuple piece baseline)]
-        [new-remembered (cond-> decisions decision (conj decision))])))
-
-  [initial-remembered []]
-  [piece])
-```
-
-**Multiple voices: Collect, sort, reduce**
-
-```clojure
-;; When instrument has multiple voices, timewalk yields voice-by-voice
-;; Must collect all pitches, sort by position, then reduce
-(let [all-pitch-tuples (sequence
-                         (comp
-                           (timewalk {:boundary-vpd instrument-vpd
-                                      :start-measure measure-index
-                                      :end-measure measure-index})
-                           (filter pitch??))
-                         [piece])
-      sorted-tuples (sort-by position all-pitch-tuples)]
-
-  (reduce
-    (fn [[remembered decisions] tuple]
-      (let [[new-remembered decision] (make-accidental-decision
-                                        remembered tuple piece baseline)]
-        [new-remembered (cond-> decisions decision (conj decision))]))
-    [initial-remembered []]
-    sorted-tuples))
-```
-
-**Complete function with branching:**
+The algorithm uses two code paths based on voice count:
 
 ```clojure
 (defn- process-pitch-tuple
