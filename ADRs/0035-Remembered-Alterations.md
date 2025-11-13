@@ -10,6 +10,7 @@
   - [Courtesy Accidentals](#courtesy-accidentals)
   - [House Style Settings](#house-style-settings)
   - [Performance Architecture](#performance-architecture)
+  - [Correctness Invariants](#correctness-invariants)
 - [Integration with Key Signatures](#integration-with-key-signatures)
 - [Instrument-Level Scope](#instrument-level-scope)
 - [Architectural Implications](#architectural-implications)
