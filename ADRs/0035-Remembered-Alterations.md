@@ -25,7 +25,7 @@ Accepted
 
 The decision of when to print an accidental in music notation is not simply "show an accidental when the note differs from the key signature." Accidentals have **temporal memory** within measures—once an accidental is used, it affects subsequent notes on the same staff position until the barline. This memory system, called "remembered alterations," is fundamental to readable music notation and has historically been one of the most complex aspects of notation software.
 
-Accidental decisions tied to layout or rendering order cannot guarantee correctness, because the sequence in which visual elements are laid out does not correspond to musical time. For multi-staff and multi-voice instruments, the problem requires a representation where musical time-order is explicit and independent of visual presentation.
+A correct accidental-memory model must evaluate pitches in musical time rather than in visual order. Multi-staff and multi-voice instruments require a representation in which temporal sequence is explicit and independent of staff structure or layout, so that remembered alterations follow the musical timeline.
 
 Since Ooloi's internal representation is semantic, Ooloi can solve this problem algorithmically. The solution is deterministic: given the same musical input, the algorithm produces the same accidental decisions regardless of layout, staff assignment, number of staves in the instrument, or rendering order. The approach guarantees correctness for the domain of Western staff notation without relying on heuristics or special-case logic.
 
@@ -72,6 +72,8 @@ The remembered alterations system uses a **wave pattern** where accidental memor
 **The central decision**: A note requires a printed accidental when its accidental differs from the **current remembered state** for that letter/octave combination.
 
 **Key insight**: This single rule handles both required accidentals (contradicting key signature) and courtesy accidentals (restating key signature after alteration). The complexity lies in what constitutes the "current remembered state."
+
+**Architectural summary**: Remembered alterations are modeled as sparse per-octave deviations from a key-signature baseline, updated in strict temporal order across all voices and staves of an instrument, with a single comparison rule determining all printed accidentals—required, courtesy, or cautionary—in a layout-independent, house-style-configurable way.
 
 ### Correctness Invariants
 
