@@ -156,23 +156,55 @@ Canonicalisation (sharp-only) is applied in conversion, sorting, and chromatic t
 
 ```clojure
 (convert "A4")
-=> {:pitch "A", :octave 4, :cent-offset 0, :hz 440.0}
+=> {:pitch "A", :octave 4, :cent-offset 0, :hz 440.0,
+    :original-letter "A", :original-accidentals "",
+    :original-octave 4, :original-cent-offset 0}
 
 (convert "A4+50")
-=> {:pitch "A", :octave 4, :cent-offset 50, :hz 452.89}
+=> {:pitch "A", :octave 4, :cent-offset 50, :hz 452.89,
+    :original-letter "A", :original-accidentals "",
+    :original-octave 4, :original-cent-offset 50}
 
-(convert "C4")
-=> {:pitch "C", :octave 4, :cent-offset 0, :hz 261.63}
+(convert "Bb3")  ; Normalizes to A# but preserves original B-flat spelling
+=> {:pitch "A#", :octave 3, :cent-offset 0, :hz 233.08,
+    :original-letter "B", :original-accidentals "b",
+    :original-octave 3, :original-cent-offset 0}
 
-(convert "G9")
-=> {:pitch "G", :octave 9, :cent-offset 0, :hz 12543.85}
+(convert "C4+250")  ; Large cent offset normalizes but preserves original
+=> {:pitch "D", :octave 4, :cent-offset 50, :hz 293.66,
+    :original-letter "C", :original-accidentals "",
+    :original-octave 4, :original-cent-offset 250}
 ```
+
+**Return structure:**
+
+Normalized values (for frequency calculations and enharmonic equivalence):
+- `:pitch` - Normalized note name using only sharps (e.g., "C#", "F", "A#")
+- `:octave` - Integer octave number (normalized when cents/accidentals overflow)
+- `:cent-offset` - Integer cent offset (-99 to +99, normalized from input)
+- `:hz` - Frequency in Hertz
+
+Original values (preserving notation intent):
+- `:original-letter` - Original input letter ("A" through "G") before normalization
+- `:original-accidentals` - Original input accidentals ("#", "##", "b", "bbb", or "") before normalization
+- `:original-octave` - Original input octave number before normalization
+- `:original-cent-offset` - Original input cent offset before normalization
+
+**Use cases for original values:**
+
+The `original-*` fields preserve the written notation before normalization, essential for musical contexts where the composer's or musician's notation intent matters. Example use cases include:
+
+- **Accidental tracking**: Distinguishing Bb from A# in remembered alteration systems (see [ADR-0035 Remembered Alterations](0035-Remembered-Alterations.md))
+- **Score analysis**: Preserving harmonic spelling for theoretical analysis (e.g., augmented sixth vs. minor seventh)
+- **Notation display**: Maintaining original enharmonic spelling in UI and debugging
+- **Historical accuracy**: Preserving the notation as written in source material
 
 **Design benefits:**
 - Results memoized with LRU cache (10,000 entries) for performance
 - Direct cent-to-Hz calculation eliminates MIDI number intermediary
 - Handles extreme ranges with floating-point precision
 - Clean mathematical model: pitch → cents → Hz
+- Preserves original notation intent alongside normalized values
 - Direct integration with synthesizer and audio systems
 
 ### Frequency-Based Sorting
