@@ -351,6 +351,30 @@ State flows naturally through sequential measure processing. Each measure receiv
   (range start-measure end-measure))
 ```
 
+### Correctness Invariants
+
+The remembered-alterations system maintains the following invariants:
+
+1. **Deterministic evaluation**
+   For a given piece state, key-signature baseline, and measure-initial remembered state, the algorithm produces the same accidental decisions regardless of layout, staff assignment, or rendering order.
+
+2. **Position-based ordering**
+   All pitches belonging to an instrument are evaluated in strictly increasing temporal order determined by their rhythmic position, independent of voice or staff structure.
+
+3. **Single comparison rule**
+   A printed accidental is required exactly when the pitch's accidental differs from the current remembered state for its letter and octave.
+
+4. **Instrument-level memory**
+   Remembered state is shared across all staves and voices of an instrument. Alterations from any staff or voice contribute to a single state threaded through the instrument's timeline.
+
+5. **Baseline + deviation model**
+   The remembered state at any point is the combination of the key-signature baseline and any per-octave deviations accumulated earlier in the measure. Deviations always override baseline; removal of deviation reverts to baseline.
+
+6. **Measure-boundary rules**
+   At measure boundaries, the initial remembered state is either the previous measure's final state or the key-signature baseline, depending on house-style settings. Courtesy-accidental detection always has access to the previous measure's final state.
+
+These invariants hold for any number of staves, any number of voices, and any accidental vocabulary supported by the key-signature system.
+
 ## Integration with Key Signatures
 
 Key signatures ([ADR-0034](0034-Key-Signature-Architecture.md)) provide the **baseline** for remembered alterations:
