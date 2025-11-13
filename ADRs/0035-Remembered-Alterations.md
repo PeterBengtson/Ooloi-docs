@@ -3,6 +3,7 @@
 ## Table of Contents
 - [Status](#status)
 - [Context](#context)
+  - [Problem Statement](#problem-statement)
 - [Decision](#decision)
   - [Core Algorithm](#core-algorithm)
   - [Data Structure](#data-structure)
@@ -23,6 +24,18 @@ Accepted
 ## Context
 
 In music notation, the decision of when to print an accidental is surprisingly complex. It's not simply "show an accidental when the note differs from the key signature." Accidentals have **temporal memory** within measures—once an accidental is used, it affects subsequent notes on the same staff position until the barline. This memory system, called "remembered alterations," is fundamental to readable music notation.
+
+### Problem Statement
+
+Accidental rendering depends on the state of previously encountered pitches. The rules for remembered alterations apply to the musical timeline, not to visual layout. In an instrument with multiple staves and voices, the sequence in which pitches appear rhythmically is not the same as the sequence implied by staff order or voice structure.
+
+The core problem is therefore:
+
+* to define a representation of "remembered accidental state" at each temporal point,
+* to determine how that state evolves when a new pitch is encountered, and
+* to apply these rules consistently across all staves and voices of an instrument, independent of layout.
+
+This requires a model in which the musical time-order of pitches is explicit, and in which all pitches belonging to the same instrument contribute to a single accidental-memory state.
 
 Historical engraving practice established several principles:
 - Accidentals apply within the measure in which they appear
