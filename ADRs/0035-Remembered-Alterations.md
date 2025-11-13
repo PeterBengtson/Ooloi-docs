@@ -25,18 +25,6 @@ Accepted
 
 In music notation, the decision of when to print an accidental is surprisingly complex. It's not simply "show an accidental when the note differs from the key signature." Accidentals have **temporal memory** within measures—once an accidental is used, it affects subsequent notes on the same staff position until the barline. This memory system, called "remembered alterations," is fundamental to readable music notation.
 
-### Problem Statement
-
-Accidental rendering depends on the state of previously encountered pitches. The rules for remembered alterations apply to the musical timeline, not to visual layout. In an instrument with multiple staves and voices, the sequence in which pitches appear rhythmically is not the same as the sequence implied by staff order or voice structure.
-
-The core problem is therefore:
-
-* to define a representation of "remembered accidental state" at each temporal point,
-* to determine how that state evolves when a new pitch is encountered, and
-* to apply these rules consistently across all staves and voices of an instrument, independent of layout.
-
-This requires a model in which the musical time-order of pitches is explicit, and in which all pitches belonging to the same instrument contribute to a single accidental-memory state.
-
 Historical engraving practice established several principles:
 - Accidentals apply within the measure in which they appear
 - Memory resets at barlines (with exceptions for tied notes)
@@ -49,6 +37,18 @@ Modern notation adds further complexity:
 - Contemporary notation with extensive accidentals
 - Cross-octave interactions
 - Grace notes and their participation in the memory system
+
+### Problem Statement
+
+Accidental rendering depends on the state of previously encountered pitches. The rules for remembered alterations apply to the musical timeline, not to visual layout. In an instrument with multiple staves and voices, the sequence in which pitches appear rhythmically is not the same as the sequence implied by staff order or voice structure.
+
+The core problem is therefore:
+
+* to define a representation of "remembered accidental state" at each temporal point,
+* to determine how that state evolves when a new pitch is encountered, and
+* to apply these rules consistently across all staves and voices of an instrument, independent of layout.
+
+This requires a model in which the musical time-order of pitches is explicit, and in which all pitches belonging to the same instrument contribute to a single accidental-memory state.
 
 Ooloi's key signature system ([ADR-0034](0034-Key-Signature-Architecture.md)) provides the **baseline** of which accidentals are "normal" for a given context. The remembered alterations system determines when that baseline has been **overridden** by explicit accidentals in the music, and when those overrides should be made explicit in the notation.
 
@@ -165,47 +165,15 @@ The wave carries correctly regardless of how many measures the tie spans.
 Courtesy (cautionary) accidentals occur when a note matches the key signature baseline but differs from what was recently altered. These appear **throughout measures**, not just at barlines.
 
 **Within-measure courtesy accidental** (C# major):
-```clojure
-;; F# appears (matches key signature)
-;; F natural appears (contradicts key → prints natural, updates remembered)
-;; F# appears (matches key signature BUT differs from remembered :natural → prints sharp)
-```
+- F# appears (matches key signature)
+- F natural appears (contradicts key → prints natural, updates remembered)
+- F# appears (matches key signature BUT differs from remembered :natural → prints sharp)
 
 That final F# is a courtesy accidental—technically correct by the key signature, but shown for clarity after the F natural.
 
-**Cross-measure courtesy accidental**:
-```clojure
-;; Measure 1: C natural appears
-;; Measure 2: C# appears
-;; In C# major, C# matches key signature but differs from measure 1 → prints sharp
-```
+**Cross-measure courtesy accidental**: When a note in measure N+1 matches the key signature but differs from the final remembered state in measure N, it may require a courtesy accidental depending on house style settings.
 
-**Cross-octave courtesy accidental** (house style dependent):
-```clojure
-;; C#3 appears (updates remembered for octave 3)
-;; C4 (natural) appears (differs from octave 3 alteration → may print natural with parentheses)
-```
-
-**Decision logic**:
-```clojure
-(let [current-acc (or (get-in remembered [octave letter])
-                     (get-in remembered [:default letter])
-                     :natural)]
-  (or
-    ;; Required: differs from current remembered state
-    (not= accidental current-acc)
-
-    ;; Courtesy: matches baseline but differs from previous measure
-    (and courtesy-setting?
-         (= accidental (get-in baseline [:default letter] :natural))
-         (not= accidental (or (get-in prev-final [octave letter])
-                              (get-in prev-final [:default letter])
-                              :natural)))
-
-    ;; Cross-octave courtesy: altered in other octaves
-    (and cross-octave-courtesy?
-         (altered-in-other-octaves? remembered octave letter accidental))))
-```
+**Cross-octave courtesy accidental** (house style dependent): When an alteration appears in one octave (e.g., C#3), subsequent notes on the same letter in other octaves (e.g., C4 natural) may show courtesy accidentals, optionally parenthesized.
 
 ### House Style Settings
 
@@ -333,22 +301,9 @@ Each decision preserves the complete `[item vpd position]` tuple from timewalk:
 - VPD uniquely identifies each pitch in the piece hierarchy
 - Position enables sorting for temporal ordering
 
-**Instrument-level scope:**
-The timewalk boundary is always at the **instrument level**, not staff level. This means:
-- Single-staff instruments (flute, violin): one staff, all voices share accidental memory
-- Multi-staff instruments (piano, harp): all staves share accidental memory, enabling proper cross-staff notation handling
-- Choir SATB on grand staff: all four staves share accidental memory
-- Organ with multiple manuals: all staves of the instrument share memory
-
-The final remembered state at measure end includes all pitches from all staves and voices of that instrument.
-
-**Performance:**
-Two distinct code paths, both single-pass over pitches:
-- **Single voice (0-1 voices)**: Uses `transduce` directly with zero allocation. Timewalk already yields pitches in temporal order for single-voice contexts. Each pitch processed exactly once.
-- **Multiple voices**: Requires collection and sorting by position since timewalk yields voice-by-voice. Uses `sequence` + `sort-by position` + `reduce`. Each pitch processed exactly once after sorting. Clojure's `sort-by` uses Java's TimSort (adaptive O(n) to O(n log n)). Even for instruments with multiple staves, typical measures contain 4-50 total pitches, making sorting overhead negligible.
-
 **State threading:**
-State flows naturally through sequential measure processing. Each measure receives the previous measure's final state, processes it, and returns the new final state for the next measure. Timewalk's transducer efficiency ensures each pitch is visited exactly once per rendering pass.
+
+State flows naturally through sequential measure processing. Each measure receives the previous measure's final state, processes it, and returns the new final state for the next measure.
 
 ```clojure
 ;; Process measures sequentially, threading state
@@ -426,8 +381,6 @@ Remembered alterations operate at the **instrument level**, encompassing all sta
 
 **System-level separation**: Instruments in the same system do NOT share accidental memory. An oboe's F# does not affect a flute's F natural, even though they appear visually proximate on the page. The boundary is strictly at instrument level - accidental memory is an instrument property, not a system property or score property.
 
-**Implementation note**: Timewalk processes voices sequentially with position counting restarting at 0 for each voice. Therefore the algorithm collects all pitch tuples from all staves and voices of the instrument, sorts by position to establish left-to-right reading order, then processes the sorted sequence.
-
 **Example** (piano cross-staff, G major):
 ```clojure
 ;; Piano (two staves):
@@ -448,16 +401,13 @@ The bass F natural at position 1/4 forces a courtesy natural on the treble F at 
 
 ## Architectural Implications
 
-**Musical semantics, not layout:**
-The remembered alterations decisions represent the **musical requirement** for accidentals based on key signature and temporal context. They apply universally to all layouts of this piece, regardless of transposition (keys transpose with the music). Individual layouts may override these decisions for visual reasons, but the remembered alterations algorithm provides the semantic baseline.
+The remembered alterations decisions represent the **musical requirement** for accidentals based on key signature and temporal context. They apply universally to all layouts of this piece. Individual layouts may override these decisions for visual reasons, but the remembered alterations algorithm provides the semantic baseline.
 
-**Decision output:**
 The system produces decisions containing:
 - Which pitch requires consideration
 - Whether an accidental should be printed
 - Whether it's a courtesy accidental
 - Whether it should be parenthesized
-- The reason for the decision
 
 This separation of semantic decisions from visual presentation enables consistent musical interpretation across all visual representations.
 
