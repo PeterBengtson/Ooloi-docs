@@ -176,13 +176,13 @@ initial-remembered = baseline-from-key
 ```
 Reset completely to the key signature baseline. Tied notes must have their accidental restated at the barline.
 
-**Unified function:**
+**Implementation:**
 ```clojure
-(defn initial-remembered-for-measure
-  [key-sig prev-final french-ties?]
-  (if french-ties?
-    (baseline-from-key key-sig)
-    prev-final))
+(let [baseline (acc-maps/from-key-signature key-sig)
+      initial-remembered (if (french-ties? piece)
+                           baseline
+                           (or prev-final baseline))]
+  ...)
 ```
 
 **Critical insight**: Regardless of tie style, the **previous measure's final state** must always be available for courtesy accidental detection. In French style, we reset the remembered state but still compare against the previous measure when deciding whether to show courtesy accidentals.
@@ -268,7 +268,7 @@ The remembered alterations system is configured through four piece-level setting
 - `false`: Courtesy accidentals use normal appearance
 - Only applies when `:courtesy-accidental-for-other-octaves?` is `true`
 
-These settings are accessed via the `ooloi.shared.api` namespace and configured per-piece, enabling different pieces in the same score to use different accidental conventions.
+These settings are accessed via the `ooloi.shared.api` namespace and configured per-piece, with future extensions possible for other levels.
 
 ### Performance Architecture
 
@@ -278,9 +278,9 @@ The algorithm uses two code paths based on voice count:
 (defn- process-pitch-tuple
   "Reducing function that processes a single pitch tuple.
    Updates remembered state, courtesy-shown tracking, and accumulates decisions."
-  [piece baseline]
+  [piece key-sig]
   (fn [state tuple]
-    (make-accidental-decision state tuple piece baseline)))
+    (make-accidental-decision state tuple piece key-sig)))
 
 (defn- can-transduce?
   "Check if we can use transduce path (0 or 1 voice total) vs collect/sort/reduce (2+ voices).
@@ -310,7 +310,7 @@ The algorithm uses two code paths based on voice count:
         initial-state {:remembered initial-remembered
                        :decisions []
                        :courtesy-shown {}}
-        reducer (process-pitch-tuple piece baseline)
+        reducer (process-pitch-tuple piece key-sig)
         final-state
         (if (can-transduce? piece instrument-vpd measure-index)
           ;; Single voice: transduce directly (zero allocation)
@@ -336,7 +336,9 @@ The algorithm uses two code paths based on voice count:
             (reduce reducer initial-state sorted-tuples)))]
 
     ;; Return only remembered and decisions, discarding courtesy-shown
-    [(:remembered final-state) (:decisions final-state)]))
+    ;; Clean up any outlandish defaults before returning
+    [(acc-maps/remove-outlandish-defaults (:remembered final-state))
+     (:decisions final-state)]))
 ```
 
 **Tuple preservation:**
@@ -350,15 +352,16 @@ Each decision preserves the complete `[item vpd position]` tuple from timewalk:
 
 State flows naturally through sequential measure processing. Each measure receives the previous measure's final `:remembered` state, processes it with ephemeral `:courtesy-shown` tracking, and returns only the `:remembered` and `:decisions` for the next measure. The `:courtesy-shown` tracking is created fresh for each measure and discarded at the boundary.
 
+Pattern for processing multiple measures:
+
 ```clojure
-;; Process measures sequentially, threading remembered state
+;; Thread remembered state through sequential measures
 (reduce
   (fn [prev-final measure-index]
     (let [[final-remembered decisions]
           (accidental-decisions-for-measure
             piece measure-index instrument-vpd key-sig prev-final)]
-      ;; Apply decisions to rendering pipeline
-      (apply-accidental-decisions piece decisions)
+      ;; Use decisions for rendering
       ;; Return remembered state for next measure (courtesy-shown discarded)
       final-remembered))
   (acc-maps/from-key-signature key-sig)  ; Initial baseline
