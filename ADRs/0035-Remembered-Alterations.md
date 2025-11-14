@@ -10,7 +10,8 @@
   - [Data Structure](#data-structure)
   - [Measure Boundary Behavior](#measure-boundary-behavior)
   - [Courtesy Accidentals](#courtesy-accidentals)
-  - [House Style Settings](#house-style-settings)
+  - [Keyless Mode Behavior](#keyless-mode-behavior)
+  - [Accidental Settings](#accidental-settings)
   - [Performance Architecture](#performance-architecture)
 - [Integration with Key Signatures](#integration-with-key-signatures)
 - [Instrument-Level Scope](#instrument-level-scope)
@@ -216,16 +217,58 @@ The solution uses **ephemeral tracking** during measure processing:
 
 **Rationale**: Courtesy tracking is measure-scoped by nature. It prevents visual clutter from repeated courtesy accidentals while keeping the state lightweight. The structure uses sets for efficient membership testing and minimal memory overhead.
 
-### House Style Settings
+### Keyless Mode Behavior
 
-House styles vary significantly across publishers, historical periods, and musical genres. The remembered alterations algorithm provides the framework for determining when accidentals are semantically required, but presentation details vary:
+Keyless key signatures (`:mode :keyless` in [ADR-0034](0034-Key-Signature-Architecture.md)) represent music without a tonal center—12-tone serial music, free atonal music, or chromatic passages. The `:keyless-accidentals` setting determines how accidentals are handled in keyless contexts:
 
-- **Measure boundary behavior**: Some traditions (French style) restate accidentals at barlines even for tied notes; others carry the remembered state across
-- **Courtesy accidentals**: Whether to show accidentals that match the key signature after recent contradictions
-- **Cross-octave behavior**: Whether alterations in one octave affect other octaves, and how to indicate this visually
-- **Grace note participation**: Whether grace notes update the remembered alterations state
+**`:standard` mode** (default):
+- Behaves like C major without a tonic
+- Normal remembered alterations apply: accidental shown when it differs from remembered state
+- Courtesy accidentals work traditionally (cross-octave warnings when enabled)
+- Suitable for chromatic passages that still follow traditional accidental memory rules
 
-The algorithm separates the core decision logic from these stylistic variations, enabling the same codebase to handle Baroque figured bass, Viennese atonal music, and contemporary microtonal scores with different house style configurations.
+**`:all-except-repeated` mode**:
+- Show accidental on every pitch except immediate repetitions
+- Repetition = same letter/octave/accidental as explicitly remembered
+- Uses outlandish baseline trick: `{:default {"A" :unset, "B" :unset, ...}}` forces all pitches to be stored as deviations
+- No courtesy accidentals (by design—atonal music doesn't need cross-octave warnings)
+- Suitable for atonal music where every pitch change should be explicit
+
+**`:all` mode**:
+- Show accidental on every single pitch, including repetitions
+- No state tracking needed—always print
+- No courtesy accidentals (by design)
+- Suitable for extreme clarity requirements or pedagogical contexts
+
+The three modes provide a spectrum from traditional (`:standard`) to explicit (`:all-except-repeated`) to exhaustive (`:all`), enabling correct rendering of music from late-Romantic chromaticism through mid-20th-century atonality.
+
+### Accidental Settings
+
+The remembered alterations system is configured through four piece-level settings:
+
+**`:french-ties?`** (boolean, default `false`)
+- Controls measure boundary behavior for tied notes
+- `false`: Standard behavior—remembered state carries across barlines (tied notes don't restate accidentals)
+- `true`: French style—reset to key signature baseline at barlines (tied notes must restate accidentals)
+
+**`:keyless-accidentals`** (keyword, default `:standard`)
+- Controls accidental behavior in keyless key signatures
+- `:standard`: Normal remembered alterations, like C major without tonic
+- `:all-except-repeated`: Show accidentals except immediate repeats (atonal music)
+- `:all`: Show accidentals on every pitch including repeats (maximum clarity)
+
+**`:courtesy-accidental-for-other-octaves?`** (boolean, default `true`)
+- Controls cross-octave courtesy accidentals
+- `true`: Show courtesy when same letter has different accidental in another octave
+- `false`: Octaves are independent—no cross-octave courtesy
+
+**`:parenthesized-courtesy-accidental-for-other-octaves?`** (boolean, default `true`)
+- Controls parenthesization of cross-octave courtesy accidentals
+- `true`: Courtesy accidentals are parenthesized (visual distinction from required accidentals)
+- `false`: Courtesy accidentals use normal appearance
+- Only applies when `:courtesy-accidental-for-other-octaves?` is `true`
+
+These settings are accessed via the `ooloi.shared.api` namespace and configured per-piece, enabling different pieces in the same score to use different accidental conventions.
 
 ### Performance Architecture
 
