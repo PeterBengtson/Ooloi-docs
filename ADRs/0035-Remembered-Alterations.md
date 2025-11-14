@@ -215,19 +215,23 @@ The algorithm uses two code paths based on voice count:
       [new-remembered (cond-> decisions decision (conj decision))])))
 
 (defn- can-transduce?
-  "Check if we can use transduce path (0 or 1 voice) vs collect/sort/reduce path (2+ voices).
-   Short-circuits after finding second voice.
-
+  "Check if we can use transduce path (0 or 1 voice total) vs collect/sort/reduce (2+ voices).
+   Directly counts voices in the specific measure across all staves of the instrument.
+   
    Returns: true for 0-1 voices (transduce path), false for 2+ voices (reduce path)"
-  [piece instrument-vpd]
-  (transduce
-    (comp (timewalk {:boundary-vpd instrument-vpd})
-          (filter voice??))
-    (fn
-      ([] 0)
-      ([n] (<= n 1))
-      ([n _] (if (>= n 2) (reduced false) (inc n))))
-    [piece]))
+  [piece instrument-vpd measure-index]
+  (let [instrument (vpd/retrieve instrument-vpd piece)
+        voice-count (reduce
+                      (fn [count staff]
+                        (if-let [measure (get (:measures staff) measure-index)]
+                          (let [new-count (+ count (count (:voices measure)))]
+                            (if (>= new-count 2)
+                              (reduced new-count)
+                              new-count))
+                          count))
+                      0
+                      (:staves instrument))]
+    (<= voice-count 1)))
 
 (defn accidental-decisions-for-measure
   [piece measure-index instrument-vpd key-sig prev-final]
@@ -237,7 +241,7 @@ The algorithm uses two code paths based on voice count:
                             prev-final)
         reducer (process-pitch-tuple piece baseline)]
 
-    (if (can-transduce? piece instrument-vpd)
+    (if (can-transduce? piece instrument-vpd measure-index)
       ;; Single voice: transduce directly (zero allocation)
       (transduce
         (comp
