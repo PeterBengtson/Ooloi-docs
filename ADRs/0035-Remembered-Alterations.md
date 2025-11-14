@@ -158,7 +158,7 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
 - Others treat each octave independently
 - The structure supports both without code changes
 - Helper predicates (`altered-in-other-octaves?`) can efficiently check only octaves with explicit deviations
-- Cross-octave searches are faster: only check keys present in map, not all 10 octaves
+- Cross-octave searches are faster: only check keys present in map, not all octaves
 
 ### Measure Boundary Behavior
 
