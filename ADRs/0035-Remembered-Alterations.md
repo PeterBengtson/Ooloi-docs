@@ -132,19 +132,24 @@ Remembered alterations use an optimized structure that minimizes memory usage wh
 4. **Octave separation**: Enables different house styles for octave-specific behavior
 5. **Absence means natural**: If letter not found in octave or default, assume `:natural`
 
-**Lookup algorithm:**
-```clojure
-(or (get-in remembered [octave letter])    ; Check octave-specific first
-    (get-in remembered [:default letter])  ; Fall back to default
-    :natural)                               ; Assume natural if absent
-```
+**Operations provided by `ooloi.shared.ops.accidental-maps`:**
 
-**Update algorithm:**
+The structure is manipulated through a dedicated namespace that encapsulates lookup, update, conversion, and comparison operations:
+
 ```clojure
-(let [default-acc (get-in remembered [:default letter] :natural)]
-  (if (= accidental default-acc)
-    (update remembered octave dissoc letter)         ; Matches default, remove deviation
-    (assoc-in remembered [octave letter] accidental))) ; Store deviation
+(require '[ooloi.shared.ops.accidental-maps :as acc-maps])
+
+;; Lookup: check octave-specific first, fall back to default, then :natural
+(acc-maps/lookup remembered octave letter)
+
+;; Update: store deviation or remove if matches default (automatic cleanup)
+(acc-maps/assoc-accidental remembered octave letter accidental)
+
+;; Convert KeySignature to baseline structure
+(acc-maps/from-key-signature key-sig)
+
+;; Check if letter has different accidental in other octaves
+(acc-maps/differs-in-other-octaves? remembered current-octave letter accidental)
 ```
 
 **Octave separation rationale:**
@@ -189,6 +194,28 @@ Courtesy (cautionary) accidentals occur when a note matches the key signature ba
 - **Cross-measure**: Dependent on house style settings and previous measure's final state
 - **Cross-octave**: Dependent on house style settings; alterations in one octave may trigger courtesy accidentals in other octaves, optionally parenthesized
 
+**Implementation: Preventing Repeated Courtesy Accidentals**
+
+Courtesy accidentals should appear only once per letter/octave within a measure. Since courtesy accidentals match the key signature baseline, they don't update the `:remembered` state (no deviation to store). Without additional tracking, the algorithm would print courtesy accidentals on every subsequent occurrence.
+
+The solution uses **ephemeral tracking** during measure processing:
+
+```clojure
+{:remembered {...}          ; Carries forward to next measure
+ :decisions [...]           ; Accumulates accidental decisions
+ :courtesy-shown {}}        ; Ephemeral: discarded at measure boundary
+```
+
+**Structure**: `{octave #{letters}}` tracks which courtesy accidentals have been shown in the current measure.
+
+**Lifecycle**:
+1. Initialize to `{}` at measure start
+2. Update when courtesy accidental is shown
+3. Check before showing courtesy accidental
+4. Discard at measure boundary (only `:remembered` carries forward)
+
+**Rationale**: Courtesy tracking is measure-scoped by nature. It prevents visual clutter from repeated courtesy accidentals while keeping the state lightweight. The structure uses sets for efficient membership testing and minimal memory overhead.
+
 ### House Style Settings
 
 House styles vary significantly across publishers, historical periods, and musical genres. The remembered alterations algorithm provides the framework for determining when accidentals are semantically required, but presentation details vary:
@@ -207,17 +234,15 @@ The algorithm uses two code paths based on voice count:
 ```clojure
 (defn- process-pitch-tuple
   "Reducing function that processes a single pitch tuple.
-   Updates remembered state and accumulates decisions."
+   Updates remembered state, courtesy-shown tracking, and accumulates decisions."
   [piece baseline]
-  (fn [[remembered decisions] tuple]
-    (let [[new-remembered decision] (make-accidental-decision
-                                      remembered tuple piece baseline)]
-      [new-remembered (cond-> decisions decision (conj decision))])))
+  (fn [state tuple]
+    (make-accidental-decision state tuple piece baseline)))
 
 (defn- can-transduce?
   "Check if we can use transduce path (0 or 1 voice total) vs collect/sort/reduce (2+ voices).
    Directly counts voices in the specific measure across all staves of the instrument.
-   
+
    Returns: true for 0-1 voices (transduce path), false for 2+ voices (reduce path)"
   [piece instrument-vpd measure-index]
   (let [instrument (vpd/retrieve instrument-vpd piece)
@@ -235,34 +260,40 @@ The algorithm uses two code paths based on voice count:
 
 (defn accidental-decisions-for-measure
   [piece measure-index instrument-vpd key-sig prev-final]
-  (let [baseline (baseline-from-key key-sig)
+  (let [baseline (acc-maps/from-key-signature key-sig)
         initial-remembered (if (french-ties? piece)
                             baseline
-                            prev-final)
-        reducer (process-pitch-tuple piece baseline)]
+                            (or prev-final baseline))
+        initial-state {:remembered initial-remembered
+                       :decisions []
+                       :courtesy-shown {}}
+        reducer (process-pitch-tuple piece baseline)
+        final-state
+        (if (can-transduce? piece instrument-vpd measure-index)
+          ;; Single voice: transduce directly (zero allocation)
+          (transduce
+            (comp
+              (timewalk {:boundary-vpd instrument-vpd
+                         :start-measure measure-index
+                         :end-measure measure-index})
+              (filter pitch??))
+            (completing reducer)
+            initial-state
+            [piece])
 
-    (if (can-transduce? piece instrument-vpd measure-index)
-      ;; Single voice: transduce directly (zero allocation)
-      (transduce
-        (comp
-          (timewalk {:boundary-vpd instrument-vpd
-                     :start-measure measure-index
-                     :end-measure measure-index})
-          (filter pitch??))
-        (completing reducer)
-        [initial-remembered []]
-        [piece])
+          ;; Multiple voices: collect, sort, reduce
+          (let [all-pitch-tuples (sequence
+                                   (comp
+                                     (timewalk {:boundary-vpd instrument-vpd
+                                                :start-measure measure-index
+                                                :end-measure measure-index})
+                                     (filter pitch??))
+                                   [piece])
+                sorted-tuples (sort-by position all-pitch-tuples)]
+            (reduce reducer initial-state sorted-tuples)))]
 
-      ;; Multiple voices: collect, sort, reduce
-      (let [all-pitch-tuples (sequence
-                               (comp
-                                 (timewalk {:boundary-vpd instrument-vpd
-                                            :start-measure measure-index
-                                            :end-measure measure-index})
-                                 (filter pitch??))
-                               [piece])
-            sorted-tuples (sort-by position all-pitch-tuples)]
-        (reduce reducer [initial-remembered []] sorted-tuples)))))
+    ;; Return only remembered and decisions, discarding courtesy-shown
+    [(:remembered final-state) (:decisions final-state)]))
 ```
 
 **Tuple preservation:**
@@ -274,20 +305,20 @@ Each decision preserves the complete `[item vpd position]` tuple from timewalk:
 
 **State threading:**
 
-State flows naturally through sequential measure processing. Each measure receives the previous measure's final state, processes it, and returns the new final state for the next measure.
+State flows naturally through sequential measure processing. Each measure receives the previous measure's final `:remembered` state, processes it with ephemeral `:courtesy-shown` tracking, and returns only the `:remembered` and `:decisions` for the next measure. The `:courtesy-shown` tracking is created fresh for each measure and discarded at the boundary.
 
 ```clojure
-;; Process measures sequentially, threading state
+;; Process measures sequentially, threading remembered state
 (reduce
   (fn [prev-final measure-index]
-    (let [[final-alts decisions]
+    (let [[final-remembered decisions]
           (accidental-decisions-for-measure
             piece measure-index instrument-vpd key-sig prev-final)]
       ;; Apply decisions to rendering pipeline
       (apply-accidental-decisions piece decisions)
-      ;; Return final state for next measure
-      final-alts))
-  (baseline-from-key key-sig)  ; Initial state
+      ;; Return remembered state for next measure (courtesy-shown discarded)
+      final-remembered))
+  (acc-maps/from-key-signature key-sig)  ; Initial baseline
   (range start-measure end-measure))
 ```
 
@@ -296,11 +327,10 @@ State flows naturally through sequential measure processing. Each measure receiv
 Key signatures ([ADR-0034](0034-Key-Signature-Architecture.md)) provide the **baseline** for remembered alterations:
 
 ```clojure
-(defn baseline-from-key [key-sig]
-  ;; Convert key signature to {octave {letter accidental}} structure
-  ;; For simple key signatures: expand to all octaves
-  ;; For per-octave key signatures: use as-is
-  )
+(acc-maps/from-key-signature key-sig)
+;; Converts key signature to {:default {letter accidental}} structure
+;; Only stores non-natural accidentals for memory efficiency
+;; For per-octave key signatures: preserves octave structure as-is
 ```
 
 **Key signature changes mid-measure:**
