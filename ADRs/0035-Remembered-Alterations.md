@@ -385,7 +385,6 @@ The state threaded through the reduction contains four components:
 - `:courtesy-shown` - Ephemeral, discarded at measure boundary
 - `:tied-target-endpoint-ids` - Collected during measure, passed to next measure for bypass detection (only cross-barline ties needed)
 - `:simultaneity-conflicts` - Ephemeral, exists only during simultaneity group processing
-```
 
 **Key architectural elements:**
 
