@@ -178,13 +178,13 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
 
 **Examples** (vertical bars = barlines, underscores = ties):
 
-| Key | Music | Result | Explanation |
-|-----|-------|--------|-------------|
-| C major | `F# │ F# F#` | First two print | Measure 2 starts from baseline; first F# prints (differs from baseline); second F# remembered within measure |
-| G major | `F# │ F# F#` | None print | F# matches baseline in both measures |
-| C major | `F#_ │ F# F#` | First and third print | Tied F# at pos 0 bypasses (no print, no remembered update); third F# must restate vs baseline |
-| G major | `F#_ │ F# F#` | None print | All match baseline |
-| C major | `F# │ F` | Sharp, then courtesy natural | F in measure 2 matches baseline but differs from prev-final (courtesy) |
+| Key       | Music          | Result                  | Explanation |
+|-----------|----------------|-------------------------|-------------|
+| C major   | `F# │ F# F#`   | First two print         | Baseline reset; first F# differs; second remembered |
+| G major   | `F# │ F# F#`   | None print              | F# is baseline |
+| C major   | `F#_ │ F# F#`  | First and third print   | Tied bypasses at pos 0; third restates |
+| G major   | `F#_ │ F# F#`  | None print              | All match baseline |
+| C major   | `F# │ F`       | Sharp, courtesy natural | F matches baseline, differs from prev-final |
 
 **Implementation:**
 ```clojure
@@ -227,10 +227,10 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
 
 **Examples**:
 
-| Key | Music | Result | Explanation |
-|-----|-------|--------|-------------|
-| C major, French | `F#_ │ F# F#` | First two print | No bypass at pos 0: F# differs from baseline (prints); second F# remembered within measure |
-| G major, French | `F#_ │ F# F#` | None print | All match baseline |
+| Key              | Music          | Result          | Explanation |
+|------------------|----------------|-----------------|-------------|
+| C major, French  | `F#_ │ F# F#`  | First two print | No bypass; F# differs at pos 0; second remembered |
+| G major, French  | `F#_ │ F# F#`  | None print      | All match baseline |
 
 **Implementation:**
 ```clojure
