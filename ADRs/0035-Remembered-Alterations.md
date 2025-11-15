@@ -272,103 +272,11 @@ These settings are accessed via the `ooloi.shared.api` namespace and configured 
 
 ### Performance Architecture
 
-The algorithm uses two code paths based on voice count, with simultaneity grouping integrated into both:
+The algorithm uses two code paths based on voice count, with simultaneity grouping integrated into both.
+
+**Core design decision:**
 
 ```clojure
-(defn- process-pitch-tuple
-  "Reducing function that processes pitch input - either a single tuple or a simultaneity group.
-
-   Input can be:
-   - A single tuple [item vpd position] - processed directly
-   - A simultaneity [:simultaneity [tuple1 tuple2 ...]] - all tuples at same position
-
-   For simultaneities, performs three-phase processing:
-   1. Detect conflicts: Pre-scan for letters with different accidentals
-   2. Process sequentially: Each pitch sees accumulated state changes
-   3. Clean up: Remove :simultaneity-conflicts from state after group
-
-   Updates remembered state, courtesy-shown tracking, simultaneity-conflicts,
-   and accumulates decisions."
-  [piece key-sig]
-  (fn [state input]
-    (if (and (vector? input) (= (first input) :simultaneity))
-      ;; Simultaneity group: detect conflicts, process all tuples, clean up
-      (let [tuples (second input)
-            conflicts (detect-simultaneity-conflicts state tuples piece key-sig)
-            state-with-conflicts (assoc state :simultaneity-conflicts conflicts)
-            final-state (reduce
-                          (fn [acc-state tuple]
-                            (make-accidental-decision acc-state tuple piece key-sig))
-                          state-with-conflicts
-                          tuples)]
-        (dissoc final-state :simultaneity-conflicts))
-      ;; Single tuple: process directly
-      (make-accidental-decision state input piece key-sig))))
-
-(defn- group-simultaneities
-  "Transducer that groups tuples by rhythmic position.
-
-   Singles pass through unchanged (zero allocation).
-   Multiple tuples at same position emitted as [:simultaneity [tuple1 tuple2 ...]].
-
-   Uses keyword marker :simultaneity to distinguish grouped tuples from singles.
-   Internal state: first-tuple + rest-tuples volatiles (no vector until 2nd tuple)."
-  []
-  (fn [rf]
-    (let [first-tuple (volatile! nil)
-          rest-tuples (volatile! [])]
-      (fn
-        ([] (rf))
-        ([result]
-         (let [ft @first-tuple
-               rt @rest-tuples]
-           (rf (if (and ft (empty? rt))
-                 ;; Single tuple: emit as-is (zero allocation)
-                 (rf result ft)
-                 ;; Simultaneity: emit as group
-                 (if ft
-                   (rf result [:simultaneity (into [ft] rt)])
-                   result)))))
-        ([result tuple]
-         (let [ft @first-tuple
-               rt @rest-tuples
-               current-pos (position tuple)]
-           (if (nil? ft)
-             ;; First tuple seen
-             (do (vreset! first-tuple tuple)
-                 result)
-             (let [first-pos (position ft)]
-               (if (= current-pos first-pos)
-                 ;; Same position: add to group
-                 (do (vswap! rest-tuples conj tuple)
-                     result)
-                 ;; Different position: emit previous group, start new
-                 (let [to-emit (if (empty? rt)
-                                 ft  ; Single tuple
-                                 [:simultaneity (into [ft] rt)])]
-                   (vreset! first-tuple tuple)
-                   (vreset! rest-tuples [])
-                   (rf result to-emit)))))))))))
-
-(defn- can-transduce?
-  "Check if we can use transduce path (0 or 1 voice total) vs collect/sort/reduce (2+ voices).
-   Directly counts voices in the specific measure across all staves of the instrument.
-
-   Returns: true for 0-1 voices (transduce path), false for 2+ voices (reduce path)"
-  [piece instrument-vpd measure-index]
-  (let [instrument (vpd/retrieve instrument-vpd piece)
-        voice-count (reduce
-                      (fn [count staff]
-                        (if-let [measure (get (:measures staff) measure-index)]
-                          (let [new-count (+ count (count (:voices measure)))]
-                            (if (>= new-count 2)
-                              (reduced new-count)
-                              new-count))
-                          count))
-                      0
-                      (:staves instrument))]
-    (<= voice-count 1)))
-
 (defn accidental-decisions-for-measure
   [piece measure-index instrument-vpd key-sig prev-final]
   (let [baseline (acc-maps/from-key-signature key-sig)
@@ -377,44 +285,49 @@ The algorithm uses two code paths based on voice count, with simultaneity groupi
                             (or prev-final baseline))
         initial-state {:remembered initial-remembered
                        :decisions []
-                       :courtesy-shown {}}
-        reducer (process-pitch-tuple piece key-sig)
-        final-state
-        (if (can-transduce? piece instrument-vpd measure-index)
-          ;; Single voice: transduce directly (zero allocation for singles)
-          (transduce
-            (comp
-              (timewalk {:boundary-vpd instrument-vpd
-                         :start-measure measure-index
-                         :end-measure measure-index})
-              (filter pitch??)
-              (group-simultaneities))  ; Group simultaneous pitches
-            (completing reducer)
-            initial-state
-            [piece])
+                       :courtesy-shown {}}]
 
-          ;; Multiple voices: collect, sort, reduce
-          (let [all-pitch-tuples (sequence
-                                   (comp
-                                     (timewalk {:boundary-vpd instrument-vpd
-                                                :start-measure measure-index
-                                                :end-measure measure-index})
-                                     (filter pitch??)
-                                     (group-simultaneities))  ; Group after sorting
-                                   [piece])
-                sorted-tuples (sort-by
-                                (fn [input]
-                                  (if (and (vector? input) (= (first input) :simultaneity))
-                                    (position (first (second input)))  ; Use first tuple's position
-                                    (position input)))
-                                all-pitch-tuples)]
-            (reduce reducer initial-state sorted-tuples)))]
+    (if (can-transduce? piece instrument-vpd measure-index)
+      ;; Single voice: transduce directly (zero allocation for singles)
+      (transduce
+        (comp (timewalk ...) (filter pitch??) (group-simultaneities))
+        (completing reducer)
+        initial-state
+        [piece])
 
-    ;; Return only remembered and decisions, discarding courtesy-shown
-    ;; Clean up any outlandish defaults before returning
-    [(acc-maps/remove-outlandish-defaults (:remembered final-state))
-     (:decisions final-state)]))
+      ;; Multiple voices: collect, sort by position, reduce
+      (let [sorted-tuples (sort-by position (sequence (comp ...) [piece]))]
+        (reduce reducer initial-state sorted-tuples)))))
 ```
+
+**State structure:**
+
+The state threaded through the reduction contains three components:
+
+```clojure
+{:remembered {...}          ; Sparse deviation map - carries to next measure
+ :decisions [...]           ; Accumulated accidental decisions
+ :courtesy-shown {}         ; Ephemeral: {octave #{letters}} - discarded at boundary
+ :simultaneity-conflicts #{}} ; Ephemeral: #{letters} - only during simultaneity processing
+```
+
+**Key architectural elements:**
+
+1. **Simultaneity grouping** - The `group-simultaneities` transducer groups tuples by rhythmic position:
+   - Singles pass through unchanged (zero allocation via volatiles)
+   - Multiple tuples at same position emitted as `[:simultaneity [tuple1 tuple2 ...]]`
+   - Keyword marker `:simultaneity` distinguishes groups from singles
+
+2. **Pitch processing** - The `process-pitch-tuple` reducer handles both singles and groups:
+   - Single tuple: `[item vpd position]` → processed directly via `make-accidental-decision`
+   - Simultaneity: `[:simultaneity [tuples]]` → three-phase processing:
+     1. Detect conflicts (O(n) pre-scan by letter)
+     2. Process sequentially with `:simultaneity-conflicts` state
+     3. Clean up conflict tracking
+
+3. **Voice count detection** - `can-transduce?` counts voices across all staves:
+   - 0-1 voices → transduce path (temporal order guaranteed by timewalk)
+   - 2+ voices → collect/sort/reduce path (requires explicit position-based ordering)
 
 **Pipeline architecture:**
 
