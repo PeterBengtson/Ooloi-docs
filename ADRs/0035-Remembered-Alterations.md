@@ -290,13 +290,22 @@ The algorithm uses two code paths based on voice count, with simultaneity groupi
     (if (can-transduce? piece instrument-vpd measure-index)
       ;; Single voice: transduce directly (zero allocation for singles)
       (transduce
-        (comp (timewalk ...) (filter pitch??) (group-simultaneities))
+        (comp
+          (timewalk ...)
+          (filter pitch??)
+          (group-simultaneities))
         (completing reducer)
         initial-state
         [piece])
 
       ;; Multiple voices: collect, sort by position, reduce
-      (let [sorted-tuples (sort-by position (sequence (comp ...) [piece]))]
+      (let [sorted-tuples (sort-by position
+                            (sequence
+                              (comp
+                                (timewalk ...)
+                                (filter pitch??)
+                                (group-simultaneities))
+                              [piece]))]
         (reduce reducer initial-state sorted-tuples)))))
 ```
 
