@@ -68,16 +68,18 @@ Ooloi's key signature system ([ADR-0034](0034-Key-Signature-Architecture.md)) pr
 
 The remembered alterations system uses a **wave pattern** where accidental memory flows left-to-right through the music in temporal order:
 
-1. **Start of measure**: Initialize remembered state (setting-dependent)
-2. **Process each note**: Compare against current remembered state
-3. **Update after each note**: Accidental becomes new remembered state
-4. **Measure boundary**: Reset or carry forward (setting-dependent)
+1. **Start of measure**: Initialize remembered state to baseline (always)
+2. **Process each note**: Compare against current remembered state (or prev-final for tied bypass)
+3. **Update after each note**: Accidental becomes new remembered state (except tied bypass)
+4. **Measure boundary**: Always reset to baseline; prev-final available for tied bypass and courtesy detection
 
 **The central decision**: A note requires a printed accidental when its accidental differs from the **current remembered state** for that letter/octave combination.
 
-**Key insight**: This single rule handles both required accidentals (contradicting key signature) and courtesy accidentals (restating key signature after alteration). The complexity lies in what constitutes the "current remembered state."
+**Exception - Tied note bypass** (standard ties only): At position 0, if pitch is the target of a tie from previous measure, compare against `prev-final` instead of baseline. If matches, no print and **no remembered state update** (pure bypass). Next occurrence must restate vs baseline.
 
-**Architectural summary**: Remembered alterations are modeled as sparse per-octave deviations from a key-signature baseline, updated in strict temporal order across all voices and staves of an instrument, with a single comparison rule determining all printed accidentals—required, courtesy, or cautionary—in a layout-independent, house-style-configurable way.
+**Key insight**: This single rule (with the tied bypass exception) handles both required accidentals (contradicting key signature) and courtesy accidentals (restating key signature after alteration). The complexity lies in what constitutes the "current remembered state" and when the tied bypass applies.
+
+**Architectural summary**: Remembered alterations are modeled as sparse per-octave deviations from a key-signature baseline, updated in strict temporal order across all voices and staves of an instrument. Each measure starts from baseline. Tied notes at position 0 receive a bypass exception (standard ties only). A single comparison rule determines all printed accidentals—required, courtesy, or cautionary—in a layout-independent, house-style-configurable way.
 
 ### Correctness Invariants
 
@@ -99,7 +101,7 @@ The remembered-alterations system maintains the following invariants:
    The remembered state at any point is the combination of the key-signature baseline and any per-octave deviations accumulated earlier in the measure. Deviations always override baseline; removal of deviation reverts to baseline.
 
 6. **Measure-boundary rules**
-   At measure boundaries, the initial remembered state is either the previous measure's final state or the key-signature baseline, depending on house-style settings. Courtesy-accidental detection always has access to the previous measure's final state.
+   At measure boundaries, the initial remembered state is always the key-signature baseline. The previous measure's final state is available for: (a) tied note bypass detection at position 0 (standard ties only), and (b) courtesy-accidental detection (all modes). The tied bypass is a pure exception—no print, no remembered state update—requiring subsequent occurrences to restate vs baseline.
 
 These six invariants, combined with the single comparison rule, constitute a complete solution to accidental rendering for Western staff notation. The algorithm handles all scenarios—single-staff, multi-staff, multi-voice, cross-staff, atonal, mid-measure key changes—through the same mechanism. No heuristics are required beyond configurable house-style settings.
 
@@ -162,30 +164,87 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
 
 ### Measure Boundary Behavior
 
-At measure boundaries, the system must decide what state to carry forward. Two primary behaviors exist:
+**Foundation**: Every measure starts with `initial-remembered = baseline` (from key signature). The previous measure's final state (`prev-final`) is available for:
+1. Tied note bypass detection (standard/non-French ties only)
+2. Courtesy accidental detection (all modes)
 
-**Standard (most traditions):**
-```clojure
-initial-remembered = prev-measure-final
-```
-The complete final state from the previous measure (baseline + all alterations) becomes the starting point for the new measure. Tied notes naturally carry their accidentals forward.
+#### Standard (Non-French) Ties
 
-**French style:**
-```clojure
-initial-remembered = baseline-from-key
-```
-Reset completely to the key signature baseline. Tied notes must have their accidental restated at the barline.
+**Tied note bypass rule** (applies universally across all key signature modes):
+- At position 0, if pitch is the target of a tie from previous measure:
+  - Compare against `prev-final` instead of baseline
+  - If matches: no print, **no remembered state update** (pure bypass)
+  - Next occurrence must restate vs baseline
+
+**Examples** (vertical bars = barlines, underscores = ties):
+
+| Key | Music | Result | Explanation |
+|-----|-------|--------|-------------|
+| C major | `F# │ F# F#` | First two print | Measure 2 starts from baseline; first F# prints (differs from baseline); second F# remembered within measure |
+| G major | `F# │ F# F#` | None print | F# matches baseline in both measures |
+| C major | `F#_ │ F# F#` | First and third print | Tied F# at pos 0 bypasses (no print, no remembered update); third F# must restate vs baseline |
+| G major | `F#_ │ F# F#` | None print | All match baseline |
+| C major | `F# │ F` | Sharp, then courtesy natural | F in measure 2 matches baseline but differs from prev-final (courtesy) |
 
 **Implementation:**
 ```clojure
 (let [baseline (acc-maps/from-key-signature key-sig)
-      initial-remembered (if (french-ties? piece)
-                           baseline
-                           (or prev-final baseline))]
-  ...)
+      initial-remembered baseline  ; Always baseline!
+
+      ;; During measure 1, collect tied target endpoint-ids
+      tied-target-endpoint-ids (collect-tied-targets measure-1)]
+
+  ;; Measure 2, position 0
+  (if (and (= position 0)
+           (contains? tied-target-endpoint-ids (get-endpoint-id pitch))
+           (not (french-ties? piece)))
+    ;; BYPASS: check prev-final, don't update remembered
+    (let [prev-acc (acc-maps/lookup prev-final octave letter)]
+      (when (not= current-acc prev-acc)
+        (print-accidental)))
+
+    ;; NORMAL: check baseline/remembered, update as usual
+    (let [remembered-acc (acc-maps/lookup remembered octave letter)]
+      (when (not= current-acc remembered-acc)
+        (print-accidental)
+        (update-remembered)))))
 ```
 
-**Critical insight**: Regardless of tie style, the **previous measure's final state** must always be available for courtesy accidental detection. In French style, we reset the remembered state but still compare against the previous measure when deciding whether to show courtesy accidentals.
+**Tie detection mechanism**:
+```clojure
+;; During measure processing: collect tie target endpoint-ids
+;; Use TakesAttachment API: get-attachments, filter tie?, get-endpoint-id
+
+;; At position 0 of next measure: check if pitch is a tied target
+(contains? tied-target-endpoint-ids (get-endpoint-id pitch))
+```
+
+**Key insight**: Pitches implement `TakesAttachment`, providing `get-endpoint-id`. Ties store their target's endpoint-id via the same protocol. Detection is purely endpoint-id based, requiring no VPD comparison. Implementation details (collection timing, pruning optimizations) belong in implementation documentation.
+
+#### French Ties
+
+**No bypass** - tied notes at position 0 treated normally (compare to baseline). Within measure, remembered alterations accumulate normally.
+
+**Examples**:
+
+| Key | Music | Result | Explanation |
+|-----|-------|--------|-------------|
+| C major, French | `F#_ │ F# F#` | First two print | No bypass at pos 0: F# differs from baseline (prints); second F# remembered within measure |
+| G major, French | `F#_ │ F# F#` | None print | All match baseline |
+
+**Implementation:**
+```clojure
+(let [baseline (acc-maps/from-key-signature key-sig)
+      initial-remembered baseline]  ; Same as standard ties!
+
+  ;; No bypass check - always use normal logic
+  (let [remembered-acc (acc-maps/lookup remembered octave letter)]
+    (when (not= current-acc remembered-acc)
+      (print-accidental)
+      (update-remembered))))
+```
+
+**The only difference**: Standard ties provide the position-0 bypass. French ties treat position 0 normally.
 
 ### Courtesy Accidentals
 
@@ -247,9 +306,9 @@ The three modes provide a spectrum from traditional (`:standard`) to explicit (`
 The remembered alterations system is configured through four piece-level settings:
 
 **`:french-ties?`** (boolean, default `false`)
-- Controls measure boundary behavior for tied notes
-- `false`: Standard behavior—remembered state carries across barlines (tied notes don't restate accidentals)
-- `true`: French style—reset to key signature baseline at barlines (tied notes must restate accidentals)
+- Controls tied note bypass behavior at measure boundaries
+- `false`: Standard behavior—tied notes at position 0 receive bypass exception (compare to prev-final, don't print if matches, don't update remembered)
+- `true`: French style—no bypass, tied notes at position 0 treated normally (compare to baseline like all other notes)
 
 **`:keyless-accidentals`** (keyword, default `:standard`)
 - Controls accidental behavior in keyless key signatures
@@ -280,12 +339,11 @@ The algorithm uses two code paths based on voice count, with simultaneity groupi
 (defn accidental-decisions-for-measure
   [piece measure-index instrument-vpd key-sig prev-final]
   (let [baseline (acc-maps/from-key-signature key-sig)
-        initial-remembered (if (french-ties? piece)
-                            baseline
-                            (or prev-final baseline))
+        initial-remembered baseline  ; Always baseline!
         initial-state {:remembered initial-remembered
                        :decisions []
-                       :courtesy-shown {}}]
+                       :courtesy-shown {}
+                       :tied-target-endpoint-ids #{}}]  ; Collect during processing
 
     (if (can-transduce? piece instrument-vpd measure-index)
       ;; Single voice: transduce directly (zero allocation for singles)
@@ -311,13 +369,22 @@ The algorithm uses two code paths based on voice count, with simultaneity groupi
 
 **State structure:**
 
-The state threaded through the reduction contains three components:
+The state threaded through the reduction contains four components:
 
 ```clojure
-{:remembered {...}          ; Sparse deviation map - carries to next measure
- :decisions [...]           ; Accumulated accidental decisions
- :courtesy-shown {}         ; Ephemeral: {octave #{letters}} - discarded at boundary
- :simultaneity-conflicts #{}} ; Ephemeral: #{letters} - only during simultaneity processing
+{:remembered {...}                ; Sparse deviation map - carries to next measure
+ :decisions [...]                 ; Accumulated accidental decisions
+ :courtesy-shown {}               ; Ephemeral: {octave #{letters}} - discarded at boundary
+ :tied-target-endpoint-ids #{}    ; Collected during measure - passed to next as prev-final
+ :simultaneity-conflicts #{}}     ; Ephemeral: #{letters} - only during simultaneity processing
+```
+
+**Component lifecycles**:
+- `:remembered` - Carries forward to next measure as part of final state
+- `:decisions` - Accumulated throughout measure, returned to caller
+- `:courtesy-shown` - Ephemeral, discarded at measure boundary
+- `:tied-target-endpoint-ids` - Collected during measure, passed to next measure for bypass detection (only cross-barline ties needed)
+- `:simultaneity-conflicts` - Ephemeral, exists only during simultaneity group processing
 ```
 
 **Key architectural elements:**
