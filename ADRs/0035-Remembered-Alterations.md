@@ -76,14 +76,15 @@ The remembered alterations system uses a **wave pattern** where accidental memor
 
 **The central decision**: A note requires a printed accidental when its accidental differs from the **current remembered state** for that letter/octave combination.
 
-**Exception - Tied note bypass**: Tied-to notes are continuations, not new attacks. They bypass accidental printing unconditionally:
+**Exception - Tied note bypass**: Tied-to notes are continuations, not new attacks. They bypass accidental printing unless the notation changes:
 - **Intra-measure ties** (position > 0): Always bypass (no print, no remembered update) - applies to all tie styles
 - **Cross-measure ties at boundary** (position 0): Bypass in standard ties, print in French ties
-- **No state matching required**: The tie itself guarantees pitch identity
+- **Enharmonic respelling**: NEVER bypass - when tied notes change notation (F# → Gb), bypass is prevented and normal decision logic applies
+- **No state matching required**: The tie itself guarantees pitch identity (Hz equivalence), but notation changes require explicit accidentals
 
 **Key insight**: This single rule (with the tied bypass exception) handles both required accidentals (contradicting key signature) and courtesy accidentals (restating key signature after alteration). The bypass is unconditional - tied notes are continuations by definition. Position determines intra-measure vs cross-measure for French tie distinction.
 
-**Architectural summary**: Remembered alterations are modeled as sparse per-octave deviations from a key-signature baseline, updated in strict temporal order across all voices and staves of an instrument. Each measure starts from baseline. Tied-to notes receive unconditional bypass (except French ties at cross-measure boundaries). A single comparison rule determines all printed accidentals—required, courtesy, or cautionary—in a layout-independent, house-style-configurable way. Return format `[remembered decisions tied-target-endpoint-ids]` supports measure-to-measure state threading.
+**Architectural summary**: Remembered alterations are modeled as sparse per-octave deviations from a key-signature baseline, updated in strict temporal order across all voices and staves of an instrument. Each measure starts from baseline. Tied-to notes receive unconditional bypass (except French ties at cross-measure boundaries and enharmonic respelling). Enharmonic detection compares stored note strings to detect notation changes (F# → Gb), preventing bypass when notation changes. A single comparison rule determines all printed accidentals—required, courtesy, or cautionary—in a layout-independent, house-style-configurable way. Return format `[remembered decisions tied-target-endpoint-ids]` supports measure-to-measure state threading.
 
 ### Correctness Invariants
 
@@ -111,11 +112,11 @@ These six invariants, combined with the single comparison rule, constitute a com
 
 ### Data Structure
 
-Remembered alterations use an optimized structure that minimizes memory usage while enabling efficient lookups:
+Remembered alterations use an optimized structure that minimizes memory usage while enabling efficient cross-octave operations:
 
 ```clojure
 {:default {letter accidental}  ; Baseline from key signature (non-naturals only)
- octave {letter accidental}}   ; Per-octave deviations from default
+ letter {octave accidental}}   ; Per-letter octave deviations from default
 ```
 
 **Example** (C# major with 7 sharps, initially):
@@ -128,16 +129,24 @@ Remembered alterations use an optimized structure that minimizes memory usage wh
 ```clojure
 {:default {"C" :sharp, "D" :sharp, "E" :sharp, "F" :sharp,
            "G" :sharp, "A" :sharp, "B" :sharp}
- 4 {"C" :natural}}  ; Only the deviation stored
+ "C" {4 :natural}}  ; Only the deviation stored, grouped by letter
+```
+
+**After C natural in octave 4 and C flat in octave 5**:
+```clojure
+{:default {"C" :sharp, "D" :sharp, "E" :sharp, "F" :sharp,
+           "G" :sharp, "A" :sharp, "B" :sharp}
+ "C" {4 :natural, 5 :flat}}  ; All C deviations together
 ```
 
 **Why this structure:**
 
-1. **Memory efficient**: Default stores 7 entries for key signature; octave deviations only store differences (vs 70 entries for all octaves × all letters)
+1. **Memory efficient**: Default stores 7 entries for key signature; letter deviations only store differences (vs 70 entries for all octaves × all letters)
 2. **Starts from key signature baseline**: `:default` key contains non-natural accidentals from key signature
-3. **Updates incrementally**: Deviations stored per octave, matching default removes deviation
-4. **Octave separation**: Enables different house styles for octave-specific behavior
-5. **Absence means natural**: If letter not found in octave or default, assume `:natural`
+3. **Updates incrementally**: Deviations stored per letter-octave, matching default removes deviation
+4. **Cross-octave operations optimized**: Direct letter lookup groups all octaves for that letter, avoiding iteration through all octaves
+5. **Performance**: Cross-octave courtesy checks are O(m) where m = octaves for this letter, not O(k) where k = all octaves in map
+6. **Absence means natural**: If letter not found in default or letter-octave map, assume `:natural`
 
 **Operations provided by `ooloi.shared.ops.accidental-maps`:**
 
@@ -159,12 +168,14 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
 (acc-maps/differs-in-other-octaves? remembered current-octave letter accidental)
 ```
 
-**Octave separation rationale:**
-- Some house styles apply accidentals across all octaves
-- Others treat each octave independently
+**Letter-first grouping rationale:**
+- Cross-octave courtesy accidentals are a common operation (triggered for every accidental)
+- Grouping octaves by letter enables O(1) lookup followed by checking only relevant octaves
+- Previous structure required iterating through all octaves to find if letter appears
+- New structure: `(get acc-map "C")` returns `{3 :natural, 5 :flat}` directly
+- Performance improvement: O(m) where m = octaves for this letter vs O(k) where k = all octaves
+- Some house styles apply accidentals across all octaves, others treat each independently
 - The structure supports both without code changes
-- Helper predicates (`altered-in-other-octaves?`) can efficiently check only octaves with explicit deviations
-- Cross-octave searches are faster: only check keys present in map, not all octaves
 
 ### Measure Boundary Behavior
 
@@ -176,7 +187,7 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
 
 #### Tied Note Bypass Specification
 
-**Core principle**: Tied-to notes are **continuations of the same note**, not new attacks. Therefore, they do not print accidentals. This bypass behavior is **unconditional** - the tie itself guarantees pitch identity.
+**Core principle**: Tied-to notes are **continuations of the same note**, not new attacks. Therefore, they do not print accidentals. This bypass behavior is **unconditional** - the tie itself guarantees pitch identity (Hz equivalence). However, when notation changes enharmonically (F# → Gb), the visual representation differs and requires an explicit accidental.
 
 **Bypass rules**:
 
@@ -184,17 +195,28 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
    - ALWAYS bypass (no print, no remembered update)
    - Applies to ALL tie styles (standard and French)
    - Musical rationale: Within a measure, tied notes are unambiguous continuations
+   - **Exception**: Enharmonic respelling (see rule 4)
 
 2. **Cross-measure tied-to notes at boundary** (position 0):
    - **Standard ties**: Bypass (no print, no remembered update)
    - **French ties**: Do NOT bypass (print accidental, update remembered)
    - Musical rationale: French style requires restating accidentals at barlines for visual clarity
+   - **Exception**: Enharmonic respelling (see rule 4)
 
 3. **Detection mechanism**:
    - Use `TakesAttachment` protocol: `get-endpoint-id`, `get-attachments`
    - Check if pitch's endpoint-id is in tracked tied-target-endpoint-ids
    - Position determines intra-measure vs cross-measure
-   - No state matching required - tie guarantees pitch identity
+   - No state matching required for Hz equivalence - tie guarantees pitch identity
+   - Notation comparison required for enharmonic detection
+
+4. **Enharmonic respelling** (NEW):
+   - When tied notes change notation (F# → Gb, C# → Db, etc.), bypass is PREVENTED
+   - Detection: Compare stored note string from tie source with current pitch note string
+   - Implementation: tied-target-endpoint-ids is a map `{endpoint-id note-string}` (not a set)
+   - When enharmonic change detected, normal decision logic applies (may print if differs from baseline)
+   - Musical rationale: Different notation requires explicit accidental for visual clarity
+   - Example: F#4 tied to Gb4 - same Hz, different letters, must show accidental
 
 **Examples** (vertical bars = barlines, underscores = ties):
 
@@ -206,6 +228,8 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
 | French    | `F#_ │ F# F#`             | First two print           | m1[0] prints (French, pos 0); m1[1] remembered |
 | French    | `F#_ F#_ F# F#`           | m0[0], m0[2], m0[3], m1[0] print | m0[1] bypassed (intra); m1[0] prints (French, pos 0); m1[1] bypassed (intra) |
 | Standard  | C major, `F# │ F`         | Sharp, courtesy natural   | F matches baseline, differs from prev-final (courtesy) |
+| Standard  | C major, `F#_ Gb Gb`      | Sharp, flat               | m0[1] enharmonic change (F# → Gb) prevents bypass |
+| Standard  | C major, `F#_ Gb Gb Gb_ │ F#_` | Sharp, flat, flat, sharp | m0[1] enharmonic (F# → Gb); m1[0] enharmonic (Gb → F#) |
 
 **Complex sequence validation** (m0: `F#_ F# F# F#_`, m1: `F#_ F# F# F#`):
 
@@ -226,44 +250,58 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
   "Bypass logic BEFORE mode-specific decision.
 
   Specification:
-  1. Check if pitch is tied-to (endpoint-id in tracking set)
-  2. If tied-to:
+  1. Collect ties from pitch, store {endpoint-id note-string} for enharmonic detection
+  2. Check if pitch is tied-to (endpoint-id in tracking map)
+  3. Check for enharmonic respelling (stored note ≠ current note string)
+  4. If tied-to AND not enharmonic:
      a. Position > 0: ALWAYS bypass (intra-measure)
      b. Position 0 + standard ties: bypass (cross-measure)
      c. Position 0 + French ties: DON'T bypass (continue to decision)
-  3. If bypass: return state with updated ties only (no print, no remembered update)
-  4. If not bypass: continue to mode-specific decision logic"
+  5. If bypass: return state with updated ties only (no print, no remembered update)
+  6. If not bypass (includes enharmonic): continue to mode-specific decision logic"
   [state tuple piece key-sig]
   (let [pitch-obj (item tuple)
         pos (position tuple)
         pitch-endpoint-id (get-endpoint-id pitch-obj)
 
-        ;; Collect ties from attachments
+        ;; Collect ties from attachments - store note strings for enharmonic detection
         attachments (get-attachments pitch-obj)
         ties (filter tie? attachments)
-        new-tie-targets (keep :endpoint-id ties)
+        new-tie-targets (into {} (for [tie ties
+                                       :let [endpoint-id (:endpoint-id tie)]
+                                       :when endpoint-id]
+                                   [endpoint-id (:note pitch-obj)]))
 
-        ;; Update tied-target-endpoint-ids: add new, prune current
+        ;; Update tied-target-endpoint-ids: merge new, dissoc current
         state-with-ties (-> state
-                            (update :tied-target-endpoint-ids into new-tie-targets)
-                            (update :tied-target-endpoint-ids disj pitch-endpoint-id))
+                            (update :tied-target-endpoint-ids merge new-tie-targets)
+                            (update :tied-target-endpoint-ids dissoc pitch-endpoint-id))
 
         ;; Check if tied-to note
         prev-final (:prev-final state)
-        current-tied-targets (:tied-target-endpoint-ids state #{})
-        prev-tied-targets (get prev-final :tied-target-endpoint-ids #{})
+        current-tied-targets (:tied-target-endpoint-ids state {})
+        prev-tied-targets (get prev-final :tied-target-endpoint-ids {})
 
         is-tied-target? (and pitch-endpoint-id
                             (or (contains? current-tied-targets pitch-endpoint-id)
                                 (contains? prev-tied-targets pitch-endpoint-id)))
+
+        ;; Check for enharmonic respelling: tied-to note has different notation
+        stored-note (or (get current-tied-targets pitch-endpoint-id)
+                       (get prev-tied-targets pitch-endpoint-id))
+        is-enharmonic-change? (and is-tied-target?
+                                  stored-note
+                                  (not= (:note pitch-obj) stored-note))
 
         ;; Position determines cross-measure boundary vs intra-measure
         is-cross-measure-boundary? (and is-tied-target? (= pos 0))
 
         ;; Bypass decision:
         ;; - All tied targets bypass...
+        ;; - EXCEPT enharmonic respelling (notation changed)
         ;; - EXCEPT French ties at cross-measure boundary (position 0)
         should-bypass? (and is-tied-target?
+                           (not is-enharmonic-change?)
                            (not (and (french-ties? piece)
                                     is-cross-measure-boundary?)))]
 
@@ -281,12 +319,13 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
 ;; Three-value return format
 [final-remembered decisions tied-target-endpoint-ids]
 
-;; Ties are collected during measure processing:
-;; 1. When processing pitch with tie: add target endpoint-id to set
+;; Ties are collected during measure processing as map {endpoint-id note-string}:
+;; 1. When processing pitch with tie: add {endpoint-id note-string} to map
 ;; 2. When processing tied-to pitch: remove its endpoint-id (pruning)
 ;; 3. Intra-measure ties are automatically pruned (added then removed)
 ;; 4. Cross-measure ties survive (added in m0, used in m1)
 ;; 5. Return surviving tied-target-endpoint-ids for next measure
+;; 6. Note strings enable enharmonic detection (F# vs Gb comparison)
 ```
 
 **State threading across measures**:
@@ -306,11 +345,13 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
 
 **Architectural rationale**:
 
-The unconditional bypass correctly models the musical reality that **tied notes are the same note continuing**. The tie itself guarantees pitch identity - there is no need to verify this by checking remembered state. State matching would be defensive programming that solves the wrong problem: the right place to validate tied note consistency is at tie creation (data model layer), not during rendering (formatting layer).
+The unconditional bypass correctly models the musical reality that **tied notes are the same note continuing** (Hz equivalence). The tie itself guarantees pitch identity - there is no need to verify this by checking remembered state. State matching would be defensive programming that solves the wrong problem: the right place to validate tied note consistency is at tie creation (data model layer), not during rendering (formatting layer).
+
+**Enharmonic detection** extends this principle: while Hz equivalence is guaranteed by the tie, **notation changes require explicit accidentals**. Comparing note strings (F# vs Gb) is the minimal check needed to detect this visual change. When notation differs, bypass is prevented and normal decision logic applies - the accidental prints if it differs from the current remembered state (baseline).
 
 Position-based distinction for French ties is the simplest logic that correctly implements the engraving convention: French ties require restating accidentals at **measure boundaries only**, not within measures. Position determines the boundary condition naturally.
 
-This approach is the **most stringent without overengineering**: it correctly implements the musical rule using the simplest logic that works universally across all modes (standard key signatures, keyless `:standard`, keyless `:all-except-repeated`, keyless `:all`).
+This approach is the **most stringent without overengineering**: it correctly implements the musical rule using the simplest logic that works universally across all modes (standard key signatures, keyless `:standard`, keyless `:all-except-repeated`, keyless `:all`), with enharmonic detection as a natural extension.
 
 ### Courtesy Accidentals
 
@@ -409,7 +450,7 @@ The algorithm uses two code paths based on voice count, with simultaneity groupi
         initial-state {:remembered initial-remembered
                        :decisions []
                        :courtesy-shown {}
-                       :tied-target-endpoint-ids (or prev-tied-ids #{})}]  ; Start with previous measure's cross-barline ties
+                       :tied-target-endpoint-ids (or prev-tied-ids {})}]  ; Start with previous measure's cross-barline ties
 
     (if (can-transduce? piece instrument-vpd measure-index)
       ;; Single voice: transduce directly (zero allocation for singles)
@@ -441,7 +482,7 @@ The state threaded through the reduction contains four components:
 {:remembered {...}                ; Sparse deviation map - carries to next measure
  :decisions [...]                 ; Accumulated accidental decisions
  :courtesy-shown {}               ; Ephemeral: {octave #{letters}} - discarded at boundary
- :tied-target-endpoint-ids #{}    ; Collected during measure - passed to next as prev-final
+ :tied-target-endpoint-ids {}     ; Map {endpoint-id note-string} for enharmonic detection
  :simultaneity-conflicts #{}}     ; Ephemeral: #{letters} - only during simultaneity processing
 ```
 
@@ -449,7 +490,7 @@ The state threaded through the reduction contains four components:
 - `:remembered` - Carries forward to next measure as part of final state
 - `:decisions` - Accumulated throughout measure, returned to caller
 - `:courtesy-shown` - Ephemeral, discarded at measure boundary
-- `:tied-target-endpoint-ids` - Collected during measure, passed to next measure for bypass detection (only cross-barline ties needed)
+- `:tied-target-endpoint-ids` - Map {endpoint-id note-string} collected during measure, passed to next measure for bypass and enharmonic detection (only cross-barline ties needed)
 - `:simultaneity-conflicts` - Ephemeral, exists only during simultaneity group processing
 
 **Key architectural elements:**
@@ -557,7 +598,7 @@ When a key signature changes at position `[measure beat]`:
 
 **Example** (G major → E minor mid-measure):
 - Initial: `{:default {"F" :sharp}}`
-- F natural appears in octave 4 before change → updates remembered to `{:default {"F" :sharp}, 4 {"F" :natural}}`
+- F natural appears in octave 4 before change → updates remembered to `{:default {"F" :sharp}, "F" {4 :natural}}`
 - Key changes to E minor (same signature: F#) → baseline remains `{:default {"F" :sharp}}`
 - F# appears in octave 4 after change → compares against remembered (:natural) → prints sharp
 - After F# processed: `{:default {"F" :sharp}}` (deviation removed, matches default again)
