@@ -1286,8 +1286,8 @@ Clojure's multimethod system enables uniform extensibility: define once, works e
   (assoc chord :slur-attachment slur))
 
 (m/defmethod attach-to [Tie Pitch] [tie pitch]
-  (when-not (:next-pitch tie)
-    (throw (ex-info "Tie must have target pitch" {:tie tie})))
+  (when-not (:endpoint-id tie)
+    (throw (ex-info "Tie must have endpoint-id" {:tie tie})))
   (assoc pitch :tie-attachment tie))
 
 ;; Trait-based fallbacks

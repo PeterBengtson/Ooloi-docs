@@ -28,7 +28,7 @@ Additional context:
 - In complex musical pieces, slurs can span across multiple staves and voices (see [slur-3.png](../img/slurs/slur-3.png)).
 - Dynamic hairpins and ties can span across multiple measures (see [hairpin-1.png](../img/hairpin-1.png)), requiring efficient handling of measure boundaries.
 - Extreme cases exist where slurs can span entire systems or pages (see [slur-4.png](../img/slurs/slur-4.png)), as seen in Sorabji's "Opus Clavicembalisticum IX".
-- Ties always connect to the next identical pitch, making them a special case for optimization.
+- Ties connect notes of identical pitch using explicit endpoint-id specification, like other span attachments.
 - Formatting slurs and dynamic hairpins requires special consideration: When these elements are encountered, all relevant musical elements under them must be collected to calculate the required presentation data.
 - The timewalker system provides temporal coordination guarantees essential for musical processing.
 
