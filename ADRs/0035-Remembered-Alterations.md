@@ -69,17 +69,21 @@ Ooloi's key signature system ([ADR-0034](0034-Key-Signature-Architecture.md)) pr
 The remembered alterations system uses a **wave pattern** where accidental memory flows left-to-right through the music in temporal order:
 
 1. **Start of measure**: Initialize remembered state to baseline (always)
-2. **Process each note**: Compare against current remembered state (or prev-final for tied bypass)
-3. **Update after each note**: Accidental becomes new remembered state (except tied bypass)
-4. **Measure boundary**: Always reset to baseline; prev-final available for tied bypass and courtesy detection
+2. **Check tied bypass**: If pitch is tied-to, apply bypass rules (see Measure Boundary Behavior)
+3. **Process each note**: Compare against current remembered state
+4. **Update after each note**: Accidental becomes new remembered state (except tied bypass)
+5. **Measure boundary**: Always reset to baseline; prev-final and tied-ids available for next measure
 
 **The central decision**: A note requires a printed accidental when its accidental differs from the **current remembered state** for that letter/octave combination.
 
-**Exception - Tied note bypass** (standard ties only): At position 0, if pitch is the target of a tie from previous measure, compare against `prev-final` instead of baseline. If matches, no print and **no remembered state update** (pure bypass). Next occurrence must restate vs baseline.
+**Exception - Tied note bypass**: Tied-to notes are continuations, not new attacks. They bypass accidental printing unconditionally:
+- **Intra-measure ties** (position > 0): Always bypass (no print, no remembered update) - applies to all tie styles
+- **Cross-measure ties at boundary** (position 0): Bypass in standard ties, print in French ties
+- **No state matching required**: The tie itself guarantees pitch identity
 
-**Key insight**: This single rule (with the tied bypass exception) handles both required accidentals (contradicting key signature) and courtesy accidentals (restating key signature after alteration). The complexity lies in what constitutes the "current remembered state" and when the tied bypass applies.
+**Key insight**: This single rule (with the tied bypass exception) handles both required accidentals (contradicting key signature) and courtesy accidentals (restating key signature after alteration). The bypass is unconditional - tied notes are continuations by definition. Position determines intra-measure vs cross-measure for French tie distinction.
 
-**Architectural summary**: Remembered alterations are modeled as sparse per-octave deviations from a key-signature baseline, updated in strict temporal order across all voices and staves of an instrument. Each measure starts from baseline. Tied notes at position 0 receive a bypass exception (standard ties only). A single comparison rule determines all printed accidentals—required, courtesy, or cautionary—in a layout-independent, house-style-configurable way.
+**Architectural summary**: Remembered alterations are modeled as sparse per-octave deviations from a key-signature baseline, updated in strict temporal order across all voices and staves of an instrument. Each measure starts from baseline. Tied-to notes receive unconditional bypass (except French ties at cross-measure boundaries). A single comparison rule determines all printed accidentals—required, courtesy, or cautionary—in a layout-independent, house-style-configurable way. Return format `[remembered decisions tied-target-endpoint-ids]` supports measure-to-measure state threading.
 
 ### Correctness Invariants
 
@@ -101,7 +105,7 @@ The remembered-alterations system maintains the following invariants:
    The remembered state at any point is the combination of the key-signature baseline and any per-octave deviations accumulated earlier in the measure. Deviations always override baseline; removal of deviation reverts to baseline.
 
 6. **Measure-boundary rules**
-   At measure boundaries, the initial remembered state is always the key-signature baseline. The previous measure's final state is available for: (a) tied note bypass detection at position 0 (standard ties only), and (b) courtesy-accidental detection (all modes). The tied bypass is a pure exception—no print, no remembered state update—requiring subsequent occurrences to restate vs baseline.
+   At measure boundaries, the initial remembered state is always the key-signature baseline. The previous measure's final state and tied-target-endpoint-ids are available for: (a) tied note bypass detection (unconditional for all tied-to notes, with French tie exception at position 0), and (b) courtesy-accidental detection (all modes). The tied bypass is unconditional—tied notes are continuations by definition—requiring no state matching. Bypassed notes produce no print and no remembered state update, requiring subsequent non-tied occurrences to restate vs baseline.
 
 These six invariants, combined with the single comparison rule, constitute a complete solution to accidental rendering for Western staff notation. The algorithm handles all scenarios—single-staff, multi-staff, multi-voice, cross-staff, atonal, mid-measure key changes—through the same mechanism. No heuristics are required beyond configurable house-style settings.
 
@@ -165,86 +169,148 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
 ### Measure Boundary Behavior
 
 **Foundation**: Every measure starts with `initial-remembered = baseline` (from key signature). The previous measure's final state (`prev-final`) is available for:
-1. Tied note bypass detection (standard/non-French ties only)
+1. Tied note bypass detection (tie targets must be tracked)
 2. Courtesy accidental detection (all modes)
 
-#### Standard (Non-French) Ties
+**Return format**: Functions return three values `[remembered decisions tied-target-endpoint-ids]` to support measure-to-measure state threading and tie tracking.
 
-**Tied note bypass rule** (applies universally across all key signature modes):
-- At position 0, if pitch is the target of a tie from previous measure:
-  - Compare against `prev-final` instead of baseline
-  - If matches: no print, **no remembered state update** (pure bypass)
-  - Next occurrence must restate vs baseline
+#### Tied Note Bypass Specification
+
+**Core principle**: Tied-to notes are **continuations of the same note**, not new attacks. Therefore, they do not print accidentals. This bypass behavior is **unconditional** - the tie itself guarantees pitch identity.
+
+**Bypass rules**:
+
+1. **Intra-measure tied-to notes** (position > 0):
+   - ALWAYS bypass (no print, no remembered update)
+   - Applies to ALL tie styles (standard and French)
+   - Musical rationale: Within a measure, tied notes are unambiguous continuations
+
+2. **Cross-measure tied-to notes at boundary** (position 0):
+   - **Standard ties**: Bypass (no print, no remembered update)
+   - **French ties**: Do NOT bypass (print accidental, update remembered)
+   - Musical rationale: French style requires restating accidentals at barlines for visual clarity
+
+3. **Detection mechanism**:
+   - Use `TakesAttachment` protocol: `get-endpoint-id`, `get-attachments`
+   - Check if pitch's endpoint-id is in tracked tied-target-endpoint-ids
+   - Position determines intra-measure vs cross-measure
+   - No state matching required - tie guarantees pitch identity
 
 **Examples** (vertical bars = barlines, underscores = ties):
 
-| Key       | Music          | Result                  | Explanation |
-|-----------|----------------|-------------------------|-------------|
-| C major   | `F# │ F# F#`   | First two print         | Baseline reset; first F# differs; second remembered |
-| G major   | `F# │ F# F#`   | None print              | F# is baseline |
-| C major   | `F#_ │ F# F#`  | First and third print   | Tied bypasses at pos 0; third restates |
-| G major   | `F#_ │ F# F#`  | None print              | All match baseline |
-| C major   | `F# │ F`       | Sharp, courtesy natural | F matches baseline, differs from prev-final |
+| Tie Style | Music                      | Result                    | Explanation |
+|-----------|----------------------------|---------------------------|-------------|
+| Standard  | `F# │ F# F#`              | First two print           | Baseline reset; first differs; second remembered |
+| Standard  | `F#_ │ F# F#`             | First and third print     | m1[0] bypassed; m1[1] restates vs baseline |
+| Standard  | `F#_ F#_ F# F#`           | m0[0], m0[2], m0[3] print | m0[1] bypassed (intra); m1[0] bypassed (cross, pos 0); m1[1] restates |
+| French    | `F#_ │ F# F#`             | First two print           | m1[0] prints (French, pos 0); m1[1] remembered |
+| French    | `F#_ F#_ F# F#`           | m0[0], m0[2], m0[3], m1[0] print | m0[1] bypassed (intra); m1[0] prints (French, pos 0); m1[1] bypassed (intra) |
+| Standard  | C major, `F# │ F`         | Sharp, courtesy natural   | F matches baseline, differs from prev-final (courtesy) |
 
-**Implementation:**
+**Complex sequence validation** (m0: `F#_ F# F# F#_`, m1: `F#_ F# F# F#`):
+
+| Position | Note   | Tied? | Standard Result | French Result | Explanation |
+|----------|--------|-------|-----------------|---------------|-------------|
+| m0[0]    | F#4    | →m0[1] | Print          | Print         | First attack |
+| m0[1]    | F#4    | from m0[0] | Bypass     | Bypass        | Intra-measure (always bypass) |
+| m0[2]    | F#4    | -     | Print          | Print         | New attack |
+| m0[3]    | F#4    | →m1[0] | Print          | Print         | New attack |
+| m1[0]    | F#4    | from m0[3], →m1[1] | Bypass | Print | Cross at pos 0 (French prints) |
+| m1[1]    | F#4    | from m1[0] | Bypass     | Bypass        | Intra-measure (always bypass) |
+| m1[2]    | F#4    | -     | Print          | Print         | New attack |
+| m1[3]    | F#4    | -     | Print          | Print         | New attack |
+
+**Implementation specification**:
 ```clojure
-(let [baseline (acc-maps/from-key-signature key-sig)
-      initial-remembered baseline  ; Always baseline!
+(defn make-accidental-decision
+  "Bypass logic BEFORE mode-specific decision.
 
-      ;; During measure 1, collect tied target endpoint-ids
-      tied-target-endpoint-ids (collect-tied-targets measure-1)]
+  Specification:
+  1. Check if pitch is tied-to (endpoint-id in tracking set)
+  2. If tied-to:
+     a. Position > 0: ALWAYS bypass (intra-measure)
+     b. Position 0 + standard ties: bypass (cross-measure)
+     c. Position 0 + French ties: DON'T bypass (continue to decision)
+  3. If bypass: return state with updated ties only (no print, no remembered update)
+  4. If not bypass: continue to mode-specific decision logic"
+  [state tuple piece key-sig]
+  (let [pitch-obj (item tuple)
+        pos (position tuple)
+        pitch-endpoint-id (get-endpoint-id pitch-obj)
 
-  ;; Measure 2, position 0
-  (if (and (= position 0)
-           (contains? tied-target-endpoint-ids (get-endpoint-id pitch))
-           (not (french-ties? piece)))
-    ;; BYPASS: check prev-final, don't update remembered
-    (let [prev-acc (acc-maps/lookup prev-final octave letter)]
-      (when (not= current-acc prev-acc)
-        (print-accidental)))
+        ;; Collect ties from attachments
+        attachments (get-attachments pitch-obj)
+        ties (filter tie? attachments)
+        new-tie-targets (keep :endpoint-id ties)
 
-    ;; NORMAL: check baseline/remembered, update as usual
-    (let [remembered-acc (acc-maps/lookup remembered octave letter)]
-      (when (not= current-acc remembered-acc)
-        (print-accidental)
-        (update-remembered)))))
+        ;; Update tied-target-endpoint-ids: add new, prune current
+        state-with-ties (-> state
+                            (update :tied-target-endpoint-ids into new-tie-targets)
+                            (update :tied-target-endpoint-ids disj pitch-endpoint-id))
+
+        ;; Check if tied-to note
+        prev-final (:prev-final state)
+        current-tied-targets (:tied-target-endpoint-ids state #{})
+        prev-tied-targets (get prev-final :tied-target-endpoint-ids #{})
+
+        is-tied-target? (and pitch-endpoint-id
+                            (or (contains? current-tied-targets pitch-endpoint-id)
+                                (contains? prev-tied-targets pitch-endpoint-id)))
+
+        ;; Position determines cross-measure boundary vs intra-measure
+        is-cross-measure-boundary? (and is-tied-target? (= pos 0))
+
+        ;; Bypass decision:
+        ;; - All tied targets bypass...
+        ;; - EXCEPT French ties at cross-measure boundary (position 0)
+        should-bypass? (and is-tied-target?
+                           (not (and (french-ties? piece)
+                                    is-cross-measure-boundary?)))]
+
+    (if should-bypass?
+      ;; BYPASS: no print, no remembered update, only tie tracking
+      state-with-ties
+      ;; CONTINUE: normal mode-specific decision
+      (if keyless?
+        (keyless-mode-decision state-with-ties tuple piece octave letter accidental)
+        (standard-mode-decision state-with-ties tuple piece octave letter accidental)))))
 ```
 
-**Tie detection mechanism**:
+**Tie tracking during measure processing**:
 ```clojure
-;; During measure processing: collect tie target endpoint-ids
-;; Use TakesAttachment API: get-attachments, filter tie?, get-endpoint-id
+;; Three-value return format
+[final-remembered decisions tied-target-endpoint-ids]
 
-;; At position 0 of next measure: check if pitch is a tied target
-(contains? tied-target-endpoint-ids (get-endpoint-id pitch))
+;; Ties are collected during measure processing:
+;; 1. When processing pitch with tie: add target endpoint-id to set
+;; 2. When processing tied-to pitch: remove its endpoint-id (pruning)
+;; 3. Intra-measure ties are automatically pruned (added then removed)
+;; 4. Cross-measure ties survive (added in m0, used in m1)
+;; 5. Return surviving tied-target-endpoint-ids for next measure
 ```
 
-**Key insight**: Pitches implement `TakesAttachment`, providing `get-endpoint-id`. Ties store their target's endpoint-id via the same protocol. Detection is purely endpoint-id based, requiring no VPD comparison. Implementation details (collection timing, pruning optimizations) belong in implementation documentation.
-
-#### French Ties
-
-**No bypass** - tied notes at position 0 treated normally (compare to baseline). Within measure, remembered alterations accumulate normally.
-
-**Examples**:
-
-| Key              | Music          | Result          | Explanation |
-|------------------|----------------|-----------------|-------------|
-| C major, French  | `F#_ │ F# F#`  | First two print | No bypass; F# differs at pos 0; second remembered |
-| G major, French  | `F#_ │ F# F#`  | None print      | All match baseline |
-
-**Implementation:**
+**State threading across measures**:
 ```clojure
-(let [baseline (acc-maps/from-key-signature key-sig)
-      initial-remembered baseline]  ; Same as standard ties!
+;; Process measure 0
+(let [[m0-final decisions-m0 tied-ids-m0]
+      (accidental-decisions-for-measure piece 0 instrument-vpd key-sig nil nil)]
 
-  ;; No bypass check - always use normal logic
-  (let [remembered-acc (acc-maps/lookup remembered octave letter)]
-    (when (not= current-acc remembered-acc)
-      (print-accidental)
-      (update-remembered))))
+  ;; Process measure 1 - receives m0's final state and tied-ids
+  (let [[m1-final decisions-m1 tied-ids-m1]
+        (accidental-decisions-for-measure piece 1 instrument-vpd key-sig m0-final tied-ids-m0)]
+
+    ;; tied-ids-m0 contains cross-measure tie targets for m1
+    ;; tied-ids-m1 contains cross-measure tie targets for m2
+    ...))
 ```
 
-**The only difference**: Standard ties provide the position-0 bypass. French ties treat position 0 normally.
+**Architectural rationale**:
+
+The unconditional bypass correctly models the musical reality that **tied notes are the same note continuing**. The tie itself guarantees pitch identity - there is no need to verify this by checking remembered state. State matching would be defensive programming that solves the wrong problem: the right place to validate tied note consistency is at tie creation (data model layer), not during rendering (formatting layer).
+
+Position-based distinction for French ties is the simplest logic that correctly implements the engraving convention: French ties require restating accidentals at **measure boundaries only**, not within measures. Position determines the boundary condition naturally.
+
+This approach is the **most stringent without overengineering**: it correctly implements the musical rule using the simplest logic that works universally across all modes (standard key signatures, keyless `:standard`, keyless `:all-except-repeated`, keyless `:all`).
 
 ### Courtesy Accidentals
 
@@ -337,13 +403,13 @@ The algorithm uses two code paths based on voice count, with simultaneity groupi
 
 ```clojure
 (defn accidental-decisions-for-measure
-  [piece measure-index instrument-vpd key-sig prev-final]
+  [piece measure-index instrument-vpd key-sig prev-final prev-tied-ids]
   (let [baseline (acc-maps/from-key-signature key-sig)
         initial-remembered baseline  ; Always baseline!
         initial-state {:remembered initial-remembered
                        :decisions []
                        :courtesy-shown {}
-                       :tied-target-endpoint-ids #{}}]  ; Collect during processing
+                       :tied-target-endpoint-ids (or prev-tied-ids #{})}]  ; Start with previous measure's cross-barline ties
 
     (if (can-transduce? piece instrument-vpd measure-index)
       ;; Single voice: transduce directly (zero allocation for singles)
@@ -442,21 +508,31 @@ Each decision preserves the complete `[item vpd position]` tuple from timewalk:
 
 **State threading:**
 
-State flows naturally through sequential measure processing. Each measure receives the previous measure's final `:remembered` state, processes it with ephemeral `:courtesy-shown` tracking, and returns only the `:remembered` and `:decisions` for the next measure. The `:courtesy-shown` tracking is created fresh for each measure and discarded at the boundary.
+State flows naturally through sequential measure processing. Each measure receives the previous measure's final `:remembered` state and `:tied-target-endpoint-ids`, processes them with ephemeral `:courtesy-shown` tracking, and returns three values: `:remembered`, `:decisions`, and `:tied-target-endpoint-ids` for the next measure. The `:courtesy-shown` tracking is created fresh for each measure and discarded at the boundary.
+
+**Three-value return format:**
+```clojure
+[final-remembered decisions tied-target-endpoint-ids]
+```
+
+This format supports:
+1. State threading (remembered alterations carry forward)
+2. Decision collection (for rendering)
+3. Tie tracking (cross-measure ties for bypass detection)
 
 Pattern for processing multiple measures:
 
 ```clojure
-;; Thread remembered state through sequential measures
+;; Thread remembered state and tied-ids through sequential measures
 (reduce
-  (fn [prev-final measure-index]
-    (let [[final-remembered decisions]
+  (fn [[prev-final prev-tied-ids] measure-index]
+    (let [[final-remembered decisions tied-ids]
           (accidental-decisions-for-measure
-            piece measure-index instrument-vpd key-sig prev-final)]
+            piece measure-index instrument-vpd key-sig prev-final prev-tied-ids)]
       ;; Use decisions for rendering
-      ;; Return remembered state for next measure (courtesy-shown discarded)
-      final-remembered))
-  (acc-maps/from-key-signature key-sig)  ; Initial baseline
+      ;; Return remembered state and tied-ids for next measure (courtesy-shown discarded)
+      [final-remembered tied-ids]))
+  [(acc-maps/from-key-signature key-sig) #{}]  ; Initial baseline + empty tied-ids
   (range start-measure end-measure))
 ```
 
