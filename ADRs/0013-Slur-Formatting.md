@@ -48,7 +48,7 @@ We will implement slur formatting through:
 ```clojure
 (defn collect-extent-items
   "Collect all musical items under any spanning attachment using timewalker.
-   Works for any attachment satisfying extends-forward? or extends-forward-to-next?"
+   Works for any spanner attachment."
   [piece attachment start-vpd layout]
   (let [canonical-start-vpd (vpd/canonicalize start-vpd)
         instrument-boundary-vpd (vec (take 4 canonical-start-vpd))
@@ -69,7 +69,7 @@ We will implement slur formatting through:
 ```
 
 **Key Features**:
-- **General purpose**: Works for slurs, hairpins, ottavas, pedal markings - any `extends-forward?` attachment
+- **General purpose**: Works for slurs, hairpins, ottavas, pedal markings - any `spanner?` attachment
 - **Temporal coordination**: Uses timewalker to ensure proper musical time ordering
 - **Layout awareness**: Uses `(obtain-xy layout)` transducer to get coordinates from specific layout
 - **Boundary scoping**: Limits search to relevant instrument for performance
