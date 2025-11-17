@@ -11,6 +11,7 @@
   - [Measure Boundary Behavior](#measure-boundary-behavior)
   - [Courtesy Accidentals](#courtesy-accidentals)
   - [Keyless Mode Behavior](#keyless-mode-behavior)
+  - [Grace Notes](#grace-notes)
   - [Accidental Settings](#accidental-settings)
   - [Performance Architecture](#performance-architecture)
 - [Integration with Key Signatures](#integration-with-key-signatures)
@@ -431,6 +432,120 @@ Keyless key signatures (`:mode :keyless` in [ADR-0034](0034-Key-Signature-Archit
 
 The three modes provide a spectrum from traditional (`:standard`) to explicit (`:all-except-repeated`) to exhaustive (`:all`), enabling correct rendering of music from late-Romantic chromaticism through mid-20th-century atonality.
 
+### Grace Notes
+
+Grace notes are ornamental containers with zero metric duration that appear before main notes. They contain one or more pitches or chords and share the same rhythmic position as the following item in timewalk.
+
+**Architectural decision**: Grace notes **participate fully in remembered alterations**. They read from the current remembered state and update it for subsequent notes (including the main note they precede).
+
+**Behavior:**
+- Grace notes are processed in temporal order at the position they share with the following note
+- Grace items (pitches/chords within the grace container) process sequentially
+- Each grace item compares against current remembered state (may print if differs)
+- Each grace item updates remembered state (affects subsequent grace items and main note)
+- All existing features apply: multi-voice state sharing, cross-staff integration, courtesy accidentals, simultaneity handling
+
+**Example** (C major):
+```
+F#4 grace → F4 quarter → F4 quarter
+Result: Grace prints sharp, first F prints natural, second F prints nothing (remembered)
+```
+
+**Rationale:**
+- Matches industry-standard behavior (Dorico, Finale, Sibelius, LilyPond)
+- Follows traditional engraving practice (Gould's "Behind Bars", Gardner Read)
+- Aligns with how performers mentally process grace notes as part of the temporal flow
+- Consistent with Ooloi's position-based temporal model
+
+**No configuration settings initially**—grace notes use standard behavior only. The `:grace-updates-remembered?` boolean can be added later if real use cases emerge requiring grace notes to read state without updating it (conservative behavior for complex contemporary music).
+
+**Implementation**: Grace detection via timewalk (zero duration containers with `:items` field). Grace items are processed as regular pitches within the position-based ordering, requiring no special-case logic beyond container detection.
+
+#### Grace Note Positioning and Duration
+
+While grace notes have zero metric duration and share the same rhythmic position as their target note, they must be assigned "probable positions" for correct temporal processing in the accidental pipeline.
+
+**Problem**: Grace notes at metric position 1/2 must process AFTER notes at position 1/4 and BEFORE the target note at position 1/2. This requires position adjustment.
+
+**Solution**: The `position-grace-notes-rhythmically` transducer transforms grace note positions from metric to probable positions based on performance timing.
+
+**Duration Calculation**:
+
+Grace note performance duration is tempo-dependent, using a standard speed per grace note:
+
+```clojure
+(defn grace-note-duration-ms
+  "Calculate grace note duration in milliseconds.
+   Base: 85ms at 120 BPM, scaled inversely with tempo."
+  ([tempo] (grace-note-duration-ms tempo 85))
+  ([tempo base-ms-at-120]
+   (/ (* base-ms-at-120 120.0) tempo)))
+```
+
+**Rationale for 85ms base**:
+- Research indicates 50-125ms typical range at 120 BPM
+- 85ms is middle-to-lower end: quick but not rushed
+- Scales naturally: 170ms at 60 BPM, 57ms at 180 BPM, 42ms at 240 BPM
+
+**Position Adjustment Algorithm**:
+
+1. Convert duration to rational offset: `ms → fraction of measure` (tempo and time signature dependent)
+2. Work backward from target using standard speed per grace note
+3. Check if first grace note >= previous non-grace position
+4. If collision detected, compress evenly to fit available space
+
+**Example** (4/4 at 120 BPM, 3 grace notes):
+```
+Previous position: 1/4
+Target position: 1/2
+Standard speed: 85ms = 17/400 measure
+
+Working backward:
+  grace-3: 1/2 - 17/400 = 183/400
+  grace-2: 183/400 - 17/400 = 166/400
+  grace-1: 166/400 - 17/400 = 149/400
+
+Check: 149/400 >= 1/4 (100/400)? YES → Use these positions
+```
+
+**Compression** (if collision):
+```
+Previous: 1/8, Target: 3/16, 5 grace notes
+Grace-1 would be: 3/16 - 5×(17/400) = -10/400 < 1/8 → COLLISION
+
+Available space: 3/16 - 1/8 = 25/400
+Compressed speed: 25/400 / 5 = 5/400
+Distribute evenly starting from 1/8
+```
+
+**Filter Helper**:
+
+```clojure
+(defn- grace-pipeline-item?
+  "Filter predicate for grace positioning pipeline.
+   Passes: pitches, grace containers, voice delimiters, and grace end markers only.
+   Blocks: all other end markers (Voice, Measure, Staff, etc.)."
+  [tuple]
+  (or (pitch?? (item tuple))
+      (grace?? (item tuple))
+      (voice?? (item tuple))
+      (and (= :end (first tuple)) (grace?? (second tuple)))))
+```
+
+**Pipeline Integration** (see Performance Architecture section for complete implementation).
+
+**Voice delimiters**: Timewalk emits Voice records in the stream. When `position-grace-notes-rhythmically` sees a Voice record, it resets its "previous position" state (voice boundary detected), then consumes the record (doesn't emit). This ensures grace positioning uses correct previous position per voice, not globally across concatenated stream.
+
+**Container End Markers**: Timewalk emits `[:end <container> position]` markers after grace container contents. The position field (rational) ensures markers survive sorting in multi-voice scenarios.
+
+**Critical placement**: `position-grace-notes-rhythmically` must run BEFORE sorting in multi-voice path to adjust positions and remove markers before `group-simultaneities` sees the stream.
+
+**Key properties**:
+- Primary goal: Grace notes as close to target as possible (musical realism)
+- Constraint: Never overlap previous notes (correctness)
+- Compression: Even distribution when crowded (fairness)
+- Notated durations ignored: Grace note durations within container are purely notational
+
 ### Accidental Settings
 
 The remembered alterations system is configured through four piece-level settings:
@@ -461,40 +576,50 @@ These settings are accessed via the `ooloi.shared.api` namespace and configured 
 
 ### Performance Architecture
 
-The algorithm uses two code paths based on voice count, with simultaneity grouping integrated into both.
+The algorithm uses two code paths based on voice count, with grace positioning and simultaneity grouping integrated into both.
 
-**Core design decision:**
+**Core implementation:**
 
 ```clojure
 (defn accidental-decisions-for-measure
   [piece measure-index instrument-vpd key-sig prev-final prev-tied-ids]
   (let [baseline (acc-maps/from-key-signature key-sig)
-        initial-remembered baseline  ; Always baseline!
+        initial-remembered baseline
         initial-state {:remembered initial-remembered
                        :decisions []
                        :courtesy-shown {}
-                       :tied-target-endpoint-ids (or prev-tied-ids {})}]  ; Start with previous measure's cross-barline ties
+                       :tied-target-endpoint-ids (or prev-tied-ids {})}
+        reducer (process-pitch-tuple piece key-sig prev-final measure-index)]
 
     (if (can-transduce? piece instrument-vpd measure-index)
-      ;; Single voice: transduce directly (zero allocation for singles)
+      ;; Single voice: transduce directly (zero allocation)
       (transduce
         (comp
-          (timewalk ...)
-          (filter pitch??)
-          (group-simultaneities))
+          (timewalk {:boundary-vpd instrument-vpd
+                     :start-measure measure-index
+                     :end-measure measure-index})
+          (filter grace-pipeline-item?)
+          (position-grace-notes-rhythmically)
+          (group-simultaneities)
+          (detect-simultaneity-conflicts))
         (completing reducer)
         initial-state
         [piece])
 
-      ;; Multiple voices: collect, sort by position, reduce
-      (let [sorted-tuples (sort-by position
-                            (sequence
-                              (comp
-                                (timewalk ...)
-                                (filter pitch??)
-                                (group-simultaneities))
-                              [piece]))]
-        (reduce reducer initial-state sorted-tuples)))))
+      ;; Multiple voices: collect, adjust grace positions, sort, group, reduce
+      (let [all-tuples (sequence
+                         (comp
+                           (timewalk {:boundary-vpd instrument-vpd
+                                      :start-measure measure-index
+                                      :end-measure measure-index})
+                           (filter grace-pipeline-item?))
+                         [piece])
+            adjusted-tuples (sequence (position-grace-notes-rhythmically) all-tuples)
+            sorted-tuples (sort-by position adjusted-tuples)
+            grouped (sequence (comp (group-simultaneities)
+                                    (detect-simultaneity-conflicts))
+                              sorted-tuples)]
+        (reduce reducer initial-state grouped)))))
 ```
 
 **State structure:**
