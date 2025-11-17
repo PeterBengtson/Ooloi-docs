@@ -353,6 +353,29 @@ Position-based distinction for French ties is the simplest logic that correctly 
 
 This approach is the **most stringent without overengineering**: it correctly implements the musical rule using the simplest logic that works universally across all modes (standard key signatures, keyless `:standard`, keyless `:all-except-repeated`, keyless `:all`), with enharmonic detection as a natural extension.
 
+#### Empty Measures and Rest-Only Measures
+
+**Architecture finding**: Measures with no pitched content break the cross-measure courtesy chain by causing baseline reset.
+
+**Two scenarios**:
+1. **Empty measures**: Measures with no items at all (not even rests)
+2. **Rest-only measures**: Measures containing only rests (duration but no pitch)
+
+**Behavior**: Both scenarios break cross-measure courtesy accidentals because there is no pitch content to maintain the remembered state.
+
+**Example** (C major):
+```
+M0: F#4 whole note (prints sharp)
+M1: Empty or rest-only
+M2: F4 whole note (no courtesy natural - M1 reset the context)
+```
+
+**Musical rationale**: Visual gaps in notation reset performers' memory of alterations. Standard engraving practice treats measures without pitched content as natural breakpoints where accidental memory resets to baseline.
+
+**Implementation**: When timewalk filters to only pitched content (`filter pitch??`), empty or rest-only measures produce no tuples. The measure boundary's baseline reset occurs without any pitch processing, effectively resetting the courtesy chain.
+
+**Validation**: Tests 6.2 and 6.3 in remembered-alterations-2-test.clj validate this behavior with realistic scenarios.
+
 ### Courtesy Accidentals
 
 Courtesy (cautionary) accidentals occur when a note matches the key signature baseline but differs from what was recently altered. The single comparison rule handles these cases uniformly:
