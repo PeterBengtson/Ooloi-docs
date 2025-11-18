@@ -378,6 +378,12 @@ Boundary-VPDs provide precise control over traversal scope while maintaining the
 
 Timewalk results always contain compact VPDs, making them efficient for transmission and storage. Use VPD accessors (`vpd/measure`, `vpd/voice`, etc.) to extract information from result VPDs - these work with both compact and navigator forms.
 
+**Optional Configuration:**
+
+The timewalk supports optional behavior flags:
+
+- **`:grace-end-markers?`** (default `false`): When `true`, emits `[:end :Grace nil]` tuples after processing all children of Grace containers. Used for grace note accidental scope tracking and positioning algorithms. The 3-element format maintains compatibility with `??` predicates.
+
 ### 3. Transducer Integration Examples
 
 ```clojure
