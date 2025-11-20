@@ -441,7 +441,7 @@ The remembered alterations system is configured through four piece-level setting
 
 **`:french-ties?`** (boolean, default `false`)
 - Controls tied note bypass behavior at measure boundaries
-- `false`: Standard behavior—tied notes at position 0 receive bypass exception
+- `false`: Standard behavior—tied notes at position 0 receive bypass exception (compare to prev-final, don't print if matches, don't update remembered)
 - `true`: French style—no bypass, tied notes at position 0 treated normally (compare to baseline like all other notes)
 
 **`:keyless-accidentals`** (keyword, default `:standard`)
