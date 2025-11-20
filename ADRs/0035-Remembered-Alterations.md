@@ -439,10 +439,10 @@ Distribute evenly starting from 1/8
 
 The remembered alterations system is configured through four piece-level settings:
 
-**`:french-ties?`** (boolean, default `false`)
-- Controls tied note bypass behavior at measure boundaries
-- `false`: Standard behavior—tied notes at position 0 receive bypass exception (compare to prev-final, don't print if matches, don't update remembered)
-- `true`: French style—no bypass, tied notes at position 0 treated normally (compare to baseline like all other notes)
+**:french-ties?** (boolean, default `false`)
+- Controls whether tied-to notes at the start of a measure print an accidental (French style).
+- `false` (standard): tied-to notes at position 0 are bypassed unconditionally — no accidental is printed and remembered state is not updated (same as intra-measure ties).
+- `true` (French style): bypass is disabled only at measure boundaries — a tied-to note at position 0 is treated like a normal note (compares to baseline, prints if needed, updates remembered state).
 
 **`:keyless-accidentals`** (keyword, default `:standard`)
 - Controls accidental behavior in keyless key signatures
