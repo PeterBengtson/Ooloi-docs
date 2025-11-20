@@ -579,10 +579,11 @@ Key signatures ([ADR-0034](0034-Key-Signature-Architecture.md)) provide the **ba
 **Key signature changes mid-measure:**
 
 When a key signature changes at position `[measure beat]`:
-1. Current remembered state continues until the change point
-2. At change point, new baseline takes effect
-3. Remembered state merges: new baseline + current alterations
-4. Subsequent notes compare against merged state
+1. The remembered state up to the change point is discarded.
+2. The new key signature becomes the baseline immediately.
+3. All octave-specific deviations are cleared (fresh state).
+4. Subsequent notes compare against the new baseline exactly as if a new measure had begun.
+5. Courtesy accidentals are not applied across the key-change boundary (the key signature itself serves as the visual notification).
 
 **Example** (G major → E minor mid-measure):
 - Initial: `{:default {"F" :sharp}}`
