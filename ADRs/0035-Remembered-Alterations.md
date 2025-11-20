@@ -116,38 +116,36 @@ These six invariants, combined with the single comparison rule, constitute a com
 Remembered alterations use an optimized structure that minimizes memory usage while enabling efficient cross-octave operations:
 
 ```clojure
-{:default {letter accidental}  ; Baseline from key signature (non-naturals only)
- letter {octave accidental}}   ; Per-letter octave deviations from default
-```
+{:default {letter-string accidental-keyword}  ; Baseline from key signature (non-naturals only)
+ letter-string {octave accidental-keyword}}   ; Per-letter octave deviations from default
 
-**Example** (C# major with 7 sharps, initially):
-```clojure
-{:default {"C" :sharp, "D" :sharp, "E" :sharp, "F" :sharp,
-           "G" :sharp, "A" :sharp, "B" :sharp}}
-```
+;; Example: G major baseline (F# in key)
+{:default {"F" :sharp}}  ; Only store non-natural from key signature
 
-**After C natural appears in octave 4** (deviation from default):
-```clojure
-{:default {"C" :sharp, "D" :sharp, "E" :sharp, "F" :sharp,
-           "G" :sharp, "A" :sharp, "B" :sharp}
- "C" {4 :natural}}  ; Only the deviation stored, grouped by letter
-```
+;; After F2 (natural) appears - F2 now contradicts the sharp default
+{:default {"F" :sharp}
+ "F" {2 :natural}}  ; F's octave 2 explicitly naturalized
 
-**After C natural in octave 4 and C flat in octave 5**:
-```clojure
-{:default {"C" :sharp, "D" :sharp, "E" :sharp, "F" :sharp,
-           "G" :sharp, "A" :sharp, "B" :sharp}
- "C" {4 :natural, 5 :flat}}  ; All C deviations together
-```
+;; After B4 (flat) appears - B is natural in key, now altered
+{:default {"F" :sharp}
+ "F" {2 :natural}
+ "B" {4 :flat}}  ; B's octave 4 altered to flat
 
-**Why this structure:**
+;; Multiple octaves of same letter grouped together
+{:default {"C" :sharp}
+ "C" {3 :natural, 4 :natural, 5 :flat}}  ; All C deviations grouped
+ ```
 
-1. **Memory efficient**: Default stores 7 entries for key signature; letter deviations only store differences (vs 70 entries for all octaves × all letters)
-2. **Starts from key signature baseline**: `:default` key contains non-natural accidentals from key signature
-3. **Updates incrementally**: Deviations stored per letter-octave, matching default removes deviation
-4. **Cross-octave operations optimized**: Direct letter lookup groups all octaves for that letter, avoiding iteration through all octaves
-5. **Performance**: Cross-octave courtesy checks are O(m) where m = octaves for this letter, not O(k) where k = all octaves in map
-6. **Absence means natural**: If letter not found in default or letter-octave map, assume `:natural`
+**Structure properties:**
+
+- **`:default` key** (keyword): Only stores non-`:natural` accidentals from key signature (maximally compact)
+- **Letter keys** (strings): "A" through "G" - groups all octave deviations for that letter
+- **Octave keys** (integers): Per-letter maps store deviations from default (including `:natural` when overriding a sharp/flat)
+- **Accidental values** (keywords): `:natural`, `:sharp`, `:flat`, `:double-sharp`, `:double-flat`
+- **Absence means natural**: If letter not found in default or letter-octave map, assume `:natural`
+- **Lookup order**: Check letter-specific octave first, then `:default`, then assume `:natural`
+- **Memory efficient**: ~7 entries for key signature + deviations only (vs 70 entries for full structure)
+- **Performance**: Cross-octave checks are O(m) where m = octaves for this letter (not O(k) for all octaves)
 
 **Operations provided by `ooloi.shared.ops.accidental-maps`:**
 
@@ -245,105 +243,6 @@ The structure is manipulated through a dedicated namespace that encapsulates loo
 | m1[2]    | F#4    | -     | Print          | Print         | New attack |
 | m1[3]    | F#4    | -     | Print          | Print         | New attack |
 
-**Implementation specification**:
-```clojure
-(defn make-accidental-decision
-  "Bypass logic BEFORE mode-specific decision.
-
-  Specification:
-  1. Collect ties from pitch, store {endpoint-id note-string} for enharmonic detection
-  2. Check if pitch is tied-to (endpoint-id in tracking map)
-  3. Check for enharmonic respelling (stored note ≠ current note string)
-  4. If tied-to AND not enharmonic:
-     a. Position > 0: ALWAYS bypass (intra-measure)
-     b. Position 0 + standard ties: bypass (cross-measure)
-     c. Position 0 + French ties: DON'T bypass (continue to decision)
-  5. If bypass: return state with updated ties only (no print, no remembered update)
-  6. If not bypass (includes enharmonic): continue to mode-specific decision logic"
-  [state tuple piece key-sig]
-  (let [pitch-obj (item tuple)
-        pos (position tuple)
-        pitch-endpoint-id (get-endpoint-id pitch-obj)
-
-        ;; Collect ties from attachments - store note strings for enharmonic detection
-        attachments (get-attachments pitch-obj)
-        ties (filter tie? attachments)
-        new-tie-targets (into {} (for [tie ties
-                                       :let [endpoint-id (:endpoint-id tie)]
-                                       :when endpoint-id]
-                                   [endpoint-id (:note pitch-obj)]))
-
-        ;; Update tied-target-endpoint-ids: merge new, dissoc current
-        state-with-ties (-> state
-                            (update :tied-target-endpoint-ids merge new-tie-targets)
-                            (update :tied-target-endpoint-ids dissoc pitch-endpoint-id))
-
-        ;; Check if tied-to note
-        prev-final (:prev-final state)
-        current-tied-targets (:tied-target-endpoint-ids state {})
-        prev-tied-targets (get prev-final :tied-target-endpoint-ids {})
-
-        is-tied-target? (and pitch-endpoint-id
-                            (or (contains? current-tied-targets pitch-endpoint-id)
-                                (contains? prev-tied-targets pitch-endpoint-id)))
-
-        ;; Check for enharmonic respelling: tied-to note has different notation
-        stored-note (or (get current-tied-targets pitch-endpoint-id)
-                       (get prev-tied-targets pitch-endpoint-id))
-        is-enharmonic-change? (and is-tied-target?
-                                  stored-note
-                                  (not= (:note pitch-obj) stored-note))
-
-        ;; Position determines cross-measure boundary vs intra-measure
-        is-cross-measure-boundary? (and is-tied-target? (= pos 0))
-
-        ;; Bypass decision:
-        ;; - All tied targets bypass...
-        ;; - EXCEPT enharmonic respelling (notation changed)
-        ;; - EXCEPT French ties at cross-measure boundary (position 0)
-        should-bypass? (and is-tied-target?
-                           (not is-enharmonic-change?)
-                           (not (and (french-ties? piece)
-                                    is-cross-measure-boundary?)))]
-
-    (if should-bypass?
-      ;; BYPASS: no print, no remembered update, only tie tracking
-      state-with-ties
-      ;; CONTINUE: normal mode-specific decision
-      (if keyless?
-        (keyless-mode-decision state-with-ties tuple piece octave letter accidental)
-        (standard-mode-decision state-with-ties tuple piece octave letter accidental)))))
-```
-
-**Tie tracking during measure processing**:
-```clojure
-;; Three-value return format
-[final-remembered decisions tied-target-endpoint-ids]
-
-;; Ties are collected during measure processing as map {endpoint-id note-string}:
-;; 1. When processing pitch with tie: add {endpoint-id note-string} to map
-;; 2. When processing tied-to pitch: remove its endpoint-id (pruning)
-;; 3. Intra-measure ties are automatically pruned (added then removed)
-;; 4. Cross-measure ties survive (added in m0, used in m1)
-;; 5. Return surviving tied-target-endpoint-ids for next measure
-;; 6. Note strings enable enharmonic detection (F# vs Gb comparison)
-```
-
-**State threading across measures**:
-```clojure
-;; Process measure 0
-(let [[m0-final decisions-m0 tied-ids-m0]
-      (accidental-decisions-for-measure piece 0 instrument-vpd key-sig nil nil)]
-
-  ;; Process measure 1 - receives m0's final state and tied-ids
-  (let [[m1-final decisions-m1 tied-ids-m1]
-        (accidental-decisions-for-measure piece 1 instrument-vpd key-sig m0-final tied-ids-m0)]
-
-    ;; tied-ids-m0 contains cross-measure tie targets for m1
-    ;; tied-ids-m1 contains cross-measure tie targets for m2
-    ...))
-```
-
 **Architectural rationale**:
 
 The unconditional bypass correctly models the musical reality that **tied notes are the same note continuing** (Hz equivalence). The tie itself guarantees pitch identity - there is no need to verify this by checking remembered state. State matching would be defensive programming that solves the wrong problem: the right place to validate tied note consistency is at tie creation (data model layer), not during rendering (formatting layer).
@@ -372,10 +271,6 @@ M2: F4 whole note (no courtesy natural - M1 reset the context)
 ```
 
 **Musical rationale**: Visual gaps in notation reset performers' memory of alterations. Standard engraving practice treats measures without pitched content as natural breakpoints where accidental memory resets to baseline.
-
-**Implementation**: When timewalk filters to only pitched content (`filter pitch??`), empty or rest-only measures produce no tuples. The measure boundary's baseline reset occurs without any pitch processing, effectively resetting the courtesy chain.
-
-**Validation**: Tests 6.2 and 6.3 in remembered-alterations-2-test.clj validate this behavior with realistic scenarios.
 
 ### Courtesy Accidentals
 
@@ -452,40 +347,34 @@ Result: Grace prints sharp, first F prints natural, second F prints nothing (rem
 ```
 
 **Rationale:**
-- Matches industry-standard behavior (Dorico, Finale, Sibelius, LilyPond)
 - Follows traditional engraving practice (Gould's "Behind Bars", Gardner Read)
 - Aligns with how performers mentally process grace notes as part of the temporal flow
 - Consistent with Ooloi's position-based temporal model
 
-**No configuration settings initially**—grace notes use standard behavior only. The `:grace-updates-remembered?` boolean can be added later if real use cases emerge requiring grace notes to read state without updating it (conservative behavior for complex contemporary music).
+**No configuration settings initially** Grace notes use standard behavior only. A boolean setting can be added later if real use cases emerge requiring grace notes to read state without updating it (conservative behavior for complex contemporary music).
 
 **Implementation**: Grace detection via timewalk (zero duration containers with `:items` field). Grace items are processed as regular pitches within the position-based ordering, requiring no special-case logic beyond container detection.
 
 #### Grace Note Positioning and Duration
 
-While grace notes have zero metric duration and share the same rhythmic position as their target note, they must be assigned "probable positions" for correct temporal processing in the accidental pipeline.
+While grace notes have zero metric duration and share the same rhythmic position as their target note, they must be assigned exact positions for correct temporal processing in the accidental pipeline.
 
 **Problem**: Grace notes at metric position 1/2 must process AFTER notes at position 1/4 and BEFORE the target note at position 1/2. This requires position adjustment.
 
-**Solution**: The `position-grace-notes-rhythmically` transducer transforms grace note positions from metric to probable positions based on performance timing.
+**Solution**: The `position-grace-notes-rhythmically` transducer transforms grace note positions from metric to exact positions based on typical performance timing.
 
 **Duration Calculation**:
 
-Grace note performance duration is tempo-dependent, using a standard speed per grace note:
+Grace note performance duration is tempo-dependent, using a standard speed per grace note of 85ms and adjusted for length depending on the tempo of the piece at the point where the grace note appears. A grace note's length in milliseconds (ms) is not fixed and depends on the musical context, but can range from approximately 30 ms to over 100 ms, with some examples showing durations around 50 ms to 350 ms. It is typically played very quickly to lead into a principal note, stealing a small amount of time from the notes around it, not from a fixed value. 
 
-```clojure
-(defn grace-note-duration-ms
-  "Calculate grace note duration in milliseconds.
-   Base: 85ms at 120 BPM, scaled inversely with tempo."
-  ([tempo] (grace-note-duration-ms tempo 85))
-  ([tempo base-ms-at-120]
-   (/ (* base-ms-at-120 120.0) tempo)))
-```
+It is to be noted that grace note duration does not scale 1:1 with the tempo. If we assume a basic speed of 85ms in 120 BPM, increasing the tempo to 240 BPM will not halve grace note durations, nor will decreasing the tempo to 60 BMP result in twice as long grace notes. 
 
 **Rationale for 85ms base**:
 - Research indicates 50-125ms typical range at 120 BPM
 - 85ms is middle-to-lower end: quick but not rushed
-- Scales naturally: 170ms at 60 BPM, 57ms at 180 BPM, 42ms at 240 BPM
+- Scales naturally: higher or lower BPM values do not scale grace note duration 1:1, but to a much lesser extent. There will be a function to determine the grace note value for tempos.
+
+There is a piece setting, :grace-note-base-duration-ms, which has a default value of 85. 
 
 **Position Adjustment Algorithm**:
 
@@ -552,7 +441,7 @@ The remembered alterations system is configured through four piece-level setting
 
 **`:french-ties?`** (boolean, default `false`)
 - Controls tied note bypass behavior at measure boundaries
-- `false`: Standard behavior—tied notes at position 0 receive bypass exception (compare to prev-final, don't print if matches, don't update remembered)
+- `false`: Standard behavior—tied notes at position 0 receive bypass exception
 - `true`: French style—no bypass, tied notes at position 0 treated normally (compare to baseline like all other notes)
 
 **`:keyless-accidentals`** (keyword, default `:standard`)
@@ -597,7 +486,8 @@ The algorithm uses two code paths based on voice count, with grace positioning a
         (comp
           (timewalk {:boundary-vpd instrument-vpd
                      :start-measure measure-index
-                     :end-measure measure-index})
+                     :end-measure measure-index
+                     :grace-end-markers? true})
           (filter grace-pipeline-item?)
           (position-grace-notes-rhythmically)
           (group-simultaneities)
@@ -611,7 +501,8 @@ The algorithm uses two code paths based on voice count, with grace positioning a
                          (comp
                            (timewalk {:boundary-vpd instrument-vpd
                                       :start-measure measure-index
-                                      :end-measure measure-index})
+                                      :end-measure measure-index
+                                      :grace-end-markers? true})
                            (filter grace-pipeline-item?))
                          [piece])
             adjusted-tuples (sequence (position-grace-notes-rhythmically) all-tuples)
@@ -622,51 +513,38 @@ The algorithm uses two code paths based on voice count, with grace positioning a
         (reduce reducer initial-state grouped)))))
 ```
 
-**State structure:**
-
-The state threaded through the reduction contains four components:
-
-```clojure
-{:remembered {...}                ; Sparse deviation map - carries to next measure
- :decisions [...]                 ; Accumulated accidental decisions
- :courtesy-shown {}               ; Ephemeral: {octave #{letters}} - discarded at boundary
- :tied-target-endpoint-ids {}     ; Map {endpoint-id note-string} for enharmonic detection
- :simultaneity-conflicts #{}}     ; Ephemeral: #{letters} - only during simultaneity processing
-```
-
-**Component lifecycles**:
-- `:remembered` - Carries forward to next measure as part of final state
-- `:decisions` - Accumulated throughout measure, returned to caller
-- `:courtesy-shown` - Ephemeral, discarded at measure boundary
-- `:tied-target-endpoint-ids` - Map {endpoint-id note-string} collected during measure, passed to next measure for bypass and enharmonic detection (only cross-barline ties needed)
-- `:simultaneity-conflicts` - Ephemeral, exists only during simultaneity group processing
-
 **Key architectural elements:**
 
-1. **Simultaneity grouping** - The `group-simultaneities` transducer groups tuples by rhythmic position:
+1. **Grace note realisation** - The `position-grace-notes-rhythmically` transducer repositions grace note 
+  pitches from metric to exact positions. Grace notes are positioned using tempo-based duration calculation 
+  (85ms by default) working backward from the target note. Collision detection ensures grace notes never
+   overlap the previous note, redistributing with shortened duration if necessary.
+
+2. **Simultaneity grouping** - The `group-simultaneities` transducer groups tuples by rhythmic position:
    - Singles pass through unchanged (zero allocation via volatiles)
    - Multiple tuples at same position emitted as `[:simultaneity [tuple1 tuple2 ...]]`
    - Keyword marker `:simultaneity` distinguishes groups from singles
 
-2. **Pitch processing** - The `process-pitch-tuple` reducer handles both singles and groups:
+3. **Pitch processing** - The `process-pitch-tuple` reducer handles both singles and groups:
    - Single tuple: `[item vpd position]` → processed directly via `make-accidental-decision`
    - Simultaneity: `[:simultaneity [tuples]]` → three-phase processing:
      1. Detect conflicts (O(n) pre-scan by letter)
      2. Process sequentially with `:simultaneity-conflicts` state
      3. Clean up conflict tracking
 
-3. **Voice count detection** - `can-transduce?` counts voices across all staves:
+4. **Voice count detection** - `can-transduce?` counts voices across all staves:
    - 0-1 voices → transduce path (temporal order guaranteed by timewalk)
    - 2+ voices → collect/sort/reduce path (requires explicit position-based ordering)
 
 **Pipeline architecture:**
 
-Both code paths now include three stages:
+Both code paths include five stages:
 
 1. **`timewalk`** - Yields `[item vpd position]` tuples in voice-by-voice order
-2. **`filter pitch??`** - Filters to only pitch tuples
-3. **`group-simultaneities`** - Groups tuples by rhythmic position (NEW)
-4. **`process-pitch-tuple`** - Makes accidental decisions, handling both singles and groups
+2. **`filter grace-pipeline-item?`** - Filters for only the data this particular pipeline needs
+3. **`position-grace-notes-rhythmically`** - Assigns real positions to grace notes
+4. **`group-simultaneities`** - Groups tuples by rhythmic position (NEW)
+5. **`process-pitch-tuple`** - Makes accidental decisions, handling both singles and groups
 
 **Simultaneity grouping benefits:**
 
@@ -678,52 +556,14 @@ Both code paths now include three stages:
 
 **Simultaneity conflict detection:**
 
-When multiple pitches occur at the same position with the same letter but different accidentals (e.g., C4 and C#5 in a chord), a three-phase process handles them:
+When multiple pitches occur at the same position with the same letter but different accidentals (e.g., C4 and C#5 in a chord), a two-phase process handles them:
 
-1. **Detect conflicts** (O(n) pre-scan): Group pitches by letter, detect conflicting accidentals
-2. **Process sequentially**: Each pitch sees accumulated remembered state changes
-3. **Clean up**: Remove `:simultaneity-conflicts` tracking after group completes
+1. **Detect conflicts** (O(n) pre-scan): Group pitches by letter, detect conflicting accidentals in the `group-simultaneities` transducer
+2. **Process sequentially**: Each pitch sees accumulated remembered state changes in the reducer
 
 The `:simultaneity-conflicts` set (format: `#{letter}`) is threaded through state only during simultaneity processing. Courtesy logic checks both temporal cross-octave changes AND simultaneity conflicts, ensuring visual clarity when the same letter has different accidentals at the same moment.
 
 **Order independence:** The conflict detection ensures C4+C#5 produces identical results to C#4+C5, despite chord auto-sorting by frequency. The letter "C" with conflicting accidentals triggers courtesy for the matching pitch regardless of octave order.
-
-**Tuple preservation:**
-
-Each decision preserves the complete `[item vpd position]` tuple from timewalk:
-- Item reference provides the actual pitch object
-- VPD uniquely identifies each pitch in the piece hierarchy
-- Position enables sorting for temporal ordering
-
-**State threading:**
-
-State flows naturally through sequential measure processing. Each measure receives the previous measure's final `:remembered` state and `:tied-target-endpoint-ids`, processes them with ephemeral `:courtesy-shown` tracking, and returns three values: `:remembered`, `:decisions`, and `:tied-target-endpoint-ids` for the next measure. The `:courtesy-shown` tracking is created fresh for each measure and discarded at the boundary.
-
-**Three-value return format:**
-```clojure
-[final-remembered decisions tied-target-endpoint-ids]
-```
-
-This format supports:
-1. State threading (remembered alterations carry forward)
-2. Decision collection (for rendering)
-3. Tie tracking (cross-measure ties for bypass detection)
-
-Pattern for processing multiple measures:
-
-```clojure
-;; Thread remembered state and tied-ids through sequential measures
-(reduce
-  (fn [[prev-final prev-tied-ids] measure-index]
-    (let [[final-remembered decisions tied-ids]
-          (accidental-decisions-for-measure
-            piece measure-index instrument-vpd key-sig prev-final prev-tied-ids)]
-      ;; Use decisions for rendering
-      ;; Return remembered state and tied-ids for next measure (courtesy-shown discarded)
-      [final-remembered tied-ids]))
-  [(acc-maps/from-key-signature key-sig) #{}]  ; Initial baseline + empty tied-ids
-  (range start-measure end-measure))
-```
 
 ## Integration with Key Signatures
 
