@@ -435,6 +435,42 @@ Distribute evenly starting from 1/8
 - Compression: Even distribution when crowded (fairness)
 - Notated durations ignored: Grace note durations within container are purely notational
 
+#### Grace Notes at Measure Boundaries
+
+Grace note containers can appear both first and last in any measure, creating a critical edge case: grace notes at position 0 of measure M (where M > 0) are **displayed** at the beginning of M but **sound** at the end of M-1.
+
+**Semantic Processing Principle**: Accidental decisions are made in the measure where grace notes SOUND, not where they are visually displayed. This ensures correct remembered alterations state for all temporal edge cases.
+
+**Lookahead Algorithm**:
+
+When processing measure M:
+1. Timewalk includes M+1's position-0 grace notes via lookahead (`:end-position 0`)
+2. `position-grace-notes-rhythmically` receives M+1's grace notes in M's stream
+3. Grace notes are repositioned to end of M using time signature duration as target
+4. Accidental decisions process in M's context (correct remembered state)
+5. Grace notes update M's remembered state, affecting M's subsequent notes
+
+When processing measure M+1:
+6. `position-grace-notes-rhythmically` skips M+1's position-0 grace notes (already processed by M)
+7. M+1 continues with its remaining content using state updated by M's lookahead
+
+**Example** (C major, measure 0 ends with F♮):
+```
+Measure 0: ... F4 quarter
+Measure 1: [F#4 grace] G4 quarter (grace at position 0)
+
+Processing M0 with lookahead:
+  - F4 quarter updates state: F→♮
+  - F#4 grace reads state (F→♮), prints sharp, updates state: F→#
+  - Result: Grace rendered at end of M0, accidental correct
+
+Processing M1:
+  - Skip F#4 grace (already processed)
+  - G4 quarter reads state: F→# (inherited from M0's lookahead)
+```
+
+**Measure 0 Exception**: Grace notes at position 0 of measure 0 cannot be processed via lookahead from a previous measure (no measure -1 exists to look ahead from). As an exceptional case, they process with negative positions (anacrusis behavior), reading from baseline state. This is the only scenario where grace notes receive negative positions—the standard approach is lookahead processing from the previous measure.
+
 ### Accidental Settings
 
 The remembered alterations system is configured through four piece-level settings:
