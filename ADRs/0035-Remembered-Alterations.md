@@ -12,6 +12,7 @@
   - [Courtesy Accidentals](#courtesy-accidentals)
   - [Keyless Mode Behavior](#keyless-mode-behavior)
   - [Grace Notes](#grace-notes)
+    - [Grace Notes at Measure Boundaries](#grace-notes-at-measure-boundaries)
   - [Accidental Settings](#accidental-settings)
   - [Performance Architecture](#performance-architecture)
 - [Integration with Key Signatures](#integration-with-key-signatures)
