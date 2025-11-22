@@ -523,10 +523,11 @@ The algorithm uses two code paths based on voice count, with grace positioning a
         (comp
           (timewalk {:boundary-vpd instrument-vpd
                      :start-measure measure-index
-                     :end-measure measure-index
+                     :end-measure (inc measure-index)
+                     :end-position 0
                      :grace-end-markers? true})
           (filter grace-pipeline-item?)
-          (position-grace-notes-rhythmically)
+          (position-grace-notes-rhythmically piece measure-index)
           (group-simultaneities)
           (detect-simultaneity-conflicts))
         (completing reducer)
@@ -538,11 +539,12 @@ The algorithm uses two code paths based on voice count, with grace positioning a
                          (comp
                            (timewalk {:boundary-vpd instrument-vpd
                                       :start-measure measure-index
-                                      :end-measure measure-index
+                                      :end-measure (inc measure-index)
+                                      :end-position 0
                                       :grace-end-markers? true})
                            (filter grace-pipeline-item?))
                          [piece])
-            adjusted-tuples (sequence (position-grace-notes-rhythmically) all-tuples)
+            adjusted-tuples (sequence (position-grace-notes-rhythmically piece measure-index) all-tuples)
             sorted-tuples (sort-by position adjusted-tuples)
             grouped (sequence (comp (group-simultaneities)
                                     (detect-simultaneity-conflicts))
