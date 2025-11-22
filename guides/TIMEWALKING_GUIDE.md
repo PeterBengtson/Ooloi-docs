@@ -16,6 +16,7 @@
   - [🔴 Advanced Pattern: Using `reduce` for Stateful Transformations](#-advanced-pattern-using-reduce-for-stateful-transformations)
 - [🟠 Understanding Timewalk's Architecture: Push vs Pull](#-understanding-timewalks-architecture-push-vs-pull)
 - [🟢 Efficiency Tips](#-efficiency-tips)
+- [🔴 Real-World Example: Remembered Alterations](#-real-world-example-remembered-alterations)
 - [Cross-References](#cross-references)
 
 ## 🟢 Overview
@@ -1126,12 +1127,125 @@ Even with scope limiting, use `take` to stop as soon as you find what you need:
 2. **Measure ranges** - Further narrow the traversal window
 3. **Early termination with `take`** - Stop as soon as goal achieved
 
+## 🔴 Real-World Example: Remembered Alterations
+
+You've now learned the building blocks: lazy sequences, transducers, composition with `comp`, consumption strategies, and push-based architecture. Let's see how these patterns compose into production code that solves a genuinely complex problem.
+
+### The Problem
+
+Determining which accidentals to display is one of the most complex aspects of musical notation—it's the very core of music formatting. The algorithm must balance key signatures, temporal memory, measure boundaries, grace notes, ties, and multi-voice coordination while handling dozens of edge cases and musical conventions.
+
+Using transducers lets you break this complexity into manageable, composable pieces. Each transducer handles one part of the algorithm. Together, they implement the complete solution.
+
+### The Pipeline
+
+This is the complete implementation for one measure of an instrument:
+
+```clojure
+(transduce
+  (comp
+    (timewalk {:boundary-vpd instrument-vpd
+               :start-measure m
+               :end-measure   m
+               :grace-end-markers? true})
+    (filter grace-pipeline-item?)
+    (position-grace-notes-rhythmically)
+    (group-simultaneities)
+    (detect-simultaneity-conflicts))
+  (process-pitch-tuple piece key-sig prev-final m)
+  initial-state
+  [piece])
+```
+
+Six pieces—five transducers and one reducer—collectively implement the accidental algorithm. Each piece is focused and manageable. As the stream flows through the pipeline, each step transforms it for the next: adding data, modifying positions, grouping events, all in preparation for the reducer where the decisions are made.
+
+### How Data Flows Through the Pipeline
+
+Let's trace how the stream transforms at each step:
+
+**Step 1: Structure → Stream**
+```clojure
+(timewalk {:boundary-vpd instrument-vpd ...})
+```
+Transforms nested piece structure into a linear stream of `[item vpd position]` tuples. All staves and voices become a single temporal sequence.
+
+**Step 2: Filter stream**
+```clojure
+(filter grace-pipeline-item?)
+```
+Reduces the stream to relevant items only. Other musical elements are filtered out early, minimizing downstream work.
+
+**Step 3: Transform positions**
+```clojure
+(position-grace-notes-rhythmically)
+```
+Walks the stream, adjusting rational positions for zero-duration items. Each tuple's position field is recalculated based on tempo and available space.
+
+**Step 4: Group simultaneities**
+```clojure
+(group-simultaneities)
+```
+Identifies tuples at identical positions and marks them as simultaneities. Singles pass through unchanged.
+
+**Step 5: Enrich groups with metadata**
+```clojure
+(detect-simultaneity-conflicts)
+```
+Scans grouped items, adding conflict metadata where needed. Singles still pass through unchanged. The stream is now prepared for the reducer.
+
+**Step 6: Reduce to decisions**
+```clojure
+(process-pitch-tuple piece key-sig prev-final m)
+```
+The stateful reducer. Receives the prepared stream and produces decisions. Threads state through each item, returning `[final-state decisions tied-ids]` for the next measure.
+
+Notice the pattern: each transducer transforms the stream for the next stage. Structure becomes stream, stream gets filtered, positions get adjusted, items get grouped, groups get enriched, stream gets reduced to decisions. No single piece needs to understand the whole problem—each just transforms its input and passes the result along.
+
+### Breaking Down Complexity
+
+Why decompose the algorithm this way? Because the alternative is difficult to manage:
+
+The accidental algorithm is complex because it must handle:
+
+- Multi-staff, multi-voice temporal coordination
+- Grace note positioning with collision detection
+- Chord conflict detection for courtesy accidentals
+- Remembered state updates after each pitch
+- Tied note bypass across measure boundaries
+- Key signature baseline and deviations
+- Cross-octave courtesy accidental logic
+
+**Without transducers**, you'd write one large function with nested conditionals and interleaved concerns—temporal ordering mixed with grace positioning mixed with state management mixed with decision logic. You'd probably be consing intermediate vectors at each step: one vector for filtered items, another for positioned items, another for grouped items. Difficult to test, difficult to modify, and wasteful with memory.
+
+**With transducers**, you separate concerns into six focused pieces. Your mental focus shifts to the logical task at hand—what transformation does this step perform?—rather than nested iterators and recursive descent. The Ooloi transducers achieve this with zero consing in the normal single-voice case:
+
+- `timewalk` handles temporal ordering
+- `filter` handles relevance
+- `position-grace-notes-rhythmically` handles grace positioning
+- `group-simultaneities` handles chord grouping
+- `detect-simultaneity-conflicts` handles conflict detection
+- `process-pitch-tuple` handles state and decisions
+
+Each piece is independently testable. Each piece is independently understandable. The composition implements the full algorithm.
+
+### Connection to This Guide
+
+Everything you've learned in this guide comes together here:
+
+- **Structure → Stream** - Nested structure becomes temporal event stream
+- **Tuples** - `[item vpd position]` carries context through pipeline
+- **Filtering** - Select relevant items for processing
+- **Composition** - `comp` combines transformations
+- **Transduction** - Push-based processing through composed pipeline
+- **Decomposition** - Complex algorithm split into focused pieces
+
+**For complete algorithmic details** (baseline initialization, courtesy accidental rules, tied note bypass, French ties, keyless modes, conflict resolution), see [ADR-0035: Remembered Alterations](../ADRs/0035-Remembered-Alterations.md).
+
 ## Cross-References
 
 - **Basic usage**: See [🟢 Starting Simple](#-starting-simple-direct-lazy-sequences) for your first timewalking operations
 - **Performance**: See [Performance Comparison](#performance-comparison-threading-vs-transducers) for timing benchmarks
 - **Benchmarks**: See [Timewalk Performance Benchmarks](https://github.com/PeterBengtson/Ooloi-docs/blob/main/READMEs/BENCHMARKS_README.md) for comprehensive performance validation showing sub-millisecond cache refresh, constant-memory streaming, and sub-100 microsecond endpoint searches
-- **Temporal coordination**: See [Why Temporal Order Matters](#why-temporal-order-matters-what-goes-wrong-without-it) for musical analysis foundations
 - **🔴 Advanced concurrency**: See [Advanced Concurrency Patterns](ADVANCED_CONCURRENCY_PATTERNS.md) for parallel processing with STM coordination
 - **VPD addressing**: See [VPDs Guide](VPDs.md) for understanding the Vector Path Descriptors returned in timewalking tuples
 - **Type predicates**: See [Polymorphic API Guide](POLYMORPHIC_API_GUIDE.md) for the type predicates and helper functions used in filtering
