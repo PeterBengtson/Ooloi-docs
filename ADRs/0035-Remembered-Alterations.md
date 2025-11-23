@@ -366,7 +366,7 @@ While grace notes have zero metric duration and share the same rhythmic position
 
 **Duration Calculation**:
 
-Grace note performance duration is tempo-dependent, using a standard speed per grace note of 85ms and adjusted for length depending on the tempo of the piece at the point where the grace note appears. A grace note's length in milliseconds (ms) is not fixed and depends on the musical context, but can range from approximately 30 ms to over 100 ms, with some examples showing durations around 50 ms to 350 ms. It is typically played very quickly to lead into a principal note, stealing a small amount of time from the notes around it, not from a fixed value. 
+Grace note performance duration is tempo-dependent, using a standard speed per grace note of 85ms, given by the piece setting `:grace-note-base-duration-ms`, and adjusted for length depending on the tempo of the piece at the point where the grace note appears. A grace note's length in milliseconds (ms) is not fixed and depends on the musical context, but can range from approximately 30 ms to over 100 ms, with some examples showing durations around 50 ms to 350 ms. It is typically played very quickly to lead into a principal note, stealing a small amount of time from the notes around it, not from a fixed value. 
 
 It is to be noted that grace note duration does not scale 1:1 with the tempo. If we assume a basic speed of 85ms in 120 BPM, increasing the tempo to 240 BPM will not halve grace note durations, nor will decreasing the tempo to 60 BMP result in twice as long grace notes. 
 
@@ -374,8 +374,6 @@ It is to be noted that grace note duration does not scale 1:1 with the tempo. If
 - Research indicates 50-125ms typical range at 120 BPM
 - 85ms is middle-to-lower end: quick but not rushed
 - Scales naturally: higher or lower BPM values do not scale grace note duration 1:1, but to a much lesser extent. There will be a function to determine the grace note value for tempos.
-
-There is a piece setting, :grace-note-base-duration-ms, which has a default value of 85. 
 
 **Position Adjustment Algorithm**:
 
