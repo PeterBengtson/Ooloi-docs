@@ -472,29 +472,37 @@ Processing M1:
 
 ### Accidental Settings
 
-The remembered alterations system is configured through four piece-level settings:
+The remembered alterations system is configured through four piece-level settings. Three settings control **decision logic** (which accidentals to print), while one controls **presentation** (how to render them):
 
-**:french-ties?** (boolean, default `false`)
-- Controls whether tied-to notes at the start of a measure print an accidental (French style).
-- `false` (standard): tied-to notes at position 0 are bypassed unconditionally — no accidental is printed and remembered state is not updated (same as intra-measure ties).
-- `true` (French style): bypass is disabled only at measure boundaries — a tied-to note at position 0 is treated like a normal note (compares to baseline, prints if needed, updates remembered state).
+**Decision Logic Settings:**
+
+**`:courtesy-accidental-for-other-octaves?`** (boolean, default `true`)
+- Controls whether cross-octave courtesy accidentals are printed
+- `true`: Print courtesy accidental when same letter has different accidental in another octave (e.g., F# in octave 4, F natural in octave 5 triggers courtesy natural)
+- `false`: Octaves are independent—no cross-octave courtesy accidentals
+- **Used by**: Decision logic (affects which pitches receive `:courtesy-other-octave` type)
+
+**`:french-ties?`** (boolean, default `false`)
+- Controls whether tied-to notes at the start of a measure print an accidental (French style)
+- `false` (standard): Tied-to notes at position 0 are bypassed unconditionally—no accidental is printed and remembered state is not updated (same as intra-measure ties)
+- `true` (French style): Bypass is disabled only at measure boundaries—a tied-to note at position 0 is treated like a normal note (compares to baseline, prints if needed, updates remembered state)
+- **Used by**: Decision logic (affects which notes print accidentals)
 
 **`:keyless-accidentals`** (keyword, default `:standard`)
 - Controls accidental behavior in keyless key signatures
 - `:standard`: Normal remembered alterations, like C major without tonic
 - `:all-except-repeated`: Show accidentals except immediate repeats (atonal music)
 - `:all`: Show accidentals on every pitch including repeats (maximum clarity)
+- **Used by**: Decision logic (affects baseline and memory behavior)
 
-**`:courtesy-accidental-for-other-octaves?`** (boolean, default `true`)
-- Controls cross-octave courtesy accidentals
-- `true`: Show courtesy when same letter has different accidental in another octave
-- `false`: Octaves are independent—no cross-octave courtesy
+**Presentation Setting:**
 
 **`:parenthesized-courtesy-accidental-for-other-octaves?`** (boolean, default `true`)
-- Controls parenthesization of cross-octave courtesy accidentals
-- `true`: Courtesy accidentals are parenthesized (visual distinction from required accidentals)
-- `false`: Courtesy accidentals use normal appearance
-- Only applies when `:courtesy-accidental-for-other-octaves?` is `true`
+- Controls visual presentation of cross-octave courtesy accidentals
+- `true`: Cross-octave courtesy accidentals rendered with parentheses (e.g., "(♮)" for visual distinction)
+- `false`: Cross-octave courtesy accidentals use normal appearance
+- **Used by**: Rendering layer only (decision logic returns `:courtesy-other-octave` type; renderer applies parentheses based on this setting)
+- **Note**: This setting does NOT affect which accidentals are printed—only how they appear visually
 
 These settings are accessed via the `ooloi.shared.api` namespace and configured per-piece, with future extensions possible for other levels.
 
@@ -661,13 +669,43 @@ The bass F natural at position 1/4 forces a courtesy natural on the treble F at 
 
 The remembered alterations decisions represent the **musical requirement** for accidentals based on key signature and temporal context. They apply universally to all layouts of this piece. Individual layouts may override these decisions for visual reasons, but the remembered alterations algorithm provides the semantic baseline.
 
-The system produces decisions containing:
-- Which pitch requires consideration
-- Whether an accidental should be printed
-- Whether it's a courtesy accidental
-- Whether it should be parenthesized
+### Decision Output Format
 
-This separation of semantic decisions from visual presentation enables consistent musical interpretation across all visual representations.
+Each decision is a map containing:
+```clojure
+{:tuple [pitch vpd position]   ; Which pitch and where
+ :type keyword}                 ; Semantic type (see below)
+```
+
+### Semantic Accidental Types
+
+The system returns one of three **semantic types** that describe the musical function of the accidental, independent of visual presentation:
+
+**`:normal`** - Required accidental
+- The pitch's accidental differs from the current remembered state
+- Includes both accidentals that contradict the key signature AND accidentals that contradict previous alterations within the measure
+- Example: F# in C major, or F♮ after F# appeared earlier in the measure
+
+**`:courtesy`** - Same-octave courtesy accidental
+- The pitch matches the key signature baseline but differs from what was recently altered in the same octave
+- Printed for clarity after a deviation has been introduced
+- Example: F♮ in C major after F# appeared in the same measure (both in octave 4)
+
+**`:courtesy-other-octave`** - Cross-octave courtesy accidental
+- The pitch matches the key signature baseline but the same letter has a different accidental in another octave
+- Only printed when `:courtesy-accidental-for-other-octaves?` setting is enabled
+- Example: F♮ in octave 5 when F# exists in octave 4 within the same measure
+
+### Separation of Concerns
+
+This semantic type system enables clean separation between decision logic and presentation:
+
+- **Decision logic** (this ADR): Returns semantic types describing *why* an accidental prints
+- **Rendering layer**: Applies presentation settings to determine *how* to display it (parentheses, color, size, etc.)
+
+For example, the `:parenthesized-courtesy-accidental-for-other-octaves?` setting is consulted by the rendering layer when displaying a pitch with type `:courtesy-other-octave`. The decision logic itself does not check this setting—it simply identifies the pitch as a cross-octave courtesy accidental.
+
+This architecture ensures consistent musical interpretation across all visual representations while allowing flexible presentation styles.
 
 ## Consequences
 
