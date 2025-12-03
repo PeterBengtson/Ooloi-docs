@@ -66,60 +66,18 @@ We will implement multi-client collaboration support in Ooloi by extending our e
 - **Infrastructure considerations**: Multi-user scenarios may require remote server hosting (though local remains default)
 - **Security requirements**: Access control and data privacy considerations for shared sessions
 
-## Implementation Approach
-
-1. Extend Piece Manager:
-   - Implement session management for collaborators.
-
-2. Real-Time Synchronization:
-   - Use gRPC streaming for real-time updates between clients and server.
-   - Implement a publish-subscribe system for broadcasting changes to all connected clients.
-
-3. Conflict Resolution:
-   - Extend the transactional system to handle and resolve conflicts between concurrent edits.
-   - Implement Operational Transformation or a similar algorithm to ensure consistency across clients.
-
-4. Change Representation:
-   - Use VPDs to efficiently communicate changes between clients and server.
-   - Implement a change compression mechanism for bandwidth optimization.
-
-5. Collaborative UI:
-   - Develop UI components to show collaborator presence and activities.
-   - Implement visual indicators for remote cursor positions and selections.
-
-6. Access Control:
-   - Develop a permission system for different levels of access (view, edit, admin).
-   - Implement secure invitation and joining mechanisms for collaborative sessions.
-
-7. Offline Support:
-   - Implement a change queuing system for offline edits.
-   - Develop a robust synchronization mechanism for when clients come back online.
-
-8. Version History:
-   - Leverage the undo/redo system to provide a browsable history of changes.
-   - Implement features to revert to or branch from previous states of the score.
-
-9. Large Data Handling:
-   - Implement intelligent chunking for transferring large scores or changes.
-
-10. Plugin API:
-    - Extend the plugin API to allow integration with the collaboration system.
-    - Provide hooks for plugins to participate in conflict resolution and change representation.
-
-11. Testing and Validation:
-    - Develop a comprehensive test suite simulating various collaborative scenarios.
-    - Implement stress testing for concurrent edits on large scores.
-
 ## Alternatives Considered
 
-1. Peer-to-Peer Collaboration:
-   - Rejected due to complexities in NAT traversal and maintaining consistency across all peers.
+1. **Peer-to-Peer Collaboration**:
+   - Initially rejected due to NAT traversal complexities
+   - Later reconsidered and implemented via hybrid transport architecture (ADR-0036)
+   - Combined apps can host peer-to-peer sessions dynamically when network permits
 
-2. WebSocket-based Solution:
-   - Considered but rejected in favor of gRPC for its better performance and type safety.
+2. **WebSocket-based Solution**:
+   - Considered but rejected in favor of gRPC for its better performance and type safety
 
-3. Third-party Collaboration Platforms:
-   - Explored but deemed insufficient for the specialized needs of music notation collaboration.
+3. **Third-party Collaboration Platforms**:
+   - Explored but deemed insufficient for the specialized needs of music notation collaboration
 
 ## Notes
 
@@ -141,3 +99,4 @@ We will implement multi-client collaboration support in Ooloi by extending our e
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model designed for correctness that naturally enables multi-client coordination
 - [ADR-0008: VPDs](0008-VPDs.md) - Addressing system enabling precise change communication across clients
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture supporting multi-client scenarios
+- [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) - Hybrid transport architecture enabling dynamic peer-to-peer collaboration with role-based permissions and email-based invitations

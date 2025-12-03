@@ -12,9 +12,13 @@ Ooloi is a complex music notation software that requires both a rich user interf
 
 We will implement Ooloi with **separated frontend and backend components** that can be deployed in multiple configurations:
 
-1. **Backend-only** deployment (server mode)
-2. **Frontend-only** deployment (client connecting to remote server)
-3. **Combined** deployment (both components in single application)
+1. **Backend-only** deployment (server mode for dedicated servers)
+2. **Combined** deployment (both components in single application with hybrid transport - see ADR-0036)
+   - Starts in standalone mode with in-process transport
+   - Can dynamically enable network server for collaboration
+   - Can connect to remote backends as guest
+
+**Note**: Frontend-only deployment is obsolete. Combined mode with hybrid transport (ADR-0036) provides superior user experience - users can work offline, host collaboration sessions, or connect to remote servers as needed, all from a single deployment mode.
 
 This is achieved through a **three-project structure**: `backend/`, `frontend/`, and `shared/`.
 
@@ -219,9 +223,11 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 - [ADR-0002: gRPC Communication](0002-gRPC.md) - Details of the communication protocol implementation
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model supporting responsive UI and efficient backend processing
 - [ADR-0005: JavaFX and Skija](0005-JavaFX-and-Skija.md) - Frontend GUI framework choice for the separated frontend component
+- [ADR-0009: Collaboration](0009-Collaboration.md) - Multi-client collaboration architecture building on frontend-backend separation
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture leveraging frontend-backend separation boundaries
 - [ADR-0016: Settings](0016-Settings.md) - Settings architecture maintaining frontend-backend separation principles
 - [ADR-0017: System Architecture](0017-System-Architecture.md) - Component lifecycle management and production-ready operational capabilities
+- [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) - Hybrid transport architecture enabling dynamic collaboration without deployment mode switching
 
 ## Notes
 
