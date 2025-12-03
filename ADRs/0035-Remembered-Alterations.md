@@ -508,7 +508,7 @@ These settings are accessed via the `ooloi.shared.api` namespace and configured 
 
 ### Performance Architecture
 
-The algorithm uses two code paths based on voice count, with grace positioning and simultaneity grouping integrated into both.
+The algorithm uses a unified transducer pipeline that transparently handles both single-voice and multi-voice measures. The pipeline maintains zero-consing performance for measures with 0-1 voices while automatically consolidating voices across staves when necessary.
 
 **Core implementation:**
 
@@ -521,75 +521,75 @@ The algorithm uses two code paths based on voice count, with grace positioning a
                        :decisions []
                        :courtesy-shown {}
                        :tied-target-endpoint-ids (or prev-tied-ids {})}
-        reducer (process-pitch-tuple piece key-sig prev-final measure-index)]
+        reducer (process-pitch-tuple piece key-sig prev-final measure-index)
 
-    (if (can-transduce? piece instrument-vpd measure-index)
-      ;; Single voice: transduce directly (zero allocation)
-      (transduce
-        (comp
-          (timewalk {:boundary-vpd instrument-vpd
-                     :start-measure measure-index
-                     :end-measure (inc measure-index)
-                     :end-position 0
-                     :grace-end-markers? true})
-          (filter grace-pipeline-item?)
-          (position-grace-notes-rhythmically piece measure-index)
-          (group-simultaneities)
-          (detect-simultaneity-conflicts))
-        (completing reducer)
-        initial-state
-        [piece])
-
-      ;; Multiple voices: collect, adjust grace positions, sort, group, reduce
-      (let [all-tuples (sequence
-                         (comp
-                           (timewalk {:boundary-vpd instrument-vpd
-                                      :start-measure measure-index
-                                      :end-measure (inc measure-index)
-                                      :end-position 0
-                                      :grace-end-markers? true})
-                           (filter grace-pipeline-item?))
-                         [piece])
-            adjusted-tuples (sequence (position-grace-notes-rhythmically piece measure-index) all-tuples)
-            sorted-tuples (sort-by position adjusted-tuples)
-            grouped (sequence (comp (group-simultaneities)
-                                    (detect-simultaneity-conflicts))
-                              sorted-tuples)]
-        (reduce reducer initial-state grouped)))))
+        final-state (transduce
+                     (comp
+                      (timewalk {:boundary-vpd instrument-vpd
+                                 :start-measure measure-index
+                                 :end-measure (inc measure-index)
+                                 :end-position 0
+                                 :grace-end-markers? true})
+                      (filter grace-pipeline-item?)
+                      (position-grace-notes-rhythmically piece measure-index)
+                      (merge-instrument-voices)
+                      (filter pitch??)
+                      (group-simultaneities)
+                      (detect-simultaneity-conflicts))
+                     (completing reducer)
+                     initial-state
+                     [piece])]
+    final-state))
 ```
 
 **Key architectural elements:**
 
-1. **Grace note realisation** - The `position-grace-notes-rhythmically` transducer repositions grace note 
-  pitches from metric to exact positions. Grace notes are positioned using tempo-based duration calculation 
+1. **Grace note realisation** - The `position-grace-notes-rhythmically` transducer repositions grace note
+  pitches from metric to exact positions. Grace notes are positioned using tempo-based duration calculation
   (85ms by default) working backward from the target note. Collision detection ensures grace notes never
    overlap the previous note, redistributing with shortened duration if necessary.
 
-2. **Simultaneity grouping** - The `group-simultaneities` transducer groups tuples by rhythmic position:
+2. **Voice consolidation** - The `merge-instrument-voices` transducer consolidates multiple voices across staves into temporal order:
+   - **0-1 voices**: Tuples pass through unchanged (zero-consing preserved)
+   - **2+ voices**: Tuples accumulated per measure number and sorted by position before emission
+   - Strategy determined per-measure-number based on voice count across all staves in scope
+   - Receives structural markers (Instrument, Measure, Voice) from timewalk for strategy determination
+
+3. **Simultaneity grouping** - The `group-simultaneities` transducer groups tuples by rhythmic position:
    - Singles pass through unchanged (zero allocation via volatiles)
    - Multiple tuples at same position emitted as `[:simultaneity [tuple1 tuple2 ...]]`
    - Keyword marker `:simultaneity` distinguishes groups from singles
 
-3. **Pitch processing** - The `process-pitch-tuple` reducer handles both singles and groups:
+4. **Pitch processing** - The `process-pitch-tuple` reducer handles both singles and groups:
    - Single tuple: `[item vpd position]` → processed directly via `make-accidental-decision`
    - Simultaneity: `[:simultaneity [tuples]]` → three-phase processing:
      1. Detect conflicts (O(n) pre-scan by letter)
      2. Process sequentially with `:simultaneity-conflicts` state
      3. Clean up conflict tracking
 
-4. **Voice count detection** - `can-transduce?` counts voices across all staves:
-   - 0-1 voices → transduce path (temporal order guaranteed by timewalk)
-   - 2+ voices → collect/sort/reduce path (requires explicit position-based ordering)
-
 **Pipeline architecture:**
 
-Both code paths include five stages:
+The pipeline consists of two distinct phases separated by explicit filters:
 
-1. **`timewalk`** - Yields `[item vpd position]` tuples in voice-by-voice order
-2. **`filter grace-pipeline-item?`** - Filters for only the data this particular pipeline needs
-3. **`position-grace-notes-rhythmically`** - Assigns real positions to grace notes
-4. **`group-simultaneities`** - Groups tuples by rhythmic position (NEW)
-5. **`process-pitch-tuple`** - Makes accidental decisions, handling both singles and groups
+**Phase 1: Structural Processing** (operates on all tuple types including structural markers)
+1. **`timewalk`** - Yields `[item vpd position]` tuples including structural markers (Instrument, Measure, Voice)
+2. **`filter grace-pipeline-item?`** - Passes grace notes, pitches, and structural markers needed for positioning
+3. **`position-grace-notes-rhythmically`** - Assigns real temporal positions to grace notes
+4. **`merge-instrument-voices`** - Consolidates voices per measure number when necessary (passes through for 0-1 voices)
+
+**Phase 2: Pitch Processing** (operates only on pitch tuples)
+5. **`filter pitch??`** - Explicit boundary between structural and pitch processing phases
+6. **`group-simultaneities`** - Groups tuples by rhythmic position
+7. **`detect-simultaneity-conflicts`** - Detects conflicting accidentals in simultaneities
+8. **`process-pitch-tuple`** - Makes accidental decisions, handling both singles and groups
+
+**Zero-consing optimization:**
+
+The pipeline preserves zero-consing performance for measures with 0-1 voices:
+- `merge-instrument-voices` detects voice count per measure number across all staves in scope
+- When 0-1 voices detected, tuples flow through without intermediate collection or sorting
+- Only measures with 2+ voices incur the allocation cost of consolidation
+- This optimization is transparent to the rest of the pipeline
 
 **Simultaneity grouping benefits:**
 

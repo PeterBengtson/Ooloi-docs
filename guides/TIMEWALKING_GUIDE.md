@@ -1150,6 +1150,8 @@ This is the complete implementation for one measure of an instrument:
                :grace-end-markers? true})
     (filter grace-pipeline-item?)
     (position-grace-notes-rhythmically)
+    (merge-instrument-voices)
+    (filter pitch??)
     (group-simultaneities)
     (detect-simultaneity-conflicts))
   (process-pitch-tuple piece key-sig prev-final m)
@@ -1157,7 +1159,7 @@ This is the complete implementation for one measure of an instrument:
   [piece])
 ```
 
-Six pieces—five transducers and one reducer—collectively implement the accidental algorithm. Each piece is focused and manageable. As the stream flows through the pipeline, each step transforms it for the next: adding data, modifying positions, grouping events, all in preparation for the reducer where the decisions are made.
+Eight pieces—seven transducers and one reducer—collectively implement the accidental algorithm. Each piece is focused and manageable. As the stream flows through the pipeline, each step transforms it for the next: adding data, modifying positions, consolidating voices, filtering, grouping events, all in preparation for the reducer where the decisions are made.
 
 ### How Data Flows Through the Pipeline
 
@@ -1167,39 +1169,51 @@ Let's trace how the stream transforms at each step:
 ```clojure
 (timewalk {:boundary-vpd instrument-vpd ...})
 ```
-Transforms nested piece structure into a linear stream of `[item vpd position]` tuples. All staves and voices become a single temporal sequence.
+Transforms nested piece structure into a linear stream of `[item vpd position]` tuples. All staves and voices become a single temporal sequence. Includes structural markers (Instrument, Measure, Voice) for downstream processing.
 
-**Step 2: Filter stream**
+**Step 2: Filter for grace pipeline**
 ```clojure
 (filter grace-pipeline-item?)
 ```
-Reduces the stream to relevant items only. Other musical elements are filtered out early, minimizing downstream work.
+Reduces the stream to items relevant for grace positioning: pitches, grace notes, and structural markers. Other musical elements are filtered out early, minimizing downstream work.
 
-**Step 3: Transform positions**
+**Step 3: Transform grace positions**
 ```clojure
 (position-grace-notes-rhythmically)
 ```
-Walks the stream, adjusting rational positions for zero-duration items. Each tuple's position field is recalculated based on tempo and available space.
+Walks the stream, adjusting rational positions for grace notes from metric to temporal positions. Each grace note's position field is recalculated based on tempo and available space. Structural markers pass through unchanged.
 
-**Step 4: Group simultaneities**
+**Step 4: Consolidate voices**
+```clojure
+(merge-instrument-voices)
+```
+Transparently handles multi-voice measures by consolidating voices across staves when necessary. For measures with 0-1 voices, tuples pass through unchanged (zero-consing). For measures with 2+ voices, tuples are accumulated and sorted by position before emission. Strategy determined per-measure-number using structural markers from the stream.
+
+**Step 5: Filter for pitches**
+```clojure
+(filter pitch??)
+```
+Explicit boundary between structural processing and pitch processing. Filters stream to only pitch tuples, removing structural markers that were needed by earlier stages. Clear separation of concerns.
+
+**Step 6: Group simultaneities**
 ```clojure
 (group-simultaneities)
 ```
-Identifies tuples at identical positions and marks them as simultaneities. Singles pass through unchanged.
+Identifies tuples at identical positions and marks them as simultaneities. Singles pass through unchanged. Only operates on pitches at this point.
 
-**Step 5: Enrich groups with metadata**
+**Step 7: Enrich groups with metadata**
 ```clojure
 (detect-simultaneity-conflicts)
 ```
 Scans grouped items, adding conflict metadata where needed. Singles still pass through unchanged. The stream is now prepared for the reducer.
 
-**Step 6: Reduce to decisions**
+**Step 8: Reduce to decisions**
 ```clojure
 (process-pitch-tuple piece key-sig prev-final m)
 ```
 The stateful reducer. Receives the prepared stream and produces decisions. Threads state through each item, returning `[final-state decisions tied-ids]` for the next measure.
 
-Notice the pattern: each transducer transforms the stream for the next stage. Structure becomes stream, stream gets filtered, positions get adjusted, items get grouped, groups get enriched, stream gets reduced to decisions. No single piece needs to understand the whole problem—each just transforms its input and passes the result along.
+Notice the pattern: each transducer transforms the stream for the next stage. Structure becomes stream, stream gets filtered for grace processing, grace positions get adjusted, voices get consolidated, stream gets filtered for pitches only, pitches get grouped, groups get enriched, stream gets reduced to decisions. The pipeline has two clear phases: structural processing (steps 1-4) and pitch processing (steps 5-8). No single piece needs to understand the whole problem—each just transforms its input and passes the result along.
 
 ### Breaking Down Complexity
 
@@ -1215,13 +1229,15 @@ The accidental algorithm is complex because it must handle:
 - Key signature baseline and deviations
 - Cross-octave courtesy accidental logic
 
-**Without transducers**, you'd write one large function with nested conditionals and interleaved concerns—temporal ordering mixed with grace positioning mixed with state management mixed with decision logic. You'd probably be consing intermediate vectors at each step: one vector for filtered items, another for positioned items, another for grouped items. Difficult to test, difficult to modify, and wasteful with memory.
+**Without transducers**, you'd write one large function with nested conditionals and interleaved concerns—temporal ordering mixed with voice consolidation mixed with grace positioning mixed with state management mixed with decision logic. You'd probably be consing intermediate vectors at each step: one vector for filtered items, another for positioned items, another for merged voices, another for grouped items. Difficult to test, difficult to modify, and wasteful with memory.
 
-**With transducers**, you separate concerns into six focused pieces. Your mental focus shifts to the logical task at hand—what transformation does this step perform?—rather than nested iterators and recursive descent. The Ooloi transducers achieve this with zero consing in the normal single-voice case:
+**With transducers**, you separate concerns into eight focused pieces. Your mental focus shifts to the logical task at hand—what transformation does this step perform?—rather than nested iterators and recursive descent. The Ooloi transducers achieve this with zero consing in the normal single-voice case:
 
-- `timewalk` handles temporal ordering
-- `filter` handles relevance
+- `timewalk` handles temporal ordering and structural markers
+- `filter grace-pipeline-item?` handles grace pipeline relevance
 - `position-grace-notes-rhythmically` handles grace positioning
+- `merge-instrument-voices` handles multi-voice consolidation (zero-consing for 0-1 voices)
+- `filter pitch??` handles pitch pipeline boundary
 - `group-simultaneities` handles chord grouping
 - `detect-simultaneity-conflicts` handles conflict detection
 - `process-pitch-tuple` handles state and decisions
