@@ -22,12 +22,6 @@ Accepted
   - [Why Email-Based Invitations](#why-email-based-invitations)
   - [Why Frontend Context Switching](#why-frontend-context-switching)
   - [Integration with Existing Architecture](#integration-with-existing-architecture)
-- [Implementation Approach](#implementation-approach)
-  - [Phase 1: Dual Server Infrastructure](#phase-1-dual-server-infrastructure)
-  - [Phase 2: Permission System](#phase-2-permission-system)
-  - [Phase 3: Invitation System](#phase-3-invitation-system)
-  - [Phase 4: Frontend Context Switching](#phase-4-frontend-context-switching)
-  - [Phase 5: UI Integration](#phase-5-ui-integration)
 - [Consequences](#consequences)
   - [Positive](#positive)
   - [Negative](#negative)
@@ -283,57 +277,6 @@ This design prioritizes **ease of use over technical sophistication** - the righ
 **Component Lifecycle**: Follows ADR-0017's Integrant patterns; both servers are managed components with proper initialization and cleanup.
 
 **STM Concurrency**: ADR-0004's STM architecture already supports multiple clients; no changes required for hybrid transport.
-
-## Implementation Approach
-
-### Phase 1: Dual Server Infrastructure
-
-**Deliverables**:
-- Support initializing both in-process and network servers simultaneously
-- Shared client registry tracking connections from both transports
-- Component configuration enabling dynamic network server lifecycle (disabled by default, auto-shutdown when idle)
-- Validation testing for concurrent server operation
-
-### Phase 2: Permission System
-
-**Deliverables**:
-- Client metadata tracking with roles and permissions
-- Authorization interceptor for gRPC method permission checking
-- Permission granting/revoking API
-- Default permission sets for host and guest roles
-- Comprehensive permission enforcement testing
-
-### Phase 3: Invitation System
-
-**Deliverables**:
-- Invitation token generation and validation with configurable expiration
-- Email invitation templates and delivery
-- Invitation acceptance workflow
-- JWT token generation for guests with invitation context
-- Integration with ADR-0021 authentication providers
-
-**Expiration Time Options**:
-- Quick assistance (1-2 hours)
-- Scheduled session (24 hours, default)
-- Extended collaboration (1 week)
-- Custom duration matching specific needs
-
-### Phase 4: Frontend Context Switching
-
-**Deliverables**:
-- Client reconnection protocol supporting dynamic backend switching
-- Session state save/restore functionality
-- UI state management for collaboration mode transitions
-- Graceful error handling for connection failures
-
-### Phase 5: UI Integration
-
-**Deliverables**:
-- Invitation dialog for email-based collaboration initiation
-- Connected users panel with permission management
-- Collaboration mode status indicator
-- Permission grant/revoke interface
-- Connection monitoring and recovery
 
 ## Consequences
 
