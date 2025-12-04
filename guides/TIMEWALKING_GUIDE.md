@@ -1150,7 +1150,7 @@ This is the complete implementation for one measure of an instrument:
                :grace-end-markers? true})
     (filter grace-pipeline-item?)
     (position-grace-notes-rhythmically)
-    (merge-instrument-voices)
+    (merge-voices)
     (filter pitch??)
     (group-simultaneities)
     (detect-simultaneity-conflicts))
@@ -1185,7 +1185,7 @@ Walks the stream, adjusting rational positions for grace notes from metric to te
 
 **Step 4: Consolidate voices**
 ```clojure
-(merge-instrument-voices)
+(merge-voices)
 ```
 Transparently handles multi-voice measures by consolidating voices across staves when necessary. For measures with 0-1 voices, tuples pass through unchanged (zero-consing). For measures with 2+ voices, tuples are accumulated and sorted by position before emission. Strategy determined per-measure-number using structural markers from the stream.
 
@@ -1236,7 +1236,7 @@ The accidental algorithm is complex because it must handle:
 - `timewalk` handles temporal ordering and structural markers
 - `filter grace-pipeline-item?` handles grace pipeline relevance
 - `position-grace-notes-rhythmically` handles grace positioning
-- `merge-instrument-voices` handles multi-voice consolidation (zero-consing for 0-1 voices)
+- `merge-voices` handles multi-voice consolidation (zero-consing for 0-1 voices)
 - `filter pitch??` handles pitch pipeline boundary
 - `group-simultaneities` handles chord grouping
 - `detect-simultaneity-conflicts` handles conflict detection

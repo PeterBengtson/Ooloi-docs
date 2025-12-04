@@ -532,7 +532,7 @@ The algorithm uses a unified transducer pipeline that transparently handles both
                                  :grace-end-markers? true})
                       (filter grace-pipeline-item?)
                       (position-grace-notes-rhythmically piece measure-index)
-                      (merge-instrument-voices)
+                      (merge-voices)
                       (filter pitch??)
                       (group-simultaneities)
                       (detect-simultaneity-conflicts))
@@ -549,7 +549,7 @@ The algorithm uses a unified transducer pipeline that transparently handles both
   (85ms by default) working backward from the target note. Collision detection ensures grace notes never
    overlap the previous note, redistributing with shortened duration if necessary.
 
-2. **Voice consolidation** - The `merge-instrument-voices` transducer consolidates multiple voices across staves into temporal order:
+2. **Voice consolidation** - The `merge-voices` transducer consolidates multiple voices across staves into temporal order:
    - **0-1 voices**: Tuples pass through unchanged (zero-consing preserved)
    - **2+ voices**: Tuples accumulated per measure number and sorted by position before emission
    - Strategy determined per-measure-number based on voice count across all staves in scope
@@ -575,7 +575,7 @@ The pipeline consists of two distinct phases separated by explicit filters:
 1. **`timewalk`** - Yields `[item vpd position]` tuples including structural markers (Instrument, Measure, Voice)
 2. **`filter grace-pipeline-item?`** - Passes grace notes, pitches, and structural markers needed for positioning
 3. **`position-grace-notes-rhythmically`** - Assigns real temporal positions to grace notes
-4. **`merge-instrument-voices`** - Consolidates voices per measure number when necessary (passes through for 0-1 voices)
+4. **`merge-voices`** - Consolidates voices per measure number when necessary (passes through for 0-1 voices)
 
 **Phase 2: Pitch Processing** (operates only on pitch tuples)
 5. **`filter pitch??`** - Explicit boundary between structural and pitch processing phases
@@ -586,7 +586,7 @@ The pipeline consists of two distinct phases separated by explicit filters:
 **Zero-consing optimization:**
 
 The pipeline preserves zero-consing performance for measures with 0-1 voices:
-- `merge-instrument-voices` detects voice count per measure number across all staves in scope
+- `merge-voices` detects voice count per measure number across all staves in scope
 - When 0-1 voices detected, tuples flow through without intermediate collection or sorting
 - Only measures with 2+ voices incur the allocation cost of consolidation
 - This optimization is transparent to the rest of the pipeline
