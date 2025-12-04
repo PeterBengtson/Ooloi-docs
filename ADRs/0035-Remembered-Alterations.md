@@ -409,15 +409,23 @@ Distribute evenly starting from 1/8
 **Filter Helper**:
 
 ```clojure
-(defn- grace-pipeline-item?
-  "Filter predicate for grace positioning pipeline.
-   Passes: pitches, grace containers, voice delimiters, and grace end markers only.
-   Blocks: all other end markers (Voice, Measure, Staff, etc.)."
+(defn grace-pipeline-item?
+  "Optional filter predicate for grace positioning pipeline (for performance optimization).
+
+   Passes: pitches, grace containers, voice/measure/instrument markers, and grace end markers.
+   Blocks: all other end markers and containers that position-grace-notes-rhythmically
+   would pass through unchanged anyway.
+
+   Note: position-grace-notes-rhythmically is fully composable and works correctly
+   without this filter. This filter is purely an optimization to reduce processing
+   of tuples that will pass through unchanged."
   [tuple]
-  (or (pitch?? (item tuple))
-      (grace?? (item tuple))
-      (voice?? (item tuple))
-      (and (= :end (first tuple)) (grace?? (second tuple)))))
+  (or (pitch?? tuple)
+      (grace?? tuple)
+      (voice?? tuple)
+      (measure?? tuple)
+      (instrument?? tuple)
+      (= tuple [:end :Grace nil])))
 ```
 
 **Pipeline Integration** (see Performance Architecture section for complete implementation).
