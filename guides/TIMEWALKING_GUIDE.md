@@ -1261,7 +1261,7 @@ Everything you've learned in this guide comes together here:
 
 - **Basic usage**: See [🟢 Starting Simple](#-starting-simple-direct-lazy-sequences) for your first timewalking operations
 - **Performance**: See [Performance Comparison](#performance-comparison-threading-vs-transducers) for timing benchmarks
-- **Benchmarks**: See [Timewalk Performance Benchmarks](https://github.com/PeterBengtson/Ooloi-docs/blob/main/READMEs/BENCHMARKS_README.md) for comprehensive performance validation showing sub-millisecond cache refresh, constant-memory streaming, and sub-100 microsecond endpoint searches
+- **Benchmarks**: See [Timewalk Performance Benchmarks](https://github.com/PeterBengtson/Ooloi-docs/blob/main/READMEs/BENCHMARKS_README.md) for comprehensive performance validation showing sub-millisecond cache refresh, constant-memory streaming, and 2-10 microsecond endpoint searches (2025 laptop)
 - **🔴 Advanced concurrency**: See [Advanced Concurrency Patterns](ADVANCED_CONCURRENCY_PATTERNS.md) for parallel processing with STM coordination
 - **VPD addressing**: See [VPDs Guide](VPDs.md) for understanding the Vector Path Descriptors returned in timewalking tuples
 - **Type predicates**: See [Polymorphic API Guide](POLYMORPHIC_API_GUIDE.md) for the type predicates and helper functions used in filtering

@@ -588,10 +588,10 @@ Comprehensive benchmarks (October 2025) on a 1000-measure orchestral piece (29 i
 - Small scopes complete sub-millisecond to few milliseconds
 
 **Endpoint Search Performance**:
-- Typical slur searches (2-10 notes): sub-100 microseconds
-  - 2 notes: ~6 µs
-  - 5 notes: ~15 µs
-  - 10 notes: ~29 µs
+- Typical slur searches (2-10 notes): 2-10 microseconds (2025 laptop, 6-29 µs on 2017 hardware)
+  - 2 notes: ~2 µs
+  - 5 notes: ~5 µs
+  - 10 notes: ~10 µs
 - Searches complete so quickly they're essentially unmeasurable as distinct operations
 - Validates that attachment endpoint resolution has negligible performance impact
 
