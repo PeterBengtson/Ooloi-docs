@@ -90,7 +90,7 @@ With this information, you can:
 
 ### Essential Tuple Helpers and Predicates
 
-Since the `timewalk` function returns `[item vpd position]` tuples, Ooloi provides both helper functions for tuple destructuring and specialized `??` predicates for filtering. These `??` predicates are counterparts to the normal `?` predicates, designed specifically for timewalk tuples and require a 3-element vector as input:
+Since the `timewalk` function returns `[item vpd position]` tuples, Ooloi provides both helper functions for tuple destructuring and specialized `??` predicates for filtering. These `??` predicates are counterparts to the normal `?` predicates, designed specifically for timewalk tuples and require tuples with at least 3 elements:
 
 ```clojure
 ;; Core destructuring helpers (from timewalk.clj)
@@ -100,7 +100,7 @@ Since the `timewalk` function returns `[item vpd position]` tuples, Ooloi provid
 
 ;; Specialized ?? predicates - counterparts to normal ? predicates for timewalk tuples
 ;; The ?? symbolizes "descending into tuple" to check the item type
-;; These REQUIRE a 3-element tuple [item vpd position] or will signal an error
+;; These REQUIRE tuples with at least 3 elements [item vpd position ...] or will signal an error
 (pitch?? result)          ; Counterpart to pitch? - checks if tuple contains a pitch
 (chord?? result)          ; Counterpart to chord? - checks if tuple contains a chord  
 (measure?? result)        ; Counterpart to measure? - checks if tuple contains a measure
@@ -122,7 +122,7 @@ Since the `timewalk` function returns `[item vpd position]` tuples, Ooloi provid
 (pitch?? tuple-result)  ; ✓ Counterpart predicate for timewalk tuple [item vpd position]
 
 ;; Error prevention - ?? predicates validate their input
-(pitch?? raw-item)      ; ✗ IllegalArgumentException - expects 3-element tuple
+(pitch?? raw-item)      ; ✗ IllegalArgumentException - expects tuple with at least 3 elements
 (pitch?? [item vpd pos]) ; ✓ Correct usage with tuple
 ```
 

@@ -382,7 +382,7 @@ Timewalk results always contain compact VPDs, making them efficient for transmis
 
 The timewalk supports optional behavior flags:
 
-- **`:grace-end-markers?`** (default `false`): When `true`, emits `[:end :Grace nil]` tuples after processing all children of Grace containers. Used for grace note accidental scope tracking and positioning algorithms. The 3-element format maintains compatibility with `??` predicates.
+- **`:grace-end-markers?`** (default `false`): When `true`, emits `[:end :Grace nil]` tuples after processing all children of Grace containers. Used for grace note accidental scope tracking and positioning algorithms. The `??` predicates accept tuples with ≥3 elements, enabling transducer pipelines to pass extended tuple formats when additional context is required.
 
 ### 3. Transducer Integration Examples
 
