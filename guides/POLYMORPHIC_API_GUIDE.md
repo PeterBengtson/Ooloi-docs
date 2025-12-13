@@ -234,8 +234,8 @@ flowchart LR
         L1[Function Call] --> L2[Object Pointer: 0x7f8b...]
         L2 --> L3[Direct Memory Access]
         L3 --> L4[Fast ✓]
-        style L2 fill:#FFE4B5
-        style L4 fill:#90EE90
+        style L2 fill:#FFA500,stroke:#000,color:#000
+        style L4 fill:#228B22,stroke:#000,color:#fff
     end
 
     subgraph Remote["Network Operation (gRPC)"]
@@ -244,14 +244,14 @@ flowchart LR
         R3 --> R4[Server: Resolve VPD]
         R4 --> R5[Atomic Transaction]
         R5 --> R6[Serializable ✓]
-        style R2 fill:#87CEEB
-        style R6 fill:#90EE90
+        style R2 fill:#4169E1,stroke:#000,color:#fff
+        style R6 fill:#228B22,stroke:#000,color:#fff
     end
 
     subgraph Problem["Object Pointer Problem"]
         P1[Client: Object Pointer 0x7f8b...] -.->|Cannot Serialize| P2[❌ Fails over Network]
-        style P1 fill:#FFB6C1
-        style P2 fill:#FF6B6B
+        style P1 fill:#FF1493,stroke:#000,color:#fff
+        style P2 fill:#DC143C,stroke:#000,color:#fff
     end
 ```
 
@@ -595,12 +595,12 @@ flowchart TD
     Type1 --> Type2[Execute Method]
     Type2 --> ReturnT[Return: Type-Specific]
 
-    style VPD fill:#90EE90
-    style Obj fill:#87CEEB
-    style Type fill:#FFB6C1
-    style ReturnP fill:#90EE90
-    style ReturnO fill:#87CEEB
-    style ReturnT fill:#FFB6C1
+    style VPD fill:#228B22,stroke:#000,color:#fff
+    style Obj fill:#4169E1,stroke:#000,color:#fff
+    style Type fill:#FF1493,stroke:#000,color:#fff
+    style ReturnP fill:#228B22,stroke:#000,color:#fff
+    style ReturnO fill:#4169E1,stroke:#000,color:#fff
+    style ReturnT fill:#FF1493,stroke:#000,color:#fff
 ```
 
 The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architecture:
