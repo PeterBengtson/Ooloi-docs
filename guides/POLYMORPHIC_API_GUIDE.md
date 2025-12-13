@@ -173,6 +173,38 @@ The **VPD vs object dispatch** solves fundamental problems in musical software a
 ;; This mirrors how musicians think: "add X to Y" regardless of hierarchy level
 ```
 
+**Visual demonstration of consistent verbs across hierarchy levels:**
+
+```clojure
+;; Same verb, different depths - the API adapts to the VPD target
+
+;; Level 1: Piece level
+(api/add-musician    []              piece-id musician)     ; Add to piece root
+(api/set-tempo       []              piece-id 0 tempo)      ; Set piece-level property
+
+;; Level 2: Musician level
+(api/add-instrument  [:m 0]          piece-id instrument)   ; Add to musician 0
+(api/set-name        [:m 0]          piece-id "Violin I")   ; Set musician property
+
+;; Level 3: Instrument level
+(api/add-staff       [:m 0 0]        piece-id staff)        ; Add to instrument 0
+(api/set-clef        [:m 0 0]        piece-id :treble)      ; Set instrument property
+
+;; Level 4: Staff level
+(api/add-voice       [:m 0 0 0]      piece-id voice)        ; Add to staff 0
+
+;; Level 5: Voice level
+(api/add-measure     [:m 0 0 0 0]    piece-id measure)      ; Add to voice 0
+
+;; Level 6: Measure level
+(api/add-item        [:m 0 0 0 0 0]  piece-id note)         ; Add to measure 0
+
+;; Pattern: api/add-* always means "add this thing to that place"
+;; The VPD specifies "that place", the verb remains constant
+```
+
+**Key insight:** The verb stays the same (`add-*`, `set-*`, `get-*`), only the VPD depth changes. This is **cognitive alignment** - you think "add musician", "add instrument", "add note" regardless of where in the hierarchy you're working.
+
 #### **gRPC Serialization Compatibility**  
 
 > ⚠️ **Critical Design Decision**: Object pointers don't serialize over networks. VPD-first design ensures **identical API locally and remotely**.
@@ -193,6 +225,37 @@ The **VPD vs object dispatch** solves fundamental problems in musical software a
 ;; This ensures atomicity and consistency across network boundaries!
 (grpc/add-musician [] "piece-id" musician)  ; Automatic transaction on remote server
 ```
+
+**Visual comparison: Why VPDs work over gRPC while object pointers fail:**
+
+```mermaid
+flowchart LR
+    subgraph Local["Local Operation (In-Process)"]
+        L1[Function Call] --> L2[Object Pointer: 0x7f8b...]
+        L2 --> L3[Direct Memory Access]
+        L3 --> L4[Fast ✓]
+        style L2 fill:#FFE4B5
+        style L4 fill:#90EE90
+    end
+
+    subgraph Remote["Network Operation (gRPC)"]
+        R1[Client: Function Call] --> R2[Serialize VPD: \[:m 0 1\]]
+        R2 --> R3[Send JSON over gRPC]
+        R3 --> R4[Server: Resolve VPD]
+        R4 --> R5[Atomic Transaction]
+        R5 --> R6[Serializable ✓]
+        style R2 fill:#87CEEB
+        style R6 fill:#90EE90
+    end
+
+    subgraph Problem["Object Pointer Problem"]
+        P1[Client: Object Pointer 0x7f8b...] -.->|Cannot Serialize| P2[❌ Fails over Network]
+        style P1 fill:#FFB6C1
+        style P2 fill:#FF6B6B
+    end
+```
+
+**Key insight:** VPDs are *values* (serializable paths), not *pointers* (memory addresses). This enables identical API semantics locally and remotely.
 
 #### **Automatic Transaction Management**
 ```clojure
@@ -367,6 +430,83 @@ Ooloi uses Clojure's hierarchical type system to create hierarchical relationshi
 ;; Note: Rests are NOT Transposable but DO implement TakesAttachment
 ```
 
+**Visual representation of trait composition:**
+
+```mermaid
+classDiagram
+    class Musical {
+        <<trait>>
+        Base musical element
+    }
+
+    class RhythmicItem {
+        <<trait>>
+        Has duration
+    }
+
+    class Transposable {
+        <<trait>>
+        Can be transposed
+    }
+
+    class TakesAttachment {
+        <<trait>>
+        Can have dynamics, slurs, etc.
+    }
+
+    class HasItems {
+        <<trait>>
+        Contains other elements
+    }
+
+    class Pitch {
+        note
+        duration
+        attachments
+    }
+
+    class Chord {
+        pitches[]
+        duration
+        attachments
+    }
+
+    class Rest {
+        duration
+        attachments
+    }
+
+    class Tuplet {
+        items[]
+        duration
+    }
+
+    Musical <|-- Pitch : derives
+    Musical <|-- Chord : derives
+    Musical <|-- Rest : derives
+    Musical <|-- Tuplet : derives
+
+    RhythmicItem <|-- Pitch : derives
+    RhythmicItem <|-- Chord : derives
+    RhythmicItem <|-- Rest : derives
+    RhythmicItem <|-- Tuplet : derives
+
+    Transposable <|-- Pitch : derives
+    Transposable <|-- Chord : derives
+    Transposable <|-- Tuplet : derives
+
+    TakesAttachment <|-- Pitch : derives
+    TakesAttachment <|-- Chord : derives
+    TakesAttachment <|-- Rest : derives
+
+    HasItems <|-- Tuplet : derives
+
+    note right of Rest: Rest is NOT Transposable
+    note right of Tuplet: Tuplet has HasItems trait
+```
+
+**Key insight:** Multiple inheritance through traits - a `Pitch` derives from four different traits, gaining all their capabilities. `Rest` intentionally omits `Transposable` (you can't transpose silence).
+
 **Location**: `shared/src/main/clojure/ooloi/shared/hierarchy.clj`
 
 ### Understanding `isa?` Relationships
@@ -432,12 +572,36 @@ The `isa?` function enables hierarchical type checking:
 ### The First Argument Pattern
 
 > **Dispatch Resolution Decision Tree**:
-> ```
-> First Argument Type?
-> ├── Vector (VPD) → VPD dispatch → Automatic transaction + path navigation
-> ├── Piece/Musical Object → Object dispatch → Direct operation
-> └── Other → Type-specific dispatch → Method lookup via type hierarchy
-> ```
+
+```mermaid
+flowchart TD
+    Start([Function Call: add-musician]) --> Check{First Argument Type?}
+
+    Check -->|Vector| VPD[VPD Dispatch]
+    Check -->|Piece/Musical Object| Obj[Object Dispatch]
+    Check -->|Other Type| Type[Type-Specific Dispatch]
+
+    VPD --> VPD1[Establish dosync Transaction]
+    VPD1 --> VPD2[Resolve Piece Reference]
+    VPD2 --> VPD3[Navigate VPD Path]
+    VPD3 --> VPD4[Apply Operation]
+    VPD4 --> ReturnP[Return: Piece]
+
+    Obj --> Obj1[Direct Operation]
+    Obj1 --> Obj2[No Transaction]
+    Obj2 --> ReturnO[Return: Modified Object]
+
+    Type --> Type1[Method Lookup via Type Hierarchy]
+    Type1 --> Type2[Execute Method]
+    Type2 --> ReturnT[Return: Type-Specific]
+
+    style VPD fill:#90EE90
+    style Obj fill:#87CEEB
+    style Type fill:#FFB6C1
+    style ReturnP fill:#90EE90
+    style ReturnO fill:#87CEEB
+    style ReturnT fill:#FFB6C1
+```
 
 The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architecture:
 
@@ -514,6 +678,41 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 ```
 
 ## 🟢 Basic Polymorphic Operations
+
+### Understanding Return Values
+
+> ⚠️ **Critical for Composability**: Understanding what operations return is essential for threading operations correctly.
+
+**VPD operations ALWAYS return the piece:**
+
+```clojure
+;; VPD form guarantees piece return
+(let [piece (api/add-musician [] piece-id musician)]     ; Returns piece
+      piece (api/set-tempo [] piece 0 {:bpm 120})]      ; Returns piece
+  piece)  ; Guaranteed to be the updated piece
+```
+
+**Object operations return what was changed:**
+
+```clojure
+;; Object form returns the modified object
+(let [musician (api/add-instrument musician instrument)]  ; Returns modified musician (not piece!)
+      instrument (api/add-staff instrument staff)]        ; Returns modified instrument (not piece!)
+  ...)
+
+;; Exception: Settings operations that modify the piece
+(let [piece (api/set-tempo piece 0 {:bpm 120})]         ; Returns piece (tempo stored ON piece)
+  piece)  ; Works because tempo is a piece-level setting
+```
+
+**Why this matters:**
+
+| Form | Returns | Use Case | Threading |
+|------|---------|----------|-----------|
+| **VPD** | Always piece | Modifying piece structure | ✓ Safe with let rebinding |
+| **Object** | Modified object | Direct object manipulation | ⚠️ May not return piece |
+
+**Golden Rule:** When threading multiple piece modifications, **always use VPD form** for guaranteed piece return.
 
 ### Duration Operations Across Types
 
@@ -655,6 +854,19 @@ For specialized cases not covered by shortcuts, use constructor functions direct
 #### Optional Position Parameters for Collection Operations
 
 > 💡 **Parameter Ordering Rule**: When collection operations accept an optional position parameter, it **always appears LAST** in the parameter list.
+
+> ⚠️ **COMMON BUG**: Accidentally swapping `item` and `position` is a frequent source of errors. Remember: **item first, position last**.
+
+```clojure
+;; ✗ WRONG - position before item (common mistake!)
+(api/add-item voice-vpd piece 2 note)
+
+;; ✓ CORRECT - item before position
+(api/add-item voice-vpd piece note 2)
+
+;; ✓ CORRECT - omit position to append
+(api/add-item voice-vpd piece note)
+```
 
 Many collection operations support an optional `position` parameter to control where items are inserted:
 
@@ -1795,6 +2007,37 @@ The fundamental workflow for building musical content:
       piece (api/add-item voice-vpd piece note4)]                ; VPD returns piece
   piece)
 ```
+
+**Client-side usage (frontend only):**
+
+The same pattern works on the client side, where `api/` is local (not remote). You can prepare data locally using `api/` or direct `core/` functions, then send to server using `SRV/` calls (frontend only):
+
+```clojure
+;; Client-side: Prepare data locally with api/ or core/
+(let [pitch1 (api/create-pitch :note "C4" :duration 1/4)
+      pitch2 (api/create-pitch :note "E4" :duration 1/4)
+      pitch3 (api/create-pitch :note "G4" :duration 1/4)
+      chord (api/create-chord :pitches [pitch1 pitch2 pitch3]
+                              :duration 1/4)]
+
+  ;; Send prepared data to server via SRV/ (remote operation, frontend only)
+  (SRV/add-item-to-voice piece-id voice-vpd chord))
+
+;; Or use core/ functions directly for object creation
+(let [pitch1 (core/create-pitch :note "C4" :duration 1/4)
+      pitch2 (core/create-pitch :note "E4" :duration 1/4)
+      chord (core/create-chord :pitches [pitch1 pitch2])]
+
+  ;; Then send to server via SRV/ (remote operation, frontend only)
+  (SRV/add-item-to-voice piece-id voice-vpd chord))
+```
+
+**Why this matters:**
+- **Local preparation** - Create complex structures on client without server round-trips
+- **Single server call** - Send complete data structure in one operation
+- **Same API everywhere** - Creation pattern identical on client and server
+- **Flexible data sources** - Use `api/` or `core/` depending on context
+- **SRV/ is remote** - Uppercase emphasizes remote operation, available only in frontend
 
 **Key insight:** Non-VPD creates, VPD inserts. This separation enables clear data flow and guaranteed piece threading.
 
