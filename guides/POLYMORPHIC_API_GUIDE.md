@@ -583,7 +583,7 @@ flowchart TD
     VPD --> VPD1[Establish dosync Transaction]
     VPD1 --> VPD2[Resolve Piece Reference]
     VPD2 --> VPD3[Navigate VPD Path]
-    VPD3 --> VPD4[Apply Operation]
+    VPD3 --> VPD4[Execute Method]
     VPD4 --> ReturnP[Return: Piece]
 
     Obj --> Obj1[Method Lookup via Type Hierarchy<br/>Piece, Pitch, Chord, Rest, etc.]
