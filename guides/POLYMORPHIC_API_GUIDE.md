@@ -652,6 +652,64 @@ For specialized cases not covered by shortcuts, use constructor functions direct
 (filter has-items? [pitch1 tuplet1 measure1])          ; => [tuplet1 measure1]
 ```
 
+#### Optional Position Parameters for Collection Operations
+
+> 💡 **Parameter Ordering Rule**: When collection operations accept an optional position parameter, it **always appears LAST** in the parameter list.
+
+Many collection operations support an optional `position` parameter to control where items are inserted:
+
+```clojure
+;; Basic form - append to end (default behavior)
+(api/add-item tuplet-object pitch)                    ; Appends pitch to end
+(api/add-item [:m 0 0 0 0] piece-id measure)         ; Appends measure to voice
+
+;; Position parameter ALWAYS goes LAST
+(api/add-item tuplet-object pitch 0)                  ; Insert at beginning
+(api/add-item [:m 0 0 0 0] piece-id measure 2)       ; Insert at index 2
+
+;; VPD form - position still goes LAST
+(api/add-item vpd piece-id item)                      ; Append (default)
+(api/add-item vpd piece-id item position)             ; Insert at position
+```
+
+**Position parameter semantics:**
+
+```clojure
+;; Positive integers: Insert at index from start (0-based)
+(api/add-item measure pitch 0)    ; Insert at beginning (index 0)
+(api/add-item measure pitch 2)    ; Insert at index 2 (third position)
+(api/add-item measure pitch 5)    ; Insert at index 5 (sixth position)
+
+;; Negative integers: Count from end
+(api/add-item measure pitch -1)   ; Append to end (default behavior)
+(api/add-item measure pitch -2)   ; Insert before last element
+(api/add-item measure pitch -3)   ; Insert two positions from end
+```
+
+**Complete signatures for add operations:**
+
+```clojure
+;; Object form signatures:
+(api/add-item container item)                ; Append (default)
+(api/add-item container item position)       ; Insert at position
+
+;; VPD form signatures:
+(api/add-item vpd piece-ref item)            ; Append (default)
+(api/add-item vpd piece-ref item position)   ; Insert at position
+
+;; Pattern applies to all add-* operations for collections:
+(api/add-musician piece musician)            ; Append
+(api/add-musician piece musician 0)          ; Insert at beginning
+(api/add-pitch chord pitch -2)               ; Insert before last pitch
+```
+
+**Why position goes LAST:**
+
+This ordering enables consistent polymorphic signatures across VPD and object forms:
+- Required arguments come first (VPD/object, piece-ref if VPD, item)
+- Optional arguments come last (position)
+- Pattern works uniformly for all collection operations throughout the API
+
 ## 🟡 Multimethod Architecture
 
 ### Understanding Methodical Multimethods
