@@ -420,6 +420,33 @@ The walker performs deep traversal within each measure, finding all nested items
 
 This ensures complete temporal coordination across all musical elements regardless of their nesting level.
 
+### 5. Grace Note Position Semantics
+
+Grace notes receive special position handling in timewalk to cleanly separate external (target) and internal (relative) positioning semantics.
+
+**Structural Positioning:**
+- **Grace containers** output at their **target position** (external position where grace notes attach)
+- **Grace pitches inside containers** are **0-based relative** (positions relative to container start, not absolute)
+
+**Example:** Grace container at position 1/4 with three grace pitches [D5(1/32), E5(1/32), F5(1/32)]:
+```clojure
+[:Grace 1/4]   ; Container at external target position
+[:D5 0]        ; First pitch at 0 (relative to container)
+[:E5 1/32]     ; Second pitch at 1/32 (relative to container)
+[:F5 1/16]     ; Third pitch at 1/16 (relative to container)
+```
+
+**Design Rationale:**
+1. **Clean separation** - External position (1/4) lives only in the container, internal positions (0, 1/32, 1/16) are truly relative
+2. **No semantic mixing** - Avoids confusion between target position (external) and duration-based increments (internal)
+3. **Preserves spacing information** - Relative positions maintain notated duration proportions for potential formatting use
+4. **Correct scoping** - Internal positions can't be misinterpreted as absolute positions
+
+**Rhythmic vs. Structural:**
+These positions are **structurally correct** (preserve relative spacing based on notated durations) but **rhythmically wrong** (not where grace notes are played). The `position-grace-notes-rhythmically` transducer in the accidental pipeline replaces these structural positions with actual playback positions using tempo-based calculations.
+
+The 0-based relative positioning makes explicit that grace note positions from timewalk are internal metadata, not external rhythmic positions. This clean semantic separation is essential for downstream processing that needs to distinguish between structural information (for formatting) and rhythmic information (for accidentals and playback).
+
 ## Key Applications
 
 ### Cross-Domain Pattern Unification
