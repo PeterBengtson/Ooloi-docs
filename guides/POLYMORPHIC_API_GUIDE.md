@@ -1750,7 +1750,55 @@ Understanding when to use each dispatch mechanism:
 
 ## Common Patterns
 
-### Pattern 1: Type-Safe Collection Operations
+### Pattern 1: Creation → Insertion Workflow
+
+> 💡 **Most Common Pattern**: Create musical objects with non-VPD forms (returns object), then insert into piece with VPD forms (returns piece).
+
+The fundamental workflow for building musical content:
+
+```clojure
+;; Create objects with non-VPD form → returns the object
+(let [pitch1 (api/create-pitch :note "C4" :duration 1/4)        ; Returns pitch
+      pitch2 (api/create-pitch :note "E4" :duration 1/4)        ; Returns pitch
+      pitch3 (api/create-pitch :note "G4" :duration 1/4)        ; Returns pitch
+
+      ;; Create chord from pitches
+      chord (api/create-chord :pitches [pitch1 pitch2 pitch3]   ; Returns chord
+                              :duration 1/4)
+
+      ;; Insert into piece with VPD form → returns the piece
+      voice-vpd [:m 0 0 0 0]                                     ; Voice VPD
+      piece (api/add-item voice-vpd piece chord)]                ; Returns piece
+  piece)
+```
+
+**Why this pattern works:**
+
+- **Creation operations** don't modify the piece → use non-VPD form → get back the created object
+- **Insertion operations** modify the piece → use VPD form → get back the updated piece
+- **VPD form guarantees piece return** → essential for threading multiple insertions
+
+**Building complex musical structures:**
+
+```clojure
+(let [;; Create multiple notes
+      note1 (api/create-pitch :note "C4" :duration 1/4)
+      note2 (api/create-pitch :note "D4" :duration 1/4)
+      note3 (api/create-pitch :note "E4" :duration 1/4)
+      note4 (api/create-pitch :note "F4" :duration 1/4)
+
+      ;; Insert sequentially with VPD forms - each returns piece
+      voice-vpd [:m 0 0 0 0]
+      piece (api/add-item voice-vpd piece note1)                 ; VPD returns piece
+      piece (api/add-item voice-vpd piece note2)                 ; VPD returns piece
+      piece (api/add-item voice-vpd piece note3)                 ; VPD returns piece
+      piece (api/add-item voice-vpd piece note4)]                ; VPD returns piece
+  piece)
+```
+
+**Key insight:** Non-VPD creates, VPD inserts. This separation enables clear data flow and guaranteed piece threading.
+
+### Pattern 2: Type-Safe Collection Operations
 
 ```clojure
 (defn transpose-compatible-elements [elements transposer]
@@ -1759,14 +1807,14 @@ Understanding when to use each dispatch mechanism:
        (filter transposable?)
        (map transposer)))
 
-(defn attach-to-compatible-elements [elements attachment]  
+(defn attach-to-compatible-elements [elements attachment]
   "Attach to only elements that support attachments."
   (->> elements
        (filter takes-attachment?)
        (map #(api/add-attachment % attachment))))
 ```
 
-### Pattern 2: Polymorphic Processing Pipeline
+### Pattern 3: Polymorphic Processing Pipeline
 
 ```clojure
 (defn process-musical-content [piece vpd]
@@ -1775,18 +1823,18 @@ Understanding when to use each dispatch mechanism:
                   (map (fn [result]
                          (let [element (item result)]
                            (cond
-                             (rhythmic-item?? result) 
+                             (rhythmic-item?? result)
                              (normalize-duration element)
-                             
+
                              (takes-attachment?? result)
                              (validate-attachments element)
-                             
+
                              :else element))))
                   (remove nil?))
             [piece]))
 ```
 
-### Pattern 3: Extension-Ready Architecture
+### Pattern 4: Extension-Ready Architecture
 
 ```clojure
 (defn register-new-musical-type [type-symbol traits operations]
