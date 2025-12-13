@@ -575,11 +575,10 @@ The `isa?` function enables hierarchical type checking:
 
 ```mermaid
 flowchart TD
-    Start([Function Call: add-musician]) --> Check{First Argument Type?}
+    Start([Function Call: add-musician]) --> Check{First Argument:<br/>Vector?}
 
-    Check -->|Vector| VPD[VPD Dispatch]
-    Check -->|Piece/Musical Object| Obj[Object Dispatch]
-    Check -->|Other Type| Type[Type-Specific Dispatch]
+    Check -->|Yes: Vector| VPD[VPD Dispatch]
+    Check -->|No: Object| Obj[Object Dispatch<br/>Type-Based]
 
     VPD --> VPD1[Establish dosync Transaction]
     VPD1 --> VPD2[Resolve Piece Reference]
@@ -587,20 +586,16 @@ flowchart TD
     VPD3 --> VPD4[Apply Operation]
     VPD4 --> ReturnP[Return: Piece]
 
-    Obj --> Obj1[Direct Operation]
-    Obj1 --> Obj2[No Transaction]
-    Obj2 --> ReturnO[Return: Modified Object]
-
-    Type --> Type1[Method Lookup via Type Hierarchy]
-    Type1 --> Type2[Execute Method]
-    Type2 --> ReturnT[Return: Type-Specific]
+    Obj --> Obj1[Method Lookup via Type Hierarchy<br/>Piece, Pitch, Chord, Rest, etc.]
+    Obj1 --> Obj2[Execute Method]
+    Obj2 --> Obj3[Manual Transaction if Needed]
+    Obj3 --> ReturnO[Return: Modified Object]
 
     style VPD fill:#228B22,stroke:#000,color:#fff
     style Obj fill:#4169E1,stroke:#000,color:#fff
-    style Type fill:#FF1493,stroke:#000,color:#fff
     style ReturnP fill:#228B22,stroke:#000,color:#fff
     style ReturnO fill:#4169E1,stroke:#000,color:#fff
-    style ReturnT fill:#FF1493,stroke:#000,color:#fff
+    style Check fill:#FFA500,stroke:#000,color:#000
 ```
 
 The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architecture:
