@@ -205,6 +205,48 @@ The **VPD vs object dispatch** solves fundamental problems in musical software a
 
 **Key insight:** The verb stays the same (`add-*`, `set-*`, `get-*`), only the VPD depth changes. This is **cognitive alignment** - you think "add musician", "add instrument", "add note" regardless of where in the hierarchy you're working.
 
+**Visual representation of piece hierarchy and VPD navigation:**
+
+```mermaid
+graph TD
+    Piece[Piece<br/>VPD: \[\]]
+
+    Piece --> M0[Musician 0<br/>VPD: \[:m 0\]]
+    Piece --> M1[Musician 1<br/>VPD: \[:m 1\]]
+
+    M0 --> I0[Instrument 0<br/>VPD: \[:m 0 0\]]
+    M0 --> I1[Instrument 1<br/>VPD: \[:m 0 1\]]
+
+    I0 --> S0[Staff 0<br/>VPD: \[:m 0 0 0\]]
+    I0 --> S1[Staff 1<br/>VPD: \[:m 0 0 1\]]
+
+    S0 --> V0[Voice 0<br/>VPD: \[:m 0 0 0 0\]]
+    S0 --> V1[Voice 1<br/>VPD: \[:m 0 0 0 1\]]
+
+    V0 --> Meas0[Measure 0<br/>VPD: \[:m 0 0 0 0 0\]]
+    V0 --> Meas1[Measure 1<br/>VPD: \[:m 0 0 0 0 1\]]
+    V0 --> Meas2[Measure 2<br/>VPD: \[:m 0 0 0 0 2\]]
+
+    Meas0 --> Item0[Note/Chord/Rest<br/>Items]
+    Meas1 --> Item1[Note/Chord/Rest<br/>Items]
+
+    style Piece fill:#FFA500,stroke:#000,color:#000
+    style M0 fill:#4169E1,stroke:#000,color:#fff
+    style I0 fill:#228B22,stroke:#000,color:#fff
+    style S0 fill:#DC143C,stroke:#000,color:#fff
+    style V0 fill:#9370DB,stroke:#000,color:#fff
+    style Meas0 fill:#FF1493,stroke:#000,color:#fff
+    style Item0 fill:#20B2AA,stroke:#000,color:#fff
+```
+
+**Key insight from the tree:**
+- Each level adds one index to the VPD vector
+- `[]` = Piece root
+- `[:m 0]` = First musician
+- `[:m 0 0]` = First instrument of first musician
+- `[:m 0 0 0 0 0]` = First measure of first voice of first staff
+- Same operation works at ANY level by changing VPD depth
+
 #### **gRPC Serialization Compatibility**  
 
 > ⚠️ **Critical Design Decision**: Object pointers don't serialize over networks. VPD-first design ensures **identical API locally and remotely**.
@@ -991,6 +1033,60 @@ Ooloi uses the **Methodical library** specifically for its **`:around` method ca
       (log-attachment-error item e)
       (throw e))))
 ```
+
+**Visual representation of Methodical method combination:**
+
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant Around1 as :around Method 1<br/>(Outermost)
+    participant Around2 as :around Method 2
+    participant Before as :before Methods
+    participant Primary as Primary Method
+    participant After as :after Methods
+
+    Caller->>Around1: Call method
+    activate Around1
+    Note over Around1: Pre-processing<br/>(e.g., start timer)
+
+    Around1->>Around2: call-next-method
+    activate Around2
+    Note over Around2: Pre-processing<br/>(e.g., validation)
+
+    Around2->>Before: call-next-method
+    activate Before
+    Note over Before: Setup/preparation
+    Before->>Primary: Proceed to primary
+    deactivate Before
+
+    activate Primary
+    Note over Primary: Core logic executes
+    Primary->>After: Return result
+    deactivate Primary
+
+    activate After
+    Note over After: Cleanup/logging
+    After->>Around2: Return result
+    deactivate After
+
+    Note over Around2: Post-processing<br/>(e.g., log errors)
+    Around2->>Around1: Return result
+    deactivate Around2
+
+    Note over Around1: Post-processing<br/>(e.g., record timing)
+    Around1->>Caller: Return final result
+    deactivate Around1
+
+    Note over Caller,After: Method execution order:<br/>1. :around (outermost to innermost)<br/>2. :before (first to last)<br/>3. Primary method<br/>4. :after (last to first)<br/>5. :around unwinding (innermost to outermost)
+```
+
+**Key insights about method combination:**
+- **`:around` methods** wrap everything - full control over execution
+- **`:before` methods** run setup code before primary method
+- **`:after` methods** run cleanup after primary method
+- **`call-next-method`** proceeds to the next method in the chain
+- Multiple `:around` methods stack like onion layers
+- Each layer can intercept, transform, or handle errors
 
 This architecture addresses common requirements in musical software:
 
