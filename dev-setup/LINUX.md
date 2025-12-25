@@ -234,16 +234,19 @@ Ooloi targets three platforms: macOS, Windows, and Linux. When developing on Lin
 
 ## Docker Alternative
 
-For consistent development environments across systems:
+For consistent development environments across systems, use Docker to test these instructions without a native Linux installation.
+
+**Create Dockerfile** in the Ooloi repository root:
 
 ```dockerfile
-# Example Dockerfile for Ooloi development
+# Dockerfile for testing Ooloi Linux installation
 FROM eclipse-temurin:25-jdk
 
 RUN apt-get update && apt-get install -y \
     git \
     protobuf-compiler \
     openjfx \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Leiningen
@@ -252,6 +255,24 @@ RUN curl https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
     lein version
 
 WORKDIR /workspace
+CMD ["/bin/bash"]
+```
+
+**Build and run**:
+
+```bash
+# Build the image (run from Ooloi repository root)
+docker build -t ooloi-linux-test .
+
+# Start container with Ooloi source mounted
+docker run -it --rm -v $(pwd):/workspace ooloi-linux-test bash
+
+# Inside container, follow Step 3 onwards from this guide
+# (Java, protobuf, and Leiningen are already installed)
+cd shared
+lein deps
+lein protoc
+# ... continue with build sequence
 ```
 
 ## Next Steps
