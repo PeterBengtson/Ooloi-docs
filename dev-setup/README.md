@@ -18,7 +18,7 @@ Choose your platform for detailed installation instructions:
 
 - **[macOS Setup](MACOS.md)** - Tested ✅
 - **[Windows Setup](WINDOWS.md)** - Tested ✅
-- **[Linux Setup](LINUX.md)** - Awaiting validation ⚠️
+- **[Linux Setup](LINUX.md)** - Tested ✅ (Ubuntu/Debian via Docker)
 
 ## Prerequisites Summary
 
