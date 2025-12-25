@@ -1,0 +1,599 @@
+# Ooloi Frontend
+
+**For initial development setup, see [../dev-setup/](../dev-setup/)**
+
+This directory contains the frontend client code for Ooloi, a high-performance music notation software.
+
+## Table of Contents
+
+<img src="../img/frontend-ooloi.png" alt="Ooloi Frontend Architecture" align="right" width="500">
+
+1. [Project Role](#project-role)
+2. [System Architecture](#system-architecture)
+3. [Directory Structure](#directory-structure)
+4. [Prerequisites](#prerequisites)
+5. [Installation](#installation)
+6. [Building the Frontend](#building-the-frontend)
+7. [Build Process Details](#build-process-details)
+8. [Version Handling](#version-handling)
+9. [Configuration and Deployment](#configuration-and-deployment)
+10. [Development](#development)
+11. [Development Commands](#development-commands)
+12. [Shared Model Integration](#shared-model-integration)
+13. [Notes](#notes)
+14. [Related Documentation](#related-documentation)
+
+## Project Role
+
+The **Ooloi Frontend** serves as the user-facing client component providing:
+
+1. **User Interface**: cljfx + JavaFX-based graphical interface with AtlantaFX dark theme for modern, futuristic music notation editing and visualization
+2. **Score Rendering**: High-performance visual display of musical structures and notation
+3. **gRPC Client Integration**: Communication with backend via protocol buffer-based unified interface
+4. **User Interaction Management**: Click handling, form validation, real-time UI updates, and client-side state management
+
+**Key Architectural Responsibility**: Implements presentation layer functionality and user experience while communicating with backend server through gRPC for all musical data operations.
+
+## System Architecture
+
+The frontend is a full-featured application using **Integrant dependency injection** for component lifecycle management:
+
+```
+┌─────────────────┐    ┌──────────────────┐
+│   Application   │    │   Environment    │
+│      Core       │◄──►│   Configuration  │
+└─────────────────┘    └──────────────────┘
+         │
+         ▼
+┌─────────────────┐    ┌──────────────────┐
+│   gRPC Client   │◄──►│   UI Manager     │
+│   Component     │    │   Component      │
+└─────────────────┘    └──────────────────┘
+         │                       │
+         ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐
+│  Backend Server │    │ User Interface   │
+│  Communication  │    │ & Interactions   │
+└─────────────────┘    └──────────────────┘
+```
+
+**Component Dependencies:**
+- **Application Core** → **gRPC Client** → **UI Manager**
+- Configuration flows from CLI/environment through all components
+- Clean shutdown ensures proper resource cleanup in reverse dependency order
+
+## Directory structure
+
+```
+frontend/
+├── docs/                            ; HTML documentation created by Codox
+├── resources/                       ; Application resources, icons
+├── src/main/clojure/ooloi/frontend/ ; Frontend consumer source code
+│   ├── api.clj                      ; Frontend API functions (delegates to backend)
+│   ├── core.clj                     ; Application entry point and main function
+│   ├── system.clj                   ; Integrant system configuration
+│   ├── components/                  ; Integrant system components
+│   │   ├── grpc_clients.clj         ; gRPC client component
+│   │   └── ui_manager.clj           ; UI manager component
+│   └── grpc/                        ; gRPC client implementation
+│       ├── api_client.clj           ; API client with connection pooling
+│       ├── event_client.clj         ; Event client for backend communication
+│       └── server_registry.clj      ; Server registry management
+├── test/clojure/ooloi/frontend/     ; Frontend tests
+│   ├── components/                  ; Component tests
+│   ├── grpc/                        ; gRPC client tests
+│   └── system_integration_test.clj  ; System integration tests
+├── CHANGELOG.md
+├── README.md
+└── project.clj                      ; Dependencies: shared/ (complete Ooloi system)
+```
+
+## Prerequisites
+
+See [../dev-setup/](../dev-setup/) for complete system requirements and platform-specific installation instructions.
+
+## Installation
+
+**See [../dev-setup/](../dev-setup/) for complete installation instructions.**
+
+Quick reference for developers who have already completed initial setup:
+
+```bash
+cd frontend
+lein deps         # Install dependencies
+lein midje        # Verify installation
+```
+
+**Important**: Frontend requires shared/ to be built first (`lein protoc` in shared/ directory). See [../dev-setup/](../dev-setup/) for the correct build sequence.
+
+## Building the Frontend
+
+1. Navigate to the frontend directory:
+   ```bash
+   cd frontend
+   ```
+
+2. Run tests:
+   ```bash
+   lein midje
+   ```
+
+3. Build the application:
+   ```bash
+   lein build
+   ```
+
+   This command will perform the following steps:
+   - Clean the project
+   - Create an uberjar
+   - Run jlink to create a custom runtime
+   - Run the build function to package the application
+
+   You will see colored output indicating the progress of each step.
+
+4. The packaged frontend application will be in the `frontend/target` directory.
+
+## Build Process Details
+
+The build process uses the following tools and steps:
+
+1. **Cleaning**: Removes previous build artifacts.
+2. **Uberjar Creation**: Compiles the code and creates a standalone jar file.
+3. **Jlink**: Creates a custom Java runtime with only the necessary modules.
+4. **Jpackage**: Packages the application for distribution, creating platform-specific installers or application images.
+
+The build process handles both SNAPSHOT (development) versions and release versions:
+
+- For SNAPSHOT versions, it creates an app image.
+- For release versions, it creates platform-specific installers (DMG for macOS, DEB for Linux, MSI for Windows).
+
+## Version Handling
+
+The build process automatically adjusts version numbers for compatibility with different platforms:
+
+- SNAPSHOT suffixes are removed for the final package version.
+- If the version starts with "0", it's changed to "1.0.0" for macOS compatibility.
+- The original version (including SNAPSHOT if applicable) is included in the application name.
+
+## Configuration and Deployment
+
+### Application Architecture
+
+The Ooloi Frontend is now a full-featured application with comprehensive system architecture matching the backend. It uses Integrant dependency injection for component lifecycle management.
+
+**Key Components:**
+- **gRPC Client**: Manages connection to backend server
+- **UI Manager**: Handles user interface lifecycle and user interactions
+- **Application Core**: CLI argument parsing, configuration management, error handling
+
+### Command-Line Arguments
+
+The frontend supports comprehensive command-line configuration:
+
+```bash
+# Basic usage
+lein run
+
+# With backend connection configuration
+lein run -- --backend-host remote-server --backend-port 10700
+
+# With UI options
+lein run -- --ui-mode graphical
+
+# With TLS security
+lein run -- --tls true --cert-path /path/to/server-cert.pem
+
+# Complete configuration example
+lein run -- --backend-host localhost --backend-port 10700 --ui-mode graphical --timeout-ms 5000 --tls false
+```
+
+#### Available CLI Arguments
+
+| **Argument** | **Values** | **Default** | **Description** |
+|--------------|------------|-------------|-----------------|
+| `--backend-host HOST` | hostname/IP | localhost | Backend server hostname or IP address |
+| `--backend-port PORT` | 1-65535 | 10700 | Backend server port number |
+| `--ui-mode MODE` | graphical, headless | graphical | User interface display mode |
+| `--timeout-ms MS` | milliseconds | 5000 | Backend connection timeout |
+| `--tls FLAG` | true, false | false | Enable TLS encryption for backend connection |
+| `--cert-path PATH` | file path | auto-discovered | Path to server's public certificate (TLS only) |
+
+**Argument Validation:**
+- Port numbers are validated as integers within valid range
+- UI mode is validated against allowed values
+- TLS setting accepts only "true" or "false"
+- Certificate path is optional when TLS enabled (auto-discovers from `~/.ooloi/certs/`)
+
+### Environment Variables
+
+All CLI arguments have corresponding environment variable alternatives:
+
+| **Environment Variable** | **CLI Equivalent** | **Description** |
+|-------------------------|-------------------|-----------------|
+| `OOLOI_FRONTEND_BACKEND_HOST` | --backend-host | Backend server hostname |
+| `OOLOI_FRONTEND_BACKEND_PORT` | --backend-port | Backend server port |
+| `OOLOI_FRONTEND_UI_MODE` | --ui-mode | UI mode (graphical/headless) |
+| `OOLOI_FRONTEND_TIMEOUT_MS` | --timeout-ms | Connection timeout in milliseconds |
+| `OOLOI_FRONTEND_TLS` | --tls | Enable TLS (true/false) |
+| `OOLOI_FRONTEND_CERT_PATH` | --cert-path | Path to server's public certificate |
+
+**Configuration Precedence:** CLI arguments override environment variables, which override application defaults.
+
+#### Environment Variable Usage Examples
+
+```bash
+# Basic development configuration
+export OOLOI_FRONTEND_BACKEND_HOST=localhost
+export OOLOI_FRONTEND_BACKEND_PORT=10700
+export OOLOI_FRONTEND_UI_MODE=graphical
+lein run
+
+# Secure remote backend configuration
+export OOLOI_FRONTEND_BACKEND_HOST=production-server.company.com
+export OOLOI_FRONTEND_BACKEND_PORT=443
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/certs/ooloi-server.pem
+lein run
+```
+
+### JVM Configuration
+
+The frontend uses sensible JVM defaults (G1GC, compact object headers, string deduplication, 50ms GC pause target) configured in `project.clj`. The JVM automatically sizes memory based on available system resources.
+
+**Advanced: Overriding JVM settings** (for specialized scenarios):
+```bash
+# Development override
+JVM_OPTS="-Xmx16g" lein run
+
+# Production override
+JAVA_OPTS="-Xmx24g" java -jar target/ooloi-frontend-*-standalone.jar
+```
+
+### Error Handling and Exit Codes
+
+The frontend provides comprehensive error handling with specific exit codes for operational tooling:
+
+| **Exit Code** | **Error Type** | **Description** |
+|---------------|----------------|-----------------|
+| 0 | Success | Application started successfully |
+| 1 | Generic Failure | Unknown or unclassified error |
+| 10 | Component Failure | Component initialization failed |
+| 11 | Connection Failure | Cannot connect to backend server |
+| 12 | Configuration Error | Invalid configuration provided |
+| 13 | Dependency Missing | Required dependency unavailable |
+| 14 | Resource Exhaustion | System resources exhausted |
+
+**Error Resolution Guidance:**
+The application provides actionable guidance for common errors:
+- Connection failures: Check backend server status and network connectivity
+- Configuration errors: Validate CLI arguments and environment variables
+- Certificate errors: Verify TLS certificate and key file paths
+
+### TLS and Security Configuration
+
+**Client-Side TLS Support:**
+The frontend supports secure connections to TLS-enabled backend servers using one-way TLS (server authentication).
+
+#### Three-Tier Certificate Trust Strategy
+
+The frontend uses a priority-based fallback system for validating server certificates:
+
+1. **Priority 1: Insecure Development Mode** (`:insecure-dev-mode true`)
+   - Bypasses ALL certificate validation (self-signed certificates)
+   - **Use for**: Development with self-signed certificates
+   - **Security**: ⚠️  NOT FOR PRODUCTION - accepts any certificate
+
+2. **Priority 2: Explicit Certificate** (`:cert-path "/path/to/cert.pem"`)
+   - Trusts specific certificate file with proper validation
+   - **Use for**: Custom CA or enterprise certificates
+   - **Security**: ✅ Secure - validates certificate properly
+
+3. **Priority 3: System Trust Store** (default when TLS enabled)
+   - Uses Java's built-in trusted CAs (~150 authorities)
+   - **Use for**: Production with Let's Encrypt or commercial CA
+   - **Security**: ✅ Fully secure - standard PKI validation
+
+#### Common Scenarios
+
+**1. Local Development (No TLS) - Default and Recommended**
+
+Most developers work without TLS during local development:
+
+```bash
+# Default configuration - fastest development experience
+lein run
+
+# Or explicitly disable TLS
+lein run -- --tls false
+```
+
+**No TLS overhead, direct plaintext communication.**
+
+**2. Testing TLS with Self-Signed Certificates**
+
+When testing multi-client setups or TLS functionality, use the backend's auto-generated self-signed certificate with insecure mode:
+
+```bash
+# Backend generates self-signed certificate in ~/.ooloi/certs/
+# Frontend discovers it automatically and requires insecure mode
+
+# Using CLI flag
+lein run -- --tls true --insecure-dev-mode true
+
+# Using environment variables
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_INSECURE_DEV_MODE=true
+lein run
+```
+
+**Why insecure mode?** Self-signed certificates cannot be validated through a trust chain. They're fundamentally for development only.
+
+**3. Custom Certificate Location**
+
+If backend certificate is in non-default location:
+
+```bash
+# Explicit certificate path with insecure mode for self-signed
+lein run -- --tls true --cert-path /custom/path/server.crt --insecure-dev-mode true
+
+# Environment variables
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_CERT_PATH=/custom/path/server.crt
+export OOLOI_FRONTEND_INSECURE_DEV_MODE=true
+lein run
+```
+
+**4. Production with Let's Encrypt (Recommended)**
+
+For production deployment with CA-signed certificates (Let's Encrypt, DigiCert, etc.):
+
+```bash
+# TLS enabled, system trust store validates automatically
+lein run -- --tls true --backend-host production.example.com --backend-port 443
+
+# Environment variables for containerized deployment
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_BACKEND_HOST=production.example.com
+export OOLOI_FRONTEND_BACKEND_PORT=443
+lein run
+```
+
+**No certificate path needed** - Java's built-in trust store (~150 CAs) validates the server's certificate automatically.
+
+**5. Enterprise with Custom CA**
+
+For enterprise environments with internal certificate authority:
+
+```bash
+# Explicit certificate path with proper validation (no insecure mode)
+lein run -- --tls true --cert-path /etc/ssl/certs/company-ca.pem --backend-host enterprise.internal --backend-port 50051
+
+# Environment variables
+export OOLOI_FRONTEND_TLS=true
+export OOLOI_FRONTEND_CERT_PATH=/etc/ssl/certs/company-ca.pem
+export OOLOI_FRONTEND_BACKEND_HOST=enterprise.internal
+export OOLOI_FRONTEND_BACKEND_PORT=50051
+lein run
+```
+
+**Uses proper validation** - the certificate can be verified, so no insecure mode needed.
+
+#### TLS Configuration Summary
+
+| **Scenario** | **TLS Flag** | **Cert Path** | **Insecure Mode** | **Security** |
+|--------------|--------------|---------------|-------------------|--------------|
+| Local Development | `false` (default) | - | - | N/A (plaintext) |
+| Testing TLS (Self-Signed) | `true` | auto-discovered | `true` | ⚠️  Development only |
+| Custom Self-Signed Location | `true` | explicit path | `true` | ⚠️  Development only |
+| Production (Let's Encrypt) | `true` | - | `false` (default) | ✅ Fully secure |
+| Enterprise Custom CA | `true` | explicit path | `false` (default) | ✅ Fully secure |
+
+#### Certificate Discovery
+
+When `--cert-path` not specified with `--tls true`, the frontend automatically discovers certificates from `~/.ooloi/certs/`:
+
+- Searches for `.crt` files in default directory
+- Expects exactly one `.crt` file (throws exception if multiple found)
+- Validates that file exists and is readable
+- Fails cleanly with actionable error message if discovery fails
+
+#### Security Notes
+
+- **One-way TLS**: Clients verify server identity using server's public certificate
+- **Server Certificate Only**: Clients only need the server's public certificate, never private keys
+- **Insecure Mode Warning**: ⚠️  `--insecure-dev-mode true` prints warning and should NEVER be used in production
+- **Certificate Validation**: Production deployments use full PKI validation through Java's trust store
+- **Encryption**: All TLS modes encrypt gRPC communication between client and backend
+
+### Integration Testing
+
+The frontend can be started as a separate process for integration testing:
+
+```bash
+# Start frontend in background for testing
+lein run -- &
+FRONTEND_PID=$!
+
+# Run integration tests
+# ... test commands ...
+
+# Clean shutdown
+kill $FRONTEND_PID
+```
+
+### Monitoring and Health
+
+The frontend provides health monitoring capabilities:
+
+**Component Health Status:**
+- Each component reports its health status (healthy/unhealthy)
+- System-wide health aggregates component statuses  
+- Failed components can be isolated or restarted individually
+
+**Application Lifecycle:**
+- **Startup**: Components initialize in dependency order
+- **Runtime**: Health monitoring and error recovery
+- **Shutdown**: Clean resource cleanup via JVM shutdown hooks
+
+**Production Readiness:**
+- Structured error messages with actionable guidance
+- Specific exit codes for operational tooling integration
+- Environment variable configuration for containerized deployments
+- TLS support for secure client-server communication
+
+## Development
+
+### Running the Frontend
+
+**Basic Development:**
+```bash
+lein run
+```
+
+**With Configuration:**
+```bash
+# Connect to local backend with debugging
+lein run -- --backend-host localhost --backend-port 10700 --ui-mode graphical
+
+# Remote backend connection
+lein run -- --backend-host staging-server --backend-port 443 --tls true
+```
+
+### REPL
+
+For interactive development, you can start a REPL:
+
+```bash
+lein repl
+```
+
+The REPL will start in the `ooloi.frontend.core` namespace.
+
+## Development Commands
+
+### Running Tests
+
+The frontend uses Midje for comprehensive testing:
+
+```bash
+# Run all tests
+lein midje
+
+# Run specific test namespace
+lein midje ooloi.frontend.components.some-test
+
+# Run tests with coverage report
+lein coverage
+```
+
+**Important**: Use `lein midje` instead of `lein test`. The project is configured for Midje testing framework.
+
+### gRPC Integration
+
+**Essential Role**: Frontend is a **consumer of the unified Ooloi data model** located in shared/.
+
+**⚡ CRITICAL**: Frontend uses **identical** data structures as backend:
+- Same `Pitch` records, same `Piece` structures, same everything
+- No separate frontend representations - just the unified data model
+- Perfect fidelity: `(= frontend-pitch backend-pitch) => true`
+- Works locally (direct shared calls) and remotely (gRPC)
+
+The frontend uses Ooloi's unified gRPC architecture for remote backend communication:
+
+```bash
+# Compile application (includes automatic gRPC client generation)
+lein compile
+
+# Verify generated classes
+ls target/generated-sources/protobuf/
+```
+
+#### Unified gRPC Architecture
+
+The frontend uses Ooloi's **unified gRPC system** that eliminates complex protocol buffer management:
+
+- **Unified Schema**: Single `OoloiValue` message handles all Clojure data types automatically
+- **Dynamic API Access**: All backend methods available via `ExecuteMethod` - no per-method generation needed
+- **Zero Maintenance**: New API methods and data types work immediately without regeneration
+- **Perfect Type Fidelity**: Ratios, keywords, and custom records preserved across network boundaries
+
+#### gRPC Client Configuration
+
+- **Proto source**: `../shared/src/main/proto/ooloi_service.proto` (unified schema)
+- **Generated output**: `target/generated-sources/protobuf/`  
+- **Client stubs**: Universal `OoloiService` client with `ExecuteMethod`
+- **Conversion**: Automatic Clojure ↔ `OoloiValue` conversion
+
+#### When Compilation is Needed
+
+**Automatic**: No manual steps needed for:
+- New API methods in backend
+- New data models or records
+- Plugin installations  
+- Shared model changes
+
+**⚠️ Rare**: Recompilation only needed when `ooloi_service.proto` itself changes:
+```bash
+# Only if the unified schema is modified
+lein clean && lein compile
+```
+
+**🎯 Normal Development**: Just code and test:
+```bash
+# Make any changes to shared models, backend API, etc.
+lein midje  # Test - that's it!
+```
+
+### Building and Packaging
+
+```bash
+# Full build process (clean, compile, test, package)
+lein build
+
+# Create standalone JAR only
+lein uberjar
+
+# Clean build artifacts
+lein clean
+```
+
+### Documentation Generation
+
+```bash
+# Generate API documentation
+lein codox
+```
+The documentation will be generated in the `docs` directory.
+
+### Development Workflow
+
+Recommended development sequence:
+
+1. **Setup**: `lein deps` (install dependencies)
+2. **Compile**: `lein compile` (compile application with gRPC client)
+3. **Test**: `lein midje` (run test suite)
+4. **Run**: `lein run` (start frontend client)
+5. **Iterate**: Make changes and repeat steps 2-4
+
+## Shared Model Integration
+
+See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) for frontend-specific shared model usage patterns, selective import architecture, and unified development workflow.
+
+## Notes
+
+- Ensure all tests pass before creating the final package.
+- The packaged application is platform-specific and ready for distribution.
+- JavaFX is included in the project dependencies, ensuring GUI capabilities.
+
+Remember to run tests (`lein midje`) before packaging to ensure everything is working correctly.
+
+## Related Documentation
+
+### Architecture Guides  
+- **[Polymorphic API Guide](/guides/POLYMORPHIC_API_GUIDE.md)** - Type system foundations that frontend development builds upon
+- **[gRPC Communication and Flow Control](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - Client-server communication patterns for frontend integration
+- **[Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Understanding the server architecture that frontend connects to
+
+### Technical Documentation
+- **[ADR-0023: Shared Model Contracts](/ADRs/0023-Shared-Model-Contracts.md)** - Shared model architecture that frontend uses
+- **[ADR-0022: Lazy Frontend-Backend Architecture](/ADRs/0022-Lazy-Frontend-Backend-Architecture.md)** - Frontend-backend interaction patterns
