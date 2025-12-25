@@ -1,8 +1,8 @@
 # Linux Development Setup for Ooloi
 
-**Status**: Untested ⚠️ - Awaiting validation
+**Status**: Tested ✓ (Ubuntu/Debian via Docker)
 
-Complete guide for setting up Ooloi development environment on Linux. These instructions are based on the macOS and Windows tested setups but have not yet been validated on actual Linux systems.
+Complete guide for setting up Ooloi development environment on Linux. These instructions have been validated on Ubuntu/Debian using Docker (see [Docker Alternative](#docker-alternative) section). Fedora/RHEL and Arch instructions remain untested on native installations.
 
 ## Overview
 
@@ -234,29 +234,9 @@ Ooloi targets three platforms: macOS, Windows, and Linux. When developing on Lin
 
 ## Docker Alternative
 
-For consistent development environments across systems, use Docker to test these instructions without a native Linux installation.
+**All tests pass on Ubuntu/Debian using Docker** - this provides dev parity and runtime parity across all three platforms (macOS, Windows, Linux).
 
-**Create Dockerfile** in the Ooloi repository root:
-
-```dockerfile
-# Dockerfile for testing Ooloi Linux installation
-FROM eclipse-temurin:25-jdk
-
-RUN apt-get update && apt-get install -y \
-    git \
-    protobuf-compiler \
-    openjfx \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Leiningen
-RUN curl https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein > /usr/local/bin/lein && \
-    chmod +x /usr/local/bin/lein && \
-    lein version
-
-WORKDIR /workspace
-CMD ["/bin/bash"]
-```
+The project includes a [`Dockerfile`](../Dockerfile) for consistent development environments. Use this to test Linux instructions without a native installation.
 
 **Build and run**:
 
@@ -275,6 +255,8 @@ lein protoc
 # ... continue with build sequence
 ```
 
+The Dockerfile is maintained as part of the project at the repository root.
+
 ## Next Steps
 
 After successful installation and test verification:
@@ -284,9 +266,13 @@ After successful installation and test verification:
 3. Check [ADRs](../ADRs/) for architecture documentation
 4. Review [guides](../guides/) for technical details
 
-## Validation Needed
+## Validation Status
 
-This guide has not yet been validated on actual Linux systems. If you're setting up Ooloi on Linux:
+**Validated**: Ubuntu/Debian via Docker - all tests pass
+
+**Needs validation**: Fedora/RHEL and Arch instructions on native installations
+
+If you're setting up Ooloi on a native Linux installation:
 
 1. **Please report success or failures** via GitHub Issues
 2. Note your distribution and version
