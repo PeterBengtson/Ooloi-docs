@@ -32,6 +32,7 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0025-Server-Statistics-Architecture](0025-Server-Statistics-Architecture.md)**: Comprehensive statistics collection for operational visibility and test validation
 - **[0026-Pitch-Representation-and-Operations](0026-Pitch-Representation-and-Operations.md)**: String-based pitch representation with factory-based transposition system
 - **[0027-Plugin-Based-Audio-Architecture](0027-Plugin-Based-Audio-Architecture.md)**: Frontend plugin-based audio architecture with complete backend-frontend audio separation
+- **[0028-Hierarchical-Rendering-Pipeline](0028-Hierarchical-Rendering-Pipeline.md)**: Five-stage rendering pipeline with plugin-based formatters for professional music engraving
 - **[0029-Global-Hash-Consing](0029-Global-Hash-Consing.md)**: Global hash-consing for immutable musical objects with Nippy integration
 - **[0030-MusicXML](0030-MusicXML.md)**: MusicXML interoperability excellence with best-in-class importer/exporter
 - **[0031-Frontend-Event-Driven-Architecture](0031-Frontend-Event-Driven-Architecture.md)**: Separate event systems with Event Router for frontend-backend event synchronization
@@ -40,6 +41,7 @@ Technical decisions that shaped Ooloi's architecture.
 - **[0034-Key-Signature-Architecture](0034-Key-Signature-Architecture.md)**: Key signature architecture supporting standard modes, keyless notation, custom accidentals, per-octave variations, and microtonal systems
 - **[0035-Remembered-Alterations](0035-Remembered-Alterations.md)**: Temporal accidental tracking system with wave pattern, measure boundary behavior, courtesy accidentals, and house style settings
 - **[0036-Collaborative-Sessions-and-Hybrid-Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md)**: Hybrid transport architecture enabling dynamic collaboration sessions with role-based permissions and email-based invitations
+- **[0037-Measure-Distribution-Optimization](0037-Measure-Distribution-Optimization.md)**: Capacity-constrained segmentation with proportional width allocation using Knuth-Plass dynamic programming for exact optimization of measure distribution
 
 ## Decisions by Technical Area
 
@@ -52,6 +54,7 @@ Technical decisions that shaped Ooloi's architecture.
 | **Data Architecture & Storage** | [0008](0008-VPDs.md), [0010](0010-Pure-Trees.md), [0011](0011-Shared-Structure.md), [0012](0012-Persisting-Pieces.md), [0029](0029-Global-Hash-Consing.md) | Hierarchical addressing, immutable trees, memory optimization, persistence, global hash-consing |
 | **Musical Domain & Collaboration** | [0009](0009-Collaboration.md), [0014](0014-Timewalk.md), [0015](0015-Undo-and-Redo.md) | Multi-user editing, temporal coordination, undo/redo implementation |
 | **Musical Representation** | [0026](0026-Pitch-Representation-and-Operations.md), [0033](0033-Time-Signature-Architecture.md), [0034](0034-Key-Signature-Architecture.md), [0035](0035-Remembered-Alterations.md) | String-based pitch representation, microtonal support, diatonic/chromatic transposition, comprehensive time signature system with fractional and irrational meters, key signature architecture with standard modes and custom accidentals, temporal accidental tracking with house style settings |
+| **Rendering & Layout** | [0028](0028-Hierarchical-Rendering-Pipeline.md), [0037](0037-Measure-Distribution-Optimization.md) | Five-stage rendering pipeline with collision detection, vertical reconciliation, symbol preparation, measure distribution optimization using Knuth-Plass dynamic programming, and connecting element adaptation |
 | **System Infrastructure** | [0016](0016-Settings.md), [0017](0017-System-Architecture.md), [0020](0020-TLS-Infrastructure-and-Deployment-Architecture.md), [0021](0021-Authentication.md) | Configuration management, component lifecycle, security infrastructure, authentication |
 | **Extensibility & Interoperability** | [0003](0003-Plugins.md), [0030](0030-MusicXML.md) | Plugin architecture for third-party integration, MusicXML interoperability excellence |
 
