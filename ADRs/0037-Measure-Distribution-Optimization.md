@@ -20,6 +20,7 @@
   - [Controlled Reflow for Pathological Cases](#controlled-reflow-for-pathological-cases)
   - [Deterministic Tie-Breaking](#deterministic-tie-breaking)
   - [Edit Locality](#edit-locality)
+  - [Caching and Incremental Recompute](#caching-and-incremental-recompute)
 - [Implementation](#implementation)
   - [Core Dynamic Programming Structure](#core-dynamic-programming-structure)
   - [Segment Cost Computation](#segment-cost-computation)
@@ -462,6 +463,59 @@ If editorial preferences are needed (e.g., prefer structural boundaries), they c
 ### Edit Locality
 
 When measures are modified, the system attempts to preserve existing break decisions for distant unaffected regions. This minimizes perceptual layout "jitter" during editing. Immutable data structures enable efficient incremental recomputation: only modified subtrees require re-evaluation.
+
+### Caching and Incremental Recompute
+
+Stage 4 operates over a sequence of measure stacks whose `(min_width, ideal_width)` are **already finalized upstream**. In addition, Ooloi caches the following per **measure stack**:
+
+* `min_width` — hard lower bound (from Stage 1–2 collision detection / reconciliation)
+* `ideal_width` — proportional target (from rhythmic density semantics)
+* `actual_width` — realized width after Stage 4 allocation, given the stack’s current system assignment and system width policy
+
+This cache is authoritative at the Stage 4 boundary: Stage 4 consumes `(min, ideal)` and produces `actual` and break assignments; Stage 5 consumes `actual` and never influences Stage 4 except via explicitly bounded reflow (pathological cases).
+
+#### Cached Invariants
+
+For each stack `i` under a fixed system assignment:
+
+* `actual_width_i ≥ min_width_i`
+* `actual_width_i = ideal_width_i × scale_factor(system)` unless clamped
+* `scale_factor(system) = system_width / Σ ideal_width_j` over stacks `j` in that system
+
+The cache additionally implies that per-stack metrics are **stable across edits** unless the edited content is in that stack (or an explicitly bounded reflow is triggered).
+
+#### Incremental Update Consequences
+
+Edits affect Stage 4 only through changes to stack metrics:
+
+1. **Local edit**: modifying or inserting notation in a measure updates only the affected stack’s upstream-derived `(min_width, ideal_width)`.
+
+2. **Fast path (break stability)**: if the updated stack’s `(min, ideal)` does not change the optimal break configuration (or does not change the stack’s system membership), then:
+
+   * only that stack’s `actual_width` may change (via the system scale factor), and often not even that
+   * Stage 5 updates are confined to connecting elements that touch the edited measure and/or the edited stack
+   * no other systems require recomputation
+
+3. **Ripple path (break changes)**: if the updated stack’s metrics change feasibility or cost enough to alter system breaks, recomputation is still bounded:
+
+   * unaffected stacks retain cached `(min, ideal)` and therefore remain identical DP input
+   * only the region whose optimal substructure changes must be re-evaluated; once break decisions converge back to the previous solution, downstream layout is provably unchanged (determinism + identical input suffix)
+   * `actual_width` recomputation is confined to systems whose membership or width policy changed
+
+#### Practical Complexity
+
+With cached stack metrics, Stage 4 runtime is dominated by DP over **scalars**, not by collision/layout work. Edit-time recomputation is typically:
+
+* **O(size of edited measure)** for upstream recalculation of the edited stack
+* plus **O(K)** (where `K ≈ measures/system`) for local system allocation updates
+* plus at worst **O(Δ×K)** when a breakpoint ripple propagates across `Δ` stacks, with all other stacks remaining cache hits
+
+#### Relationship to Edit Locality
+
+This caching strategy is the concrete mechanism behind the ADR’s edit-locality goal:
+
+* locality is achieved not by heuristics, but by **stable, cached stage outputs** and deterministic recomputation on a reduced 1D representation
+* the system avoids whole-score reflow not by forbidding it, but because cached aggregates make whole-score reflow unnecessary in the common case
 
 ## Implementation
 
