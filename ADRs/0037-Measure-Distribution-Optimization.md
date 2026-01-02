@@ -842,6 +842,16 @@ Ooloi's pipeline architecture transforms the problem. By the time Stage 4 execut
 
 What remains is exactly the Knuth-Plass problem formulation. The algorithm is textbook; its applicability is what the architecture creates.
 
+**Why this approach has not been widely adopted**:
+
+The Knuth-Plass algorithm is well-known in typesetting circles, and sophisticated notation software has evaluated its applicability to measure distribution. The approach has generally been rejected—not because the algorithm is unsuitable to music, but because typical notation architectures lack the preconditions that make it applicable. Mutable state creates feedback loops between spacing and symbol positioning. Coupled evaluation of horizontal and vertical concerns prevents the clean 1-dimensional reduction. Non-deterministic callback ordering makes cost computation unreliable. The algorithm requires a problem formulation that most architectures cannot provide.
+
+Performance concerns likely compound the architectural barriers. Knuth-Plass itself is efficient—O(N²) in the general case, O(N×K) with early termination. But in architectures where spacing decisions feed back into collision detection, which feeds back into spacing, the algorithm would need to run repeatedly as geometry iteratively stabilizes. Each edit could trigger multiple full recomputations. The cost isn't the algorithm; it's the inability to run it once on stable inputs. When you cannot guarantee that (min_width, ideal_width) pairs are finalized before distribution begins, even an efficient algorithm becomes expensive through repetition.
+
+Ooloi's decoupled pipeline inverts this situation. Stage 4 receives stable scalar inputs from completed upstream stages. The DP executes once, on data that will not change during computation. Immutability enables precise cache invalidation: edits affect only the stacks whose upstream metrics actually changed, not the entire sequence. What would be expensive in an iterative architecture becomes trivial: at N=800 measures with K=15 measures per system, approximately 12,000 segment evaluations of simple arithmetic complete in milliseconds.
+
+Ooloi's ability to apply Knuth-Plass is therefore not algorithmic sophistication but architectural consequence. The pipeline stages, immutable data structures, and rational arithmetic create both the problem formulation and the performance characteristics the algorithm requires. This is the pattern throughout Ooloi: apparently simple solutions become available—and become fast—when architecture eliminates the coupling that made them inapplicable.
+
 ## Consequences
 
 **Architectural pattern**:
