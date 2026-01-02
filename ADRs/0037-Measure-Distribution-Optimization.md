@@ -175,8 +175,8 @@ The DP selects breaks that minimize this total deviation. Scale factors < 1 indi
 
 **Additive separable cost model**:
 The cost structure operates at two levels:
-- **Stack-level discomfort**: Each stack's discomfort depends only on its own (min, ideal, actual) triple
-- **System-level cost**: Total discomfort for a system = Σ discomfort(stack_i) for stacks in that system
+- **Stack-level discomfort**: For feasible segments, each stack's discomfort depends only on its `ideal` and the system's `scale_factor`. The `min` value participates in feasibility checking but not in cost computation.
+- **System-level cost**: Total discomfort for a system = Σ discomfort(stack_i) = `(scale - 1)² × Σ ideal_i²`
 - **DP operates on system-level cost units**: The dynamic programming algorithm sums per-system discomfort values to compute global cost
 
 This separability enables independent evaluation of candidate break points during dynamic programming.
@@ -289,7 +289,7 @@ This is **normalisation**, not optimisation:
 actual_i = max(min_i, ideal_i × scale_factor)
 ```
 
-If any measure hits `min_width` after scaling, the system is over-packed. The DP's feasibility check should prevent this, but clamping provides safety.
+The `max` clamp is defensive. Under the feasibility contract (`scale ≥ max(min_i / ideal_i)`), proportional scaling always produces `actual_i ≥ min_i`, so the clamp never changes any value. If clamping were to activate, it would indicate the segment was incorrectly selected as feasible.
 
 **Notes on discomfort calculation**:
 
@@ -670,6 +670,7 @@ This caching strategy is the concrete mechanism behind the ADR's edit-locality g
          ;; CRITICAL: Use 0N to maintain ratio domain
          min-prefix (vec (reductions + 0N (map :min stacks)))
          ideal-prefix (vec (reductions + 0N (map :ideal stacks)))
+         ideal-sq-prefix (vec (reductions + 0N (map #(let [x (:ideal %)] (* x x)) stacks)))
          
          ;; State arrays: nil = unreachable, ratio = actual cost
          ;; Length n+1 where index t represents prefix of length t
@@ -690,9 +691,8 @@ This caching strategy is the concrete mechanism behind the ADR's edit-locality g
                :while (<= total-min system-width)]
          
          ;; Check tighter feasibility: scale factor must not require clamping
-         ;; scale = system-width / total-ideal
-         ;; For no clamping: scale * ideal_i >= min_i for all i
-         ;; Equivalent: system-width / total-ideal >= max(min_i / ideal_i)
+         ;; Necessary condition: Σ min_i ≤ system_width (already checked by :while)
+         ;; Sufficient condition: scale ≥ max(min_i / ideal_i)
          (let [total-ideal (- (nth ideal-prefix t) (nth ideal-prefix s))
                scale-factor (/ system-width total-ideal)
                segment-stacks (subvec stacks s t)
@@ -700,7 +700,11 @@ This caching strategy is the concrete mechanism behind the ADR's edit-locality g
                feasible? (>= scale-factor max-ratio)]
            
            (when (and feasible? (some? (nth best s)))
-             (let [geometric-cost (compute-segment-cost stacks s t system-width)
+             ;; Compute cost using closed form (valid because feasibility guarantees no clamping)
+             ;; cost = (scale - 1)² × Σ ideal_i²
+             (let [total-ideal-sq (- (nth ideal-sq-prefix t) (nth ideal-sq-prefix s))
+                   scale-deviation (- scale-factor 1N)
+                   geometric-cost (* (* scale-deviation scale-deviation) total-ideal-sq)
                    penalty-cost (break-penalty-fn stacks s t)
                    segment-cost (+ geometric-cost penalty-cost)
                    total-cost (+ (nth best s) segment-cost)
@@ -719,15 +723,15 @@ This caching strategy is the concrete mechanism behind the ADR's edit-locality g
 
 **Feasibility condition explained:**
 
-The original check `Σ min_i ≤ system_width` ensures minimums fit, but proportional scaling allocates based on ideals:
+The check `Σ min_i ≤ system_width` is **necessary but not sufficient**. It ensures minimums could physically fit, but proportional scaling allocates based on ideals:
 
 ```
 actual_i = ideal_i × (system_width / Σ ideal_i)
 ```
 
-If `actual_i < min_i` for any stack, clamping activates, and the sum exceeds `system_width`.
+Even when `Σ min_i ≤ system_width`, proportional scaling might produce `actual_i < min_i` for some stack if the scale factor is too small.
 
-The tighter condition requires:
+The **sufficient condition** requires:
 ```
 scale_factor = system_width / Σ ideal_i
 scale_factor × ideal_i ≥ min_i   for all i
@@ -735,7 +739,9 @@ scale_factor ≥ min_i / ideal_i   for all i
 scale_factor ≥ max(min_i / ideal_i)
 ```
 
-With this check, the clamp in `allocate-widths` becomes a safety net that never fires for feasible segments.
+Note: `scale_factor < 1` (compression) is perfectly valid—it just means the system is compressed relative to ideal. Infeasibility occurs only when `scale_factor < max(min_i / ideal_i)`.
+
+With this check, the clamp in `allocate-widths` becomes a defensive safety net that never fires for feasible segments.
 
 **Width Policy Function Examples**:
 
@@ -759,30 +765,29 @@ The DP algorithm evaluates feasibility and cost with whatever width the policy p
 
 ### Segment Cost Computation
 
-```clojure
-(defn compute-segment-cost [stacks s t system-width]
-  "Computes discomfort for stacks s..t-1 on one system.
-   
-   Uses baseline proportional scaling for width allocation.
-   Discomfort measures deviation from ideal proportions using pure ratio arithmetic.
-   
-   The cost is purely geometric: quadratic penalty for deviation from ideal."
-  
-  (let [system-stacks (subvec stacks s t)  ; O(1) operation
-        
-        ;; Allocate actual widths using proportional scaling (normalisation)
-        actual-widths (allocate-widths system-stacks system-width)]
-    
-    ;; Compute discomfort from proportional deviations
-    ;; CRITICAL: Start reduction with 0N for ratio domain
-    (reduce + 0N
-      (map (fn [stack actual]
-             (let [deviation (- actual (:ideal stack))]
-               ;; Quadratic penalty for deviation
-               (* deviation deviation)))
-           system-stacks 
-           actual-widths))))
+Under the feasibility contract (`scale ≥ max(min_i / ideal_i)`), proportional scaling produces `actual_i = ideal_i × scale` with no clamping required. The segment cost therefore has a closed form:
+
 ```
+deviation_i = actual_i - ideal_i = ideal_i × scale - ideal_i = ideal_i × (scale - 1)
+
+cost = Σ deviation_i²
+     = Σ (ideal_i × (scale - 1))²
+     = (scale - 1)² × Σ ideal_i²
+```
+
+With precomputed prefix sums for `Σ ideal_i` and `Σ ideal_i²`, segment cost is O(1):
+
+```clojure
+;; Closed-form cost computation (inline in DP loop)
+(let [total-ideal (- (nth ideal-prefix t) (nth ideal-prefix s))
+      total-ideal-sq (- (nth ideal-sq-prefix t) (nth ideal-sq-prefix s))
+      scale-factor (/ system-width total-ideal)
+      scale-deviation (- scale-factor 1N)
+      geometric-cost (* (* scale-deviation scale-deviation) total-ideal-sq)]
+  ...)
+```
+
+This is not an optimization of a more complex algorithm—it is the canonical cost definition under the ADR's contract. The feasibility check guarantees no clamping, so the closed form gives mathematically identical results to explicit allocation.
 
 ### Width Allocation Implementation
 
@@ -790,8 +795,9 @@ The DP algorithm evaluates feasibility and cost with whatever width the policy p
 (defn allocate-widths [system-stacks system-width]
   "Allocates actual widths using proportional scaling (normalisation).
    
-   This is the baseline implementation: a deterministic formula
-   that preserves proportional relationships without optimisation.
+   Used after break selection to compute final positions for rendering.
+   Under the feasibility contract, all stacks satisfy actual_i ≥ min_i
+   without clamping.
    
    Returns vector of ratios."
   
@@ -801,7 +807,8 @@ The DP algorithm evaluates feasibility and cost with whatever width the policy p
     ;; Proportional scaling: preserves ratios between measures
     (mapv (fn [stack]
             (let [scaled (* (:ideal stack) scale-factor)]
-              ;; Safety clamp (should not activate if DP feasibility works correctly)
+              ;; Defensive clamp: under feasibility contract, this never changes the value
+              ;; In debug builds, assert (>= scaled (:min stack)) to verify contract
               (max scaled (:min stack))))
           system-stacks)))
 ```
@@ -815,12 +822,13 @@ The DP algorithm evaluates feasibility and cost with whatever width the policy p
 5. **Predictable**: Users can mentally predict allocation behavior
 6. **Edit-stable**: Local changes cause minimal layout ripple
 
-**Handling edge cases**:
+**Defensive clamp**:
 
-The `max` clamp ensures `actual_i ≥ min_i`, but this should rarely activate:
-- The DP feasibility check ensures `Σ min_i ≤ system_width`
-- Proportional scaling with `scale_factor ≥ 1` keeps all values above minimum
-- If `scale_factor < 1`, the system is over-packed (feasibility should have rejected it)
+The `max` clamp is purely defensive programming:
+- The DP feasibility check ensures `scale_factor ≥ max(min_i / ideal_i)`
+- This guarantees `scaled = ideal_i × scale_factor ≥ min_i` for all stacks
+- Under the feasibility contract, the clamp never changes any value
+- Debug builds may assert this invariant: `(assert (>= scaled (:min stack)))`
 
 ### Break Reconstruction
 
@@ -865,13 +873,13 @@ The DP uses a two-part feasibility check:
 
 The second condition ensures the scale factor is large enough that no stack requires clamping. Without it, proportional scaling could produce allocations exceeding `system_width`.
 
-**Segment Evaluation is Two Passes**:
+**Segment Evaluation**:
 
-Each candidate segment (s, t) requires two O(K) passes:
-1. **Feasibility**: Compute `max(min_i / ideal_i)` over the segment
-2. **Cost**: Compute width allocation and discomfort
+Each candidate segment (s, t) requires:
+1. **Feasibility**: O(K) scan to compute `max(min_i / ideal_i)` over the segment
+2. **Cost**: O(1) closed-form computation using prefix sums
 
-This is acceptable because K ≈ 15 and the work is simple arithmetic. A more sophisticated implementation could combine these passes or use auxiliary data structures, but the current approach prioritizes clarity.
+The feasibility scan is the only per-segment O(K) work. Cost computation uses precomputed `ideal-sq-prefix` for O(1) evaluation.
 
 **Rational Arithmetic Throughout**:
 - All numeric literals use `N` suffix: `0N`
@@ -892,9 +900,9 @@ This is acceptable because K ≈ 15 and the work is simple arithmetic. A more so
 - Converted to persistent at end
 
 **Prefix Sums for O(1) Queries**:
-- Precomputed once: O(N) time for both `min-prefix` and `ideal-prefix`
+- Precomputed once: O(N) time for `min-prefix`, `ideal-prefix`, and `ideal-sq-prefix`
 - Range sum in O(1): `(- (nth prefix t) (nth prefix s))`
-- Critical for achieving O(N²) complexity
+- Enables O(1) cost computation via closed form
 - Must use `0N` in reductions to maintain ratio domain
 
 **Early Termination**:
@@ -908,14 +916,16 @@ This is acceptable because K ≈ 15 and the work is simple arithmetic. A more so
 
 | Operation | Complexity | Notes |
 |-----------|------------|-------|
-| Precomputation | O(N) | Prefix sums for min and ideal |
+| Precomputation | O(N) | Prefix sums for min, ideal, and ideal² |
 | Outer loop | O(N) | Each position once |
-| Inner loop | O(K) | Early termination when infeasible |
-| Per-segment evaluation | O(K) | Two passes: feasibility + cost |
-| **Total** | O(N×K) | Where K ≈ 15 measures/system |
+| Inner loop | O(K) typical | Early termination when infeasible |
+| Feasibility check | O(K) | Scan for max(min_i / ideal_i) |
+| Cost computation | O(1) | Closed form using prefix sums |
+| **Total (worst case)** | O(N²) | Without early termination |
+| **Total (typical)** | O(N×K) | With monotone width policy, K ≈ 15 |
 | Page breaking | O(S²) | S = number of systems |
 
-At N=800 measures, K=15: ~12,000 segment evaluations, each doing ~30 stack inspections. Still trivial.
+At N=800 measures, K=15: ~12,000 segment evaluations. Feasibility is O(K) per segment; cost is O(1). Still trivial.
 
 ## Relationship to Knuth-Plass
 
@@ -968,7 +978,7 @@ What remains is exactly the Knuth-Plass problem formulation. The algorithm is te
 
 **Why this approach is commonly avoided in real-time notation editors**:
 
-The Knuth-Plass algorithm is well-known in typesetting circles. Real-time notation editors have commonly avoided it—not because the algorithm is unsuitable to music, but because their architectures lack the preconditions that make it applicable. Mutable state creates feedback loops between spacing and symbol positioning. Coupled evaluation of horizontal and vertical concerns prevents the clean 1-dimensional reduction. Non-deterministic callback ordering makes cost computation unreliable. The algorithm requires a problem formulation that these architectures cannot provide.
+The Knuth-Plass algorithm is well-known in typesetting circles. Real-time notation editors have commonly avoided it—not because the algorithm is unsuitable to music, but because their architectures lack the preconditions that make it applicable. Mutable state creates feedback loops between spacing and symbol positioning. Coupled evaluation of horizontal and vertical concerns prevents the clean 1-dimensional reduction. The algorithm requires a problem formulation that these architectures cannot provide.
 
 Performance concerns likely compound the architectural barriers. Knuth-Plass itself is efficient—O(N²) in the general case, O(N×K) with early termination. But in architectures where spacing decisions feed back into collision detection, which feeds back into spacing, the algorithm would need to run repeatedly as geometry iteratively stabilizes. Each edit could trigger multiple full recomputations. The cost isn't the algorithm; it's the inability to run it once on stable inputs. When you cannot guarantee that (min_width, ideal_width) pairs are finalized before distribution begins, even an efficient algorithm becomes expensive through repetition.
 
