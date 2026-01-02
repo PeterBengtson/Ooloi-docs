@@ -14,6 +14,7 @@
   - [Variable System Widths](#variable-system-widths)
   - [Alternative: Asymmetric Cost Optimization](#alternative-asymmetric-cost-optimization)
   - [Page Breaking: Second Pass](#page-breaking-second-pass)
+  - [Editorial Control Mechanisms](#editorial-control-mechanisms)
 - [Stability Guarantees](#stability-guarantees)
   - [Stage Boundary Enforcement](#stage-boundary-enforcement)
   - [Connecting Element Adaptation](#connecting-element-adaptation)
@@ -423,6 +424,129 @@ Page breaking is a **second segmentation pass over the system sequence**, never 
 
 This architectural separation prevents combined optimization attempts that would compromise determinism.
 
+### Editorial Control Mechanisms
+
+Users require control over layout decisions: forcing system breaks at specific points, preventing breaks within phrases, adjusting individual measure widths. These controls fall into two distinct categories requiring different architectural treatment.
+
+**Constraints vs Preferences**:
+
+- **Constraints** are inviolable: "This measure *must* start a new system"
+- **Preferences** are costs: "Prefer breaking at rehearsal marks"
+
+Modeling constraints as extreme penalties (e.g., cost = ∞ for forbidden breaks) conflates these categories and risks numerical instability. Ooloi handles them through separate mechanisms.
+
+**Forced System Breaks: Pre-Segmentation**
+
+Forced breaks partition the stack sequence into independent optimization problems:
+
+```clojure
+(defn distribute-with-forced-breaks 
+  "Partitions stack sequence at forced breaks, optimizes each segment independently.
+   
+   forced-break-indices: Set of measure indices that must start new systems.
+   Returns combined break results across all segments."
+  [stacks forced-break-indices system-width-fn]
+  
+  (let [;; Partition stacks at forced break points
+        segments (partition-at-indices stacks forced-break-indices)]
+    
+    ;; Optimize each segment independently, then combine
+    (->> segments
+         (map #(find-optimal-breaks % system-width-fn))
+         (combine-break-results))))
+```
+
+This is architecturally correct because:
+- Forced breaks are constraints, not preferences—modeling them as partition boundaries is honest
+- Each segment is an independent subproblem with its own optimal solution
+- No numerical issues from infinity-like costs
+- Clear semantics: the algorithm never considers configurations that violate forced breaks
+
+**Prevented Breaks: Measure Grouping**
+
+The inverse constraint—"do not break between measures 12 and 13"—is handled by treating measure groups as atomic units:
+
+```clojure
+(defn group-measures 
+  "Combines consecutive measures into atomic groups that cannot be split.
+   
+   Each group becomes a single 'super-stack' with aggregated metrics."
+  [stacks no-break-ranges]
+  
+  (let [grouped (apply-grouping stacks no-break-ranges)]
+    (mapv (fn [group]
+            {:min (reduce + 0N (map :min group))
+             :ideal (reduce + 0N (map :ideal group))
+             :member-stacks group})
+          grouped)))
+```
+
+The DP operates on groups; after breaks are determined, groups expand back to constituent stacks for width allocation.
+
+**Width Overrides: Upstream Modification**
+
+User adjustments to individual measure widths ("stretch this measure," "compress this passage") belong upstream of Stage 4, not within it. Stage 4 consumes `(min_width, ideal_width)` pairs; editorial overrides modify these inputs:
+
+```clojure
+(defn apply-width-overrides 
+  "Applies user width overrides to stack metrics before distribution.
+   
+   Overrides may specify:
+   - :min-override  - New minimum width (takes max with collision minimum)
+   - :ideal-override - New ideal width (replaces rhythmic ideal)"
+  [stacks user-overrides]
+  
+  (reduce 
+    (fn [stacks {:keys [measure-index min-override ideal-override]}]
+      (update stacks measure-index
+        (fn [stack]
+          (cond-> stack
+            min-override   (update :min max min-override)
+            ideal-override (assoc :ideal ideal-override)))))
+    stacks
+    user-overrides))
+```
+
+**Key principle**: The collision-derived `min_width` is a hard floor. User overrides can raise it but not lower it—atoms cannot overlap regardless of editorial intent. The `ideal_width` can be freely overridden since it represents preference, not physics.
+
+**Soft Preferences: The break-penalty-fn Hook**
+
+The optional `break-penalty-fn` parameter handles soft preferences that influence but do not constrain break selection:
+
+```clojure
+;; Prefer breaks at rehearsal marks
+(defn rehearsal-mark-preference [stacks s t]
+  (let [start-stack (nth stacks s)]
+    (if (has-rehearsal-mark? start-stack)
+      -50N  ; Negative cost = preference for this break
+      0N)))
+
+;; Avoid very short systems
+(defn minimum-system-length-preference [stacks s t]
+  (let [system-length (- t s)]
+    (if (< system-length 3)
+      100N  ; Positive cost = penalty for short systems
+      0N)))
+
+;; Combine multiple preferences
+(defn combined-preferences [stacks s t]
+  (+ (rehearsal-mark-preference stacks s t)
+     (minimum-system-length-preference stacks s t)))
+```
+
+These preferences shift costs without creating hard constraints. The algorithm may still choose penalized configurations if overall discomfort is lower.
+
+**Interaction Between Mechanisms**:
+
+The mechanisms compose cleanly in a defined order:
+
+1. **First**: Apply forced breaks to partition the problem
+2. **Then**: Group measures with prevented breaks into super-stacks
+3. **Then**: Apply width overrides to stack metrics
+4. **Finally**: Run DP with soft preferences via `break-penalty-fn`
+
+Each mechanism operates at a different level: problem partitioning, input transformation, and cost adjustment. This separation prevents the combinatorial complexity that arises when constraints and preferences are conflated into a single penalty system.
+
 ## Stability Guarantees
 
 ### Stage Boundary Enforcement
@@ -470,7 +594,7 @@ Stage 4 operates over a sequence of measure stacks whose `(min_width, ideal_widt
 
 * `min_width` — hard lower bound (from Stage 1–2 collision detection / reconciliation)
 * `ideal_width` — proportional target (from rhythmic density semantics)
-* `actual_width` — realized width after Stage 4 allocation, given the stack’s current system assignment and system width policy
+* `actual_width` — realized width after Stage 4 allocation, given the stack's current system assignment and system width policy
 
 This cache is authoritative at the Stage 4 boundary: Stage 4 consumes `(min, ideal)` and produces `actual` and break assignments; Stage 5 consumes `actual` and never influences Stage 4 except via explicitly bounded reflow (pathological cases).
 
@@ -488,15 +612,15 @@ The cache additionally implies that per-stack metrics are **stable across edits*
 
 Edits affect Stage 4 only through changes to stack metrics:
 
-1. **Local edit**: modifying or inserting notation in a measure updates only the affected stack’s upstream-derived `(min_width, ideal_width)`.
+1. **Local edit**: modifying or inserting notation in a measure updates only the affected stack's upstream-derived `(min_width, ideal_width)`.
 
-2. **Fast path (break stability)**: if the updated stack’s `(min, ideal)` does not change the optimal break configuration (or does not change the stack’s system membership), then:
+2. **Fast path (break stability)**: if the updated stack's `(min, ideal)` does not change the optimal break configuration (or does not change the stack's system membership), then:
 
-   * only that stack’s `actual_width` may change (via the system scale factor), and often not even that
+   * only that stack's `actual_width` may change (via the system scale factor), and often not even that
    * Stage 5 updates are confined to connecting elements that touch the edited measure and/or the edited stack
    * no other systems require recomputation
 
-3. **Ripple path (break changes)**: if the updated stack’s metrics change feasibility or cost enough to alter system breaks, recomputation is still bounded:
+3. **Ripple path (break changes)**: if the updated stack's metrics change feasibility or cost enough to alter system breaks, recomputation is still bounded:
 
    * unaffected stacks retain cached `(min, ideal)` and therefore remain identical DP input
    * only the region whose optimal substructure changes must be re-evaluated; once break decisions converge back to the previous solution, downstream layout is provably unchanged (determinism + identical input suffix)
@@ -512,7 +636,7 @@ With cached stack metrics, Stage 4 runtime is dominated by DP over **scalars**, 
 
 #### Relationship to Edit Locality
 
-This caching strategy is the concrete mechanism behind the ADR’s edit-locality goal:
+This caching strategy is the concrete mechanism behind the ADR's edit-locality goal:
 
 * locality is achieved not by heuristics, but by **stable, cached stage outputs** and deterministic recomputation on a reduced 1D representation
 * the system avoids whole-score reflow not by forbidding it, but because cached aggregates make whole-score reflow unnecessary in the common case
@@ -842,9 +966,9 @@ Ooloi's pipeline architecture transforms the problem. By the time Stage 4 execut
 
 What remains is exactly the Knuth-Plass problem formulation. The algorithm is textbook; its applicability is what the architecture creates.
 
-**Why this approach has not been widely adopted**:
+**Why this approach is commonly avoided in real-time notation editors**:
 
-The Knuth-Plass algorithm is well-known in typesetting circles, and sophisticated notation software has evaluated its applicability to measure distribution. The approach has generally been rejected—not because the algorithm is unsuitable to music, but because typical notation architectures lack the preconditions that make it applicable. Mutable state creates feedback loops between spacing and symbol positioning. Coupled evaluation of horizontal and vertical concerns prevents the clean 1-dimensional reduction. Non-deterministic callback ordering makes cost computation unreliable. The algorithm requires a problem formulation that most architectures cannot provide.
+The Knuth-Plass algorithm is well-known in typesetting circles. Real-time notation editors have commonly avoided it—not because the algorithm is unsuitable to music, but because their architectures lack the preconditions that make it applicable. Mutable state creates feedback loops between spacing and symbol positioning. Coupled evaluation of horizontal and vertical concerns prevents the clean 1-dimensional reduction. Non-deterministic callback ordering makes cost computation unreliable. The algorithm requires a problem formulation that these architectures cannot provide.
 
 Performance concerns likely compound the architectural barriers. Knuth-Plass itself is efficient—O(N²) in the general case, O(N×K) with early termination. But in architectures where spacing decisions feed back into collision detection, which feeds back into spacing, the algorithm would need to run repeatedly as geometry iteratively stabilizes. Each edit could trigger multiple full recomputations. The cost isn't the algorithm; it's the inability to run it once on stable inputs. When you cannot guarantee that (min_width, ideal_width) pairs are finalized before distribution begins, even an efficient algorithm becomes expensive through repetition.
 
