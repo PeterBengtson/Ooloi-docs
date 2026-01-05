@@ -17,6 +17,7 @@
   - [Page Breaking: Second Pass](#page-breaking-second-pass)
   - [Editorial Control Mechanisms](#editorial-control-mechanisms)
 - [Protecting the Closed Semantic Model](#protecting-the-closed-semantic-model)
+  - [Enabling User Control](#enabling-user-control)
 - [Stability Guarantees](#stability-guarantees)
   - [Stage Boundary Enforcement](#stage-boundary-enforcement)
   - [Connecting Element Adaptation](#connecting-element-adaptation)

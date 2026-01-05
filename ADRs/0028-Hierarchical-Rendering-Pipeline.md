@@ -46,6 +46,7 @@ Ooloi implements a **five-stage hierarchical rendering pipeline** with comprehen
   - [Stage 4: System and Page Distribution (Fan-In)](#pipeline-stage-4-system-and-page-distribution-fan-in)
   - [Stage 5: Connecting Elements Generation (Mixed Parallelization)](#pipeline-stage-5-connecting-elements-generation-mixed-parallelization)
 - [Protecting the Closed Semantic Model](#protecting-the-closed-semantic-model)
+  - [User-Controllable System-Start Behavior](#user-controllable-system-start-behavior)
 - [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)
 - [Plugin Integration Architecture](#plugin-integration-architecture)
   - [Spacing Hooks](#spacing-hooks)
