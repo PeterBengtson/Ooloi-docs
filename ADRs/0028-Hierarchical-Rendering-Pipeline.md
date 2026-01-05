@@ -50,8 +50,8 @@ Ooloi implements a **six-stage hierarchical rendering pipeline** with comprehens
   - [User-Controllable System-Start Behavior](#user-controllable-system-start-behavior)
 - [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)
 - [Plugin Integration Architecture](#plugin-integration-architecture)
-  - [Spacing Hooks](#spacing-hooks)
-  - [Paint Hooks](#paint-hooks)
+  - [Atom Hook (Stage 1)](#atom-hook-stage-1)
+  - [Spanner Hook (Stage 5)](#spanner-hook-stage-5)
 - [Client-Server Coordination](#client-server-coordination)
   - [Lazy Rendering Strategy](#lazy-rendering-strategy)
   - [Hierarchical Invalidation](#hierarchical-invalidation)
@@ -122,7 +122,7 @@ Individual measures calculate minimum, ideal, and gutter widths for their rhythm
   - The gutter accommodates courtesy accidentals as non-semantic graphical decorations
 - **Natural Accidental Handling**: Accidentals increase an atom's left extent, automatically affecting minimum spacing to the previous atom
 - **Collision Guarantee**: As long as atoms are not positioned closer than their combined extents, collisions mathematically cannot occur
-- **Plugin Hook Integration**: Spacing hooks fire for each notational element, contributing spatial requirements to atom formation
+- **Plugin Hook Integration**: Atom hooks fire for each notational element, producing atoms with extents and cached paintlists
 - **Atom Dimension Caching**: Once calculated for a rhythmic configuration, engraving atoms remain **immutable** until measure content changes, enabling efficient repositioning without recomputation
 
 #### The Gutter: System-Start Width Delta
@@ -328,73 +328,75 @@ Changing this setting triggers Stage 1 recomputation of affected measures' gutte
 
 ### Plugin Architecture Integration
 
-Every notational element participates through a unified plugin interface with **flexible multi-stage participation**:
+Every notational element participates through a unified plugin interface with **two-stage participation**:
 
 ```mermaid
 flowchart LR
     A[Musical Element] --> B[Plugin Registry]
-    B --> C[Spacing Hook]
-    B --> D[Paint Hook]
-    B --> E[Connect Hook]
+    B --> C[Atom Hook]
+    B --> D[Spanner Hook]
 
     C --> C1[Input: Element + Context]
-    C1 --> C2[Output: Width, Height, Bounds]
+    C1 --> C2[Output: Atom with<br/>Cached Paintlist]
 
-    D --> D1[Input: Element + Coordinates]
-    D1 --> D2[Output: Non-Connecting Instructions]
+    D --> D1[Input: Element + Final Positions]
+    D1 --> D2[Output: Spanner<br/>Rendering Instructions]
 
-    E --> E1[Input: Element + Final Positions]
-    E1 --> E2[Output: Connecting Instructions]
-
-    C2 --> F[Stage 1: Atom Formation & Extent Calculation]
-    D2 --> G[Stage 4: Atom Positioning]
-    E2 --> H[Stage 5: Spanners & Margins<br/>(per musician)]
+    C2 --> F[Stage 1: Atom Formation]
+    D2 --> G[Stage 5: Spanners & Margins<br/>(per musician)]
 
     style C fill:#bbdefb,color:#000
-    style D fill:#f8bbd9,color:#000
-    style E fill:#ffe0b2,color:#000
+    style D fill:#ffe0b2,color:#000
     style F fill:#c5e1a5,color:#000
-    style G fill:#e1f5fe,color:#000
-    style H fill:#fff3e0,color:#000
+    style G fill:#fff3e0,color:#000
 ```
 
-#### Spacing Hook (Stage 1: Atom Formation)
-Plugins declare the spatial requirements of their elements:
+#### Atom Hook (Stage 1)
+Plugins produce atoms with cached paintlists for non-connecting elements:
 - **Input**: Musical element data and contextual information
-- **Output**: Width requirements, indicative height, and collision boundaries
-- **Participation**: All plugins must implement (may return null for purely connecting elements)
+- **Output**: Atom containing extent (width/height/bounds) and cached paintlist (rendering instructions)
+- **Participation**: Required for all elements with visual representation
+- **Purpose**: Single-pass atom formation - extent calculation and paintlist generation happen together
+- **Caching**: Paintlists are immutable and cached with the atom, positioned later by Stage 4
 
-#### Paint Hook (Stage 4: Atom Positioning)
-Plugins generate visual rendering instructions for non-connecting elements:
-- **Input**: Musical element data with raster positioning coordinates
-- **Output**: Rendering instructions for elements that don't connect atoms
-- **Participation**: Optional - only for elements with non-connecting visual components
+#### Spanner Hook (Stage 5)
+Plugins generate connecting elements using finalized atom positions:
+- **Input**: Musical element data with absolute final atom positions (from Stage 4)
+- **Output**: Rendering instructions for elements that connect atoms (ties, slurs, beams, hairpins, etc.)
+- **Participation**: Required only for elements that connect across atoms
+- **Purpose**: Generate spanners that adapt to final layout using complete position information
 
-#### Connect Hook (Stage 5: Spanners & Margins)
-Plugins generate connecting elements using finalized positions:
-- **Input**: Musical element data with absolute final atom positions
-- **Output**: Rendering instructions for elements that connect atoms (ties, slurs, beams, etc.)
-- **Participation**: Optional - only for elements that connect across atoms
-
-**Plugin Flexibility Examples**:
+**Plugin Examples**:
 ```clojure
-;; Simple plugin - non-connecting only
+;; Non-connecting element plugin
 (defrecord ArticulationPlugin []
-  (spacing-hook [_ art ctx] (calculate-bounds art ctx))
-  (paint-hook [_ art coords] (render-glyph art coords))
-  (connect-hook [_ _ _] nil))
+  (atom-hook [_ art ctx]
+    ;; Stage 1: Produce atom with extent and cached paintlist
+    (let [bounds (calculate-bounds art ctx)
+          paintlist (render-glyph art)]
+      (create-atom bounds paintlist)))
+  (spanner-hook [_ _ _] nil))
 
-;; Connecting-only plugin
+;; Connecting element plugin
 (defrecord TiePlugin []
-  (spacing-hook [_ tie ctx] (calculate-clearance tie ctx))
-  (paint-hook [_ _ _] nil)
-  (connect-hook [_ tie positions] (generate-tie-curve tie positions)))
+  (atom-hook [_ tie ctx]
+    ;; Stage 1: Calculate clearance space needed
+    (let [clearance (calculate-clearance tie ctx)]
+      (create-atom clearance nil)))
+  (spanner-hook [_ tie positions]
+    ;; Stage 5: Generate tie curve using final positions
+    (generate-tie-curve tie positions)))
 
-;; Hybrid plugin - both stages
+;; Hybrid plugin - both atom and spanner
 (defrecord BeamPlugin []
-  (spacing-hook [_ beam ctx] (calculate-spacing beam ctx))
-  (paint-hook [_ beam coords] (render-stems beam coords))
-  (connect-hook [_ beam positions] (generate-beam-line beam positions)))
+  (atom-hook [_ beam ctx]
+    ;; Stage 1: Spacing requirements and stem paintlists
+    (let [spacing (calculate-spacing beam ctx)
+          stems (render-stems beam)]
+      (create-atom spacing stems)))
+  (spanner-hook [_ beam positions]
+    ;; Stage 5: Generate beam line connecting stems
+    (generate-beam-line beam positions)))
 ```
 
 **Registry-Based Discovery**: The plugin registry maintains mappings between musical elements and their formatters, enabling runtime composition and replacement of notational elements with flexible stage participation.
@@ -469,7 +471,7 @@ sequenceDiagram
 
     Note over U,C2: Phase 3: Asynchronous Pipeline Processing (100ms batch)
     B->>P: Queue affected elements for raster
-    P->>P: Stage 1: Engraving atom formation<br/>(plugin spacing hooks fire)
+    P->>P: Stage 1: Engraving atom formation<br/>(plugin atom hooks fire)
     P->>P: Stage 2: Measure stack minimum calculation<br/>(parallel collision boundary computation)
     P->>P: Stage 3: System breaking<br/>(Knuth-Plass optimal distribution)
     P->>P: Stage 4: Atom positioning<br/>(apply scale factors to atoms)
@@ -662,7 +664,7 @@ This architecture breaks the circular dependencies that collapse traditional not
 
 **Cancellation semantics required**: Responsive editing under long-running calculations demands cooperative cancellation throughout the pipeline. This is additional coordination surface that must remain disciplined.
 
-**Plugin surface area**: All formatting logic must implement spacing/paint/connect hooks. This architectural uniformity is powerful but mandatory—there is no privileged code path for "simple" elements.
+**Plugin surface area**: All formatting logic must implement atom and spanner hooks. This architectural uniformity is powerful but mandatory—there is no privileged code path for "simple" elements.
 
 **Increased invalidation surface**: Hierarchical caching requires precise invalidation logic across stage boundaries. The benefit is incremental performance; the cost is architectural discipline.
 
