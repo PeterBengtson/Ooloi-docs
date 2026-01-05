@@ -130,6 +130,25 @@ When a measure appears first on a system, it may require additional space for gr
 
 **What is NOT in the gutter:** All semantic accidentals are already computed and positioned within atoms by ADR-0035. The gutter contains only graphical decorations added for visual clarity at system boundaries.
 
+**User control over courtesy accidentals:**
+
+Because Ooloi has complete information before distribution, users can control courtesy accidental behavior without causing layout instability:
+
+```clojure
+;; User setting controlling when courtesy accidentals appear
+:courtesy-accidentals-at-breaks :system  ;; :system | :page | :none
+```
+
+| Setting | Behavior |
+|---------|----------|
+| `:system` | Show courtesy accidentals at all system breaks (default) |
+| `:page` | Show courtesy accidentals only at page breaks |
+| `:none` | Never show courtesy accidentals at breaks |
+
+This setting affects Stage 5 rendering decisions, not Stage 4 distribution. The gutter space is always reserved based on the most permissive setting that might apply; Stage 5 simply chooses whether to render decorations into that space.
+
+**Architectural capability:** The complete-information architecture makes user-controllable courtesy accidental settings straightforward to implement. This control requires deterministic distribution to work without manual adjustment or layout jitter. Traditional architectures that lack complete information at distribution time cannot offer such settings without risking non-deterministic behavior or requiring iterative correction.
+
 ### Pipeline Stage 2: Vertical Reconciliation (Fan-In)
 Reconciles per-measure calculations across the vertical stack to ensure rhythmic synchronization:
 - **Fan in**: Collects minimum, ideal, and gutter widths from all measures in the stack (Stage 1 outputs)
@@ -256,6 +275,23 @@ With complete information and no feedback:
 - **Optimal**: Not "good enough" but mathematically best
 - **Stable**: No jitter from iteration or heuristics
 - **Fast**: One pass through the pipeline, no convergence loops
+
+### User-Controllable System-Start Behavior
+
+Because gutter width is computed with complete information in Stage 1, users can control system-start courtesy accidental behavior through settings:
+
+```clojure
+:system-break-cautionary-accidentals
+  :none   ;; Never show courtesy accidentals at system breaks
+  :page   ;; Show only at page breaks (first system of each page)
+  :system ;; Show at all system breaks
+```
+
+This setting affects Stage 1's gutter computation. When set to `:none`, tied-to notes contribute zero gutter width. When set to `:page` or `:system`, the gutter includes space for courtesy accidentals as appropriate.
+
+Changing this setting triggers Stage 1 recomputation of affected measures' gutter values, then Stage 4 recomputes optimal distribution with the new values. No iteration, no manual adjustment. The user changes a preference; the system produces the mathematically optimal layout for that preference.
+
+**Architectural enablement:** This level of control is possible only because the architecture provides complete information before distribution decisions. Without knowing gutter requirements upfront, traditional systems must either guess and require manual correction, iterate until convergence, or defer the feature entirely. The gutter model makes user-controllable settings straightforward: different settings produce different gutter values, Stage 4 optimizes accordingly, deterministically.
 
 ## Atom-Relative Geometry Invariant
 

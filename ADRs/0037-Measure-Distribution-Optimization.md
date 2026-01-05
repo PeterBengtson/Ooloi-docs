@@ -303,6 +303,8 @@ System layout when measure s is first:
 
 **What is NOT in the gutter:** All semantic accidentals are computed and positioned by [ADR-0035](0035-Remembered-Alterations.md) and are included in the measure's `min_width` and `ideal_width`. The gutter contains only graphical decorations added by Stage 5 for visual clarity at system boundaries.
 
+**User control:** Users can configure when courtesy accidentals appear (`:system`, `:page`, or `:none`). This setting affects Stage 5 rendering, not Stage 4 distribution—the gutter is always reserved; the decorations are optionally rendered. See [ADR-0028](0028-Hierarchical-Rendering-Pipeline.md) for details.
+
 **Allocation with gutter:**
 
 For a system containing stacks [s, t):
@@ -646,6 +648,23 @@ With complete information and no feedback:
 - **Fast**: One pass through the pipeline, no convergence loops
 
 This is the architectural achievement: problems that seemed to require feedback collapse into pure forward flow when the right information is available at the right stage.
+
+### Enabling User Control
+
+Complete information enables user-controllable settings that would otherwise require manual adjustment or heuristics:
+
+```clojure
+:system-break-cautionary-accidentals
+  :none   ;; Never show courtesy accidentals at system breaks  
+  :page   ;; Show only at page breaks
+  :system ;; Show at all system breaks
+```
+
+The setting affects gutter computation in Stage 1, not Stage 4 logic. Stage 4 receives different gutter values and computes the optimal distribution for those values. Changing the setting produces a new optimal layout—automatically, deterministically, without iteration or manual correction.
+
+**Architectural capability:** The complete-information architecture makes user-controllable courtesy accidental settings straightforward to implement—a feature that requires deterministic distribution to work without manual adjustment or layout jitter. Traditional architectures that lack complete information at distribution time cannot offer such settings without risking non-deterministic behavior or requiring iterative correction.
+
+This demonstrates how complete information transforms potentially complex features into simple input variations. Settings that would otherwise require manual adjustment, iterative correction, or special-case handling become straightforward parameter changes to a general algorithm. The architecture enables the feature; the feature validates the architecture.
 
 ## Stability Guarantees
 
