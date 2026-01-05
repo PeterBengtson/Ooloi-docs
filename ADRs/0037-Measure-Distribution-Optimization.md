@@ -14,7 +14,7 @@
   - [Width Allocation: Proportional Scaling](#width-allocation-proportional-scaling)
   - [Variable System Widths](#variable-system-widths)
   - [Alternative: Asymmetric Cost Optimization](#alternative-asymmetric-cost-optimization)
-  - [Page Breaking: Second Pass](#page-breaking-second-pass)
+  - [Page Breaking: Second Pass (Stage 6)](#page-breaking-second-pass-stage-6)
   - [Editorial Control Mechanisms](#editorial-control-mechanisms)
 - [Protecting the Closed Semantic Model](#protecting-the-closed-semantic-model)
   - [Enabling User Control](#enabling-user-control)
@@ -26,7 +26,7 @@
   - [Edit Locality](#edit-locality)
   - [Caching and Incremental Recompute](#caching-and-incremental-recompute)
 - [Implementation](#implementation)
-  - [Core Dynamic Programming Structure](#core-dynamic-programming-structure)
+  - [Core Dynamic Programming Structure (Stage 3)](#core-dynamic-programming-structure-stage-3)
   - [Segment Cost Computation](#segment-cost-computation)
   - [Width Allocation Implementation](#width-allocation-implementation)
   - [Break Reconstruction](#break-reconstruction)
@@ -42,45 +42,59 @@ Accepted
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                      Five-Stage Rendering Pipeline                          │
+│                      Six-Stage Rendering Pipeline                           │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Stage 1 (Fan-out)     Stage 2 (Fan-in)      Stage 3 (Fan-out)              │
-│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐               │
-│  │   Collision  │      │   Vertical   │      │    Symbol    │               │
-│  │  Detection   │─────▶│Reconciliation│─────▶│ Preparation  │               │
-│  │  (parallel)  │      │              │      │  (parallel)  │               │
-│  └──────────────┘      └──────────────┘      └──────────────┘               │
-│         │                     │                     │                       │
-│         │              min, ideal, gutter           │                       │
-│         │              per measure stack            │                       │
-│         ▼                     ▼                     ▼                       │
+│  Stage 1 (Fan-out)     Stage 2 (Fan-in)                                     │
+│  ┌──────────────┐      ┌──────────────┐                                     │
+│  │ Atom Form.   │      │   Vertical   │                                     │
+│  │ & Collision  │─────▶│Reconciliation│                                     │
+│  │  (parallel)  │      │              │                                     │
+│  └──────────────┘      └──────────────┘                                     │
+│         │                     │                                             │
+│         │              min, ideal, gutter                                   │
+│         │              per measure stack                                    │
+│         ▼                     ▼                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                    Stage 4: DISTRIBUTION                            │    │
+│  │               Stage 3: SYSTEM BREAKING (Single)                     │    │
 │  │                                                                     │    │
 │  │   Input: N measure stacks with widths + gutter delta                │    │
 │  │          {:min ratio, :ideal ratio, :gutter ratio}                  │    │
 │  │                                                                     │    │
-│  │   ┌─────────────────┐    ┌─────────────────┐                        │    │
-│  │   │  System Break   │───▶│  Page Break     │                        │    │
-│  │   │     DP O(N²)    │    │    DP O(S²)     │                        │    │
-│  │   └─────────────────┘    └─────────────────┘                        │    │
-│  │            │                     │                                  │    │
-│  │            ▼                     ▼                                  │    │
+│  │   ┌─────────────────┐                                               │    │
+│  │   │  System Break   │                                               │    │
+│  │   │     DP O(N²)    │                                               │    │
+│  │   └─────────────────┘                                               │    │
+│  │            │                                                        │    │
+│  │            ▼                                                        │    │
 │  │   ┌─────────────────────────────────────────────────────────────┐   │    │
-│  │   │           Width Allocation per System                       │   │    │
+│  │   │         Scale Factor per System                             │   │    │
 │  │   │     available = system_width - gutter[s]                    │   │    │
-│  │   │     actual_i = ideal_i × (available / Σ ideal_i)            │   │    │
+│  │   │     scale_factor = available / Σ ideal_i                    │   │    │
 │  │   └─────────────────────────────────────────────────────────────┘   │    │
 │  │                                                                     │    │
-│  │   Output: Final positions LOCKED                                    │    │
+│  │   Output: System breaks + scale factors                             │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │                                    │                                        │
 │                                    ▼                                        │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │  Stage 5: Connecting Elements + Gutter Decorations                   │   │
-│  │  Adapts to finalized geometry - does NOT influence distribution      │   │
+│  │  Stage 4: ATOM POSITIONING (Fan-out per Measure)                     │   │
+│  │  Apply scale factors to atoms, compute absolute coordinates          │   │
+│  │  actual_i = ideal_i × scale_factor                                   │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  Stage 5: SPANNERS & MARGINS (Fan-out per Musician)                   │   │
+│  │  Connecting elements + gutter decorations, compute system heights    │   │
 │  │  Adds courtesy accidentals in gutter space when at system start      │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  Stage 6: PAGE BREAKING (Single)                                     │   │
+│  │  DP O(S²) over systems using actual heights from Stage 5             │   │
+│  │  Output: Final page breaks, layout LOCKED                            │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -127,19 +141,23 @@ Parallel collision detection produces measure stack metrics. Each of N stacks em
 - Rational arithmetic preserving exact proportions without floating-point accumulation
 - STM coordination ensuring atomic reads of hierarchical musical structure
 
-**Stage 3: Symbol Preparation**
-Non-connecting visual elements (noteheads, accidentals, dynamics) are prepared using collision boundaries from Stage 1. These elements do not influence distribution.
-
-**Stage 4: Distribution Optimization**
-With vertical coordination complete and connecting elements deferred, the problem reduces to:
+**Stage 3: System Breaking**
+With vertical coordination complete, the problem reduces to:
 - A 1-dimensional sequence of N scalar triples (min_width, ideal_width, gutter_width)
 - Gutter subtraction for system-start stacks before scaling
-- Capacity-constrained segmentation into systems and pages
+- Capacity-constrained segmentation into systems using Knuth-Plass DP
 - Cost function on width deviations
 - No feedback from geometry to distribution logic
+- Output: System break decisions and scale factors per system
 
-**Stage 5: Connecting Elements**
-Ties, slurs, and spanning attachments compute geometry based on finalized atom positions. They adapt to the determined layout rather than influencing it. For measures at system-start positions, Stage 5 adds graphical decorations (courtesy accidentals, tie continuations) within the reserved gutter space. Pathological cases (e.g., slur collisions requiring additional space) trigger explicit, localized reflow rather than systemic invalidation.
+**Stage 4: Atom Positioning**
+Applies scale factors from Stage 3 to position atoms at their actual coordinates. Non-connecting visual elements (noteheads, accidentals, dynamics) are positioned using the computed scale factors. These elements do not influence distribution.
+
+**Stage 5: Spanners and Margins**
+Ties, slurs, and spanning attachments compute geometry based on finalized atom positions from Stage 4. They adapt to the determined layout rather than influencing it. For measures at system-start positions, Stage 5 adds graphical decorations (courtesy accidentals, tie continuations) within the reserved gutter space. Determines actual system heights from vertical extent of connecting elements.
+
+**Stage 6: Page Breaking**
+Uses Knuth-Plass DP over the system sequence with actual system heights from Stage 5. Produces final page breaks, completing the layout. Pathological cases (e.g., slur collisions requiring additional space) trigger explicit, localized reflow rather than systemic invalidation.
 
 **Why this is architectural, not algorithmic**:
 The reduction does not emerge from clever optimization techniques. It emerges from:
@@ -206,11 +224,14 @@ Edit locality as first-class goal: When measures are inserted, deleted, or modif
 
 ### Architectural Position
 
-Measure distribution optimization is Stage 4 of the hierarchical rendering pipeline ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)). It receives measure stack metrics from Stages 1-2 and produces finalized positions that Stage 5 consumes.
+Measure distribution optimization (system breaking) is Stage 3 of the hierarchical rendering pipeline ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)). It receives measure stack metrics from Stages 1-2 and produces system break decisions and scale factors that Stage 4 uses for atom positioning.
 
 The algorithm implements **capacity-constrained segmentation with proportional width allocation**:
-1. Dynamic programming determines optimal system and page break points, accounting for gutter space at system starts
-2. Proportional scaling allocates actual widths within the available space (after gutter reservation)
+1. Dynamic programming (Stage 3) determines optimal system break points, accounting for gutter space at system starts
+2. Proportional scaling computes scale factors for width allocation within the available space (after gutter reservation)
+3. Atom positioning (Stage 4) applies scale factors to compute actual positions
+4. System heights (Stage 5) are computed from final geometry
+5. Page breaking (Stage 6) uses a second DP pass over systems with actual heights
 
 ### Interface Contract
 
@@ -300,11 +321,11 @@ System layout when measure s is first:
 - Courtesy accidentals for tied-to notes at position 0 (graphical decorations, not semantic accidentals)
 - Tie continuation arcs (visual portion of ties broken at system boundaries)
 
-**Critical architectural property:** The gutter width is computed in Stage 1 from complete information about tied notes. Stage 4 knows exactly how much additional space each measure requires *before* making any distribution decisions. This enables mathematically optimal distribution without heuristics or iteration.
+**Critical architectural property:** The gutter width is computed in Stage 1 from complete information about tied notes. Stage 3 knows exactly how much additional space each measure requires *before* making any distribution decisions. This enables mathematically optimal distribution without heuristics or iteration.
 
 **What is NOT in the gutter:** All semantic accidentals are computed and positioned by [ADR-0035](0035-Remembered-Alterations.md) and are included in the measure's `min_width` and `ideal_width`. The gutter contains only graphical decorations added by Stage 5 for visual clarity at system boundaries.
 
-**User control:** Users can configure when courtesy accidentals appear (`:system`, `:page`, or `:none`). This setting affects Stage 5 rendering, not Stage 4 distribution—the gutter is always reserved; the decorations are optionally rendered. See [ADR-0028](0028-Hierarchical-Rendering-Pipeline.md) for details.
+**User control:** Users can configure when courtesy accidentals appear (`:system`, `:page`, or `:none`). This setting affects Stage 5 rendering, not Stage 3 distribution—the gutter is always reserved; the decorations are optionally rendered. See [ADR-0028](0028-Hierarchical-Rendering-Pipeline.md) for details.
 
 **Allocation with gutter:**
 
@@ -450,16 +471,17 @@ If proportional scaling proves adequate, asymmetric optimization becomes unneces
 
 These scenarios are theoretical. The actual question is: **do they occur in real scores, and do they produce unacceptable visual results?** Implementation should validate empirically before adding complexity.
 
-### Page Breaking: Second Pass
+### Page Breaking: Second Pass (Stage 6)
 
-Page breaking is a **second segmentation pass over the system sequence**, never interleaved with system breaking:
+**Stage 6: Page Breaking** is a second segmentation pass over the system sequence, never interleaved with system breaking. It uses actual system heights computed by Stage 5:
 
 ```clojure
 (defn find-page-breaks [systems page-height-fn]
-  ;; Same DP structure, different input:
-  ;; - systems instead of stacks
+  ;; Stage 6: Page Breaking
+  ;; Same DP structure as Stage 3, different input:
+  ;; - systems instead of stacks (from Stage 3 output)
   ;; - page-height-fn instead of system-width-fn
-  ;; - system heights instead of widths
+  ;; - system heights instead of widths (from Stage 5 output)
   ;; page-height-fn: (fn [start-sys end-sys] -> available-height)
   (find-optimal-breaks systems page-height-fn))
 ```
@@ -529,7 +551,7 @@ The DP operates on groups; after breaks are determined, groups expand back to co
 
 **Width Overrides: Upstream Modification**
 
-User adjustments to individual measure widths ("stretch this measure," "compress this passage") belong upstream of Stage 4, not within it. Stage 4 consumes width triples; editorial overrides modify these inputs:
+User adjustments to individual measure widths ("stretch this measure," "compress this passage") belong upstream of Stage 3, not within it. Stage 3 consumes width triples; editorial overrides modify these inputs:
 
 ```clojure
 (defn apply-width-overrides 
@@ -617,11 +639,13 @@ This approach has fundamental problems:
 The gutter model eliminates feedback through **complete information**:
 
 1. **Stage 1** computes exact measure content (min, ideal) + exact gutter delta
-2. **Stage 4** has *complete knowledge* of both scenarios (mid-system and system-start) for every measure
-3. **Stage 4** computes *mathematically optimal* distribution - not heuristic, not iterative
-4. **Stage 5** adds graphical decorations based on actual positions
+2. **Stage 3** has *complete knowledge* of both scenarios (mid-system and system-start) for every measure
+3. **Stage 3** computes *mathematically optimal* system breaks - not heuristic, not iterative
+4. **Stage 4** positions atoms using scale factors from Stage 3
+5. **Stage 5** adds graphical decorations based on actual positions and computes system heights
+6. **Stage 6** computes *mathematically optimal* page breaks using actual system heights
 
-The gutter width is not "we might need space" - it's "this is exactly how much space the graphical decoration requires." Stage 4 doesn't guess. It has full information to make the globally optimal decision in one pass.
+The gutter width is not "we might need space" - it's "this is exactly how much space the graphical decoration requires." Stage 3 doesn't guess. It has full information to make the globally optimal decision in one pass.
 
 ### Semantic vs Graphical Content
 
@@ -661,7 +685,7 @@ Complete information enables user-controllable settings that would otherwise req
   :system ;; Show at all system breaks
 ```
 
-The setting affects gutter computation in Stage 1, not Stage 4 logic. Stage 4 receives different gutter values and computes the optimal distribution for those values. Changing the setting produces a new optimal layout—automatically, deterministically, without iteration or manual correction.
+The setting affects gutter computation in Stage 1, not Stage 3 logic. Stage 3 receives different gutter values and computes the optimal distribution for those values. Changing the setting produces a new optimal layout—automatically, deterministically, without iteration or manual correction.
 
 **Architectural capability:** The complete-information architecture makes user-controllable courtesy accidental settings straightforward to implement—a feature that requires deterministic distribution to work without manual adjustment or layout jitter. Traditional architectures that lack complete information at distribution time cannot offer such settings without risking non-deterministic behavior or requiring iterative correction.
 
@@ -671,9 +695,9 @@ This demonstrates how complete information transforms potentially complex featur
 
 ### Stage Boundary Enforcement
 
-After Stage 4 completes, measure stack positions are **finalized**. No subsequent stage modifies distribution decisions. This architectural invariant prevents feedback loops where:
+After Stage 3 system breaking and Stage 4 atom positioning complete, measure stack positions are **finalized**. No subsequent stage modifies distribution decisions. This architectural invariant prevents feedback loops where:
 - Stage 5 connecting elements request more space
-- Stage 4 redistribution invalidates Stage 5 geometry
+- Stage 3 redistribution invalidates Stage 5 geometry
 - Mutual invalidation prevents convergence
 
 ### Connecting Element Adaptation
@@ -690,13 +714,13 @@ This is **selection, not computation**. The space was pre-reserved; Stage 5 rend
 
 In rare situations (e.g., short slur with extreme stem directions creating unavoidable collision), the system may trigger **local, explicit reflow**:
 
-- **Stage 5 is not allowed to request redistribution.** It may only request explicit, bounded re-execution of Stage 4 on a constrained interval.
+- **Stage 5 is not allowed to request redistribution.** It may only request explicit, bounded re-execution of Stages 3-4 on a constrained interval.
 - Reflow scope limited to affected measures and immediate neighbors
-- Reflow occurs after Stage 5 detects geometric impossibility, not during Stage 4 optimization
+- Reflow occurs after Stage 5 detects geometric impossibility, not during Stage 3 optimization
 - Reflow outcome cached to prevent repeated recomputation
 - User notification of layout adjustment (optional, depending on severity)
 
-This differs fundamentally from continuous mutual invalidation in mutable architectures, where any geometry change can cascade through the entire layout system. Stage 5 does not participate in optimization; any reflow is a restart, not feedback.
+This differs fundamentally from continuous mutual invalidation in mutable architectures, where any geometry change can cascade through the entire layout system. Stage 5 does not participate in optimization; any reflow is a restart (re-executing Stages 3-4), not feedback.
 
 ### Deterministic Tie-Breaking
 
@@ -716,14 +740,14 @@ When measures are modified, the system attempts to preserve existing break decis
 
 ### Caching and Incremental Recompute
 
-Stage 4 operates over a sequence of measure stacks whose width triples are **already finalized upstream**. In addition, Ooloi caches the following per **measure stack**:
+Stage 3 operates over a sequence of measure stacks whose width triples are **already finalized upstream**. In addition, Ooloi caches the following per **measure stack**:
 
 * `min_width` — hard lower bound for measure content (from Stage 1–2)
 * `ideal_width` — proportional target for measure content
 * `gutter_width` — additional space for system-start decorations
-* `actual_width` — realized width after Stage 4 allocation
+* `actual_width` — realized width after Stage 3-4 (scale factors applied by Stage 4)
 
-This cache is authoritative at the Stage 4 boundary: Stage 4 consumes `(min, ideal, gutter)` and produces `actual` and break assignments; Stage 5 consumes `actual` and never influences Stage 4 except via explicitly bounded reflow (pathological cases).
+This cache is authoritative at the Stage 3-4 boundary: Stage 3 consumes `(min, ideal, gutter)` and produces break assignments and scale factors; Stage 4 applies scale factors to produce `actual` positions; Stage 5 consumes `actual` and never influences Stages 3-4 except via explicitly bounded reflow (pathological cases).
 
 #### Cached Invariants
 
@@ -737,7 +761,7 @@ The cache additionally implies that per-stack metrics are **stable across edits*
 
 #### Incremental Update Consequences
 
-Edits affect Stage 4 only through changes to stack metrics:
+Edits affect Stages 3-4 only through changes to stack metrics:
 
 1. **Local edit**: modifying or inserting notation in a measure updates only the affected stack's upstream-derived width values.
 
@@ -755,7 +779,7 @@ Edits affect Stage 4 only through changes to stack metrics:
 
 #### Practical Complexity
 
-With cached stack metrics, Stage 4 runtime is dominated by DP over **scalars**, not by collision/layout work. Edit-time recomputation is typically:
+With cached stack metrics, Stage 3 runtime is dominated by DP over **scalars**, not by collision/layout work. Edit-time recomputation is typically:
 
 * **O(size of edited measure)** for upstream recalculation of the edited stack
 * plus **O(K)** (where `K ≈ measures/system`) for local system allocation updates
@@ -770,7 +794,9 @@ This caching strategy is the concrete mechanism behind the ADR's edit-locality g
 
 ## Implementation
 
-### Core Dynamic Programming Structure
+### Core Dynamic Programming Structure (Stage 3)
+
+The following implementation performs **Stage 3: System Breaking** - distributing measure stacks across systems:
 
 ```clojure
 (defn find-optimal-breaks
@@ -1125,7 +1151,7 @@ If future refinement uses asymmetric optimisation, the distinction would sharpen
 
 The Knuth-Plass algorithm solves a specific problem formulation: capacity-constrained segmentation of a 1-dimensional sequence with separable costs. Music layout, naively formulated, is not this problem—it couples vertical alignment, collision detection, semantic decisions, and geometry into mutual dependencies.
 
-Ooloi's pipeline architecture transforms the problem. By the time Stage 4 executes:
+Ooloi's pipeline architecture transforms the problem. By the time Stage 3 executes:
 - Vertical coordination is complete (Stages 1-2)
 - Collision boundaries are determined (Stage 1)
 - Semantic decisions (accidentals, beaming) are resolved (ADR-0035)
@@ -1190,7 +1216,7 @@ The formal validation will determine whether the baseline approach is sufficient
 
 ## References
 
-- [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) (pipeline architecture, Stage 4 position, gutter model, closed semantic model)
+- [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) (pipeline architecture, Stage 3 system breaking position, gutter model, closed semantic model)
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (accidental algorithm that closes the semantic model; tied-note bypass rules inform gutter requirements)
 - [ADR-0038: Horizontal Spacing](0038-Horizontal-Spacing.md) (upstream computation of min/ideal/gutter widths)
 - [ADR-0014: Timewalk](0014-Timewalk.md) (temporal traversal providing measure discovery)

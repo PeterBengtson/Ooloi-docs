@@ -896,7 +896,7 @@ None - all implementation questions resolved.
 **Core Integration:**
 - **ADR-0022: Event-Driven Data Synchronization** - Core architecture this implements. Describes interaction patterns. Event Router implements the architecture. Cache invalidation → fetch → update flow.
 - **ADR-0024: gRPC Flow Control** - Per-client drainer pattern guarantees FIFO event delivery. Event Router benefits from backpressure handling. Drop-oldest queue prevents memory exhaustion.
-- **ADR-0028: Hierarchical Rendering Pipeline** - Backend computes MeasureView structures with glyphs and curves. Computed by 5-stage rendering pipeline with fan-out/fan-in pattern.
+- **ADR-0028: Hierarchical Rendering Pipeline** - Backend computes MeasureView structures with glyphs and curves. Computed by 6-stage rendering pipeline with fan-out/fan-in pattern.
 
 **Supporting:**
 - **ADR-0014: Timewalk** - Temporal traversal for hit-testing and element discovery. Frontend uses timewalk to resolve clicks to VPDs for backend operations.

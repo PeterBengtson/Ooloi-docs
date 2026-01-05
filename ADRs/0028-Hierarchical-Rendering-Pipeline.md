@@ -1,8 +1,8 @@
 # ADR-0028: Hierarchical Rendering Pipeline with Plugin-Based Formatters
 
-**Status**: Accepted  
-**Date**: 2024-09-14  
-**Updated**: 2026-01-05
+**Status**: Accepted
+**Date**: 2024-09-14
+**Updated**: 2026-01-05 (6-stage architecture)
 
 ## Context
 
@@ -10,7 +10,7 @@ Musical notation software faces computational challenges when handling large orc
 
 **Real-World Scalability Challenge**: Traditional notation software famously struggles with large complex scores such as Strauss's Elektra recognition scene - dense orchestral passages with intricate notation that cause performance degradation, memory exhaustion, and unresponsive editing. These scenarios expose the limitations of eager computation approaches that attempt to process entire scores regardless of user viewport or editing context.
 
-**Architectural Purpose**: This specification addresses the scalability limitations of existing notation software when processing large orchestral scores. The 5-stage hierarchical rendering pipeline with plugin integration provides the foundation for handling complex notation efficiently across multiple CPU cores.
+**Architectural Purpose**: This specification addresses the scalability limitations of existing notation software when processing large orchestral scores. The 6-stage hierarchical rendering pipeline with plugin integration provides the foundation for handling complex notation efficiently across multiple CPU cores.
 
 **Scalability Approach**: The fan-out/fan-in architecture enables parallel processing during computationally intensive stages, providing linear scaling characteristics with available CPU cores for both simple and complex musical scores.
 
@@ -32,19 +32,20 @@ Ooloi's [frontend-backend separation](0001-Frontend-Backend-Separation.md) provi
 
 ## Decision
 
-Ooloi implements a **five-stage hierarchical rendering pipeline** with comprehensive plugin integration and intelligent client-server coordination:
+Ooloi implements a **six-stage hierarchical rendering pipeline** with comprehensive plugin integration and intelligent client-server coordination:
 
 ## Table of Contents
 
 - [Context](#context)
   - [Architectural Foundation: Frontend-Backend Separation](#architectural-foundation-frontend-backend-separation)
 - [Decision](#decision)
-- [Five-Stage Pipeline Architecture](#five-stage-pipeline-architecture)
-  - [Stage 1: Atom Formation and Extent Calculation (Fan-Out)](#pipeline-stage-1-atom-formation-and-extent-calculation-fan-out)
-  - [Stage 2: Vertical Reconciliation (Fan-In)](#pipeline-stage-2-vertical-reconciliation-fan-in)
-  - [Stage 3: Atom Repositioning (Fan-Out)](#pipeline-stage-3-atom-repositioning-fan-out)
-  - [Stage 4: System and Page Distribution (Fan-In)](#pipeline-stage-4-system-and-page-distribution-fan-in)
-  - [Stage 5: Connecting Elements Generation (Mixed Parallelization)](#pipeline-stage-5-connecting-elements-generation-mixed-parallelization)
+- [Six-Stage Pipeline Architecture](#six-stage-pipeline-architecture)
+  - [Stage 1: Atom Formation and Extent Calculation (Fan-Out per Measure)](#pipeline-stage-1-atom-formation-and-extent-calculation-fan-out-per-measure)
+  - [Stage 2: Raster Creation (Fan-In across Measure Stack)](#pipeline-stage-2-raster-creation-fan-in-across-measure-stack)
+  - [Stage 3: System Breaking (Single)](#pipeline-stage-3-system-breaking-single)
+  - [Stage 4: Atom Positioning (Fan-Out per Measure)](#pipeline-stage-4-atom-positioning-fan-out-per-measure)
+  - [Stage 5: Spanners and Margins (Fan-Out per Musician)](#pipeline-stage-5-spanners-and-margins-fan-out-per-musician)
+  - [Stage 6: Page Breaking (Single)](#pipeline-stage-6-page-breaking-single)
 - [Protecting the Closed Semantic Model](#protecting-the-closed-semantic-model)
   - [User-Controllable System-Start Behavior](#user-controllable-system-start-behavior)
 - [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)
@@ -63,41 +64,46 @@ Ooloi implements a **five-stage hierarchical rendering pipeline** with comprehen
 - [Alternatives Considered](#alternatives-considered)
 - [References](#references)
 
-## Five-Stage Pipeline Architecture
+## Six-Stage Pipeline Architecture
 
 ```mermaid
 flowchart LR
-    A[Measure<br/>Changes] --> B["Stage 1<br/>Atom Formation &<br/>Extent Calculation (Fan-out)"]
-    B --> C["Stage 2<br/>Vertical<br/>Reconciliation (Fan-in)"]
-    C --> D["Stage 3<br/>Atom<br/>Repositioning (Fan-out)"]
-    D --> E["Stage 4<br/>System & Page<br/>Distribution (Fan-in)"]
-    E --> F["Stage 5<br/>Connecting Elements<br/>(Mixed)"]
+    A[Measure<br/>Changes] --> B["Stage 1<br/>Atom Formation<br/>(Fan-out per measure)"]
+    B --> C["Stage 2<br/>Raster Creation<br/>(Fan-in)"]
+    C --> D["Stage 3<br/>System Breaking<br/>(Single)"]
+    D --> E["Stage 4<br/>Atom Positioning<br/>(Fan-out per measure)"]
+    E --> F["Stage 5<br/>Spanners & Margins<br/>(Fan-out per musician)"]
+    F --> G["Stage 6<br/>Page Breaking<br/>(Single)"]
 
     B1[Rhythmic Content<br/>Musical Elements<br/>Accidental Decisions] --> B
-    B --> B2[Atoms with Extents<br/>Min, Ideal Widths<br/>+ Gutter Delta]
+    B --> B2[Atoms with Extents<br/>Min, Ideal, Gutter<br/>Cached Paintlists]
 
-    C1[Per-Measure Widths<br/>Rhythmical Rasters] --> C
+    C1[Per-Measure Metrics<br/>Rhythmical Rasters] --> C
     C --> C2[Unified Raster<br/>MeasureStackFormatters]
 
-    D1[Unified Raster<br/>Pre-formed Atoms] --> D
-    D --> D2[Repositioned Atoms<br/>Paintlists Ready]
+    D1[Min/Ideal/Gutter<br/>System Width] --> D
+    D --> D2[Break Decisions<br/>Scale Factors]
 
-    E1[Min/Ideal + Gutter<br/>System Width] --> E
-    E --> E2[Final Positions<br/>Locked Layout]
+    E1[Scale Factors<br/>Unified Raster] --> E
+    E --> E2[Positioned Atoms<br/>Absolute Coordinates]
 
-    F1[Final Positions<br/>Locked Atoms] --> F
-    F --> F2[Ties, Slurs, Beams<br/>Gutter Decorations]
+    F1[Final Atom Positions] --> F
+    F --> F2[Ties, Slurs, Beams<br/>System Heights]
+
+    G1[System Heights] --> G
+    G --> G2[Page Breaks<br/>Final Layout]
 
     style B fill:#bbdefb,color:#000
     style C fill:#c5e1a5,color:#000
-    style D fill:#f8bbd9,color:#000
-    style E fill:#d1c4e9,color:#000
+    style D fill:#fff9c4,color:#000
+    style E fill:#f8bbd9,color:#000
     style F fill:#ffe0b2,color:#000
+    style G fill:#d1c4e9,color:#000
 ```
 
-### Pipeline Stage 1: Atom Formation and Extent Calculation (Fan-Out)
-Individual measures calculate both minimum and ideal spacing for their rhythmic content in parallel:
-- **Fan out**: Each measure in the stack processes independently with no cross-measure dependencies
+### Pipeline Stage 1: Atom Formation and Extent Calculation (Fan-Out per Measure)
+Individual measures calculate minimum, ideal, and gutter widths for their rhythmic content in parallel, and cache paintlists for all atoms:
+- **Fan-out per measure**: Each measure processes independently with no cross-measure dependencies
 - **Proportional values**: Applies absolute spacing values from Gould/Ross (quarter note: 3.5 staff-spaces, half note: 5.0, eighth: 2.5, etc.)
 - **Engraving Atom Formation**: Each rhythmic position forms a complete spatial unit - noteheads, stems, accidentals, articulations positioned relative to each other as an indivisible "engraving atom"
 - **Atom-Relative Coordinates**: All glyph positions within an atom are relative to the atom's origin point (see [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)). This fundamental property enables atoms to be repositioned without any internal recomputation.
@@ -127,7 +133,7 @@ When a measure appears first on a system, it may require additional space for gr
 - Courtesy accidentals for tied-to notes at position 0 (graphical decorations, not semantic accidentals)
 - Tie continuation arcs (the visible portion of ties broken at system boundaries)
 
-**Critical architectural property:** The gutter width is computed in Stage 1 from complete information. Stage 4 knows exactly how much additional space each measure requires *before* making any distribution decisions. This enables mathematically optimal distribution without heuristics or iteration.
+**Critical architectural property:** The gutter width is computed in Stage 1 from complete information. Stage 3 knows exactly how much additional space each measure requires *before* making any distribution decisions. This enables mathematically optimal distribution without heuristics or iteration.
 
 **What is NOT in the gutter:** All semantic accidentals are already computed and positioned within atoms by ADR-0035. The gutter contains only graphical decorations added for visual clarity at system boundaries.
 
@@ -146,13 +152,13 @@ Because Ooloi has complete information before distribution, users can control co
 | `:page` | Show courtesy accidentals only at page breaks |
 | `:none` | Never show courtesy accidentals at breaks |
 
-This setting affects Stage 5 rendering decisions, not Stage 4 distribution. The gutter space is always reserved based on the most permissive setting that might apply; Stage 5 simply chooses whether to render decorations into that space.
+This setting affects Stage 5 rendering decisions, not Stage 3 distribution. The gutter space is always reserved based on the most permissive setting that might apply; Stage 5 simply chooses whether to render decorations into that space.
 
 **Architectural capability:** The complete-information architecture makes user-controllable courtesy accidental settings straightforward to implement. This control requires deterministic distribution to work without manual adjustment or layout jitter. Traditional architectures that lack complete information at distribution time cannot offer such settings without risking non-deterministic behavior or requiring iterative correction.
 
-### Pipeline Stage 2: Vertical Reconciliation (Fan-In)
-Reconciles per-measure calculations across the vertical stack to ensure rhythmic synchronization:
-- **Fan in**: Collects minimum, ideal, and gutter widths from all measures in the stack (Stage 1 outputs)
+### Pipeline Stage 2: Raster Creation (Fan-In across Measure Stack)
+Creates unified raster across the vertical measure stack using mathematical formula that accounts for all rhythmic structures:
+- **Fan-in across measure stack**: Collects minimum, ideal, and gutter widths from all measures in the stack (Stage 1 outputs)
 - **Width propagation**: All three width components (min, ideal, gutter) are propagated through reconciliation
 - **Rhythmical raster integration**: Uses all rhythmical rasters generated for each measure in the stack, many cached from previous computations
 - **Vertical synchronization**: Reconciles differences when measures have different rhythmic content, producing unified vertical alignment
@@ -160,65 +166,58 @@ Reconciles per-measure calculations across the vertical stack to ensure rhythmic
 - **MeasureStackFormatter storage**: Stores minimum, ideal, AND gutter widths for this measure stack
 - **Rational rhythmic positions**: Creates raster with rational positions (including tuplets like 1/3, 2/3)
 - **Solution space establishment**: Defines boundaries between physical feasibility (minimum) and musical intent (ideal), with gutter as additional fixed delta
-- **Distribution**: Makes unified Result Raster available to measures for Stage 3 processing
+- **Output**: Unified Result Raster with MeasureStackFormatters containing all width metrics, ready for Stage 3 system breaking
 
-### Pipeline Stage 3: Atom Repositioning (Fan-Out)
-Parallel phase where measures reposition their pre-formed atoms to common vertical alignments:
-- **Fan out**: Each measure processes independently with no cross-measure dependencies
-- **Result Raster application**: Each measure receives the unified Result Raster with synchronized vertical positions from Stage 2
-- **Pure horizontal repositioning**: Pre-formed engraving atoms from Stage 1 are moved horizontally to align with common vertical points - no recomputation of atom geometry or extents
-- **Non-connecting elements only**: Handles notes, accidentals, articulations, dynamics - NOT ties, slurs, glissandos, hairpins
-- **Paint list preparation**: Measures prepare paintlists for everything that does NOT connect atoms
-- **Cross-staff synchronization**: All measures in stack achieve consistent rhythmic alignment using the same vertical raster
-- **Parallel execution**: All measures process simultaneously - no interdependencies once raster is available
-
-### Pipeline Stage 4: System and Page Distribution (Fan-In)
-Global optimization that distributes measures across systems and pages:
-- **Fan in**: Requires global view of all measures to make system-breaking and page-breaking decisions
-- **Complete information**: Stage 4 receives exact widths for every measure *and* exact gutter deltas - no guessing, no heuristics
-- **Gutter subtraction**: For each candidate system, the first stack's `gutter_width` is subtracted from available width before scaling:
+### Pipeline Stage 3: System Breaking (Single)
+Knuth-Plass dynamic programming optimization that distributes measures across systems:
+- **Single pass**: Sequential optimization over entire measure sequence - not parallelizable (global DP algorithm)
+- **Complete information**: Stage 3 receives exact min, ideal, and gutter widths for every measure stack from Stage 2
+- **Knuth-Plass algorithm**: Dynamic programming determines optimal system break points (see [ADR-0037](0037-Measure-Distribution-Optimization.md))
+- **Gutter handling**: For each candidate system, the first stack's `gutter_width` is subtracted from available width before scaling:
   ```
-  available_for_scaling = system_width - gutter[s]
+  available = system_width - gutter[s]
+  scale_factor = available / Σ ideal_i
   ```
-- **Scale factor computation**: `scale_factor = available_for_scaling / Σ ideal_i`
-- **Width allocation**: All measures scale identically:
-  ```
-  actual[i] = ideal[i] × scale_factor
-  ```
-- **System breaking**: Groups measures into horizontal systems based on optimized widths
-- **Page breaking**: Arranges systems vertically within page boundaries, adding/removing pages as needed
-- **Position finalization**: Determines final absolute x,y coordinates for all measures
-- **Hierarchical cascade detection**: Automatically determines when system changes require page recalculation
-- **Final layout lock**: Once this stage completes, all positions are locked - no further movement occurs
+- **Output**: System break decisions and scale factors per system - no atom positioning yet
+- **Horizontal distribution complete**: After this stage, horizontal layout is determined but atoms are not yet positioned
 
-**Objective Function Selection**: Four fundamentally different objective functions are possible for Stage 4:
+**Objective Function**: Ooloi uses Knuth-Plass with proportional scaling and quadratic cost on deviation from ideal spacing. This produces globally optimal system breaks while preserving rhythmic proportionality.
 
-1. **Smooth global minimization** distributes surplus evenly across all columns. Produces stable spacing but suppresses visual hierarchy.
+### Pipeline Stage 4: Atom Positioning (Fan-Out per Measure)
+Applies scale factors from Stage 3 to position atoms at their actual coordinates:
+- **Fan-out per measure**: Each measure independently positions its atoms in parallel
+- **Scale factor application**: Uses scale factor from Stage 3 for its system
+- **Unified Raster positioning**: Applies the unified raster from Stage 2 to determine temporal positions
+- **Actual width computation**: `actual[i] = ideal[i] × scale_factor`
+- **Absolute coordinate assignment**: Determines final x,y coordinates for all atoms within the measure
+- **Paintlist preparation**: Cached paintlists from Stage 1 are positioned at absolute coordinates
+- **No recomputation**: Atoms are repositioned, not recreated - their internal geometry is immutable
+- **Output**: Positioned atoms with absolute coordinates, ready for Stage 5 spanners
 
-2. **Minimax optimization** protects the worst-looking region but produces uneven results.
-
-3. **Duration-weighted distribution** allocates surplus in proportion to perceptual weight. Longer values act as anchors; shorter values compress first.
-
-4. **Regime-based switching** changes behavior under extreme compression.
-
-**Ooloi uses duration-weighted distribution (#3).** This preserves visual hierarchy under compression and extends traditional engraving logic.
-
-### Pipeline Stage 5: Connecting Elements Generation (Mixed Parallelization)
-With final positioning established, generate elements that connect atoms:
-- **Dependency on final positions**: Can only execute after Stage 4 provides final absolute measure positions
-- **Mixed parallelization**: Typically one task per page or system that changed, with coordination for cross-boundary elements
-- **Connecting elements**: Generates ties, slurs, glissandos, hairpins, beams - everything that connects musical atoms across their final positions
-- **System-start decorations**: For measures at system start positions, adds graphical decorations within the gutter space:
-  - Courtesy accidentals for tied-to notes (non-semantic visual aids)
+### Pipeline Stage 5: Spanners and Margins (Fan-Out per Musician)
+Renders connecting elements (spanners) and left margins, determines system heights:
+- **Fan-out per musician**: Each musician independently generates their spanners in parallel
+- **Spanners are musician-local**: Ties connect notes played by same musician, beams within same musician's part, slurs on same musician's part
+- **Connecting elements**: Generates ties, slurs, glissandos, hairpins, beams, pedal markings, ottava lines
+- **Left margins**: Creates instrument names, clefs, brackets, braces, key signatures for system start
+- **System-start decorations**: For measures at system start, adds graphical decorations within gutter space:
+  - Courtesy accidentals for tied-to notes (visual aids, not semantic accidentals)
   - Tie continuation arcs
-- **Cross-boundary handling**: Coordinates connections across measure, system, and page boundaries
-- **Timewalker coordination**: Uses timewalker for cross-measure element coordination when elements span measures
-- **Absolute positioning**: Uses finalized coordinates to determine exact start/end points for connecting elements
-- **Spanner adjustments**: Any final adjustments needed for optimal spanner appearance given locked atom positions
+- **Vertical extent determination**: Each musician determines their vertical space requirements - spanners may push staves apart
+- **Output**: System heights (max vertical extent across all musicians in each system)
+- **No cross-musician coordination**: Spanners are fully musician-local - massive parallelization opportunity
 
-**Critical Dependencies**: This stage requires complete layout finalization because connecting elements need to know exact atom positions that only exist after discomfort optimization completes.
+### Pipeline Stage 6: Page Breaking (Single)
+Knuth-Plass dynamic programming optimization that distributes systems across pages:
+- **Single pass**: Sequential optimization over system sequence - not parallelizable (global DP algorithm)
+- **Complete information**: Stage 6 receives actual system heights from Stage 5 - no guessing about vertical space
+- **Knuth-Plass algorithm**: Dynamic programming determines optimal page break points
+- **Input**: System heights including all spanner vertical extent
+- **Vertical distribution**: Arranges systems vertically within page boundaries, adding/removing pages as needed
+- **Output**: Final page breaks, completing the layout
+- **Final layout lock**: After this stage, all positions (horizontal and vertical) are locked
 
-**Gutter decoration rendering**: The courtesy accidentals added in Stage 5 are graphical decorations, not semantic accidentals. They provide visual clarity at system boundaries but do not affect the underlying musical model. The space for them was pre-computed in Stage 1 and reserved in Stage 4.
+**Why Stage 6 is separate from Stage 3**: Horizontal distribution (system breaking) cannot know vertical space requirements until Stage 5 computes spanner extent. Separating system and page breaking enables complete information at each stage.
 
 ## Protecting the Closed Semantic Model
 
@@ -243,14 +242,16 @@ This approach has fundamental problems:
 
 ### How the Pipeline Protects the Model
 
-The five-stage pipeline eliminates feedback through **complete information**:
+The six-stage pipeline eliminates feedback through **complete information**:
 
 1. **Stage 1** computes exact measure content + exact gutter delta
-2. **Stage 4** has *complete knowledge* of both scenarios (mid-system and system-start) for every measure
-3. **Stage 4** computes *mathematically optimal* distribution - not heuristic, not iterative
-4. **Stage 5** adds graphical decorations based on actual positions
+2. **Stage 3** has *complete knowledge* of both scenarios (mid-system and system-start) for every measure
+3. **Stage 3** computes *mathematically optimal* system breaks - not heuristic, not iterative
+4. **Stage 5** computes actual vertical extent including spanners
+5. **Stage 6** computes *mathematically optimal* page breaks with actual system heights
+6. **Stage 5** adds graphical decorations based on actual positions
 
-The gutter width is not "we might need space" - it's "this is exactly how much space the graphical decoration requires." Stage 4 doesn't guess. It has full information to make the globally optimal decision in one pass.
+The gutter width is not "we might need space" - it's "this is exactly how much space the graphical decoration requires." Stage 3 doesn't guess. It has full information to make the globally optimal decision in one pass.
 
 ### Semantic vs Graphical Content
 
@@ -290,9 +291,9 @@ Because gutter width is computed with complete information in Stage 1, users can
 
 This setting affects Stage 1's gutter computation. When set to `:none`, tied-to notes contribute zero gutter width. When set to `:page` or `:system`, the gutter includes space for courtesy accidentals as appropriate.
 
-Changing this setting triggers Stage 1 recomputation of affected measures' gutter values, then Stage 4 recomputes optimal distribution with the new values. No iteration, no manual adjustment. The user changes a preference; the system produces the mathematically optimal layout for that preference.
+Changing this setting triggers Stage 1 recomputation of affected measures' gutter values, then Stage 3 recomputes optimal distribution with the new values. No iteration, no manual adjustment. The user changes a preference; the system produces the mathematically optimal layout for that preference.
 
-**Architectural enablement:** This level of control is possible only because the architecture provides complete information before distribution decisions. Without knowing gutter requirements upfront, traditional systems must either guess and require manual correction, iterate until convergence, or defer the feature entirely. The gutter model makes user-controllable settings straightforward: different settings produce different gutter values, Stage 4 optimizes accordingly, deterministically.
+**Architectural enablement:** This level of control is possible only because the architecture provides complete information before distribution decisions. Without knowing gutter requirements upfront, traditional systems must either guess and require manual correction, iterate until convergence, or defer the feature entirely. The gutter model makes user-controllable settings straightforward: different settings produce different gutter values, Stage 3 optimizes accordingly, deterministically.
 
 ## Atom-Relative Geometry Invariant
 
@@ -315,15 +316,15 @@ Changing this setting triggers Stage 1 recomputation of affected measures' gutte
 
 3. **Rendering becomes pure projection**: At paintlist generation time, atoms are translated to their final positions. No structural decisions remain - only coordinate transformation.
 
-| Change Type | Stage 1 | Stage 2-3 | Stage 4 | Stage 5 |
-|-------------|---------|-----------|---------|---------|
-| Edit measure M | Recompute M only | Reconcile M's stack | May redistribute | Reconnect affected spans |
-| System width change | Nothing | Nothing | Redistribute | Reconnect + gutter decorations |
-| Page height change | Nothing | Nothing | Redistribute | Reconnect + gutter decorations |
-| Style change (spacing) | Nothing | Reconcile | Redistribute | Reconnect + gutter decorations |
-| Add/remove instrument | Recompute affected | Reconcile all | Redistribute | Reconnect |
+| Change Type | Stage 1 | Stage 2 | Stage 3 | Stage 4 | Stage 5 | Stage 6 |
+|-------------|---------|---------|---------|---------|---------|---------|
+| Edit measure M | Recompute M only | Reconcile M's stack | Redistribute systems | Position atoms | Reconnect spans | May rebreak pages |
+| System width change | Nothing | Nothing | Redistribute systems | Position atoms | Reconnect + gutter | Nothing |
+| Page height change | Nothing | Nothing | Nothing | Nothing | Nothing | Rebreak pages |
+| Style change (spacing) | Nothing | Reconcile | Redistribute systems | Position atoms | Reconnect + gutter | May rebreak pages |
+| Add/remove instrument | Recompute affected | Reconcile all | Redistribute systems | Position atoms | Reconnect | Rebreak pages |
 
-**Invariant enforcement**: Atoms are immutable data structures. Once Stage 1 produces an atom, its internal geometry cannot be modified. Stage 3 and Stage 5 consume atoms; they do not mutate them.
+**Invariant enforcement**: Atoms are immutable data structures. Once Stage 1 produces an atom, its internal geometry cannot be modified. Stages 4 and 5 consume atoms; they do not mutate them.
 
 ### Plugin Architecture Integration
 
@@ -346,8 +347,8 @@ flowchart LR
     E1 --> E2[Output: Connecting Instructions]
 
     C2 --> F[Stage 1: Atom Formation & Extent Calculation]
-    D2 --> G[Stage 3: Non-Connecting Elements]
-    E2 --> H[Stage 5: Connecting Elements]
+    D2 --> G[Stage 4: Atom Positioning]
+    E2 --> H[Stage 5: Spanners & Margins<br/>(per musician)]
 
     style C fill:#bbdefb,color:#000
     style D fill:#f8bbd9,color:#000
@@ -357,19 +358,19 @@ flowchart LR
     style H fill:#fff3e0,color:#000
 ```
 
-#### Spacing Hook (Stage 1)
+#### Spacing Hook (Stage 1: Atom Formation)
 Plugins declare the spatial requirements of their elements:
 - **Input**: Musical element data and contextual information
 - **Output**: Width requirements, indicative height, and collision boundaries
 - **Participation**: All plugins must implement (may return null for purely connecting elements)
 
-#### Paint Hook (Stage 3)
+#### Paint Hook (Stage 4: Atom Positioning)
 Plugins generate visual rendering instructions for non-connecting elements:
 - **Input**: Musical element data with raster positioning coordinates
 - **Output**: Rendering instructions for elements that don't connect atoms
 - **Participation**: Optional - only for elements with non-connecting visual components
 
-#### Connect Hook (Stage 5)
+#### Connect Hook (Stage 5: Spanners & Margins)
 Plugins generate connecting elements using finalized positions:
 - **Input**: Musical element data with absolute final atom positions
 - **Output**: Rendering instructions for elements that connect atoms (ties, slurs, beams, etc.)
@@ -434,7 +435,7 @@ Cello:       [measure 5 content]  ←
 
 - Measure minimum/ideal/gutter width measurements are cached and only recomputed when measure content changes
 - Result rasters are cached and reused until invalidated
-- MeasureStackFormatter data persists across optimization iterations in Stage 4
+- MeasureStackFormatter data persists across optimization iterations in Stage 3
 
 #### Cross-Tree Consistency Guarantees
 
@@ -470,9 +471,10 @@ sequenceDiagram
     B->>P: Queue affected elements for raster
     P->>P: Stage 1: Engraving atom formation<br/>(plugin spacing hooks fire)
     P->>P: Stage 2: Measure stack minimum calculation<br/>(parallel collision boundary computation)
-    P->>P: Stage 3: Rhythmic proportional distribution<br/>(cached atoms moved horizontally)
-    P->>P: Stage 4: System/page breaking<br/>(if measure width changed)
-    P->>P: Stage 5: Visual element generation<br/>(cross-measure elements + gutter decorations)
+    P->>P: Stage 3: System breaking<br/>(Knuth-Plass optimal distribution)
+    P->>P: Stage 4: Atom positioning<br/>(apply scale factors to atoms)
+    P->>P: Stage 5: Spanners and margins<br/>(per-musician connecting elements + gutter decorations)
+    P->>P: Stage 6: Page breaking<br/>(if system heights changed)
     P->>B: Updated MeasureView{glyphs, curves}
 
     Note over U,C2: Phase 4: Event Broadcasting & Cache Invalidation
@@ -510,7 +512,7 @@ This sequence illustrates the complete system flow when a user adds a note, demo
 
 ## Computational Scaling Characteristics
 
-Independent measure analysis can run in parallel during Stage 1. System chunks can also be parallelised during Stage 3 processing. Pipeline stages naturally separate concerns, enabling different parallelisation strategies for each computational phase.
+Independent measure analysis can run in parallel during Stage 1. Stage 4 atom positioning can run in parallel per measure, and Stage 5 spanners can run in parallel per musician. Pipeline stages naturally separate concerns, enabling different parallelisation strategies for each computational phase.
 
 **Engraving Atom Efficiency**: The atom-relative geometry invariant provides optimal caching granularity:
 - Adding notes to existing rhythmic positions → atom recalculation + positioning
@@ -571,7 +573,7 @@ Only one formatting operation runs at a time. Cancellation uses global operation
   `(if (cancelled?) ::cancelled (do ~@body)))
 ```
 
-Stage 4 uses duration-weighted distribution to determine final layout. Each measure stack provides minimum, ideal, and gutter widths (from Stages 1-2). Stage 4 subtracts gutter for system-start stacks, allocates surplus in proportion to perceptual weight—longer values act as anchors; shorter values compress first—and distributes measures across systems and pages.
+Stage 3 uses Knuth-Plass dynamic programming to determine optimal system breaking. Each measure stack provides minimum, ideal, and gutter widths (from Stages 1-2). Stage 3 subtracts gutter for system-start stacks, applies scale factors to distribute measures across systems, then Stage 6 distributes systems across pages using actual system heights from Stage 5.
 
 ## Caching and Incremental Processing
 
@@ -626,7 +628,7 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 ### Positive Aspects
 
-1. **Scalability Architecture**: The five-stage pipeline addresses computational scalability challenges in notation software through structured parallel processing and efficient resource utilization.
+1. **Scalability Architecture**: The six-stage pipeline addresses computational scalability challenges in notation software through structured parallel processing and efficient resource utilization.
 
 2. **Parallel Processing**: Fan-out/fan-in architecture enables near-linear performance scaling with available CPU cores through independent measure processing and coordinated integration points.
 
@@ -646,13 +648,13 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 10. **Closed Semantic Model**: Rendering cannot affect musical semantics. Complete information enables optimal distribution without feedback loops or heuristics.
 
-11. **Mathematically Optimal Distribution**: Stage 4 has complete knowledge (measure widths + gutter deltas) enabling globally optimal system breaking in one pass.
+11. **Mathematically Optimal Distribution**: Stage 3 has complete knowledge (measure widths + gutter deltas) enabling globally optimal system breaking in one pass, and Stage 6 has complete system heights for optimal page breaking.
 
 ## Trade-offs
 
 This architecture breaks the circular dependencies that collapse traditional notation software (spanners ↔ spacing ↔ system breaking ↔ measure widths) by establishing strict dependency order. The trade-offs are inherent to that solution:
 
-**Complexity concentration in Stage 4**: All global optimization decisions (system breaking, page distribution, duration-weighted distribution) concentrate in a single stage. This is intentional but requires sophisticated algorithms.
+**Complexity concentration in Stages 3 and 6**: Global optimization decisions (system breaking in Stage 3, page breaking in Stage 6) use Knuth-Plass dynamic programming. This is intentional but requires sophisticated algorithms.
 
 **Strict dependency ordering**: Spanners cannot influence spacing. System breaking cannot feed back to atom formation. This constraint is the architecture's strength, but it means certain edge cases must be resolved within stage boundaries rather than through iteration.
 
@@ -678,7 +680,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 - Limits ability to customize or replace fundamental formatting behaviors when needed
 
 ### Alternative 2: Second-Pass Modification for System-Start Elements
-**Approach**: Run accidental algorithm once, then add a second pass after Stage 4 to insert semantic accidentals at system breaks.
+**Approach**: Run accidental algorithm once, then add a second pass after Stage 3 system breaking to insert semantic accidentals at system breaks.
 **Rejection Reasons**:
 - Introduces feedback from layout to semantic decisions
 - Violates closed semantic model principle
@@ -717,7 +719,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 - [ADR-0022: Lazy Frontend-Backend Architecture](0022-Lazy-Frontend-Backend-Architecture.md) - Event-driven client synchronization patterns underlying the rendering pipeline
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Frontend event routing consuming paintlists generated by this rendering pipeline
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) - Accidental decision algorithm; semantic model that is closed before rendering
-- [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) - Stage 4 algorithm consuming gutter_width values
+- [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) - Stage 3 algorithm consuming gutter_width values for system breaking
 
 ### Technical Dependencies
 - **Claypoole**: Threadpool-based parallel processing library providing controlled CPU-intensive task execution
@@ -740,7 +742,7 @@ This architectural decision establishes Ooloi's rendering pipeline as a scalable
 
 The mandatory plugin compliance ensures that fundamental notation formatting (chords, articulations, beams) and custom extensions operate through identical architectural patterns, providing a foundation for comprehensive musical expression without artificial distinctions between "core" and "extended" functionality.
 
-The five-stage approach recognises that atom formation with extent calculation, vertical reconciliation, atom repositioning, system/page distribution, and connecting element generation represent distinct computational problems that benefit from separation and targeted optimisation, with all formatting logic implemented through canonical and custom plugins as first-class citizens.
+The six-stage approach recognises that atom formation with extent calculation, vertical reconciliation, system breaking, atom positioning, connecting element generation, and page breaking represent distinct computational problems that benefit from separation and targeted optimisation, with all formatting logic implemented through canonical and custom plugins as first-class citizens.
 
 The atom-relative geometry invariant ensures that the expensive Stage 1 computation runs only when musical content changes. Layout adjustments - however dramatic - require only repositioning of pre-computed atoms, enabling responsive editing even during extensive reformatting operations.
 
