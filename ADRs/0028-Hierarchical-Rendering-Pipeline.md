@@ -343,7 +343,7 @@ flowchart LR
     D1 --> D2[Output: Spanner<br/>Rendering Instructions]
 
     C2 --> F[Stage 1: Atom Formation]
-    D2 --> G[Stage 5: Spanners and Margins<br/>(per musician)]
+    D2 --> G["Stage 5: Spanners and Margins<br/>(per musician)"]
 
     style C fill:#bbdefb,color:#000
     style D fill:#ffe0b2,color:#000
