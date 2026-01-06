@@ -11,6 +11,7 @@
   - [Interface Contract](#interface-contract)
   - [Ideal Width Semantics](#ideal-width-semantics)
   - [The Gutter: System-Start Width Delta](#the-gutter-system-start-width-delta)
+  - [The Preamble: System-Start Clef and Key Signature Width](#the-preamble-system-start-clef-and-key-signature-width)
   - [Width Allocation: Proportional Scaling](#width-allocation-proportional-scaling)
   - [Variable System Widths](#variable-system-widths)
   - [Alternative: Asymmetric Cost Optimization](#alternative-asymmetric-cost-optimization)
@@ -41,63 +42,63 @@ Accepted
 ## Context
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                      Six-Stage Rendering Pipeline                           │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  Stage 1 (Fan-out)     Stage 2 (Fan-in)                                     │
-│  ┌──────────────┐      ┌──────────────┐                                     │
-│  │ Atom Form.   │      │   Vertical   │                                     │
-│  │ & Collision  │─────▶│Reconciliation│                                     │
-│  │  (parallel)  │      │              │                                     │
-│  └──────────────┘      └──────────────┘                                     │
-│         │                     │                                             │
-│         │              min, ideal, gutter                                   │
-│         │              per measure stack                                    │
-│         ▼                     ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │               Stage 3: SYSTEM BREAKING (Single)                     │    │
-│  │                                                                     │    │
-│  │   Input: N measure stacks with widths + gutter delta                │    │
-│  │          {:min ratio, :ideal ratio, :gutter ratio}                  │    │
-│  │                                                                     │    │
-│  │   ┌─────────────────┐                                               │    │
-│  │   │  System Break   │                                               │    │
-│  │   │     DP O(N²)    │                                               │    │
-│  │   └─────────────────┘                                               │    │
-│  │            │                                                        │    │
-│  │            ▼                                                        │    │
-│  │   ┌─────────────────────────────────────────────────────────────┐   │    │
-│  │   │         Scale Factor per System                             │   │    │
-│  │   │     available = system_width - gutter[s]                    │   │    │
-│  │   │     scale_factor = available / Σ ideal_i                    │   │    │
-│  │   └─────────────────────────────────────────────────────────────┘   │    │
-│  │                                                                     │    │
-│  │   Output: System breaks + scale factors                             │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
-│                                    │                                        │
-│                                    ▼                                        │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │  Stage 4: ATOM POSITIONING (Fan-out per Measure)                     │   │
-│  │  Apply scale factors to atoms, compute absolute coordinates          │   │
-│  │  actual_i = ideal_i × scale_factor                                   │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-│                                    │                                        │
-│                                    ▼                                        │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │  Stage 5: SPANNERS & MARGINS (Fan-out per Musician)                   │   │
-│  │  Connecting elements + gutter decorations, compute system heights    │   │
-│  │  Adds courtesy accidentals in gutter space when at system start      │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-│                                    │                                        │
-│                                    ▼                                        │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │  Stage 6: PAGE BREAKING (Single)                                     │   │
-│  │  DP O(S²) over systems using actual heights from Stage 5             │   │
-│  │  Output: Final page breaks, layout LOCKED                            │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Six-Stage Rendering Pipeline                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Stage 1 (Fan-out)     Stage 2 (Fan-in)                                 │
+│  ┌──────────────┐      ┌──────────────┐                                 │
+│  │ Atom Form.   │      │   Vertical   │                                 │
+│  │ & Collision  │─────▶│Reconciliation│                                 │
+│  │  (parallel)  │      │              │                                 │
+│  └──────────────┘      └──────────────┘                                 │
+│         │                     │                                         │
+│         │              min, ideal, gutter                               │
+│         │              per measure stack                                │
+│         ▼                     ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │               Stage 3: SYSTEM BREAKING (Single)                 │    │
+│  │                                                                 │    │
+│  │   Input: N measure stacks with widths + gutter delta            │    │
+│  │          {:min ratio, :ideal ratio, :gutter ratio}              │    │
+│  │                                                                 │    │
+│  │   ┌─────────────────┐                                           │    │
+│  │   │  System Break   │                                           │    │
+│  │   │     DP O(N²)    │                                           │    │
+│  │   └─────────────────┘                                           │    │
+│  │            │                                                    │    │
+│  │            ▼                                                    │    │
+│  │   ┌────────────────────────────────────────────────────┐        │    │
+│  │   │       Scale Factor per System                      │        │    │
+│  │   │   avail = sys_width - preamble[s] - gutter[s]      │        │    │
+│  │   │   scale = avail / Σ ideal_i                        │        │    │
+│  │   └────────────────────────────────────────────────────┘        │    │
+│  │                                                                 │    │
+│  │   Output: System breaks + scale factors                         │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                    │                                    │
+│                                    ▼                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │  Stage 4: ATOM POSITIONING (Fan-out per Measure)                │    │
+│  │  Apply scale factors to atoms, compute absolute coordinates     │    │
+│  │  actual_i = ideal_i × scale_factor                              │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                    │                                    │
+│                                    ▼                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │  Stage 5: SPANNERS & MARGINS (Fan-out per Musician)             │    │
+│  │  Connecting elements + gutter decorations, compute sys heights  │    │
+│  │  Adds courtesy accidentals in gutter space at system start      │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                    │                                    │
+│                                    ▼                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │  Stage 6: PAGE BREAKING (Single)                                │    │
+│  │  DP O(S²) over systems using actual heights from Stage 5        │    │
+│  │  Output: Final page breaks, layout LOCKED                       │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Problem Statement
@@ -173,17 +174,17 @@ The result: a problem that would otherwise require heuristics, iteration limits,
 The distribution problem exhibits structure that admits polynomial-time exact optimization of the reduced subproblem:
 
 **Discrete break selection**:
-Dynamic programming over the sequence of N measure stacks determines optimal system and page break points. For each potential break location, the algorithm evaluates whether remaining measures fit within capacity (after reserving gutter space) and computes resulting discomfort. Optimal substructure holds: optimal solution for measures 1..k combined with optimal solution for measures k+1..N yields optimal solution for 1..N.
+Dynamic programming over the sequence of N measure stacks determines optimal system and page break points. For each potential break location, the algorithm evaluates whether remaining measures fit within capacity (after reserving preamble and gutter space) and computes resulting discomfort. Optimal substructure holds: optimal solution for measures 1..k combined with optimal solution for measures k+1..N yields optimal solution for 1..N.
 
 Break selection relies on **separable system costs** and **optimal substructure**, not convexity. The dynamic programming algorithm computes the globally optimal break configuration for the discrete segmentation problem.
 
 Complexity: O(N²) for system breaks, O(S²) for page breaks where S = number of systems.
 
 **Continuous width allocation**:
-Within each system determined by break selection, actual widths are allocated by **proportional scaling** (normalisation) of the space remaining after gutter reservation:
+Within each system determined by break selection, actual widths are allocated by **proportional scaling** (normalisation) of the space remaining after preamble and gutter reservation:
 
 ```
-available = system_width - gutter[s]
+available = system_width - preamble[s] - gutter[s]
 scale_factor = available / Σ ideal_i
 actual_i = ideal_i × scale_factor
 ```
@@ -198,11 +199,11 @@ The discomfort for a system measures deviation from ideal proportions. Under pro
                         = (scale - 1)² × Σ ideal_i²
 ```
 
-The DP selects breaks that minimize this total deviation. Scale factors < 1 indicate compression; > 1 indicates expansion. The gutter space is reserved but does not participate in cost computation—it is fixed overhead for system-start decorations.
+The DP selects breaks that minimize this total deviation. Scale factors < 1 indicate compression; > 1 indicates expansion. The preamble and gutter space are reserved but do not participate in cost computation—they are fixed overhead for system-start elements.
 
 **Additive separable cost model**:
 The cost structure operates at two levels:
-- **Stack-level discomfort**: For feasible segments, each stack's discomfort depends only on its `ideal` and the system's `scale_factor`. The `min` value participates in feasibility checking; the `gutter` value participates in available space calculation; neither participates in cost computation.
+- **Stack-level discomfort**: For feasible segments, each stack's discomfort depends only on its `ideal` and the system's `scale_factor`. The `min` value participates in feasibility checking; the `preamble` and `gutter` values participate in available space calculation; none of these participate in cost computation.
 - **System-level cost**: Total discomfort for a system = Σ discomfort(stack_i) = `(scale - 1)² × Σ ideal_i²`
 - **DP operates on system-level cost units**: The dynamic programming algorithm sums per-system discomfort values to compute global cost
 
@@ -227,8 +228,8 @@ Edit locality as first-class goal: When measures are inserted, deleted, or modif
 Measure distribution optimization (system breaking) is Stage 3 of the hierarchical rendering pipeline ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)). It receives measure stack metrics from Stages 1-2 and produces system break decisions and scale factors that Stage 4 uses for atom positioning.
 
 The algorithm implements **capacity-constrained segmentation with proportional width allocation**:
-1. Dynamic programming (Stage 3) determines optimal system break points, accounting for gutter space at system starts
-2. Proportional scaling computes scale factors for width allocation within the available space (after gutter reservation)
+1. Dynamic programming (Stage 3) determines optimal system break points, accounting for preamble and gutter space at system starts
+2. Proportional scaling computes scale factors for width allocation within the available space (after preamble and gutter reservation)
 3. Atom positioning (Stage 4) applies scale factors to compute actual positions
 4. System heights (Stage 5) are computed from final geometry
 5. Page breaking (Stage 6) uses a second DP pass over systems with actual heights
@@ -297,42 +298,45 @@ Traditional engraving compromised proportionality to avoid collisions. Ooloi eli
 
 **Constraint structure**:
 - **Hard constraint**: `actual_width ≥ min_width` (collision prevention)
-- **Soft preservation**: `actual_width ∝ ideal_width` (proportionality maintenance)
+- **Soft preservation**: `actual_width ≈ ideal_width` (proportionality maintenance)
 - **No upper bound**: Measures may exceed ideal proportionally
 
 ### The Gutter: System-Start Width Delta
 
-When a measure appears first on a system, it may require additional space for graphical decorations. This additional space is the **gutter**—a fixed-width region that precedes the measure's scaled content.
+When a measure appears first on a system, it may require additional space for graphical decorations. This additional space is the **gutter**—a fixed-width region that follows the preamble (clefs and key signatures) and precedes the measure's scaled content.
 
-```
 System layout when measure s is first:
 
-┌──────────┬─────────────┬─────────────┬─────────────┐
-│  GUTTER  │  measure s  │ measure s+1 │ measure s+2 │ ...
-│ (fixed)  │ (scaled)    │  (scaled)   │  (scaled)   │
-└──────────┴─────────────┴─────────────┴─────────────┘
-     ↑           ↑
-     │           └── actual[s] = ideal[s] × scale_factor
-     │
-     └── gutter[s] (does not scale)
+```
+┌───────────┬──────────┬─────────────┬─────────────┬─────────────┐
+│ PREAMBLE  │  GUTTER  │  measure s  │ measure s+1 │ measure s+2 │ ...
+│  (fixed)  │ (fixed)  │  (scaled)   │  (scaled)   │  (scaled)   │
+└───────────┴──────────┴─────────────┴─────────────┴─────────────┘
+      ↑          ↑           ↑
+      │          │           └─ actual[s] = ideal[s] × scale_factor
+      │          │
+      │          └─ gutter[s] (does not scale)
+      │
+      └─ preamble[s]: clef + keysig (does not scale)
 ```
 
 **What the gutter accommodates:**
 - Courtesy accidentals for tied-to notes at position 0 (graphical decorations, not semantic accidentals)
 - Tie continuation arcs (visual portion of ties broken at system boundaries)
 
-**Critical architectural property:** The gutter width is computed in Stage 1 from complete information about tied notes. Stage 3 knows exactly how much additional space each measure requires *before* making any distribution decisions. This enables mathematically optimal distribution without heuristics or iteration.
+**Critical architectural property:** The gutter width is computed in Stage 1 from complete information about the measure's layout, including all semantic accidentals at position 0. If existing accidentals already provide sufficient space for the courtesy accidental, the gutter width is 0N—only the additional space needed beyond the measure's existing layout is reserved. Stage 3 knows exactly how much additional space each measure requires *before* making any distribution decisions. This enables mathematically optimal distribution without heuristics or iteration.
 
 **What is NOT in the gutter:** All semantic accidentals are computed and positioned by [ADR-0035](0035-Remembered-Alterations.md) and are included in the measure's `min_width` and `ideal_width`. The gutter contains only graphical decorations added by Stage 5 for visual clarity at system boundaries.
 
 **User control:** Users can configure when courtesy accidentals appear (`:system`, `:page`, or `:none`). This setting affects Stage 5 rendering, not Stage 3 distribution—the gutter is always reserved; the decorations are optionally rendered. See [ADR-0028](0028-Hierarchical-Rendering-Pipeline.md) for details.
 
-**Allocation with gutter:**
+**Allocation with preamble and gutter:**
 
 For a system containing stacks [s, t):
 ```
+preamble = preamble[s]                       ;; Clef + keysig width (max across staves)
 gutter = gutter[s]                           ;; Only first stack contributes
-available = system_width - gutter            ;; Remaining space for scaling
+available = system_width - preamble - gutter ;; Remaining space for scaling
 scale_factor = available / Σ ideal_i         ;; Scale factor for all measures
 
 actual[i] = ideal[i] × scale_factor          ;; ALL measures scale the same
@@ -340,25 +344,51 @@ actual[i] = ideal[i] × scale_factor          ;; ALL measures scale the same
 
 **Verification:**
 ```
-gutter + Σ actual_i = gutter + available = system_width ✓
+preamble + gutter + Σ actual_i = preamble + gutter + available = system_width ✓
 ```
 
-The gutter is not added to any measure's width—it is separate space that precedes the first measure. Stage 5 renders gutter decorations into this space when the measure appears at system start.
+The preamble and gutter are not added to any measure's width—they are separate space that precedes the first measure's content. Stage 5 renders clefs/keysigs in preamble space and gutter decorations in gutter space when the measure appears at system start.
+
+### The Preamble: System-Start Clef and Key Signature Width
+
+Every system begins with clefs and key signatures for each staff. This **preamble** occupies fixed space that cannot be scaled:
+
+```
+preamble_width = max over all staves of (clef_width + keysig_width + spacing)
+```
+
+**Why uniform width**: All staves in a stack must have the same preamble width to maintain vertical alignment. Even if one staff has a simpler clef/keysig combination, it receives the same left margin as the most complex staff.
+
+**On-demand computation**: Unlike gutter (precomputed in Stage 1), preamble width is computed during Stage 3 when evaluating candidate system breaks:
+1. Query ChangeSets for active clef at the candidate measure's temporal position (per staff)
+2. Query ChangeSets for active key signature at the same position (per staff)
+3. Compute width for each staff: clef width + keysig width + spacing (before, between, after)
+4. Take the maximum width across all staves in the stack
+
+**Caching**: The (clef, keysig) combinations are highly repetitive across a score—a symphony might have only 3-4 distinct combinations across hundreds of measures. Caching by the combination tuple across staves provides near-instant lookup after the first computation. The cached value includes both the computed maximum width and the paintlists for rendering.
+
+**Preamble vs Gutter**:
+- **Preamble**: Structural (always present at system start), computed on-demand
+- **Gutter**: Contingent (present only when tied-to notes require courtesy accidentals), precomputed in Stage 1
+
+Both are fixed overhead subtracted before proportional scaling. Neither participates in cost computation.
 
 ### Width Allocation: Proportional Scaling
 
-The primary width allocation strategy is **proportional scaling** (normalisation) applied to the space remaining after gutter reservation:
+The primary width allocation strategy is **proportional scaling** (normalisation) applied to the space remaining after preamble and gutter reservation:
 
 ```
-available = system_width - gutter[s]
+available = system_width - preamble[s] - gutter[s]
 scale_factor = available / Σ ideal_i
 actual_i = ideal_i × scale_factor
 ```
 
+Both preamble and gutter are fixed overhead; neither participates in scaling.
+
 This is **normalisation**, not optimisation:
 - Deterministic formula with no degrees of freedom
 - Preserves proportional relationships by construction
-- Gutter space is reserved separately; it does not scale
+- Preamble and gutter space are reserved separately; neither scales
 - No iteration, no convergence, no tuning parameters
 - Predictable behavior enabling edit locality
 - Near-zero computational cost
@@ -369,7 +399,7 @@ This is **normalisation**, not optimisation:
 1. **Proportionality preservation**: The scaling factor is identical for all measures, preserving ratios
 2. **Gutter correctness**: System-start decorations occupy exactly their required space
 3. **No heuristics**: Pure mathematical formula, deterministic outcome
-4. **Speed**: O(K) per system with K ≈ 10-20, essentially free
+4. **Speed**: O(K) per system with K â‰ˆ 10-20, essentially free
 5. **Predictability**: Users can mentally predict system behavior
 6. **Edit stability**: Local changes cause minimal layout ripple
 
@@ -427,7 +457,7 @@ This architectural freedom enables:
 - Adaptation to page geometry constraints
 - Future extensions (e.g., systems of varying width for visual effect)
 
-All while preserving the core property: **proportional scaling maintains rhythmic relationships within whatever width is provided**, with gutter space reserved for decorations.
+All while preserving the core property: **proportional scaling maintains rhythmic relationships within whatever width is provided**, with preamble and gutter space reserved for system-start elements.
 
 ### Alternative: Asymmetric Cost Optimization
 
@@ -497,7 +527,7 @@ Users require control over layout decisions: forcing system breaks at specific p
 - **Constraints** are inviolable: "This measure *must* start a new system"
 - **Preferences** are costs: "Prefer breaking at rehearsal marks"
 
-Modeling constraints as extreme penalties (e.g., cost = ∞ for forbidden breaks) conflates these categories and risks numerical instability. Ooloi handles them through separate mechanisms.
+Modeling constraints as extreme penalties (e.g., cost = âˆž for forbidden breaks) conflates these categories and risks numerical instability. Ooloi handles them through separate mechanisms.
 
 **Forced System Breaks: Pre-Segmentation**
 
@@ -755,7 +785,7 @@ For each stack `i` under a fixed system assignment:
 
 * `actual_width_i ≥ min_width_i`
 * `actual_width_i = ideal_width_i × scale_factor(system)` unless clamped
-* `scale_factor(system) = available / Σ ideal_width_j` where `available = system_width - gutter[s]`
+* `scale_factor(system) = available / Σ ideal_width_j` where `available = system_width - preamble[s] - gutter[s]`
 
 The cache additionally implies that per-stack metrics are **stable across edits** unless the edited content is in that stack (or an explicitly bounded reflow is triggered).
 
@@ -782,8 +812,8 @@ Edits affect Stages 3-4 only through changes to stack metrics:
 With cached stack metrics, Stage 3 runtime is dominated by DP over **scalars**, not by collision/layout work. Edit-time recomputation is typically:
 
 * **O(size of edited measure)** for upstream recalculation of the edited stack
-* plus **O(K)** (where `K ≈ measures/system`) for local system allocation updates
-* plus at worst **O(Δ×K)** when a breakpoint ripple propagates across `Δ` stacks, with all other stacks remaining cache hits
+* plus **O(K)** (where `K â‰ˆ measures/system`) for local system allocation updates
+* plus at worst **O(Î”×K)** when a breakpoint ripple propagates across `Î”` stacks, with all other stacks remaining cache hits
 
 #### Relationship to Edit Locality
 
@@ -840,9 +870,10 @@ The following implementation performs **Stage 3: System Breaking** - distributin
        ;; System contains stacks s..t-1
        (doseq [s (range (dec t) -1 -1)
                :let [system-width (system-width-fn s t)
-                     ;; Reserve gutter space for system-start stack
+                     ;; Reserve preamble and gutter space for system-start stack
+                     preamble (get-preamble-width stacks s)  ;; On-demand, cached by clef/keysig combo
                      gutter (get-in stacks [s :gutter] 0N)
-                     available (- system-width gutter)
+                     available (- system-width preamble gutter)
                      ;; Check if measures can fit in remaining space
                      total-min (- (nth min-prefix t) (nth min-prefix s))]
                :while (<= total-min available)]
@@ -877,16 +908,17 @@ The following implementation performs **Stage 3: System Breaking** - distributin
       :cost (nth best n)})))
 ```
 
-**Gutter handling explained:**
+**System-start reservations explained:**
 
 For each candidate segment [s, t):
-1. Get `gutter = gutter[s]` (only first stack in system contributes)
-2. Compute `available = system_width - gutter`
-3. Check feasibility: `Σ min_i ≤ available`
-4. Compute scale factor: `available / Σ ideal_i`
-5. Cost is based on scalable content deviation only; gutter is fixed overhead
+1. Get `preamble = preamble[s]` (max clef+keysig width across all staves, computed on-demand and cached)
+2. Get `gutter = gutter[s]` (only first stack in system contributes)
+3. Compute `available = system_width - preamble - gutter`
+4. Check feasibility: `Σ min_i ≤ available`
+5. Compute scale factor: `available / Σ ideal_i`
+6. Cost is based on scalable content deviation only; preamble and gutter are fixed overhead
 
-The gutter is reserved space that does not participate in scaling or cost computation.
+Both preamble and gutter are reserved space that does not participate in scaling or cost computation.
 
 **Feasibility condition:**
 
@@ -983,7 +1015,7 @@ This is not an optimization of a more complex algorithm—it is the canonical co
 2. **Preserves proportionality by construction**: `actual_i / actual_j = ideal_i / ideal_j` for all i,j
 3. **Gutter correctness**: System-start decorations have exactly their required space
 4. **Deterministic**: Same input always produces same output with no floating-point variation
-5. **Fast**: O(K) where K ≈ 10-20, essentially zero cost
+5. **Fast**: O(K) where K â‰ˆ 10-20, essentially zero cost
 6. **Predictable**: Users can mentally predict allocation behavior
 7. **Edit-stable**: Local changes cause minimal layout ripple
 
@@ -1019,10 +1051,10 @@ The `max` clamp is purely defensive programming:
 
 ### Key Implementation Notes
 
-**Gutter Handling**:
+**Preamble and Gutter Handling**:
 
-Each stack carries `:gutter` (default 0N). Only the first stack in a system contributes this value:
-- Reserved from system width before scaling: `available = system_width - gutter`
+Each stack carries `:gutter` (default 0N). Preamble width is computed on-demand and cached by (clef, keysig) combination. Only the first stack in a system contributes:
+- Reserved from system width before scaling: `available = system_width - preamble - gutter`
 - Does not scale—it is fixed space for graphical decorations
 - Does not participate in cost computation
 - Returned separately from `allocate-widths` for rendering coordination
@@ -1032,7 +1064,7 @@ Each stack carries `:gutter` (default 0N). Only the first stack in a system cont
 The implementation uses proportional scaling as the primary width allocation strategy. This is normalisation (deterministic formula), not optimisation (iterative solver):
 
 - **Formula**: `actual_i = ideal_i × (available / Σ ideal_i)`
-- **Gutter reservation**: `available = system_width - gutter[s]`
+- **Preamble and gutter reservation**: `available = system_width - preamble[s] - gutter[s]`
 - **Preserves proportionality**: All measures scale by same factor
 - **No degrees of freedom**: Allocation is purely derived from break choice
 - **Fast**: O(K) per system, essentially zero cost
@@ -1069,7 +1101,7 @@ The feasibility scan is the only per-segment O(K) work. Cost computation uses pr
 - Ratio growth managed through Clojure's automatic normalization (gcd)
 
 **nil Semantics for Infinity**:
-- `nil` represents unreachable positions (cost = ∞)
+- `nil` represents unreachable positions (cost = âˆž)
 - Avoids mixing `##Inf` (Double) with ratios
 - Clean comparison: `(or (nil? x) (< new x))`
 - Type-safe throughout
@@ -1091,7 +1123,7 @@ The feasibility scan is the only per-segment O(K) work. Cost computation uses pr
 - `:while` in inner loop stops when stacks no longer fit
 - Monotonicity: as `s` moves left, `total-min` increases (more stacks)
 - Once infeasible, all earlier `s` also infeasible
-- Reduces effective complexity to O(N×K) where K ≈ 15
+- Reduces effective complexity to O(N×K) where K â‰ˆ 15
 - **Assumption**: `system-width-fn` must be non-increasing as `s` moves left (for fixed `t`). This holds for typical policies (uniform width, narrower final system). If violated, early termination is invalid and the algorithm must check all `s` values.
 
 **Complexity Analysis**:

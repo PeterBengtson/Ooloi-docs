@@ -47,14 +47,18 @@ Ooloi implements a **six-stage hierarchical rendering pipeline** with comprehens
   - [Stage 5: Spanners and Margins (Fan-Out per Musician)](#pipeline-stage-5-spanners-and-margins-fan-out-per-musician)
   - [Stage 6: Page Breaking (Single)](#pipeline-stage-6-page-breaking-single)
 - [Protecting the Closed Semantic Model](#protecting-the-closed-semantic-model)
+  - [The Problem This Solves](#the-problem-this-solves)
+  - [How the Pipeline Protects the Model](#how-the-pipeline-protects-the-model)
+  - [Semantic vs Graphical Content](#semantic-vs-graphical-content)
+  - [Why This Matters](#why-this-matters)
   - [User-Controllable System-Start Behavior](#user-controllable-system-start-behavior)
 - [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)
 - [Plugin Architecture Integration](#plugin-architecture-integration)
   - [Atom Hook (Stage 1)](#atom-hook-stage-1)
   - [Spanner Hook (Stage 5)](#spanner-hook-stage-5)
 - [Client-Server Event Coordination](#client-server-event-coordination)
-  - [Lazy Rendering Strategy](#lazy-rendering-strategy)
-  - [Hierarchical Invalidation](#hierarchical-invalidation)
+  - [Hierarchical Invalidation Events](#hierarchical-invalidation-events)
+  - [Lazy Visual Realisation](#lazy-visual-realisation)
 - [Claypoole Integration Architecture](#claypoole-integration-architecture)
   - [Threadpool Lifecycle Contract](#threadpool-lifecycle-contract)
   - [Cancellation Contract](#cancellation-contract)
@@ -127,13 +131,13 @@ Individual measures calculate minimum, ideal, and gutter widths for their rhythm
 
 #### The Gutter: System-Start Width Delta
 
-When a measure appears first on a system, it may require additional space for graphical decorations that are not part of the measure's semantic content. This additional space is the **gutter**.
+When a measure appears first on a system, it may require additional space for graphical decorations that are not part of the measure's semantic content. This additional space is the **gutter**—a fixed-width region that follows the system's preamble (clefs and key signatures) and precedes the measure's scaled content.
 
 **What the gutter accommodates:**
 - Courtesy accidentals for tied-to notes at position 0 (graphical decorations, not semantic accidentals)
 - Tie continuation arcs (the visible portion of ties broken at system boundaries)
 
-**Critical architectural property:** The gutter width is computed in Stage 1 from complete information. Stage 3 knows exactly how much additional space each measure requires *before* making any distribution decisions. This enables mathematically optimal distribution without heuristics or iteration.
+**Critical architectural property:** The gutter width is computed in Stage 1 from complete information about the measure's layout, including all semantic accidentals at position 0. If existing accidentals already provide sufficient space for the courtesy accidental, the gutter width is 0N—only the additional space needed beyond the measure's existing layout is reserved. Stage 3 knows exactly how much additional space each measure requires *before* making any distribution decisions. This enables mathematically optimal distribution without heuristics or iteration.
 
 **What is NOT in the gutter:** All semantic accidentals are already computed and positioned within atoms by ADR-0035. The gutter contains only graphical decorations added for visual clarity at system boundaries.
 
@@ -173,11 +177,13 @@ Knuth-Plass dynamic programming optimization that distributes measures across sy
 - **Single pass**: Sequential optimization over entire measure sequence - not parallelizable (global DP algorithm)
 - **Complete information**: Stage 3 receives exact min, ideal, and gutter widths for every measure stack from Stage 2
 - **Knuth-Plass algorithm**: Dynamic programming determines optimal system break points (see [ADR-0037](0037-Measure-Distribution-Optimization.md))
-- **Gutter handling**: For each candidate system, the first stack's `gutter_width` is subtracted from available width before scaling:
+- **System-start reservation**: For each candidate system, the first stack's preamble and gutter widths are subtracted from available width before scaling:
   ```
-  available = system_width - gutter[s]
+  available = system_width - preamble[s] - gutter[s]
   scale_factor = available / Σ ideal_i
   ```
+  - **Preamble**: Clef + key signature + inter-element spacing for system start. Computed on-demand by querying ChangeSets for active clef/keysig at the candidate measure's temporal position. Maximum width across all staves in the stack ensures uniform left margin. Cached by (clef, keysig) combination tuple—highly repetitive across a score. See [ADR-0037](0037-Measure-Distribution-Optimization.md#the-preamble-system-start-clef-and-key-signature-width) for detailed preamble computation.
+  - **Gutter**: Space for courtesy accidentals on tied-to notes (precomputed in Stage 1).
 - **Output**: System break decisions and scale factors per system - no atom positioning yet
 - **Horizontal distribution complete**: After this stage, horizontal layout is determined but atoms are not yet positioned
 
@@ -425,10 +431,10 @@ The MeasureStackFormatter provides vertical coordination across all staves at ea
 
 **Example - String Quartet Measure 5:**
 ```
-Violin I:    [measure 5 content]  ←
-Violin II:   [measure 5 content]  ← stack-formatters[5] coordinates
-Viola:       [measure 5 content]  ← all of these vertically
-Cello:       [measure 5 content]  ←
+Violin I:    [measure 5 content]  ←
+Violin II:   [measure 5 content]  ← stack-formatters[5] coordinates
+Viola:       [measure 5 content]  ← all of these vertically
+Cello:       [measure 5 content]  ←
 ```
 
 - **Internal-Only Scope**: The stack-formatters vector is intentionally excluded from the public API - it serves purely as an internal optimization mechanism for the rendering pipeline.
@@ -575,7 +581,7 @@ Only one formatting operation runs at a time. Cancellation uses global operation
   `(if (cancelled?) ::cancelled (do ~@body)))
 ```
 
-Stage 3 uses Knuth-Plass dynamic programming to determine optimal system breaking. Each measure stack provides minimum, ideal, and gutter widths (from Stages 1-2). Stage 3 subtracts gutter for system-start stacks, applies scale factors to distribute measures across systems, then Stage 6 distributes systems across pages using actual system heights from Stage 5.
+Stage 3 uses Knuth-Plass dynamic programming to determine optimal system breaking. Each measure stack provides minimum, ideal, and gutter widths (from Stages 1-2). Stage 3 computes preamble on-demand and subtracts both preamble and gutter for system-start stacks, applies scale factors to distribute measures across systems, then Stage 6 distributes systems across pages using actual system heights from Stage 5.
 
 ## Caching and Incremental Processing
 
@@ -650,7 +656,7 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 10. **Closed Semantic Model**: Rendering cannot affect musical semantics. Complete information enables optimal distribution without feedback loops or heuristics.
 
-11. **Mathematically Optimal Distribution**: Stage 3 has complete knowledge (measure widths + gutter deltas) enabling globally optimal system breaking in one pass, and Stage 6 has complete system heights for optimal page breaking.
+11. **Mathematically Optimal Distribution**: Stage 3 has complete knowledge (measure widths + system-start deltas for preamble and gutter) enabling globally optimal system breaking in one pass, and Stage 6 has complete system heights for optimal page breaking.
 
 ## Trade-offs
 
@@ -721,7 +727,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 - [ADR-0022: Lazy Frontend-Backend Architecture](0022-Lazy-Frontend-Backend-Architecture.md) - Event-driven client synchronization patterns underlying the rendering pipeline
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Frontend event routing consuming paintlists generated by this rendering pipeline
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) - Accidental decision algorithm; semantic model that is closed before rendering
-- [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) - Stage 3 algorithm consuming gutter_width values for system breaking
+- [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) - Stage 3 algorithm computing preamble on-demand and consuming gutter_width values for system breaking
 
 ### Technical Dependencies
 - **Claypoole**: Threadpool-based parallel processing library providing controlled CPU-intensive task execution
