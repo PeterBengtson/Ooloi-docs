@@ -366,7 +366,17 @@ Skija Layer: Invalidate Picture (Level 2)
 Next Render: Regenerate Picture from fresh paintlist
 ```
 
-**Critical:** Both caches invalidate together. Never render stale paintlist with fresh Picture or vice versa.
+**Critical Synchronization Constraint:** Level 1 paintlist update and Level 2 Picture invalidation MUST occur synchronously within the same `Platform.runLater()` callback. They cannot be split across separate callbacks. This atomic execution prevents any rendering window where Level 1 is fresh but Level 2 still holds a stale Picture (or vice versa). Implementation example:
+
+```clojure
+(Platform/runLater
+  (fn []
+    (rdm/update-paintlist! vpd paintlist)           ; Level 1: Update authoritative paintlist
+    (skija/invalidate-execution-cache! vpd)         ; Level 2: Invalidate Picture (same callback!)
+    (request-repaint! vpd)))                        ; Now safe to render
+```
+
+Never split these operations across different `Platform.runLater()` calls - doing so creates a race condition where rendering could observe inconsistent cache state.
 
 ### Memory Management
 
