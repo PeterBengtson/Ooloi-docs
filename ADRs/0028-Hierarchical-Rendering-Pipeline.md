@@ -17,20 +17,28 @@
   - [Stage 5: Spanners and Margins (Fan-Out per Musician)](#pipeline-stage-5-spanners-and-margins-fan-out-per-musician)
   - [Stage 6: Page Breaking (Single)](#pipeline-stage-6-page-breaking-single)
 - [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)
-- [Plugin Architecture Integration](#plugin-architecture-integration)
-  - [Atom Hook (Stage 1)](#atom-hook-stage-1)
-  - [Spanner Hook (Stage 5)](#spanner-hook-stage-5)
-- [Client-Server Event Coordination](#client-server-event-coordination)
-  - [Hierarchical Invalidation Events](#hierarchical-invalidation-events)
-  - [Lazy Visual Realisation](#lazy-visual-realisation)
+  - [Plugin Architecture Integration](#plugin-architecture-integration)
+  - [Cross-Tree Caching Architecture: Layout Integration](#cross-tree-caching-architecture-layout-integration)
+- [User Interaction Flow](#user-interaction-flow)
+- [Computational Scaling Characteristics](#computational-scaling-characteristics)
 - [Claypoole Integration Architecture](#claypoole-integration-architecture)
   - [Threadpool Lifecycle Contract](#threadpool-lifecycle-contract)
   - [Cancellation Contract](#cancellation-contract)
 - [Caching and Incremental Processing](#caching-and-incremental-processing)
+  - [Client-Server Event Coordination](#client-server-event-coordination)
 - [Rationale](#rationale)
+  - [Positive Aspects](#positive-aspects)
 - [Trade-offs](#trade-offs)
 - [Alternatives Considered](#alternatives-considered)
+  - [Alternative 1: Hardcoded Core Notation Elements](#alternative-1-hardcoded-core-notation-elements)
+  - [Alternative 2: Second-Pass Modification for System-Start Elements](#alternative-2-second-pass-modification-for-system-start-elements)
+  - [Alternative 3: Dual Computation (Two Complete Measure Layouts)](#alternative-3-dual-computation-two-complete-measure-layouts)
+  - [Alternative 4: Post-Hoc Spacing Adjustment](#alternative-4-post-hoc-spacing-adjustment)
 - [References](#references)
+  - [Related ADRs](#related-adrs)
+  - [Technical Dependencies](#technical-dependencies)
+  - [Performance Characteristics](#performance-characteristics)
+- [Notes](#notes)
 
 ## Context
 
@@ -100,130 +108,38 @@ flowchart LR
 ```
 
 ### Pipeline Stage 1: Atom Formation and Extent Calculation (Fan-Out per Measure)
-Individual measures calculate minimum, ideal, and gutter widths for their rhythmic content in parallel, and cache paintlists for all atoms:
-- **Fan-out per measure**: Each measure processes independently with no cross-measure dependencies
-- **Proportional values**: Applies absolute spacing values from Gould/Ross (quarter note: 3.5 staff-spaces, half note: 5.0, eighth: 2.5, etc.)
-- **Engraving Atom Formation**: Each rhythmic position forms a complete spatial unit - noteheads, stems, accidentals, articulations positioned relative to each other as an indivisible "engraving atom"
-- **Atom-Relative Coordinates**: All glyph positions within an atom are relative to the atom's origin point (see [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)). This fundamental property enables atoms to be repositioned without any internal recomputation.
-- **Four-Directional Extents**: Each atom calculates its full extent in all directions from its center:
-  - Left extent (negative horizontal): how far left the atom extends
-  - Right extent (positive horizontal): how far right the atom extends
-  - Up extent (positive vertical): how far up the atom extends
-  - Down extent (negative vertical): how far down the atom extends
-- **Spacing Bounds Determination**:
-  - **Ideal spacing**: The absolute proportional value for this rhythmic position (3.5, 5.0, etc.)
-  - **Minimum spacing**: Where adjacent atom extents just touch without overlap
-- **Gutter Width Calculation**: Each measure computes additional space needed when appearing first on a system:
-  - **`gutter_width`**: Width delta for graphical decorations at system start (default 0N)
-  - This is *additional* space beyond the measure's semantic content
-  - Computed from tied-to notes that received bypass treatment per [ADR-0035](0035-Remembered-Alterations.md)
-  - The gutter accommodates courtesy accidentals as non-semantic graphical decorations
-- **Natural Accidental Handling**: Accidentals increase an atom's left extent, automatically affecting minimum spacing to the previous atom
-- **Collision Guarantee**: As long as atoms are not positioned closer than their combined extents, collisions mathematically cannot occur
-- **Plugin Hook Integration**: Atom hooks fire for each notational element, producing atoms with extents and cached paintlists
-- **Atom Dimension Caching**: Once calculated for a rhythmic configuration, engraving atoms remain **immutable** until measure content changes, enabling efficient repositioning without recomputation
 
-**Stage 1 is width-complete**: It computes all horizontal space requirements for atoms, including lyrics, dynamics, articulations, and fixed-size anchors for spanners (e.g., "sffzpp<" letters, minimum crescendo wedge width). Stage 1 cannot compute full spanner geometry (that depends on final positions from Stage 4), but it must include all horizontal space the atom requires, including spanner attachment points. This width-completeness ensures Stage 3 has all information needed for optimal distribution.
+Stage 1 processes individual measures in parallel (fan-out per measure), with each measure independently calculating its rhythmic content, spatial extents, and cached visual representations. Each rhythmic position forms an "engraving atom" - noteheads, stems, accidentals, articulations positioned relative to each other as an indivisible unit. All glyph positions within an atom are relative to the atom's origin point (see [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)), enabling atoms to be repositioned without internal recomputation.
 
-#### The Gutter: System-Start Width Delta
+Each atom calculates four-directional extents from its center (left, right, up, down), establishing both minimum spacing (where adjacent extents touch) and ideal spacing (proportional rhythmic values). Plugin atom hooks fire for each notational element, producing atoms with extents and cached paintlists. Each measure also computes a `gutter_width` delta - additional space needed when appearing first on a system for graphical decorations (typically 0N, see [ADR-0037](0037-Measure-Distribution-Optimization.md#the-gutter-system-start-width-delta) for detailed algorithm). Once calculated, atoms remain immutable until measure content changes.
 
-When a measure appears first on a system, it may require additional space for graphical decorations that are not part of the measure's semantic content. This additional space is the **gutter**—a fixed-width region that follows the system's preamble (clefs and key signatures) and precedes the measure's scaled content.
-
-**What the gutter accommodates:**
-- Courtesy accidentals for tied-to notes at position 0 (graphical decorations, not semantic accidentals)
-- Tie continuation arcs (the visible portion of ties broken at system boundaries)
-
-**Critical architectural property:** The gutter width is computed in Stage 1 from complete information about the measure's layout, including all semantic accidentals at position 0. If existing accidentals already provide sufficient space for the courtesy accidental, the gutter width is 0N—only the additional space needed beyond the measure's existing layout is reserved. Stage 3 knows exactly how much additional space each measure requires *before* making any distribution decisions. This enables mathematically optimal distribution without heuristics or iteration.
-
-**What is NOT in the gutter:** All semantic accidentals are already computed and positioned within atoms by ADR-0035. The gutter contains only graphical decorations added for visual clarity at system boundaries.
-
-**User control over courtesy accidentals:**
-
-Because Ooloi has complete information before distribution, users can control courtesy accidental behavior without causing layout instability:
-
-```clojure
-;; User setting controlling when courtesy accidentals appear
-:courtesy-accidentals-at-breaks :system  ;; :system | :page | :none
-```
-
-| Setting | Behavior |
-|---------|----------|
-| `:system` | Show courtesy accidentals at all system breaks (default) |
-| `:page` | Show courtesy accidentals only at page breaks |
-| `:none` | Never show courtesy accidentals at breaks |
-
-This setting affects Stage 5 rendering decisions, not Stage 3 distribution. The gutter space is always reserved based on the most permissive setting that might apply; Stage 5 simply chooses whether to render decorations into that space.
-
-**Architectural capability:** The complete-information architecture makes user-controllable courtesy accidental settings straightforward to implement. This control requires deterministic distribution to work without manual adjustment or layout jitter. Traditional architectures that lack complete information at distribution time cannot offer such settings without risking non-deterministic behavior or requiring iterative correction.
+**Stage 1 is width-complete**: It computes all horizontal space requirements including spanner anchors, ensuring Stage 3 has complete information for optimal distribution.
 
 ### Pipeline Stage 2: Raster Creation (Fan-In across Measure Stack)
-Creates unified raster across the vertical measure stack using mathematical formula that accounts for all rhythmic structures:
-- **Fan-in across measure stack**: Collects minimum, ideal, and gutter widths from all measures in the stack (Stage 1 outputs)
-- **Width propagation**: All three width components (min, ideal, gutter) are propagated through reconciliation
-- **Rhythmical raster integration**: Uses all rhythmical rasters generated for each measure in the stack, many cached from previous computations
-- **Vertical synchronization**: Reconciles differences when measures have different rhythmic content, producing unified vertical alignment
-- **Result raster creation**: Generates positioning data with synchronized rhythmic positions across the measure stack
-- **MeasureStackFormatter storage**: Stores minimum, ideal, AND gutter widths for this measure stack
-- **Rational rhythmic positions**: Creates raster with rational positions (including tuplets like 1/3, 2/3)
-- **Solution space establishment**: Defines boundaries between physical feasibility (minimum) and musical intent (ideal), with gutter as additional fixed delta
-- **Output**: Unified Result Raster with MeasureStackFormatters containing all width metrics, ready for Stage 3 system breaking
+
+Stage 2 creates a unified rhythmic raster across the vertical measure stack (fan-in), collecting minimum, ideal, and gutter widths from all measures at this temporal position. When measures have different rhythmic content, reconciliation produces synchronized vertical alignment with rational rhythmic positions (including tuplet divisions like 1/3, 2/3). The resulting MeasureStackFormatter stores all three width components (min, ideal, gutter), establishing the solution space between physical feasibility (minimum) and musical intent (ideal). This unified raster with complete width metrics becomes the input for Stage 3 system breaking.
 
 ### Pipeline Stage 3: System Breaking (Single)
-Knuth-Plass dynamic programming optimization that distributes measures across systems:
-- **Single pass**: Sequential optimization over entire measure sequence - not parallelizable (global DP algorithm)
-- **Complete information**: Stage 3 receives exact min, ideal, and gutter widths for every measure stack from Stage 2
-- **Knuth-Plass algorithm**: Dynamic programming determines optimal system break points (see [ADR-0037](0037-Measure-Distribution-Optimization.md))
-- **System-start reservation**: For each candidate system, the first stack's preamble and gutter widths are subtracted from available width before scaling:
-  ```
-  available = system_width - preamble[s] - gutter[s]
-  scale_factor = available / Σ ideal_i
-  ```
-  - **Preamble**: Clef + key signature + inter-element spacing for system start. Computed on-demand by querying ChangeSets for active clef/keysig at the candidate measure's temporal position. Maximum width across all staves in the stack ensures uniform left margin. Cached by (clef, keysig) combination tuple—highly repetitive across a score. See [ADR-0037](0037-Measure-Distribution-Optimization.md#the-preamble-system-start-clef-and-key-signature-width) for detailed preamble computation.
-  - **Gutter**: Space for courtesy accidentals on tied-to notes (precomputed in Stage 1).
-- **Output**: System break decisions and scale factors per system - no atom positioning yet
-- **Horizontal distribution complete**: After this stage, horizontal layout is determined but atoms are not yet positioned
 
-**Objective Function**: Ooloi uses Knuth-Plass with proportional scaling and quadratic cost on deviation from ideal spacing. This produces globally optimal system breaks while preserving rhythmic proportionality.
+Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (exact min/ideal/gutter widths for every measure stack), the algorithm evaluates candidate systems by subtracting the preamble width (clef + key signature, computed on-demand) and gutter width from available system width, then computing scale factors. The objective function uses proportional scaling with quadratic cost on deviation from ideal spacing, producing globally optimal breaks while preserving rhythmic proportionality. Output: system break decisions and scale factors per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
 
 ### Pipeline Stage 4: Atom Positioning (Fan-Out per Measure)
-Applies scale factors from Stage 3 to position atoms at their actual coordinates:
-- **Fan-out per measure**: Each measure independently positions its atoms in parallel
-- **Scale factor application**: Uses scale factor from Stage 3 for its system
-- **Unified Raster positioning**: Applies the unified raster from Stage 2 to determine temporal positions
-- **Actual width computation**: `actual[i] = ideal[i] × scale_factor`
-- **Absolute coordinate assignment**: Determines final x,y coordinates for all atoms within the measure
-- **Paintlist preparation**: Cached paintlists from Stage 1 are positioned at absolute coordinates
-- **No recomputation**: Atoms are repositioned, not recreated - their internal geometry is immutable
-- **Output**: Positioned atoms with absolute coordinates, ready for Stage 5 spanners
+
+Stage 4 applies scale factors from Stage 3 to position atoms at their actual coordinates (fan-out per measure, parallel processing). Each measure uses its system's scale factor and the unified raster from Stage 2 to compute actual widths (`actual[i] = ideal[i] × scale_factor`) and assign final x,y coordinates. Cached paintlists from Stage 1 are positioned at absolute coordinates. Atoms are repositioned, not recreated - their internal geometry remains immutable. Output: positioned atoms ready for Stage 5 spanners.
 
 ### Pipeline Stage 5: Spanners and Margins (Fan-Out per Musician)
-Renders connecting elements (spanners) and left margins, determines system heights:
-- **Fan-out per musician**: Each musician independently generates their spanners in parallel
-- **Spanners are musician-local**: Ties connect notes played by same musician, beams within same musician's part, slurs on same musician's part
-- **Connecting elements**: Generates ties, slurs, glissandos, hairpins, beams, pedal markings, ottava lines
-- **Left margins**: Creates instrument names, clefs, brackets, braces, key signatures for system start
-- **System-start decorations**: For measures at system start, adds graphical decorations within gutter space:
-  - Courtesy accidentals for tied-to notes (visual aids, not semantic accidentals)
-  - Tie continuation arcs
-- **Vertical extent determination**: Each musician determines their vertical space requirements - spanners may push staves apart
-- **Output**: System heights (max vertical extent across all musicians in each system)
-- **No cross-musician coordination**: Spanners are fully musician-local - massive parallelization opportunity
 
-**Stage 5 is height-complete**: After Stage 4 positions atoms, Stage 5 computes connecting element geometry and determines final vertical extent. System heights are definitive after Stage 5, providing Stage 6 with complete information for optimal page breaking.
+Stage 5 renders connecting elements using finalized atom positions from Stage 4 (fan-out per musician, parallel processing). Each musician independently generates their spanners (ties, slurs, beams, hairpins, pedal markings, ottava lines) - no cross-musician coordination required. Spanners are musician-local: ties connect notes played by the same musician, beams within the same part. Left margins are created (instrument names, clefs, brackets, braces, key signatures). For measures at system start, graphical decorations are added within gutter space (courtesy accidentals, tie continuation arcs). Each musician determines their vertical space requirements - spanners may push staves apart. Output: system heights (maximum vertical extent across all musicians in each system).
+
+**Stage 5 is height-complete**: System heights are definitive, providing Stage 6 with complete information for optimal page breaking.
 
 ### Pipeline Stage 6: Page Breaking (Single)
-Knuth-Plass dynamic programming optimization that distributes systems across pages:
-- **Single pass**: Sequential optimization over system sequence - not parallelizable (global DP algorithm)
-- **Complete information**: Stage 6 receives actual system heights from Stage 5 - no guessing about vertical space
-- **Knuth-Plass algorithm**: Dynamic programming determines optimal page break points
-- **Input**: System heights including all spanner vertical extent
-- **Vertical distribution**: Arranges systems vertically within page boundaries, adding/removing pages as needed
-- **Output**: Final page breaks, completing the layout
-- **Final layout lock**: After this stage, all positions (horizontal and vertical) are locked
+
+Stage 6 uses Knuth-Plass dynamic programming to determine optimal page break points (single pass, not parallelizable). With complete information from Stage 5 (actual system heights including all spanner vertical extent), the algorithm arranges systems vertically within page boundaries, adding or removing pages as needed. Output: final page breaks, completing the layout. After this stage, all positions (horizontal and vertical) are locked.
 
 **Why Stage 6 is separate from Stage 3**: Horizontal distribution (system breaking) cannot know vertical space requirements until Stage 5 computes spanner extent. Separating system and page breaking enables complete information at each stage.
 
-**Closed semantic model and algorithmic optimality:** For comprehensive discussion of how the complete-information architecture protects the closed semantic model, enables deterministic optimal distribution, and supports revolutionary user-controllable features, see [ADR-0037: Protecting the Closed Semantic Model](0037-Measure-Distribution-Optimization.md#protecting-the-closed-semantic-model).
+**Closed semantic model and algorithmic optimality:** For comprehensive discussion of how the complete-information architecture protects the closed semantic model and enables deterministic optimal distribution, see [ADR-0037: Protecting the Closed Semantic Model](0037-Measure-Distribution-Optimization.md#protecting-the-closed-semantic-model).
 
 ## Atom-Relative Geometry Invariant
 
