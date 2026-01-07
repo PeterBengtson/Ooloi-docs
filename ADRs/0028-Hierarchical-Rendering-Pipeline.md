@@ -129,6 +129,8 @@ Individual measures calculate minimum, ideal, and gutter widths for their rhythm
 - **Plugin Hook Integration**: Atom hooks fire for each notational element, producing atoms with extents and cached paintlists
 - **Atom Dimension Caching**: Once calculated for a rhythmic configuration, engraving atoms remain **immutable** until measure content changes, enabling efficient repositioning without recomputation
 
+**Stage 1 is width-complete**: It computes all horizontal space requirements for atoms, including lyrics, dynamics, articulations, and fixed-size anchors for spanners (e.g., "sffzpp<" letters, minimum crescendo wedge width). Stage 1 cannot compute full spanner geometry (that depends on final positions from Stage 4), but it must include all horizontal space the atom requires, including spanner attachment points. This width-completeness ensures Stage 3 has all information needed for optimal distribution.
+
 #### The Gutter: System-Start Width Delta
 
 When a measure appears first on a system, it may require additional space for graphical decorations that are not part of the measure's semantic content. This additional space is the **gutter**—a fixed-width region that follows the system's preamble (clefs and key signatures) and precedes the measure's scaled content.
@@ -212,6 +214,8 @@ Renders connecting elements (spanners) and left margins, determines system heigh
 - **Vertical extent determination**: Each musician determines their vertical space requirements - spanners may push staves apart
 - **Output**: System heights (max vertical extent across all musicians in each system)
 - **No cross-musician coordination**: Spanners are fully musician-local - massive parallelization opportunity
+
+**Stage 5 is height-complete**: After Stage 4 positions atoms, Stage 5 computes connecting element geometry and determines final vertical extent. System heights are definitive after Stage 5, providing Stage 6 with complete information for optimal page breaking.
 
 ### Pipeline Stage 6: Page Breaking (Single)
 Knuth-Plass dynamic programming optimization that distributes systems across pages:

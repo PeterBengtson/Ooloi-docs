@@ -22,7 +22,6 @@
 - [Stability Guarantees](#stability-guarantees)
   - [Stage Boundary Enforcement](#stage-boundary-enforcement)
   - [Connecting Element Adaptation](#connecting-element-adaptation)
-  - [Controlled Reflow for Pathological Cases](#controlled-reflow-for-pathological-cases)
   - [Deterministic Tie-Breaking](#deterministic-tie-breaking)
   - [Edit Locality](#edit-locality)
   - [Caching and Incremental Recompute](#caching-and-incremental-recompute)
@@ -117,7 +116,7 @@ Given a musical score with N measures and M staves, the system must distribute N
 - Stack atomicity: Measure stacks cannot be subdivided
 
 **Explicit exclusions**:
-Connecting elements (ties, slurs, hairpins, beams, glissandi, ottava lines) do not participate in the distribution optimization. They are computed in Stage 5 after positions are finalized, and adapt to the determined geometry. Only in rare pathological cases do they trigger controlled local adjustment.
+Connecting elements (ties, slurs, hairpins, beams, glissandi, ottava lines) do not participate in the distribution optimization. They are computed in Stage 5 after positions are finalized, and adapt to the determined geometry.
 
 **Objective**:
 Minimize global discomfort derived from system-local stack deviations from ideal proportions, while satisfying capacity constraints. The intent is that minimizing global discomfort produces layouts perceived as stable and professionally typeset.
@@ -137,7 +136,13 @@ The apparent computational difficulty of music layout arises from coupling betwe
 Ooloi's pipeline architecture **decouples these concerns through staged computation**:
 
 **Stage 1-2: Vertical Coordination**
-Parallel collision detection produces measure stack metrics. Each of N stacks emerges with definitive width bounds: `min_width` and `ideal_width` for the measure's semantic content, plus `gutter_width` for additional system-start space. The vertical alignment problem is solved completely before distribution begins. This reduction is enabled by:
+Parallel collision detection produces measure stack metrics. Each of N stacks emerges with definitive width bounds: `min_width` and `ideal_width` for the measure's semantic content, plus `gutter_width` for additional system-start space.
+
+**Stage 1 is width-complete**: It computes all horizontal space requirements for atoms, including lyrics, dynamics, articulations, and fixed-size anchors for spanners (e.g., "sffzpp<" letters, minimum crescendo wedge width). Stage 1 cannot compute full spanner geometry (that depends on final positions from Stage 4), but it must include all horizontal space the atom requires, including spanner attachment points.
+
+**Stage 5 is height-complete**: After Stage 4 positions atoms, Stage 5 computes connecting element geometry and determines final vertical extent. System heights are definitive after Stage 5.
+
+The vertical alignment problem is solved completely before distribution begins. This reduction is enabled by:
 - Immutable data structures eliminating race conditions during parallel processing
 - Rational arithmetic preserving exact proportions without floating-point accumulation
 - STM coordination ensuring atomic reads of hierarchical musical structure
@@ -158,7 +163,7 @@ Applies scale factors from Stage 3 to position atoms at their actual coordinates
 Ties, slurs, and spanning attachments compute geometry based on finalized atom positions from Stage 4. They adapt to the determined layout rather than influencing it. For measures at system-start positions, Stage 5 adds graphical decorations (courtesy accidentals, tie continuations) within the reserved gutter space. Determines actual system heights from vertical extent of connecting elements.
 
 **Stage 6: Page Breaking**
-Uses Knuth-Plass DP over the system sequence with actual system heights from Stage 5. Produces final page breaks, completing the layout. Pathological cases (e.g., slur collisions requiring additional space) trigger explicit, localized reflow rather than systemic invalidation.
+Uses Knuth-Plass DP over the system sequence with actual system heights from Stage 5. Produces final page breaks, completing the layout.
 
 **Why this is architectural, not algorithmic**:
 The reduction does not emerge from clever optimization techniques. It emerges from:
@@ -740,18 +745,6 @@ For measures at system-start positions, Stage 5 adds graphical decorations withi
 
 This is **selection, not computation**. The space was pre-reserved; Stage 5 renders decorations into it.
 
-### Controlled Reflow for Pathological Cases
-
-In rare situations (e.g., short slur with extreme stem directions creating unavoidable collision), the system may trigger **local, explicit reflow**:
-
-- **Stage 5 is not allowed to request redistribution.** It may only request explicit, bounded re-execution of Stages 3-4 on a constrained interval.
-- Reflow scope limited to affected measures and immediate neighbors
-- Reflow occurs after Stage 5 detects geometric impossibility, not during Stage 3 optimization
-- Reflow outcome cached to prevent repeated recomputation
-- User notification of layout adjustment (optional, depending on severity)
-
-This differs fundamentally from continuous mutual invalidation in mutable architectures, where any geometry change can cascade through the entire layout system. Stage 5 does not participate in optimization; any reflow is a restart (re-executing Stages 3-4), not feedback.
-
 ### Deterministic Tie-Breaking
 
 When multiple break configurations produce identical discomfort (a "tie" in cost, not a musical tie), the DP evaluation order ensures consistent choices:
@@ -777,7 +770,7 @@ Stage 3 operates over a sequence of measure stacks whose width triples are **alr
 * `gutter_width` — additional space for system-start decorations
 * `actual_width` — realized width after Stage 3-4 (scale factors applied by Stage 4)
 
-This cache is authoritative at the Stage 3-4 boundary: Stage 3 consumes `(min, ideal, gutter)` and produces break assignments and scale factors; Stage 4 applies scale factors to produce `actual` positions; Stage 5 consumes `actual` and never influences Stages 3-4 except via explicitly bounded reflow (pathological cases).
+This cache is authoritative at the Stage 3-4 boundary: Stage 3 consumes `(min, ideal, gutter)` and produces break assignments and scale factors; Stage 4 applies scale factors to produce `actual` positions; Stage 5 consumes `actual` and never influences Stages 3-4.
 
 #### Cached Invariants
 
@@ -787,7 +780,7 @@ For each stack `i` under a fixed system assignment:
 * `actual_width_i = ideal_width_i × scale_factor(system)` unless clamped
 * `scale_factor(system) = available / Σ ideal_width_j` where `available = system_width - preamble[s] - gutter[s]`
 
-The cache additionally implies that per-stack metrics are **stable across edits** unless the edited content is in that stack (or an explicitly bounded reflow is triggered).
+The cache additionally implies that per-stack metrics are **stable across edits** unless the edited content is in that stack.
 
 #### Incremental Update Consequences
 
