@@ -413,6 +413,8 @@ The Ooloi backend server represents a specialized approach to concurrent distrib
 - **[ADR-0002: gRPC Architecture](../ADRs/0002-gRPC.md)** - Java interop approach and deployment models
 - **[ADR-0024: gRPC Concurrency and Flow Control Architecture](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)** - Communication patterns and flow control design
 - **[ADR-0025: Server Statistics Architecture](../ADRs/0025-Server-Statistics-Architecture.md)** - Production monitoring, health endpoints, and performance analytics
+- **[ADR-0031: Frontend Event-Driven Architecture](../ADRs/0031-Frontend-Event-Driven-Architecture.md)** - Event Router, Rendering Data Manager, and Fetch Coordinator architecture
+- **[ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)** - Backend-authoritative rendering with GPU-accelerated frontend execution
 
 ### Implementation Guides
 - **[GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - Practical gRPC usage patterns and collaborative scenarios

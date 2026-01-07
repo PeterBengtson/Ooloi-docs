@@ -707,9 +707,19 @@ This flow control architecture builds upon and enhances several existing Ooloi a
 
 **Server Statistics Architecture ([ADR-0025](../ADRs/0025-Server-Statistics-Architecture.md))**:
 - Event queue health monitoring enables proactive flow control management
-- Per-client queue statistics (top-level `:client-statistics` key) inform overflow prevention strategies  
+- Per-client queue statistics (top-level `:client-statistics` key) inform overflow prevention strategies
 - Performance metrics guide flow control parameter tuning
 - Queue overhead minimal compared to transport optimisation gains
+
+**Frontend Event-Driven Architecture ([ADR-0031](../ADRs/0031-Frontend-Event-Driven-Architecture.md))**:
+- Event Router consumes the FIFO-ordered event stream this flow control provides
+- Rendering Data Manager relies on predictable event delivery for paintlist invalidation
+- Fetch Coordinator priority queues integrate with event-driven invalidation patterns
+
+**Backend-Authoritative Rendering ([ADR-0038](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md))**:
+- Piece invalidation events drive frontend paintlist cache updates
+- GPU-accelerated rendering execution depends on reliable event delivery
+- Terminal frontend execution model requires backend events as sole source of rendering changes
 
 ### Future Extensions
 
