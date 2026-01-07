@@ -505,8 +505,6 @@ Only one formatting operation runs at a time. Cancellation uses global operation
   `(if (cancelled?) ::cancelled (do ~@body)))
 ```
 
-Stage 3 uses Knuth-Plass dynamic programming to determine optimal system breaking. Each measure stack provides minimum, ideal, and gutter widths (from Stages 1-2). Stage 3 computes preamble on-demand and subtracts both preamble and gutter for system-start stacks, applies scale factors to distribute measures across systems, then Stage 6 distributes systems across pages using actual system heights from Stage 5.
-
 ## Caching and Incremental Processing
 
 Pipeline results are cached until local edits change them. The atom-relative geometry invariant ensures that Stage 1 (the most expensive computation) runs only when measure content changes - never for layout adjustments.
