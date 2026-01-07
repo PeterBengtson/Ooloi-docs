@@ -44,7 +44,7 @@ The frontend must be **terminal** - the end of the pipeline that consumes backen
 
 ### Performance Requirements
 
-- Complex orchestral scores (Elektra recognition scene: 30,000+ simultaneous objects)
+- Complex orchestral scores
 - Smooth scrolling (target 60fps)
 - Low latency for visible edits (target <150ms p95)
 - Memory efficiency (viewport-proportional, not score-proportional)
@@ -472,7 +472,7 @@ Performance depends on:
 
 ### Why GPU Acceleration is Required
 
-**Performance Requirements:** Complex orchestral scores with 30,000+ simultaneous objects cannot achieve 60fps scrolling with CPU-only vector rasterization. Modern orchestral notation (Elektra recognition scene, multi-staff systems) requires parallel GPU execution for acceptable user experience.
+**Performance Requirements:** Complex orchestral scores with 30,000+ simultaneous objects cannot achieve 60fps scrolling with CPU-only vector rasterization. Modern orchestral notation requires parallel GPU execution for acceptable user experience.
 
 **Vector Rendering Efficiency:** GPUs excel at parallel vector path rendering. Bezier curve rasterization, glyph rendering, and anti-aliasing benefit massively from GPU compute. Software rasterization would require frame budgets exceeding 100ms for complex viewports.
 
