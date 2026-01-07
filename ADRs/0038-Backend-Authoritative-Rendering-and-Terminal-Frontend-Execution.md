@@ -202,6 +202,8 @@ Backend's 6-stage pipeline produces all drawing instructions:
             :height 60.0}}
 ```
 
+**Note on Paintlist Format Design:** The examples above are conceptual/pseudocode. The real paintlist format will be designed pragmatically: if aligning closely with Skija's API syntax speeds up translation (paintlist → GPU commands), we'll do that. Otherwise, we'll keep the format as abstract as possible. The format must be serializable via gRPC and sufficient for hit-testing, but internal structure is an implementation detail.
+
 **Backend computes:**
 - Exact glyph positions (x, y coordinates)
 - Glyph selection from SMuFL font (ADR-0006)
@@ -476,7 +478,7 @@ Performance depends on:
 
 **Vector Rendering Efficiency:** GPUs excel at parallel vector path rendering. Bezier curve rasterization, glyph rendering, and anti-aliasing benefit massively from GPU compute. Software rasterization would require frame budgets exceeding 100ms for complex viewports.
 
-**Technology Flexibility:** While GPU acceleration itself is required, the specific technology (Skija/Metal/Vulkan) is swappable. Backend paintlists work with any GPU-accelerated frontend technology.
+**Technology Flexibility:** Skija is Ooloi's GPU-accelerated vector rendering API. Skija internally uses Metal (macOS), Vulkan (Linux/Windows), or OpenGL (fallback) as GPU backends - these are implementation details managed by Skija. Backend paintlists are rendering-library-agnostic, meaning they describe drawing instructions independently of any specific rendering technology.
 
 **Error Recovery:** Software rasterization fallback exists for GPU driver failures or diagnostic scenarios, but is not intended for production use due to performance constraints.
 
@@ -513,7 +515,7 @@ Performance depends on:
 ### Risks and Mitigations
 
 **Risk:** Skija GPU integration with JavaFX proves problematic or insufficient.
-**Mitigation:** Backend paintlists are technology-agnostic. Can switch to alternative GPU rendering stack (native Metal/Vulkan, web Canvas API with OffscreenCanvas, etc.) without backend changes. Provisional embedding strategy allows iteration.
+**Mitigation:** Backend paintlists are rendering-library-agnostic. Could switch to alternative GPU-accelerated vector rendering library (different cross-platform library, platform-specific native APIs, web Canvas API with OffscreenCanvas, etc.) without backend changes. Provisional JavaFX/Skija embedding strategy allows iteration.
 
 **Risk:** Network latency makes paintlist fetching too slow for good UX.
 **Mitigation:** ADR-0031 priority queues + viewport-aware fetching + aggressive prefetch. Measured latencies guide prefetch strategy.
@@ -545,6 +547,6 @@ The litmus test (discard frontend state, regenerate from backend → identical o
 
 GPU acceleration via Skija Pictures (GPU command buffers) is **required** for production performance with complex orchestral scores. Paintlists are recorded once into Pictures, then Pictures are replayed every frame. This is essential - you cannot re-parse and re-issue draw commands for 30,000 objects at 60fps.
 
-The specific GPU technology (Skija/Metal/Vulkan/Canvas API) is swappable - backend paintlists work with any GPU-accelerated frontend. Software rasterization exists only for error recovery (GPU driver failure), not production use.
+Skija is Ooloi's committed GPU rendering API. Skija internally uses platform-appropriate GPU backends (Metal on macOS, Vulkan on Linux/Windows, OpenGL as fallback) - this is handled transparently by Skija. Backend paintlists are rendering-library-agnostic and describe vector drawing instructions independently of the rendering technology. Software rasterization exists only for error recovery (GPU driver failure), not production use.
 
 Pictures can be evicted from cache under memory pressure (regeneration is cheap: one-time recording from local paintlist). But the Picture recording mechanism itself is not optional - it's how GPU acceleration works.
