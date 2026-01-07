@@ -4,6 +4,34 @@
 **Date**: 2024-09-14
 **Updated**: 2026-01-05 (6-stage architecture)
 
+## Table of Contents
+
+- [Context](#context)
+  - [Architectural Foundation: Frontend-Backend Separation](#architectural-foundation-frontend-backend-separation)
+- [Decision](#decision)
+- [Six-Stage Pipeline Architecture](#six-stage-pipeline-architecture)
+  - [Stage 1: Atom Formation and Extent Calculation (Fan-Out per Measure)](#pipeline-stage-1-atom-formation-and-extent-calculation-fan-out-per-measure)
+  - [Stage 2: Raster Creation (Fan-In across Measure Stack)](#pipeline-stage-2-raster-creation-fan-in-across-measure-stack)
+  - [Stage 3: System Breaking (Single)](#pipeline-stage-3-system-breaking-single)
+  - [Stage 4: Atom Positioning (Fan-Out per Measure)](#pipeline-stage-4-atom-positioning-fan-out-per-measure)
+  - [Stage 5: Spanners and Margins (Fan-Out per Musician)](#pipeline-stage-5-spanners-and-margins-fan-out-per-musician)
+  - [Stage 6: Page Breaking (Single)](#pipeline-stage-6-page-breaking-single)
+- [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)
+- [Plugin Architecture Integration](#plugin-architecture-integration)
+  - [Atom Hook (Stage 1)](#atom-hook-stage-1)
+  - [Spanner Hook (Stage 5)](#spanner-hook-stage-5)
+- [Client-Server Event Coordination](#client-server-event-coordination)
+  - [Hierarchical Invalidation Events](#hierarchical-invalidation-events)
+  - [Lazy Visual Realisation](#lazy-visual-realisation)
+- [Claypoole Integration Architecture](#claypoole-integration-architecture)
+  - [Threadpool Lifecycle Contract](#threadpool-lifecycle-contract)
+  - [Cancellation Contract](#cancellation-contract)
+- [Caching and Incremental Processing](#caching-and-incremental-processing)
+- [Rationale](#rationale)
+- [Trade-offs](#trade-offs)
+- [Alternatives Considered](#alternatives-considered)
+- [References](#references)
+
 ## Context
 
 Musical notation software faces computational challenges when handling large orchestral scores containing hundreds of thousands of individual musical elements. The fundamental problem involves coordinating distinct concerns: musical logic resolution, spatial arrangement calculations, and visual rendering - each with different computational characteristics and parallelisation opportunities.
@@ -33,34 +61,6 @@ Ooloi's [frontend-backend separation](0001-Frontend-Backend-Separation.md) provi
 ## Decision
 
 Ooloi implements a **six-stage hierarchical rendering pipeline** with comprehensive plugin integration and intelligent client-server coordination:
-
-## Table of Contents
-
-- [Context](#context)
-  - [Architectural Foundation: Frontend-Backend Separation](#architectural-foundation-frontend-backend-separation)
-- [Decision](#decision)
-- [Six-Stage Pipeline Architecture](#six-stage-pipeline-architecture)
-  - [Stage 1: Atom Formation and Extent Calculation (Fan-Out per Measure)](#pipeline-stage-1-atom-formation-and-extent-calculation-fan-out-per-measure)
-  - [Stage 2: Raster Creation (Fan-In across Measure Stack)](#pipeline-stage-2-raster-creation-fan-in-across-measure-stack)
-  - [Stage 3: System Breaking (Single)](#pipeline-stage-3-system-breaking-single)
-  - [Stage 4: Atom Positioning (Fan-Out per Measure)](#pipeline-stage-4-atom-positioning-fan-out-per-measure)
-  - [Stage 5: Spanners and Margins (Fan-Out per Musician)](#pipeline-stage-5-spanners-and-margins-fan-out-per-musician)
-  - [Stage 6: Page Breaking (Single)](#pipeline-stage-6-page-breaking-single)
-- [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)
-- [Plugin Architecture Integration](#plugin-architecture-integration)
-  - [Atom Hook (Stage 1)](#atom-hook-stage-1)
-  - [Spanner Hook (Stage 5)](#spanner-hook-stage-5)
-- [Client-Server Event Coordination](#client-server-event-coordination)
-  - [Hierarchical Invalidation Events](#hierarchical-invalidation-events)
-  - [Lazy Visual Realisation](#lazy-visual-realisation)
-- [Claypoole Integration Architecture](#claypoole-integration-architecture)
-  - [Threadpool Lifecycle Contract](#threadpool-lifecycle-contract)
-  - [Cancellation Contract](#cancellation-contract)
-- [Caching and Incremental Processing](#caching-and-incremental-processing)
-- [Rationale](#rationale)
-- [Trade-offs](#trade-offs)
-- [Alternatives Considered](#alternatives-considered)
-- [References](#references)
 
 ## Six-Stage Pipeline Architecture
 
