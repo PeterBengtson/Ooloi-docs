@@ -44,7 +44,7 @@ This isn't gatekeeping for its own sake. The cognitive load of coordinating with
 
 The architecture must be released as a whole before it can be extended by others. Piecemeal input during construction serves neither the system nor the contributor.
 
-**If you're interested in Ooloi, the best thing you can do right now is wait.** Follow development if you like. Read the ADRs when they're published. But contribution paths open after release, not before.
+**If you're interested in contributing to Ooloi, the best thing you can do right now is wait.** Follow development if you like. Read the ADRs when they're published. But contribution paths open after release, not before.
 
 ## After Release: How You'll Be Able to Contribute
 
