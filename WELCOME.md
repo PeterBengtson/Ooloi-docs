@@ -4,7 +4,7 @@ Greetings, and welcome to Ooloi, the spiritual successor to Igor Engraver. If yo
 
 ## A Quarter-Century in the Making
 
-Twenty-five years ago, I created Igor Engraver, which became rather successful in the music notation world. When that project ended, it left something unfinished – not just the software, but the understanding of what music notation software could truly become. Ooloi represents the completion of that circle, built with decades of accumulated insight about both music and programming.
+Thirty years ago, I created Igor Engraver, which became rather successful in the music notation world. When that project ended, it left something unfinished – not just the software, but the understanding of what music notation software could truly become. Ooloi represents the completion of that circle, built with decades of accumulated insight about both music and programming.
 
 In the intervening years, I became an AWS Solutions Architect Professional and created systems like Ocean and OpenSecOps. I have always thought in systems – this shift simply allowed me to give that instinct full rein, to focus entirely on designing foundations that can handle complexity and scale over time through elegant abstraction layers.
 
