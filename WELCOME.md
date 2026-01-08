@@ -87,6 +87,4 @@ It stands on architecture, tests, and documentation.<br>
 If you see the value, you will find it here, intact and intelligible.<br>
 If you don't, nothing is lost.
 
-*"Nun denn, allein."*
-
 / Peter Bengtson
