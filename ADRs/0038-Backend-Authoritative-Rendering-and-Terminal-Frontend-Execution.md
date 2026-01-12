@@ -29,7 +29,7 @@ Ooloi's architecture requires clear boundaries between backend musical semantics
 ### The Rendering Boundary Problem
 
 When layout computation and rendering execution are tightly coupled, achieving certain architectural goals becomes significantly more complex:
-- Guaranteeing deterministic rendering across different frontends (web, desktop, mobile) requires shared rendering libraries or complex synchronization
+- Guaranteeing deterministic rendering across different frontends requires shared rendering libraries or complex synchronization
 - Preserving the closed semantic model established in ADR-0035 requires careful boundary enforcement
 - Enabling collaborative editing without rendering inconsistencies requires additional coordination mechanisms
 - Implementing ADR-0022's lazy event-driven architecture requires clear separation of concerns
@@ -448,7 +448,7 @@ Performance depends on:
 
 ### Why Backend Authority is Absolute
 
-**Deterministic Rendering:** Multiple frontends (desktop, web, mobile) must render identically. Backend authority provides a single source of truth for all rendering decisions, ensuring consistency without requiring shared rendering libraries or complex synchronization protocols.
+**Deterministic Rendering:** Multiple frontends must render identically. Backend authority provides a single source of truth for all rendering decisions, ensuring consistency without requiring shared rendering libraries or complex synchronization protocols.
 
 **Closed Semantic Model:** ADR-0035 establishes closed semantics (accidentals, musical logic) before rendering. Frontend decisions would reopen the semantic model, violating architectural closure.
 
