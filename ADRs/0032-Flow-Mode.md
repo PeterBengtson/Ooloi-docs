@@ -24,10 +24,9 @@
   - [Parallel Development](#parallel-development)
   - [Success Criteria](#success-criteria)
   - [Modern Improvements Over Igor](#modern-improvements-over-igor)
-- [Strategic Reality](#strategic-reality)
+- [Restoration vs Innovation](#restoration-vs-innovation)
   - [Radical Transparency and Open Documentation](#radical-transparency-and-open-documentation)
 - [Tradeoffs and Considerations](#tradeoffs-and-considerations)
-- [Open Questions (Deferred to Implementation)](#open-questions-deferred-to-implementation)
 - [Related ADRs](#related-adrs)
 - [References](#references)
 
@@ -43,7 +42,7 @@ Igor Engraver (1996-2009) pioneered a revolutionary input method: **stateful mod
 - **Persistent modal states**: Type `ffzpp<` → creates that exact dynamic with crescendo start
 - **Expanding elements**: Slurs and crescendos automatically extend as subsequent notes are added
 - **Three-stage workflow**: Position cursor → Select pitch → Press Enter to create
-- **Combinatorial articulations**: `>` + `.` = accent + staccato stacked on same note
+- **Combinatorial articulations**: `A` + `.` = accent + staccato stacked on same note
 - **Intuitive commands**: Musical symbols map naturally to keystrokes – low learning curve
 - **Real-time WYSIWYG**: Every keystroke updates visual score immediately (not compile-based like LilyPond)
 - **MIDI integration**: Pitch entry via MIDI keyboard while computer keyboard handles rhythm/articulation
@@ -98,12 +97,13 @@ This is not innovation – it's **memory + implementation**. We are restoring a 
 
 **Professional necessity**: Professional composers, arrangers, and engravers need speed. Flow Mode delivers 5-10x improvement in input speed – that's not a competitive feature, it's a professional requirement.
 
-**Professional user need**: Composers, arrangers, engravers work with notation daily. Speed matters enormously. A 5-10x improvement in input speed is compelling enough to justify learning a new tool.
+**Professional user need**: Composers, arrangers, engravers work with notation daily. Speed matters enormously. A substantial improvement in input speed is compelling enough to justify learning a new tool.
 
 **Low learning curve**: Unlike vim's arbitrary commands, Flow Mode is **intuitive and self-evident**:
 - Type `ffzpp<` → get that exact dynamic with crescendo
+- Type `<>` → get cresc-dim hairpin for note or passage
 - Type `.` → staccato mode stays active
-- Type `>` → accent mode stays active
+- Type `A` → accent mode stays active
 - Press Enter → create note with all active modes
 
 Musical notation itself suggests the keystrokes – no artificial memorization required.
@@ -118,11 +118,11 @@ The following keyboard commands are confirmed from user memory of Igor Engraver:
 - `.` – Staccato mode (remains active)
 - `'` – Staccatissimo wedge mode (remains active)
 - `-` – Tenuto mode (remains active)
-- `>` – Accent mode (remains active or cycles through accent variants)
-- Heavy accent mode (marcato – looks like A without crossbar)
+- `A` – Accent mode (remains active or cycles through accent variants)
+- Heavy accent mode (marcato – looks like an A without a crossbar)
 - **Stacking rules**: Articulations can stack in pairs, triples, or more (with logical exclusions)
   - Triple combinations: marcato + tenuto + staccato, tenuto + staccato + accent
-  - Pair combinations: `-` + `.`, `-` + `>`, `.` + `>`, `'` + `>`, heavy accent + most others
+  - Pair combinations: `-` + `.`, `-` + `A`, `.` + `A`, `'` + `A`, heavy accent + most others
   - Mutually exclusive pairs: `.` ↔ `'` (staccato ↔ staccatissimo), `'` ↔ `-` (staccatissimo ↔ tenuto)
   - System renders combined glyphs with proper vertical spacing
 
@@ -130,12 +130,12 @@ The following keyboard commands are confirmed from user memory of Igor Engraver:
 - `T` – Ties next note
 - `S` – Starts slur (expands as subsequent notes added)
 - `<` – Starts crescendo (expands as you continue)
+- `>` – Starts diminuendo (expands as you continue)
 - `/` – Beam operations (cut and join beams at various levels)
 - Tuplet mode toggle key (mode remains active)
 
 **Dynamics:**
 - Type literal text: `ffzpp` creates that exact dynamic marking
-- Case sensitivity unknown (requires documentation)
 
 **Text Entry:**
 - `Space` – Enters lyrics for "current verse"
@@ -167,10 +167,9 @@ The following keyboard commands are confirmed from user memory of Igor Engraver:
 
 1. **State machine details**: How long modes persist, how they exit, which modes can stack
 2. **Complete key binding map**: All articulations, dynamics, structural elements, text entry
-3. **Conflict resolution**: How `>` resolves between accent and crescendo
-4. **MIDI integration specifics**: Velocity mapping, sustain pedal behavior, chord entry method
-5. **Expanding element mechanics**: Slur start/end/extension, crescendo behavior, lyrics melismas
-6. **Mode combination rules**: Which modes can coexist, visual feedback for stacked modes
+3. **MIDI integration specifics**: Velocity mapping, sustain pedal behavior, chord entry method
+4. **Expanding element mechanics**: Slur start/end/extension, crescendo/diminuendo behavior, lyrics melismas
+5. **Mode combination rules**: Which modes can coexist, visual feedback for stacked modes
 
 Without this documentation, we must **reconstruct through archaeology** – examining any remaining Igor materials, personal memory from original use, and designing missing pieces based on musical logic and ergonomic principles.
 
@@ -196,7 +195,7 @@ Without this documentation, we must **reconstruct through archaeology** – exam
 
 **Academic opportunity**: First to formally document this HCI paradigm – no papers exist. Potential for publication and recognition.
 
-**Communication focus**: Accurately describing Flow Mode's historical context (disappeared 2001, no modern equivalent) and genuine capabilities (5-10x speed improvement, ~30 second learning time) to help users understand why this matters.
+**Communication focus**: Accurately describing Flow Mode's historical context (disappeared 2001, no modern equivalent) and genuine capabilities (dramatic speed improvement, ~30 second learning time) to help users understand why this matters.
 
 **Open source strength**: Community can extend/customize key bindings, share binding schemes. Flow Mode becomes freely available for all who need professional-grade input speed.
 
@@ -209,8 +208,6 @@ Without this documentation, we must **reconstruct through archaeology** – exam
 **Two modes, one primary**: Flow Mode is the primary input method once users are shown it (~30 seconds to grasp). Click Mode exists for familiarity and for placing esoteric/unusual elements that don't have obvious keyboard mappings.
 
 **Phased implementation**: Click Mode implemented first (validates architecture). Flow Mode layered on top after basic rendering works.
-
-**Customization boundaries**: Must decide between vim approach (full rebinding) or fixed bindings with limited customization. Design decision deferred until implementation phase.
 
 **Mobile implications**: Flow Mode fundamentally keyboard-centric. Touch screens will use Click Mode only.
 
@@ -226,7 +223,7 @@ Flow Mode implementation advances in lockstep with rendering and MusicXML import
 - Import → Render with flags → Click to place → Flow Mode pitch selection + Enter
 
 **Level 2**: Articulations
-- Import → Render markings → Click to apply → Flow Mode toggles (`.` for staccato, `>` for accent)
+- Import → Render markings → Click to apply → Flow Mode toggles (`.` for staccato, `-` for tenuto, etc)
 
 **Level 3**: Beams
 - Import → Render beams → Click operations → Flow Mode automatic (replace flags with beams)
@@ -239,7 +236,7 @@ Flow Mode implementation advances in lockstep with rendering and MusicXML import
 Flow Mode is successful when:
 
 1. **Speed**: Experienced user can input music 5-10x faster than Click Mode
-2. **Adoption**: Users work primarily in Flow Mode after being shown it (~30 seconds)
+2. **Adoption**: Users work primarily in Flow Mode after being shown it
 3. **Muscle memory**: Common operations become automatic
 4. **MIDI integration**: Combined keyboard + MIDI workflow feels natural
 5. **Expanding elements**: Slurs/crescendos extend predictably and intuitively
@@ -250,37 +247,36 @@ Flow Mode is successful when:
 
 1. **Enhanced mode indicator HUD**: Clear visual display of all active modes without obstructing score view
 2. **Advanced cursor system**: Smoother animation and better visual feedback via modern GPU rendering
-3. **Customizable bindings**: User-configurable key mappings (Igor had fixed bindings)
-4. **Mode presets**: Save/load mode configurations for different workflows
-5. **Tutorial mode**: Interactive learning system with on-screen hints
+3. **Mode presets**: Save/load mode configurations for different workflows
+4. **Tutorial mode**: Interactive learning system with on-screen hints
 
 ---
 
-## Strategic Reality
+## Restoration vs Innovation
 
 **What was expected**: "We'll need to innovate beyond what Igor did."
 
 **What research revealed**: "No one copied it. We just need to remember how Igor worked."
 
-This transforms Flow Mode from an innovation challenge into a **memory + implementation challenge**. Every detail remembered (Enter creates notes, Shift selects ranges, `/` cuts beams) is knowledge that disappeared when Igor died.
+This transforms Flow Mode from an innovation challenge into a **memory + implementation challenge**. Every detail remembered (Enter creates notes, Shift selects ranges, `/` cuts or joins beams) is knowledge that disappeared when Igor died.
 
 **The task isn't innovation – it's restoration.**
 
 Flow Mode delivers what professionals need, and the implementation approach is known from Igor.
 
 Why the 23-year absence doesn't matter:
-1. **Proven design** – Igor's approach worked; users loved it; business failures killed it, not UX problems
+1. **Proven design** – Igor's approach worked and users loved it
 2. **Clear path** – Don't need to innovate, just implement what Igor proved worked
 3. **Professional necessity** – Speed matters for professional notation work, regardless of what others build
 
 ### Radical Transparency and Open Documentation
 
-**This ADR and accompanying research are published openly before implementation.** Other notation software projects could read this documentation and implement Flow Mode before Ooloi releases. This is acceptable and part of Ooloi's Radical Transparency approach.
+**This ADR and accompanying research are published openly before implementation.** Other notation software projects could read this documentation and implement Flow Mode before Ooloi releases. This is acceptable and part of Ooloi's Radical Transparency approach. Ooloi does not compete; the project explicitly rejects the short-sighted zero-sum neoliberal disruption games of the market.
 
 **Why this is fine:**
 
-1. **Benefit to musicians**: If Dorico, MuseScore, or others implement Flow Mode first, professional users benefit immediately – that's a win regardless of who delivers it
-2. **Open source advantage persists**: Even if others implement it, Ooloi's version will be freely available, community-extensible, and modifiable – commercial software cannot match this
+1. **Benefit to musicians**: If other notation programs implement Flow Mode first, professional users benefit immediately – that's a win regardless of who delivers it
+2. **Open source advantage persists**: Even if others implement it, Ooloi's version will be freely available, community-extensible, and modifiable
 3. **Not competing**: Ooloi builds what professionals need, openly. Documenting solutions publicly contributes to the field even if others benefit
 4. **Paradigm gap remains**: The 23-year gap reflects conceptual and philosophical barriers, not technical complexity. Documentation may not overcome different design priorities
 5. **Multiple implementations benefit everyone**: Different approaches to Flow Mode would validate the paradigm and create a rising tide for modal notation input
@@ -291,27 +287,13 @@ Why the 23-year absence doesn't matter:
 
 ## Tradeoffs and Considerations
 
-**Development Effort vs. Speed**: Flow Mode's development effort is justified by professional speed gains. The 5-10x improvement in input speed for daily users makes the development investment worthwhile.
+**Development Effort vs. Speed**: Flow Mode's development effort is justified by professional speed gains. The improvement in input speed for daily users makes the development investment worthwhile.
 
-**Directed introduction**: Users are shown Flow Mode during onboarding (~30 seconds to grasp essentials). Commands map naturally to musical symbols (`. = staccato`, `> = accent`). Click Mode handles esoteric elements without obvious key mappings.
+**Directed introduction**: Users are shown Flow Mode during onboarding (essentials are grasped immediately). Commands map naturally to musical symbols (`. = staccato`, `- = tenuto`). Click Mode handles esoteric elements without obvious key mappings.
 
 **Primary vs. Fallback**: Flow Mode is the primary input method. Click Mode is the fallback for rare/esoteric notation elements.
 
 **Documentation Archaeology**: Incomplete Igor documentation is a risk, but partial knowledge + logical musical inference + user testing can fill gaps. The paradigm's core principles are well-understood.
-
-**Platform Constraints**: Flow Mode won't work on mobile/tablets (keyboard-centric). This is acceptable – Click Mode serves those platforms. Desktop is where professionals do serious notation work.
-
----
-
-## Open Questions (Deferred to Implementation)
-
-1. **Mode coexistence**: Should Flow Mode and Click Mode be completely separate, or can user click during Flow Mode?
-
-2. **Rare elements**: How to handle notation not easily keyboard-accessible (stopped horn, custom lines)? Fall back to palette or obscure key combos?
-
-3. **Customization boundaries**: Allow full rebinding (vim approach) or fixed bindings with limited customization (Emacs approach)? How to share/distribute binding schemes?
-
-4. **Conflict resolution**: When multiple interpretations exist (e.g., `>` for accent vs. crescendo), what's the precedence?
 
 ---
 
