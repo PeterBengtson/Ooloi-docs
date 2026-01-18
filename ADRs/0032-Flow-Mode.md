@@ -40,7 +40,7 @@ Igor Engraver (1996-2009) pioneered a revolutionary input method: **stateful mod
 
 **Core characteristics:**
 - **Persistent modal states**: Type `ffzpp<` → creates that exact dynamic with crescendo start
-- **Expanding elements**: Slurs and crescendos automatically extend as subsequent notes are added
+- **Expanding elements**: Slurs and hairpins automatically extend as subsequent notes are added
 - **Three-stage workflow**: Position cursor → Select pitch → Press Enter to create
 - **Combinatorial articulations**: `A` + `.` = accent + staccato stacked on same note
 - **Intuitive commands**: Musical symbols map naturally to keystrokes – low learning curve
