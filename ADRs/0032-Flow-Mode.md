@@ -49,8 +49,6 @@ Igor Engraver (1996-2009) pioneered a revolutionary input method: **stateful mod
 
 ### What Happened to Flow Mode
 
-Igor Engraver died due to business failures (management-imposed feature creep, venture capital pressures, 9/11's economic impact halting acquisitions) – not technical inadequacy. The software was praised as revolutionary by early adopters.
-
 **Research conducted October 2025** reveals a stunning finding:
 
 **No music notation software has implemented Igor's modal paradigm in 23 years (2001-2025).**
