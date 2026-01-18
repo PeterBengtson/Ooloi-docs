@@ -126,7 +126,8 @@ Localisation files are loaded from two locations:
 ```
 # Bundled in JAR (read-only)
 resources/i18n/
-  en-GB.po        ; canonical source, ships with Ooloi
+  en-GB.po        ; canonical source (for reference)
+  en-GB.edn       ; pre-compiled cache (for runtime)
 
 # External (user-managed, platform-specific)
 # Windows: %APPDATA%/Ooloi/i18n/
@@ -154,26 +155,45 @@ resources/i18n/
 
 ### Runtime Loading and Caching
 
-At startup (or first use of a locale):
+**Bundled canonical locale:**
 
-1. Load canonical UK English from bundled JAR (always present)
-2. Check external directory for override (platform-specific `i18n/en-GB.po`)—if present and valid, use instead
+The canonical `en-GB.po` is compiled to `en-GB.edn` during the build process. Both files ship in the JAR—the PO for reference, the EDN for runtime use. No parsing occurs at startup for the default locale.
+
+**External locales:**
+
+At first use of an external locale:
+
+1. Load bundled UK English cache (always present, pre-compiled)
+2. Check external directory for override (`i18n/en-GB.po`)—if present and newer than bundled, parse and cache
 3. For the selected locale:
-   - Check external directory for locale file
    - If compiled cache exists and is newer than source PO → load cache
-   - Otherwise → parse PO, compile to EDN cache, load
+   - Otherwise → parse PO, compile to EDN cache in external directory, load
 4. If locale file is missing → fall back to UK English
 
 **Cache format:**
 
 ```clojure
-{:plural-fn (fn [n] (if (= n 1) 0 1))  ; compiled from Plural-Forms header
+{:plural-rule "(n != 1)"  ; original expression for reference
  :messages {:menu.file.open "Öppna…"
             :dialog.export.warning "Export kommer att skriva över %{filename}."
             :files {:one "fil" :other "filer"}}}
 ```
 
-The `Plural-Forms` expression from the PO header is compiled to a Clojure function at cache time, not interpreted at runtime. This eliminates parsing overhead and keeps the lookup path trivial.
+**Plural rule resolution:**
+
+The `Plural-Forms` expression from the PO header is resolved to a pre-defined Clojure function via lookup table, not runtime compilation. The deployed application uses `jlink` for a minimal JVM runtime without the Clojure compiler, so `eval` is unavailable.
+
+Gettext plural patterns are well-documented and finite—approximately 15-20 patterns cover all real-world languages:
+
+```clojure
+(def plural-rules
+  {"(n != 1)"       (fn [n] (if (= n 1) 0 1))       ; English, German, Swedish, etc.
+   "(n > 1)"        (fn [n] (if (> n 1) 1 0))       ; French, Brazilian Portuguese
+   "(n == 0 || n == 1)"  ...                        ; etc.
+   })
+```
+
+If an unknown pattern appears (unlikely), the system logs a warning and falls back to treating all forms as singular. This is a visible degradation, not a crash.
 
 ## Key Design
 
@@ -253,7 +273,7 @@ The translation API accepts a count parameter:
 (tr :files.selected {:n 5})   ; → "filer"
 ```
 
-At cache compilation, the `Plural-Forms` expression is parsed and compiled to a Clojure function. Runtime plural selection is a simple function call, not expression interpretation.
+At load time, the `Plural-Forms` expression is matched against a lookup table of pre-defined functions (see Runtime Loading and Caching). Runtime plural selection is a simple function call.
 
 **Why gettext plurals over separate keys:**
 
@@ -269,7 +289,7 @@ Plugins ship their own PO files in a dedicated directory within the plugin distr
 my-plugin/
   plugin.edn
   i18n/
-    en.po
+    en-GB.po
     sv.po
 ```
 
@@ -356,17 +376,18 @@ These are architectural constraints, not conventions. Violating any of them brea
 1. **Clean adoption point** — Zero existing strings means the policy is established, not retrofitted
 2. **Translator-native workflow** — PO files and standard tooling, no Ooloi-specific learning curve
 3. **Guaranteed baseline** — Canonical UK English bundled in JAR, no installation failure modes
-4. **Independent release cycles** — Non-English translations ship separately from application releases
-5. **Forward compatibility** — New versions don't break existing translations
-6. **Deterministic extraction** — Literal-only keys enable reliable build-time verification
-7. **Plugin parity** — Plugins use identical localisation infrastructure
-8. **Grammatical flexibility** — Named parameters allow reordering across languages
-9. **Correct plural handling** — Gettext mechanism handles all language complexity
-10. **No migration required** — Design is complete from the start
+4. **Zero startup overhead** — Bundled locale is pre-compiled; no parsing for default case
+5. **Independent release cycles** — Non-English translations ship separately from application releases
+6. **Forward compatibility** — New versions don't break existing translations
+7. **Deterministic extraction** — Literal-only keys enable reliable build-time verification
+8. **Plugin parity** — Plugins use identical localisation infrastructure
+9. **Grammatical flexibility** — Named parameters allow reordering across languages
+10. **Correct plural handling** — Gettext mechanism handles all language complexity
+11. **No migration required** — Design is complete from the start
 
 **Neutral:**
 
-1. **PO parsing at first run** — One-time cost per locale, cached thereafter
+1. **PO parsing for external locales** — One-time cost per locale at first use, cached thereafter; bundled canonical is pre-compiled
 2. **External directory** — User creates platform-specific `i18n/` directory for additional locales; not required for basic operation
 3. **Two-file workflow** — Translators work with PO, runtime uses EDN cache (but this is invisible to translators)
 
