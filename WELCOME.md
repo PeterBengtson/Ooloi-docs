@@ -46,6 +46,8 @@ The architecture must be released as a whole before it can be extended by others
 
 **If you're interested in contributing to Ooloi, the best thing you can do right now is wait.** Follow development if you like. Read the ADRs when they're published. But contribution paths open after release, not before.
 
+Ooloi will become open source in the way TeX is open source: inspectable, forkable, extensible at defined boundaries. The core is not developed collaboratively.
+
 ## After Release: How You'll Be Able to Contribute
 
 Once Ooloi reaches its first public release, the architecture will support contribution through several paths:
