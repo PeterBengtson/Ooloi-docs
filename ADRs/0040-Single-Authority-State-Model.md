@@ -61,6 +61,8 @@ We implement a **single-authority state model** where pieces exist only on the s
 
 **The piece lives on the server. The frontend is a window and an input device.**
 
+In typical usage, "server" means the local backend running on the same machine as the frontend — a deployment detail invisible to the user. The 36μs roundtrip is in-process, not network latency. Remote collaboration (peer-to-peer, institutional servers) is additive; the local backend remains primary. See the Deployment Model section for details.
+
 A piece is not an object that moves between locations. It is the accumulated result of operations the server has accepted. This principle governs import, editing, collaboration, and recovery as a single unified model rather than four special cases.
 
 ### Capability Symmetry, Authority Asymmetry
