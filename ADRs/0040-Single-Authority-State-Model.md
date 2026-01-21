@@ -117,7 +117,7 @@ Note: This is stricter than event sourcing. There is no replay into alternative 
 
 ### Streaming Import
 
-MusicXML import demonstrates the canonical pattern:
+MusicXML import demonstrates the canonical pattern. For the purposes of this ADR, we treat it as a frontend plugin example, though in practice MusicXML import could also be implemented as a backend plugin with direct access to the shared core.
 
 **Batch piece transfer** (not supported):
 
