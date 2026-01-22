@@ -100,3 +100,4 @@ We will implement multi-client collaboration support in Ooloi by extending our e
 - [ADR-0008: VPDs](0008-VPDs.md) - Addressing system enabling precise change communication across clients
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture supporting multi-client scenarios
 - [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) - Hybrid transport architecture enabling dynamic peer-to-peer collaboration with role-based permissions and email-based invitations
+- [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Single-authority model simplifying multi-client collaboration

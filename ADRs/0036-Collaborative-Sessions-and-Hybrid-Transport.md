@@ -460,6 +460,15 @@ Based on network realities, the architecture supports three deployment tiers wit
 - [Figma Real-Time Collaboration](https://www.figma.com/blog/how-figmas-multiplayer-technology-works/) - Multi-user editing architecture
 - [VS Code Live Share](https://visualstudio.microsoft.com/services/live-share/) - Developer collaboration patterns
 
+### Related ADRs
+
+- [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Separation architecture enabling hybrid transport
+- [ADR-0002: gRPC Communication](0002-gRPC.md) - Communication protocol for both transports
+- [ADR-0017: System Architecture](0017-System-Architecture.md) - Component lifecycle supporting dynamic server initialization
+- [ADR-0020: TLS Infrastructure](0020-TLS-Infrastructure-and-Deployment-Architecture.md) - TLS certificate management for network transport
+- [ADR-0021: Authentication](0021-Authentication.md) - JWT authentication for collaborative sessions
+- [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Single-authority model with remote connections as additive layer
+
 ## Notes
 
 This architecture maintains Ooloi's principle of "minimal defaults, maximum flexibility." The vast majority of users work in standalone mode with zero network exposure, zero authentication, and zero configuration. When collaboration is needed, the same application seamlessly becomes a host for real-time multi-user editing.

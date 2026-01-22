@@ -329,3 +329,4 @@ This ADR establishes the foundation for a true client-server contract that lever
 
 - [ADR-0026: Pitch Representation and Operations](0026-Pitch-Representation-and-Operations.md) - String-based representation pattern for musical data
 - [ADR-0033: Time Signature Architecture](0033-Time-Signature-Architecture.md) - TimeSignature model implementing RhythmicItem trait
+- [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Authority distinction despite shared model access

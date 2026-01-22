@@ -43,3 +43,4 @@ Consequences:
 - [ADR-0009: Multi-Client Collaboration Support](0009-Collaboration.md) - Multi-client features naturally enabled by STM's conflict resolution
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture leveraging STM for coordinated piece modifications
 - [ADR-0025: Server Statistics Architecture](0025-Server-Statistics-Architecture.md) - STM-gRPC transaction monitoring and performance metrics
+- [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Single-authority model relying on STM for transactional piece modifications

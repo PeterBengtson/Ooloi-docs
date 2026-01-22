@@ -205,3 +205,4 @@ The structure described in this document is a pure tree, with cross-references i
 - [ADR-0008: VPDs](0008-VPDs.md) - Vector Path Descriptor system for navigating the tree structure
 - [ADR-0011: Shared Structure](0011-Shared-Structure.md) - Shared structure concepts building on the pure tree foundation
 - [ADR-0012: Persisting Pieces](0012-Persisting-Pieces.md) - Persistence model based on the tree structure and ID references
+- [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Operations-only API modifying the pure tree structure

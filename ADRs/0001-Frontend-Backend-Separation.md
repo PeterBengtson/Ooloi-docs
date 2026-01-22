@@ -228,6 +228,7 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 - [ADR-0016: Settings](0016-Settings.md) - Settings architecture maintaining frontend-backend separation principles
 - [ADR-0017: System Architecture](0017-System-Architecture.md) - Component lifecycle management and production-ready operational capabilities
 - [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) - Hybrid transport architecture enabling dynamic collaboration without deployment mode switching
+- [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Sharpens the authority boundary established by frontend-backend separation
 
 ## Notes
 
