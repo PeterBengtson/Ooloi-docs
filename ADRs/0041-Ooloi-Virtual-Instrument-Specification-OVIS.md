@@ -488,15 +488,15 @@ The playback engine matches score instrument requirements against available inst
 
 ## Bundled OVIS Files
 
-Ooloi bundles OVIS files for two recommended free libraries, providing immediate playback capability:
+Ooloi bundles OVIS files (YAML specifications) for two recommended free sample libraries. Users must separately download and install the actual libraries:
 
-**BBC Symphony Orchestra Discover**: High-quality recordings in a small footprint. The bundled OVIS files cover all 34 instruments with calibration data and articulation mappings. Recommended as the primary library for users beginning with orchestral playback.
+**BBC Symphony Orchestra Discover** (free download from Spitfire Audio): High-quality recordings in a small footprint (~700MB download). The bundled OVIS files cover all 34 instruments with calibration data and articulation mappings. Recommended as the primary library for users beginning with orchestral playback.
 
-**Virtual Playing Orchestra**: Comprehensive SFZ-based coverage including instruments absent from BBCSO Discover. The bundled OVIS files provide fallback coverage for contrabassoon, bass clarinet, harp, keyboard percussion, and auxiliary instruments.
+**Virtual Playing Orchestra** (free SFZ library): Comprehensive coverage including instruments absent from BBCSO Discover. The bundled OVIS files provide fallback coverage for contrabassoon, bass clarinet, harp, keyboard percussion, and auxiliary instruments.
 
-Together, these libraries provide complete orchestral coverage at zero cost. Users can begin with BBCSO Discover for its superior sound quality, with VPO configured as a fallback chain for missing instruments. As users acquire additional libraries, they can add community-contributed or vendor-provided OVIS files and reconfigure their fallback preferences.
+Once users install both libraries, complete orchestral playback works immediately at zero cost. Users begin with BBCSO Discover for superior sound quality, with VPO configured as a fallback chain for missing instruments. As users acquire additional commercial libraries, they can add community-contributed or vendor-provided OVIS files and reconfigure their fallback preferences.
 
-The bundled files serve as reference implementations demonstrating OVIS conventions and calibration procedures.
+The bundled OVIS files serve as reference implementations demonstrating OVIS conventions and calibration procedures.
 
 ## Reference Implementations
 
@@ -824,7 +824,7 @@ These criteria represent goals for a mature implementation rather than acceptanc
 
 OVIS provides the abstraction layer between Ooloi's notation semantics and the fragmented landscape of virtual instrument control. By defining capabilities declaratively in human-readable files, using a canonical technique taxonomy, requiring calibration data, specifying fallback generators, and enabling library manifests with fallback chains, OVIS enables consistent, high-quality playback across diverse libraries without vendor-specific code in the playback engine.
 
-The bundled OVIS files for BBC Symphony Orchestra Discover and Virtual Playing Orchestra ensure that users can achieve complete orchestral playback at zero cost immediately upon installation. As users acquire additional libraries, the same infrastructure scales to support professional-grade sample collections.
+Ooloi bundles OVIS files for BBC Symphony Orchestra Discover and Virtual Playing Orchestra. Once users download and install these free libraries, complete orchestral playback works immediately at zero cost. As users acquire additional commercial libraries, the same infrastructure scales to support professional-grade sample collections.
 
 The specification operates entirely within the plugin architecture established by ADR-0027. It addresses the immediate requirement—controlling virtual instruments—while establishing a foundation for future humanisation and performance interpretation specifications.
 
