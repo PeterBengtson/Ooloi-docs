@@ -202,4 +202,4 @@ We will implement a robust plugin system as a central architectural component of
 - [ADR-0000: Clojure](0000-Clojure.md) - Language choice providing JVM compatibility for multi-language plugin support
 - [ADR-0006: SMuFL](0006-SMuFL.md) - Musical notation standard that plugins might extend with specialized symbols
 - [ADR-0027: Plugin-Based Audio Architecture](0027-Plugin-Based-Audio-Architecture.md) - Audio/MIDI processing as plugins rather than core features
-- [ADR-0041: OVIS](0041-Ooloi-Virtual-Instrument-Specification-OVIS.md) - Virtual instrument specification as plugin resources
+- [ADR-0041: OVID](0041-Ooloi-Virtual-Instrument-Definition-OVID.md) - Virtual instrument definition as plugin resources

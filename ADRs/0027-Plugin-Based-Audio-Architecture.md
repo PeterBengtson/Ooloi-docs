@@ -326,7 +326,7 @@ All these alternatives converge on the same principle: playback belongs in plugi
 ## Related ADRs
 
 - [ADR-0003: Plugin Architecture](0003-Plugins.md) - Plugin system design establishing extensibility foundations
-- [ADR-0041: OVIS](0041-Ooloi-Virtual-Instrument-Specification-OVIS.md) - Virtual instrument specification defining how playback plugins control sample libraries
+- [ADR-0041: OVID](0041-Ooloi-Virtual-Instrument-Definition-OVID.md) - Virtual instrument definition defining how playback plugins control sample libraries
 
 ## Conclusion
 
