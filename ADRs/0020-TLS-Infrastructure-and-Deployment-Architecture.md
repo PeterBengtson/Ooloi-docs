@@ -55,11 +55,12 @@ The TLS infrastructure is implemented as a unified module in the shared project 
 - `create-self-signed-certificate` - X.509 certificates with SAN support
 - `write-key-pair-to-files` - PEM format output with proper encoding
 - Platform-appropriate certificate storage (Windows: `%APPDATA%/Ooloi/certs/`, Unix/macOS: `~/.ooloi/certs/`)
+- Idempotent Bouncy Castle provider registration
 
 **Client-Side Implementation:**
 - `apply-tls-config` - Automatic certificate discovery and validation
-- `configure-tls-for-channel` - gRPC channel TLS configuration
-- Three-tier trust strategy: explicit cert → system trust store → insecure dev mode
+- `configure-tls-for-channel` - gRPC channel TLS configuration with conditional authority override
+- Three-tier trust strategy: insecure dev mode → explicit cert → system trust store
 - Support for self-signed certificates (development), CA-signed certificates (production), and custom CA (enterprise)
 
 **Test Infrastructure:**
@@ -104,7 +105,7 @@ Implement comprehensive TLS support for both gRPC server and client components:
 
 **Test Certificate Infrastructure:**
 Ooloi automatically generates certificates for development and testing:
-- **Generation**: Pure Java implementation using Bouncy Castle
+- **Generation**: Pure Java implementation using Bouncy Castle (idempotent provider registration)
 - **Properties**: RSA 2048-bit, 20-year validity, self-signed
 - **Subject**: `CN=localhost` with organizational unit `Ooloi`
 - **SANs**: `localhost`, `127.0.0.1`, `::1` for comprehensive local coverage
@@ -141,7 +142,7 @@ The client implements one-way TLS (server authentication only) with three-tier t
   (if (:tls config)
     (let [ssl-context-builder (GrpcSslContexts/forClient)
           ssl-context (cond
-                        ;; Priority 1: Insecure development mode (explicit opt-in)
+                        ;; Tier 1: Insecure development mode (explicit opt-in)
                         (:insecure-dev-mode config)
                         (do
                           (println "⚠️  WARNING: Running in insecure TLS mode")
@@ -149,18 +150,25 @@ The client implements one-way TLS (server authentication only) with three-tier t
                               (.trustManager InsecureTrustManagerFactory/INSTANCE)
                               (.build)))
 
-                        ;; Priority 2: Explicit certificate (custom CA or enterprise)
+                        ;; Tier 2: Explicit certificate (custom CA or enterprise)
                         (:cert-path config)
                         (-> ssl-context-builder
                             (.trustManager (io/file (:cert-path config)))
                             (.build))
 
-                        ;; Priority 3: System trust store (production default)
+                        ;; Tier 3: System trust store (production default)
                         :else
                         (.build ssl-context-builder))]  ; Uses Java's cacerts
-      (-> builder
-          (.sslContext ssl-context)
-          (.overrideAuthority "localhost")))
+      
+      (cond-> builder
+        ;; Always apply SSL context
+        true (.sslContext ssl-context)
+        
+        ;; Override authority for self-signed certificate scenarios (tiers 1 & 2)
+        ;; Tier 3 (system trust store) validates against actual target hostname
+        (or (:insecure-dev-mode config) (:cert-path config))
+        (.overrideAuthority (:backend-host config))))
+    
     (.usePlaintext builder)))
 ```
 
@@ -172,21 +180,32 @@ The client implements one-way TLS (server authentication only) with three-tier t
 
 **Three-Tier Trust Strategy:**
 
-| Priority | Config | Behavior | Use Case | Security Level |
-|----------|--------|----------|----------|----------------|
-| **1 (Highest)** | `:insecure-dev-mode true` | Bypass ALL validation, accept any certificate | Self-signed certs in development | ⚠️ Insecure (explicit opt-in required) |
-| **2** | `:cert-path "/path/to/cert"` | Trust specific certificate with proper validation | Custom CA or enterprise PKI | ✅ Secure (validates certificate) |
-| **3 (Default)** | No config | Use system trust store (Java cacerts) | Production with Let's Encrypt, DigiCert, etc. | ✅ Secure (validates against 150+ trusted CAs) |
+| Priority | Config | Trust Behavior | Authority Override | Use Case | Security Level |
+|----------|--------|----------------|-------------------|----------|----------------|
+| **1 (Highest)** | `:insecure-dev-mode true` | Bypass ALL validation | `:backend-host` | Self-signed certs in development | ⚠️ Insecure (explicit opt-in required) |
+| **2** | `:cert-path "/path/to/cert"` | Trust specific certificate | `:backend-host` | Custom CA or enterprise PKI | ✅ Secure (validates certificate) |
+| **3 (Default)** | No config | Use system trust store | None (validates actual hostname) | Production with Let's Encrypt, DigiCert, etc. | ✅ Secure (validates against 150+ trusted CAs) |
+
+**Authority Override Behavior:**
+
+The authority override controls which hostname the client checks against the server's certificate:
+
+- **Tiers 1 & 2**: Override to `:backend-host` (the target you're connecting to)
+- **Tier 3**: No override - validates against the actual target hostname
+
+This design ensures:
+- Development and enterprise scenarios work when the certificate matches the target host
+- Production connections properly validate the server's CA-signed certificate
 
 **Development Scenarios:**
 
 | Scenario | Transport | TLS | insecure-dev-mode | cert-path | Behavior | When to Use |
 |----------|-----------|-----|-------------------|-----------|----------|-------------|
 | **Local dev (no TLS)** | `:network` | `false` | - | - | Plaintext | Default development, fastest |
-| **Local dev (self-signed)** | `:network` | `true` | `true` | Auto-discovered | Insecure mode with self-signed cert | Testing TLS with auto-generated certs |
-| **Multi-client dev** | `:network` | `true` | `true` | Explicit path | Insecure mode with shared cert | Testing collaboration with TLS |
-| **Production testing** | `:network` | `true` | `false` | CA cert path | Secure validation | Testing with custom CA before production |
-| **Production** | `:network` | `true` | `false` | None | System trust store | Production deployment with CA-signed certs |
+| **Local dev (self-signed)** | `:network` | `true` | `true` | Auto-discovered | Insecure mode | Testing TLS with auto-generated certs |
+| **Multi-client dev** | `:network` | `true` | `true` | Explicit path | Insecure mode | Testing collaboration with TLS |
+| **Enterprise (custom CA)** | `:network` | `true` | `false` | CA cert path | Secure validation | Enterprise with internal PKI |
+| **Production** | `:network` | `true` | `false` | None | System trust store | Production with CA-signed certs |
 | **Combined mode** | `:in-process` | Any | Any | Any | In-process (no network) | Single-JVM deployment |
 
 **Certificate Discovery Locations:**
@@ -326,6 +345,16 @@ OOLOI_TLS=true OOLOI_CERT_PATH=/etc/certs/ooloi.crt OOLOI_KEY_PATH=/etc/certs/oo
 ./ooloi-backend --tls true --cert-path /etc/ssl/ooloi.crt --key-path /etc/ssl/ooloi.key --port 443
 ```
 
+**Enterprise Client with Custom CA (non-localhost hostname):**
+
+```bash
+# Client trusts enterprise CA certificate, authority derived from backend-host
+OOLOI_FRONTEND_TLS=true \
+OOLOI_FRONTEND_CERT_PATH=/etc/ssl/company-ca.crt \
+OOLOI_FRONTEND_BACKEND_HOST=internal.corp.com \
+./ooloi-frontend
+```
+
 **Enterprise Certificate Characteristics**:
 - **Source**: Internal PKI, commercial CA (DigiCert, GlobalSign, etc.), or Let's Encrypt
 - **Trust**: Trusted by corporate infrastructure and client machines
@@ -370,13 +399,13 @@ OOLOI_FRONTEND_CERT_PATH=~/.ooloi/certs/server.crt \
 # PRODUCTION SCENARIOS
 # ============================================================================
 
-# Production with Let's Encrypt (system trust store)
+# Production with Let's Encrypt (system trust store - no authority override)
 OOLOI_TLS=true \
 OOLOI_CERT_PATH=/etc/letsencrypt/live/api.example.com/fullchain.pem \
 OOLOI_KEY_PATH=/etc/letsencrypt/live/api.example.com/privkey.pem \
 ./ooloi-backend
 
-# Client connects with system trust (no config needed)
+# Client connects with system trust (validates actual hostname)
 OOLOI_FRONTEND_TLS=true \
 OOLOI_FRONTEND_BACKEND_HOST=api.example.com \
 ./ooloi-frontend
@@ -384,15 +413,16 @@ OOLOI_FRONTEND_BACKEND_HOST=api.example.com \
 # SaaS: TLS termination at load balancer
 OOLOI_TLS=false OOLOI_PORT=8080 ./ooloi-backend  # Behind AWS ALB
 
-# Enterprise with custom CA
+# Enterprise with custom CA (non-localhost)
 OOLOI_TLS=true \
 OOLOI_CERT_PATH=/etc/ssl/company.crt \
 OOLOI_KEY_PATH=/etc/ssl/company.key \
 ./ooloi-backend
 
-# Enterprise client (trusts custom CA with validation)
+# Enterprise client (trusts custom CA)
 OOLOI_FRONTEND_TLS=true \
 OOLOI_FRONTEND_CERT_PATH=/etc/ssl/company-ca.crt \
+OOLOI_FRONTEND_BACKEND_HOST=internal.corp.com \
 ./ooloi-frontend
 ```
 
@@ -575,6 +605,7 @@ Cloud load balancers can verify both service health and TLS status:
 4. **Debug Capability**: TLS easily toggled on/off for testing and troubleshooting
 5. **Production Ready**: Supports enterprise PKI, custom certificates, and CA-signed certificates
 6. **Client Intelligence**: Automatic certificate discovery for development, system trust store for production
+7. **Correct Authority Handling**: Authority override only for self-signed scenarios; production validates actual hostname
 
 ### Integration with Existing Architecture
 
@@ -596,6 +627,7 @@ Cloud load balancers can verify both service health and TLS status:
 - **Maintains ADR-0002 vision** for TLS everywhere policy
 - **Cross-platform** using pure Java cryptography (no external dependencies)
 - **Intelligent defaults** handle common scenarios automatically
+- **Correct hostname validation** in production (tier 3 validates actual target host)
 
 ### Negative
 
@@ -620,6 +652,7 @@ Cloud load balancers can verify both service health and TLS status:
 - Auto-generated certificates work without manual intervention when no custom certs provided
 - Custom certificate paths work for production and enterprise deployments
 - Certificate generation uses pure Java cryptography (cross-platform, no external dependencies)
+- Idempotent Bouncy Castle provider registration
 - All gRPC server tests passing with comprehensive certificate management coverage
 
 ### Client-Side TLS
@@ -629,6 +662,8 @@ Cloud load balancers can verify both service health and TLS status:
 - Client certificate discovery finds server certificates automatically (same-machine development)
 - Client falls back to system trust store for CA-signed certificates (production)
 - Explicit certificate configuration works for enterprise PKI scenarios
+- Authority override only applied for tiers 1 & 2 (self-signed scenarios)
+- Tier 3 (system trust store) validates against actual target hostname
 - All gRPC client tests passing with comprehensive certificate discovery coverage
 
 ### Integration & Deployment
@@ -644,7 +679,7 @@ Cloud load balancers can verify both service health and TLS status:
 - gRPC client components (`frontend/grpc/event_client.clj`, `frontend/grpc/api_client.clj`)
 - Existing Integrant configuration system
 - Java gRPC TLS APIs (`ServerBuilder.useTransportSecurity`, `ManagedChannelBuilder`)
-- Bouncy Castle cryptography libraries for pure Java certificate generation
+- Bouncy Castle cryptography libraries for pure Java certificate generation (idempotent registration)
 - Platform-specific file system APIs for certificate storage paths
 
 ## Alternatives Considered
@@ -654,6 +689,9 @@ Cloud load balancers can verify both service health and TLS status:
 
 ### 2. Third-Party Certificate Management Only
 **Rejected**: Would complicate development workflows and require external dependencies for basic TLS functionality
+
+### 3. Always Override Authority to Localhost
+**Rejected**: Would break production deployments with CA-signed certificates for non-localhost hostnames. The three-tier strategy with conditional authority override provides correct behavior for all scenarios.
 
 ## References
 
@@ -679,6 +717,7 @@ This implementation prioritizes developer experience while providing production-
 - **Zero-friction local development**: TLS disabled by default, auto-generated certificates when enabled
 - **Production readiness**: Full support for enterprise PKI, custom certificates, and CA-signed certificates
 - **Intelligent defaults**: Automatic certificate discovery and system trust store fallbacks
+- **Correct authority handling**: Self-signed scenarios use target hostname; production validates actual hostname
 - **Monolithic architecture**: No unnecessary complexity (ACME, mTLS, etc.) for features not needed in a monolithic server
 
 The TLS implementation should be thoroughly tested across all deployment scenarios (development, production, enterprise, cloud) before considering it complete.
