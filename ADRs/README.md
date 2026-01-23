@@ -106,6 +106,7 @@ The semantic core of the system - representation and operations.
 - **[0006-SMuFL](0006-SMuFL.md)**: Standard Music Font Layout for notation rendering
 - **[0031-Frontend-Event-Driven-Architecture](0031-Frontend-Event-Driven-Architecture.md)**: Separate event systems with Event Router for frontend-backend event synchronization
 - **[0032-Flow-Mode](0032-Flow-Mode.md)**: Ooloi Flow Mode – stateful modal keyboard input paradigm revival
+- **[0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**: Backend-authoritative rendering with terminal frontend execution and GPU-accelerated vector rendering
 - **[0039-Localisation-Architecture](0039-Localisation-Architecture.md)**: Frontend-only localisation with PO files, single translation API, and build-time verification
 
 ## Audio Architecture
