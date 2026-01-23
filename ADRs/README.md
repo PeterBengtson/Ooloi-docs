@@ -91,7 +91,7 @@ The semantic core of the system - representation and operations.
 ## Extensibility & Interoperability
 
 - **[0003-Plugins](0003-Plugins.md)**: Plugin architecture for extensibility
-- **[0030-MusicXML](0030-MusicXML.md)**: MusicXML interoperability excellence with best-in-class importer/exporter
+- **[0030-MusicXML](0030-MusicXML.md)**: MusicXML interoperability with comprehensive importer/exporter
 
 ## Backend: Rendering & Layout
 
