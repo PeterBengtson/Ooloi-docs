@@ -44,10 +44,14 @@ These architectural decisions form the foundation for a **professional-grade mus
 
 ## Core Language & Runtime
 
+Foundational technology choices that enable functional programming and safe concurrency.
+
 - **[0000-Clojure](0000-Clojure.md)**: Choice of Clojure as primary language
 - **[0004-STM-for-concurrency](0004-STM-for-concurrency.md)**: Software Transactional Memory for thread safety
 
 ## Data Architecture & Storage
+
+Representing and persisting musical data with immutability, efficiency, and hierarchical addressing.
 
 - **[0007-Nippy](0007-Nippy.md)**: Serialization format
 - **[0008-VPDs](0008-VPDs.md)**: Vector Path Descriptors for hierarchical addressing
@@ -59,7 +63,7 @@ These architectural decisions form the foundation for a **professional-grade mus
 
 ## Musical Intelligence
 
-The semantic core of the system - representation and operations.
+Defining the semantic rules of music notation independent of visual layout.
 
 - **[0014-Timewalk](0014-Timewalk.md)**: Temporal coordination system for musical traversal
 - **[0026-Pitch-Representation-and-Operations](0026-Pitch-Representation-and-Operations.md)**: String-based pitch representation with factory-based transposition system
@@ -69,11 +73,15 @@ The semantic core of the system - representation and operations.
 
 ## System Infrastructure
 
+Component lifecycle, transaction management, and security foundations.
+
 - **[0015-Undo-and-Redo](0015-Undo-and-Redo.md)**: Undo/redo implementation approach
 - **[0017-System-Architecture](0017-System-Architecture.md)**: Component lifecycle management and system startup
 - **[0020-TLS-Infrastructure-and-Deployment-Architecture](0020-TLS-Infrastructure-and-Deployment-Architecture.md)**: TLS security infrastructure and certificate management
 
 ## Client-Server Architecture
+
+Distributing authority and coordinating state between backend and frontend.
 
 - **[0001-Frontend-Backend-Separation](0001-Frontend-Backend-Separation.md)**: Clean separation of concerns
 - **[0002-gRPC](0002-gRPC.md)**: Communication protocol between frontend and backend
@@ -90,10 +98,14 @@ The semantic core of the system - representation and operations.
 
 ## Extensibility & Interoperability
 
+Plugin architecture and external format interchange.
+
 - **[0003-Plugins](0003-Plugins.md)**: Plugin architecture for extensibility
 - **[0030-MusicXML](0030-MusicXML.md)**: MusicXML interoperability with comprehensive importer/exporter
 
 ## Backend: Rendering & Layout
+
+Computing visual layout and engraving decisions from semantic musical data.
 
 - **[0013-Slur-Formatting](0013-Slur-Formatting.md)**: Slur rendering approach
 - **[0028-Hierarchical-Rendering-Pipeline](0028-Hierarchical-Rendering-Pipeline.md)**: Five-stage rendering pipeline with plugin-based formatters for professional music engraving
@@ -101,6 +113,8 @@ The semantic core of the system - representation and operations.
 - **[0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**: Backend-authoritative rendering with terminal frontend execution and GPU-accelerated vector rendering
 
 ## Frontend: Execution & UI
+
+Executing rendering decisions and handling user interaction.
 
 - **[0005-JavaFX-and-Skija](0005-JavaFX-and-Skija.md)**: UI framework and rendering technology
 - **[0006-SMuFL](0006-SMuFL.md)**: Standard Music Font Layout for notation rendering
@@ -110,6 +124,8 @@ The semantic core of the system - representation and operations.
 - **[0039-Localisation-Architecture](0039-Localisation-Architecture.md)**: Frontend-only localisation with PO files, single translation API, and build-time verification
 
 ## Audio Architecture
+
+Playback generation delegated to frontend plugins with backend coordination.
 
 - **[0027-Plugin-Based-Audio-Architecture](0027-Plugin-Based-Audio-Architecture.md)**: Frontend plugin-based audio architecture with complete backend-frontend audio separation
 - **[0041-Ooloi-Virtual-Instrument-Definition-OVID](0041-Ooloi-Virtual-Instrument-Definition-OVID.md)**: YAML-based virtual instrument definition with canonical technique taxonomy, calibration requirements, and fallback generators
