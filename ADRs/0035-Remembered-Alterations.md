@@ -16,7 +16,7 @@
   - [Accidental Settings](#accidental-settings)
   - [Performance Architecture](#performance-architecture)
 - [Integration with Key Signatures](#integration-with-key-signatures)
-- [Instrument-Level Scope](#instrument-level-scope)
+- [Hierarchical Scope and Partitioning](#hierarchical-scope-and-partitioning)
 - [Architectural Implications](#architectural-implications)
 - [Consequences](#consequences)
 - [References](#references)
@@ -551,12 +551,10 @@ The algorithm uses a unified transducer pipeline that transparently handles both
 ```clojure
 (defn accidental-decisions-for-measure
   [piece measure-index instrument-vpd key-sig prev-final prev-tied-ids]
-  (let [baseline (acc-maps/from-key-signature key-sig)
-        initial-remembered baseline
-        initial-state {:remembered initial-remembered
+  (let [initial-state {:partitions {}
                        :decisions []
-                       :courtesy-shown {}
-                       :tied-target-endpoint-ids (or prev-tied-ids {})}
+                       :tied-target-endpoint-ids (or prev-tied-ids {})
+                       :prev-final prev-final}
         reducer (process-pitch-tuple piece key-sig prev-final measure-index)
 
         final-state (transduce
@@ -657,39 +655,75 @@ Key signatures ([ADR-0034](0034-Key-Signature-Architecture.md)) provide the **ba
 ;; For per-octave key signatures: preserves octave structure as-is
 ```
 
-**Key signature changes mid-measure:**
+**Hierarchical Key Signature Resolution:**
 
-When a key signature changes at position `[measure beat]`:
-1. The remembered state up to the change point is discarded.
-2. The new key signature becomes the baseline immediately.
-3. All octave-specific deviations are cleared (fresh state).
-4. Subsequent notes compare against the new baseline exactly as if a new measure had begun.
-5. Courtesy accidentals are not applied across the key-change boundary (the key signature itself serves as the visual notification).
+Key signatures are resolved hierarchically at each pitch position using the pitch's VPD:
+1. **Staff-level**: Check if staff has explicit key signature at this position
+2. **Instrument-level**: If no staff override, check instrument key signature
+3. **Piece-level**: If no instrument override, use piece key signature
 
-**Example** (G major → E minor mid-measure):
-- Initial: `{:default {"F" :sharp}}`
-- F natural appears in octave 4 before change → updates remembered to `{:default {"F" :sharp}, "F" {4 :natural}}`
-- Key changes to E minor (same signature: F#) → baseline remains `{:default {"F" :sharp}}`
-- F# appears in octave 4 after change → compares against remembered (:natural) → prints sharp
-- After F# processed: `{:default {"F" :sharp}}` (deviation removed, matches default again)
+This hierarchy walk enables:
+- Staff-level overrides for polytonal music (different staves, different keys simultaneously)
+- Instrument-level key changes affecting all staves
+- Piece-level key changes affecting entire score
+- Complete flexibility: overrides can occur at any position in any measure, multiple times
 
-## Instrument-Level Scope
+**Key signature changes and temporal cleanup:**
 
-Remembered alterations operate at the **instrument level**, encompassing all staves and voices of that instrument. All pitches contribute to the shared remembered state based on **rhythmic position** (horizontal placement).
+When a key signature change is detected (a pitch encounters a key signature not currently in use):
+1. **Query all staves** at the current position to determine which key signatures are now in effect
+2. **Remove partitions** for key signatures no longer used by any staff (temporal cleanup)
+3. **Create fresh baseline** for the new key signature, or inherit existing partition if another staff was already using that key
+4. **Clear octave-specific deviations** for the affected staves (fresh state from new baseline)
+5. Subsequent notes compare against the new baseline
 
-**Rationale**: A performer reading an instrument's notation sees all staves and voices simultaneously. If the piano's right hand has F# at position 1/4 and the left hand has F natural at position 1/2 (on a different staff), the F natural affects the visual memory for subsequent F notes in either staff.
+**Temporal behavior**: When a key signature changes, old remembered alterations are cancelled. The key change itself serves as visual notification—no courtesy accidentals are applied across the key-change boundary.
 
-**Multi-staff instruments**: For piano, harp, organ, and choir (SATB on grand staff), all staves share accidental memory. Cross-staff notation works naturally because the entire instrument is scanned together.
+**Example** (G major → E minor mid-measure, all staves change together):
+- Initial: One partition with `{:default {"F" :sharp}}`
+- F natural appears in octave 4 before change → updates partition to `{:default {"F" :sharp}, "F" {4 :natural}}`
+- Key changes to E minor (same signature: F#) → G major partition removed, E minor partition created with fresh baseline `{:default {"F" :sharp}}`
+- F# appears in octave 4 after change → compares against fresh baseline → no print (matches)
+- After F# processed: `{:default {"F" :sharp}}` (baseline only, no deviations)
 
-**System-level separation**: Instruments in the same system do NOT share accidental memory. An oboe's F# does not affect a flute's F natural, even though they appear visually proximate on the page. The boundary is strictly at instrument level - accidental memory is an instrument property, not a system property or score property.
+**Example** (Staff 1: C major, Staff 2: G major simultaneously):
+- Two partitions maintained: C major baseline `{}`, G major baseline `{:default {"F" :sharp}}`
+- F natural on Staff 1 → uses C major partition, matches baseline, no print
+- F natural on Staff 2 → uses G major partition, contradicts baseline, prints natural
+- Each partition maintains independent remembered state throughout the measure
 
-**Example** (piano cross-staff, G major):
+## Hierarchical Scope and Partitioning
+
+Remembered alterations are **partitioned by effective key signature**, where the effective key signature is resolved hierarchically (staff → instrument → piece) at each pitch position.
+
+**Scope dynamics:**
+- When all staves share the same effective key signature → single partition (instrument-level scope)
+- When staves have different effective key signatures → multiple partitions (effectively staff-level scope where needed)
+- When a staff's key signature changes → new partition created or existing partition inherited
+
+**Architectural principle**: Remembered state is tied to the key signature context, not to a fixed organizational level. This enables:
+- **Polytonal music**: Different staves maintain independent remembered state when using different keys
+- **Dynamic scope**: Scope automatically adjusts to match the key signature structure
+- **Partition sharing**: Staves with identical key signatures share the same remembered state
+
+**Rationale**: A performer reading notation sees accidentals in the context of the prevailing key signature. When different staves have different key signatures (polytonal music), each key context requires independent accidental memory. When staves share the same key signature, they share accidental memory.
+
+**Hierarchical resolution** (staff → instrument → piece):
+- Each pitch's effective key signature is determined by walking the VPD hierarchy
+- Staff-level overrides take precedence over instrument-level and piece-level
+- Instrument-level key changes affect all staves unless overridden at staff level
+- Complete flexibility: key signature changes can occur at any position in any measure
+
+**System-level separation**: Instruments in the same system do NOT share accidental memory. An oboe's F# does not affect a flute's F natural, even though they appear visually proximate on the page. The boundary is at the instrument level—accidental memory is an instrument property, not a system or score property.
+
+**Example** (piano cross-staff, single key signature - G major):
 ```clojure
-;; Piano (two staves):
+;; Piano (two staves), both using G major:
 ;; Right hand (treble staff): F# at position 0
 ;; Left hand (bass staff): F natural at position 1/4
 ;; Right hand: F at position 1/2
 
+;; Single partition (both staves share G major baseline)
 ;; After sorting by position: F#(0), F-natural(1/4), F(1/2)
 
 ;; Result:
@@ -698,7 +732,25 @@ Remembered alterations operate at the **instrument level**, encompassing all sta
 ;; Position 1/2: F (treble) contradicts remembered (:natural) → print natural (courtesy)
 ```
 
-The bass F natural at position 1/4 forces a courtesy natural on the treble F at position 1/2, demonstrating cross-staff memory sharing.
+The bass F natural at position 1/4 forces a courtesy natural on the treble F at position 1/2, demonstrating partition sharing when staves use the same key.
+
+**Example** (organ, polytonal - treble in C major, bass in G major):
+```clojure
+;; Organ (two staves), different key signatures:
+;; Treble staff: C major
+;; Bass staff: G major
+;; Both staves: F natural at position 0
+
+;; Two partitions maintained throughout measure
+;; C major partition: {} (all naturals)
+;; G major partition: {:default {"F" :sharp}}
+
+;; Result:
+;; Treble F natural: matches C major baseline → no print
+;; Bass F natural: contradicts G major baseline → print natural
+```
+
+Each partition maintains independent remembered state. A staff's alterations only affect other staves sharing the same key signature partition.
 
 
 ## Architectural Implications
