@@ -18,7 +18,7 @@
   - [Calibration Requirements](#calibration-requirements)
   - [Fallback Generators](#fallback-generators)
   - [Library Manifests](#library-manifests)
-- [Bundled OVID Files](#bundled-ovis-files)
+- [Bundled OVID Files](#bundled-ovid-files)
 - [Reference Implementations](#reference-implementations)
   - [Spitfire BBCSO Discover — Violins 1](#spitfire-bbcso-discover--violins-1)
   - [VSL Synchron Elite Strings — Violins](#vsl-synchron-elite-strings--violins)
@@ -53,7 +53,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
