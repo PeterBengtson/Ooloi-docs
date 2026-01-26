@@ -97,10 +97,10 @@ We establish **backend-authoritative rendering with terminal frontend execution*
 │                              ↓                                  │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │   gRPC API: Paintlist Fetch Methods                       │  │
-│  │   - fetch-page-view(vpd)                                  │  │
-│  │   - fetch-system-view(vpd)                                │  │
-│  │   - fetch-staff-view(vpd)                                 │  │
-│  │   - fetch-measure-view(vpd)                               │  │
+│  │   - fetch-page-view(vpd, piece-id)                        │  │
+│  │   - fetch-system-view(vpd, piece-id)                      │  │
+│  │   - fetch-staff-view(vpd, piece-id)                       │  │
+│  │   - fetch-measure-view(vpd, piece-id)                     │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │                              ↓                                  │
 │  ┌───────────────────────────────────────────────────────────┐  │
@@ -231,7 +231,20 @@ Routes backend gRPC events to frontend subsystems. This is a protocol adapter, n
 - Derive routing category from event type
 - Batch events by category with time windows
 - Post a single Platform.runLater() per batch
+- Coordinate atomic invalidation response: mark RDM stale AND queue FC fetch
 - No rendering details; no UI chrome
+
+**Invalidation Coordination:**
+
+For `:piece-invalidation` events, Event Router coordinates RDM and Fetch Coordinator as a unified atomic response:
+
+```clojure
+;; Atomic invalidation response
+(rdm/mark-stale! rendering-data-manager vpd)              ; Mark stale
+(fc/queue-fetch! fetch-coordinator vpd piece-id :critical) ; Queue refetch
+```
+
+This atomic coordination ensures no intermediate state where cache is marked stale but no refetch is queued.
 
 #### 2. Rendering Data Manager
 
@@ -243,6 +256,10 @@ VPD-indexed storage of backend-provided paintlists with staleness tracking. This
 - Provide O(1) lookup for rendering
 - Coordinate with Fetch Coordinator for refetch requests
 - All mutations on JavaFX Application Thread (via Platform.runLater)
+
+**Atomic Operations:**
+
+RDM operations are atomic. `update-paintlist!` updates the paintlist AND clears the stale flag in a single operation. No intermediate state exists where paintlist is fresh but stale flag remains set, or vice versa.
 
 **Not responsible for:**
 - Any layout computation
@@ -258,6 +275,15 @@ Priority-based fetching of paintlists from backend via normal gRPC API calls. Al
 - Perform background gRPC fetches
 - Apply results on JavaFX Application Thread
 - Implement retry/backoff/error reporting policy
+
+**Priority Level Usage:**
+
+- **Critical:** Cache invalidations from backend events (visible viewport updates)
+- **High:** Viewport scroll demand loading (newly visible content)
+- **Normal:** Adjacent viewport prefetch (buffer zones)
+- **Low:** Speculative prefetch (anticipatory loading)
+
+Invalidation events queue at Critical priority to ensure visible viewport updates process immediately before speculative prefetch.
 
 **Not responsible for:**
 - Determining invalidation semantics (Event Router + RDM)
