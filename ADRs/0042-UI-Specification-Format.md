@@ -21,6 +21,7 @@
   - [Defrecords with Protocol Conversion](#defrecords-with-protocol-conversion)
 - [Comparison to Musical Elements](#comparison-to-musical-elements)
 - [Integration Points](#integration-points)
+- [Implementation Strategy](#implementation-strategy)
 - [Consequences](#consequences)
 - [Related ADRs](#related-adrs)
 
@@ -386,6 +387,35 @@ This is consistent with how events work: they're boundary data, so they're maps.
 
 ;; Frontend resolves symbolic event handlers at render time
 ```
+
+## Implementation Strategy
+
+### Phase 1: Core Window Management
+
+1. Create `frontend/src/main/clojure/ooloi/frontend/ui/window.clj`
+2. Implement `validate-window-spec`
+3. Implement `create-window` with persistence integration
+4. Implement `show-window`, `close-window`
+5. Add window registry (atom of open windows)
+
+### Phase 2: Type-Specific Handlers
+
+1. Implement `show-notification` for transient notifications
+2. Implement `show-modal-dialog` with result callbacks
+3. Implement `show-tool-palette` with docking hints
+
+### Phase 3: Event Handler Resolution
+
+1. Implement symbolic event handler resolution
+2. Map `:event/type` to actual functions
+3. Support plugin event types
+
+### Phase 4: Testing
+
+1. Unit tests for validation
+2. Integration tests for persistence
+3. JavaFX tests for window lifecycle
+4. Plugin integration tests
 
 ## Consequences
 
