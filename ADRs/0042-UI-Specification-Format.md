@@ -68,7 +68,7 @@ Ooloi needs a format for specifying UI elements (windows, dialogs, notifications
 - Serialize directly over gRPC
 - Example: `{:type :piece-invalidation :piece-id "123" :measures [1 2 3]}`
 
-**Issue #5 Design Requirement:**
+**Design Requirement:**
 > "Backend and plugins describe UI using **cljfx maps directly** - no translation layer needed."
 
 Per ADR-0039, all user-facing strings use translation keys (`:window/title-key`, `:text-key`, etc.), resolved by frontend via `(tr key)` at render time.
@@ -227,7 +227,7 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 ## Benefits
 
 ✅ **Matches event pattern** - Events already use pure maps with namespace-qualified keys  
-✅ **Fulfills Issue #5 design** - "plugins send cljfx maps directly"  
+✅ **Fulfills design requirement** - "plugins send cljfx maps directly"  
 ✅ **Zero serialization complexity** - Maps serialize over gRPC transparently  
 ✅ **Maximum flexibility** - Any cljfx component works immediately  
 ✅ **Plugin-friendly** - Standard cljfx + `:window/` metadata  
@@ -254,7 +254,7 @@ Provide constructor functions (e.g., `create-dialog-spec`, `create-window-spec`)
 - Requires plugins to import constructor functions (shared dependency)
 - Less flexible - each window type needs a constructor
 - Inconsistent with event pattern (events use raw maps)
-- Doesn't align with Issue #5 requirement: "plugins send cljfx maps directly"
+- Doesn't align with design requirement: "plugins send cljfx maps directly"
 
 ### Defrecords with Protocol Conversion
 
@@ -385,7 +385,7 @@ This is consistent with how events work: they're boundary data, so they're maps.
   (fn [event]
     (send-to-backend (:event/type handler-spec) handler-spec)))
 
-;; This already works in Issue #5 design
+;; Frontend resolves symbolic event handlers at render time
 ```
 
 ## Implementation Strategy
