@@ -2,6 +2,7 @@
 
 **Status:** ACCEPTED
 **Date:** 2025-10-15
+**Implemented:** 2026-01-26
 
 ---
 
