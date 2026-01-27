@@ -122,6 +122,7 @@ Executing rendering decisions and handling user interaction.
 - **[0032-Flow-Mode](0032-Flow-Mode.md)**: Ooloi Flow Mode – stateful modal keyboard input paradigm revival
 - **[0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**: Backend-authoritative rendering with terminal frontend execution and GPU-accelerated vector rendering
 - **[0039-Localisation-Architecture](0039-Localisation-Architecture.md)**: Frontend-only localisation with PO files, single translation API, and build-time verification
+- **[0042-UI-Specification-Format](0042-UI-Specification-Format.md)**: Pure cljfx maps with namespace-qualified keys for UI specifications; plugin-friendly format with gRPC serialization and window lifecycle management
 
 ## Audio Architecture
 

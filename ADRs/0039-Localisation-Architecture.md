@@ -395,6 +395,10 @@ These are architectural constraints, not conventions. Violating any of them brea
 
 1. **Literal-only constraint** — Some dynamic UI patterns require workarounds (acceptable trade-off for extraction reliability)
 
+## Related ADRs
+
+- [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Uses translation keys for all UI strings as specified in this ADR
+
 ## References
 
 - GNU gettext manual: https://www.gnu.org/software/gettext/manual/

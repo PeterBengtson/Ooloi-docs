@@ -565,6 +565,7 @@ Performance depends on:
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Frontend components (Event Router, RDM, Fetch Coordinator)
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) - Closed semantic model this preserves
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - State authority; this document addresses rendering authority
+- [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Format for UI elements (windows, dialogs) that cljfx renders
 
 ## Notes
 

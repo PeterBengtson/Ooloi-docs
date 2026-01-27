@@ -631,6 +631,7 @@ rpc CollaborateOnPiece(stream CollaborationInput) returns (stream CollaborationO
 - [ADR-0024: gRPC Concurrency and Flow Control Architecture](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Flow control architecture for event streaming performance
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Frontend event routing and subscription management using the event streaming infrastructure defined here
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Operations-only API architecture this implements
+- [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Uses event validation pattern (pure maps with runtime validation) for UI specifications
 
 ### Technical Documentation
 - [API Guide](../guides/POLYMORPHIC_API_GUIDE.md) - Complete API usage patterns and VPD integration
