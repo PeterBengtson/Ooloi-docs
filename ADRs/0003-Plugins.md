@@ -183,6 +183,51 @@ We will implement a robust plugin system as a central architectural component of
 5. Single-Language Plugin System:
    - Rejected in favor of multi-language support to maximize developer engagement and leverage existing JVM ecosystem.
 
+## Plugin Configuration Architecture
+
+### Backend Plugin Settings
+
+Backend plugins store configuration as piece settings (ADR-0016):
+- Settings declared using `defsetting` with `:plugin/` namespace
+- Settings travel with piece data (collaboration, version control, undo)
+- No separate plugin settings files for backend plugins
+- Frontend auto-generates settings UI from metadata via `SRV/get-settings-ui-metadata`
+- Example: `(defsetting ::h/Piece :plugin/musicxml/format-version "4.0" #{"3.0" "3.1" "4.0"})`
+
+**Benefits:**
+- Settings persist with pieces (sharing, version control)
+- Automatic undo/redo support
+- Collaboration-friendly (settings shared across clients)
+- Unified settings dialog (core + plugin settings together)
+
+### Frontend Plugin Settings
+
+Frontend plugins use local settings files:
+- Stored in `~/.ooloi/frontend/plugins/{plugin-id}/settings.edn`
+- Simple EDN maps for UI preferences (not musical decisions)
+- File-based persistence, not part of piece data
+- Example: `{:toolbar-position :left :icon-size :large}`
+
+**Rationale:**
+- UI preferences are client-specific, not piece-specific
+- No need to serialize/share UI customizations
+- Simpler implementation for local-only settings
+
+### Dialog Responsibility
+
+Frontend provides all dialogs:
+- **Core operations**: Key signatures, time signatures (frontend code)
+- **Backend operations**: Import/export parameters (frontend code)
+- **Settings dialogs**: Auto-generated from metadata
+
+Backend plugins expose:
+- Settings schema (via `defsetting`)
+- API operations (via polymorphic API)
+- No UI/dialog descriptions
+
+**Future Extensibility:**
+Custom backend-described dialogs may be added if plugins require UI beyond settings and standard operations. Initial implementation focuses on settings-based configuration which covers the majority of plugin needs.
+
 ## Notes
 
 - Regularly review and update the plugin API to ensure it meets developer needs across all supported languages.
@@ -201,6 +246,7 @@ We will implement a robust plugin system as a central architectural component of
 
 - [ADR-0000: Clojure](0000-Clojure.md) - Language choice providing JVM compatibility for multi-language plugin support
 - [ADR-0006: SMuFL](0006-SMuFL.md) - Musical notation standard that plugins might extend with specialized symbols
+- [ADR-0016: Settings](0016-Settings.md) - Universal entity settings architecture used for backend plugin configuration
 - [ADR-0027: Plugin-Based Audio Architecture](0027-Plugin-Based-Audio-Architecture.md) - Audio/MIDI processing as plugins rather than core features
 - [ADR-0041: OVID](0041-Ooloi-Virtual-Instrument-Definition-OVID.md) - Virtual instrument definition as plugin resources
 - [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Format for plugins to define UI (dialogs, preferences) without frontend dependencies
