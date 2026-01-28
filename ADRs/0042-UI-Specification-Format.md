@@ -31,20 +31,22 @@
 
 Ooloi needs a format for specifying UI elements (windows, dialogs, notifications) that:
 
-1. **Works across boundaries** - Backend and plugins must be able to define UI that frontend renders
+1. **Works across boundaries** - Backend and backend plugins must be able to define UI that frontend renders
 2. **Supports lifecycle management** - Windows need automatic persistence, event handling, cleanup
-3. **Enables plugin independence** - Plugins shouldn't need frontend-specific code
-4. **Serializes over gRPC** - UI specs must cross the network boundary
-5. **Integrates with cljfx** - Must work naturally with cljfx's declarative UI approach
+3. **Enables plugin independence** - Backend plugins shouldn't need frontend-specific code
+4. **Serializes over gRPC** - UI specs from backend/backend plugins must cross network boundary
+5. **Integrates with cljfx** - Must work naturally with cljfx's declarative UI approach (backend and frontend plugins)
 6. **Handles diverse types** - Persistent windows, transient dialogs, auto-dismiss notifications
+7. **Supports local plugins** - Frontend plugins can use direct callbacks without serialization
 
 ### Requirements
 
 **Functional Requirements:**
 - Window lifecycle management (create, track state, save on close, restore on reopen, cleanup)
 - Type differentiation (persistent windows, modal/non-modal dialogs, notifications, custom components)
-- Plugin support (define UI in backend/plugin code, serialize over gRPC, no frontend dependency)
-- Event integration (symbolic event handlers as maps, resolved to functions at render time)
+- Backend plugin support (define UI in backend/plugin code, serialize over gRPC, no frontend dependency)
+- Frontend plugin support (define UI with direct cljfx, use callback functions or symbolic handlers)
+- Event integration (symbolic handlers for serialization, direct functions for local plugins)
 
 **Non-Functional Requirements:**
 - Simplicity - obvious how to create UI
@@ -69,7 +71,11 @@ Ooloi needs a format for specifying UI elements (windows, dialogs, notifications
 - Example: `{:type :piece-invalidation :piece-id "123" :measures [1 2 3]}`
 
 **Design Requirement:**
-> "Backend and plugins describe UI using **cljfx maps directly** - no translation layer needed."
+> "Backend and plugins (both backend and frontend) describe UI using **cljfx maps directly** - no translation layer needed."
+
+**Plugin Context:**
+- **Backend plugins**: Send cljfx maps over gRPC with symbolic event handlers (maps)
+- **Frontend plugins**: Use cljfx maps locally with direct callback functions or symbolic handlers
 
 Per ADR-0039, all user-facing strings use translation keys (`:window/title-key`, `:text-key`, etc.), resolved by frontend via `(tr key)` at render time.
 
@@ -80,7 +86,7 @@ Per ADR-0039, all user-facing strings use translation keys (`:window/title-key`,
 UI specifications are **pure Clojure maps** conforming to cljfx structure, augmented with `:window/` namespace-qualified metadata for lifecycle management.
 
 ```clojure
-;; Plugin/backend sends this over gRPC
+;; Backend plugin sends this over gRPC (symbolic event handlers)
 {:fx/type :stage
  :window/id :plugin-config           ; Window management metadata
  :window/persist? true
@@ -94,7 +100,17 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
                             :prompt-text-key :plugin.config.api-key-prompt}  ; → "API Key"
                            {:fx/type :button
                             :text-key :common.save  ; → "Save"
-                            :on-action {:event/type :plugin/save-settings}}]}}}
+                            :on-action {:event/type :plugin/save-settings}}]}}}  ; Symbolic
+
+;; Frontend plugin can use direct functions (no gRPC boundary)
+{:fx/type :stage
+ :window/id :local-tool
+ :window/title-key :tool.palette.title
+ :scene {:fx/type :scene
+         :root {:fx/type :v-box
+                :children [{:fx/type :button
+                            :text-key :common.save
+                            :on-action (fn [e] (save-local-data!))}]}}}  ; Direct function
 ```
 
 ### Metadata Keys
@@ -123,6 +139,44 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 
 **`:window/default-scale`** (double, optional)
 - Default zoom/scale factor: `1.0`, `1.5`, etc.
+
+### Architectural Invariants
+
+**Theme Application is Automatic**
+
+The window manager infrastructure automatically applies the configured UI theme (AtlantaFX) to all windows, dialogs, and notifications. Developers never specify theme details in UI specifications.
+
+**Invariant:** Theme selection is infrastructure, not specification data.
+
+```clojure
+;; ✅ CORRECT - Developer writes pure cljfx
+{:fx/type :stage
+ :window/id :tool-palette
+ :scene {:fx/type :scene
+         :root {:fx/type :v-box
+                :children [...]}}}
+
+;; ❌ WRONG - Never specify theme in spec
+{:fx/type :stage
+ :window/id :tool-palette
+ :theme :nord-dark  ; NO - theme is infrastructure
+ :scene {:fx/type :scene
+         :stylesheets ["atlantafx.css"]  ; NO - automatic
+         :root {:fx/type :v-box
+                :children [...]}}}
+```
+
+**Implementation:**
+- Theme preference stored in settings (ADR-0016)
+- `render-cljfx-to-stage` applies theme automatically during rendering
+- All Scenes receive consistent theme styling without specification
+- Theme changes apply system-wide without modifying UI specs
+
+**Benefits:**
+- Visual consistency enforced by architecture
+- Plugins don't need theme knowledge
+- Theme changes don't require spec updates
+- Separation of concerns (specification vs presentation)
 
 ### Validation Strategy
 
@@ -172,12 +226,13 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
    - Loads saved state if :window/persist? true
    - Merges saved state with defaults
    - Creates JavaFX Stage via cljfx
+   - Applies configured theme automatically (AtlantaFX)
    - Attaches close handler to save state
 
    Parameters:
    - spec: Window specification map (pure cljfx + :window/ metadata)
 
-   Returns: JavaFX Stage"
+   Returns: JavaFX Stage with theme applied"
   [spec]
   (validate-window-spec spec)
 
@@ -197,7 +252,7 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
                        (:window/default-scale spec)
                        1.0)
 
-        ;; Render cljfx spec to JavaFX Stage
+        ;; Render cljfx spec to JavaFX Stage (theme applied automatically)
         stage (render-cljfx-to-stage spec)]
 
     ;; Apply window state
@@ -328,6 +383,26 @@ This is consistent with how events work: they're boundary data, so they're maps.
               :window/persist? true
               :window/title-key :window.tool-palette.title  ; → "Tools"
               :scene ...})
+
+;; Theme application is automatic
+(defn render-cljfx-to-stage [spec]
+  "Renders cljfx spec to JavaFX Stage with automatic theme application."
+  (let [stage (Stage.)
+        scene (create-scene-from-spec spec)]
+    ;; Apply configured theme automatically
+    (apply-current-theme! scene)
+    (.setScene stage scene)
+    stage))
+
+(defn apply-current-theme! [scene]
+  "Applies configured UI theme to Scene. Reads theme preference from settings."
+  (let [theme-name (settings/get ::ui-theme :nord-dark)
+        theme (case theme-name
+                :nord-dark (NordDark.)
+                :nord-light (NordLight.)
+                ;; Additional AtlantaFX themes...
+                (NordDark.))]  ; default fallback
+    (.add (.getStylesheets scene) (.getUserAgentStylesheet theme))))
 ```
 
 ### With Persistence Layer
@@ -373,8 +448,12 @@ This is consistent with how events work: they're boundary data, so they're maps.
 
 ### With Event Handler Resolution
 
+**Backend Plugins (Over gRPC):**
+
+Backend and remote plugins use symbolic event handlers (maps) because functions don't serialize over gRPC:
+
 ```clojure
-;; Symbolic event handler in spec
+;; Backend plugin sends symbolic handler
 {:fx/type :button
  :text-key :common.save  ; → "Save"
  :on-action {:event/type :plugin/save-settings
@@ -384,8 +463,31 @@ This is consistent with how events work: they're boundary data, so they're maps.
 (defn resolve-event-handler [handler-spec]
   (fn [event]
     (send-to-backend (:event/type handler-spec) handler-spec)))
+```
 
-;; Frontend resolves symbolic event handlers at render time
+**Frontend Plugins (Local):**
+
+Frontend plugins can use direct callback functions since they don't cross gRPC boundary:
+
+```clojure
+;; Frontend plugin uses direct function reference
+{:fx/type :button
+ :text-key :common.save  ; → "Save"
+ :on-action (fn [event]
+               ;; Direct function call - no serialization needed
+               (save-local-settings!))}
+
+;; OR using symbolic handlers if preferred for consistency
+{:fx/type :button
+ :text-key :common.save
+ :on-action {:event/type :frontend-plugin/save-settings}}
+```
+
+**Key Distinction:**
+- **Serialization boundary determines handler format**
+- Backend plugins → symbolic handlers (required)
+- Frontend plugins → direct functions (allowed) or symbolic (optional)
+- Same cljfx spec format works for both
 ```
 
 ## Implementation Strategy
@@ -394,9 +496,11 @@ This is consistent with how events work: they're boundary data, so they're maps.
 
 1. Create `frontend/src/main/clojure/ooloi/frontend/ui/window.clj`
 2. Implement `validate-window-spec`
-3. Implement `create-window` with persistence integration
-4. Implement `show-window`, `close-window`
-5. Add window registry (atom of open windows)
+3. Implement `render-cljfx-to-stage` with automatic theme application
+4. Implement `apply-current-theme!` reading from settings
+5. Implement `create-window` with persistence integration
+6. Implement `show-window`, `close-window`
+7. Add window registry (atom of open windows)
 
 ### Phase 2: Type-Specific Handlers
 
@@ -420,12 +524,16 @@ This is consistent with how events work: they're boundary data, so they're maps.
 ## Consequences
 
 **Positive:**
-- Plugins can define UI using standard cljfx knowledge
+- Backend plugins can define UI using standard cljfx knowledge
+- Frontend plugins can use direct callback functions (no serialization overhead)
 - No translation layer needed between backend and frontend
-- gRPC serialization works transparently
+- gRPC serialization works transparently for backend plugins
 - New window types don't require framework changes
 - Consistent with existing event pattern
 - Simple to reason about and debug
+- Automatic theme application ensures visual consistency
+- Theme changes apply system-wide without spec updates
+- Plugin location (backend vs frontend) determines handler format naturally
 
 **Negative:**
 - Runtime validation only (no compile-time safety)
