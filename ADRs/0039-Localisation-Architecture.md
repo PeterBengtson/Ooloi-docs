@@ -167,26 +167,37 @@ resources/i18n/
 
 **Bundled canonical locale:**
 
-The canonical `en-GB.po` is compiled to `en-GB.edn` during the build process. Both files ship in the JAR—the PO for reference, the EDN for runtime use. No parsing occurs at startup for the default locale.
+The canonical `en-GB.po` ships in the JAR and is parsed at runtime. During application startup, this happens via `init-locales!`. In development mode, it's lazy-loaded on the first `tr` call.
 
 **External locales:**
 
-At first use of an external locale:
+At application startup (`init-locales!`):
 
-1. Load bundled UK English cache (always present, pre-compiled)
-2. Check external directory for override (`i18n/en-GB.po`)—if present and newer than bundled, parse and cache
-3. For the selected locale:
-   - If compiled cache exists and is newer than source PO → load cache
-   - Otherwise → parse PO, compile to EDN cache in external directory, load
-4. If locale file is missing → fall back to UK English
+1. Parse bundled `en-GB.po` from JAR resources
+2. Scan platform-specific directory for external `.po` files
+3. Parse all found external locales
+4. Keep all parsed catalogs in memory for instant locale switching
 
-**Cache format:**
+No EDN caching. Parsing is fast enough for startup, and keeping catalogs in memory eliminates cache invalidation complexity.
+
+**Locale selection:**
+
+Locale loading and selection are separate:
+- `init-locales!` — loads all available catalogs (bundled + external)
+- `set-locale!` — selects which locale to use from loaded catalogs
 
 ```clojure
-{:plural-rule "(n != 1)"  ; original expression for reference
+(init-locales!)                        ; Load all available
+(set-locale! (platform/get-os-locale)) ; Auto-select based on OS
+```
+
+**In-memory format:**
+
+```clojure
+{:plural-rule "(n != 1)"
  :messages {:menu.file.open "Öppna…"
             :dialog.export.warning "Export kommer att skriva över %{filename}."
-            :files {:one "fil" :other "filer"}}}
+            :file.count ["fil" "filer"]}}  ; plural forms as vector
 ```
 
 **Plural rule resolution:**
@@ -199,11 +210,11 @@ Gettext plural patterns are well-documented and finite—approximately 15-20 pat
 (def plural-rules
   {"(n != 1)"       (fn [n] (if (= n 1) 0 1))       ; English, German, Swedish, etc.
    "(n > 1)"        (fn [n] (if (> n 1) 1 0))       ; French, Brazilian Portuguese
-   "(n == 0 || n == 1)"  ...                        ; etc.
+   "(n%10==1 && n%100!=11 ? 0 : ...)" ...           ; Russian (complex)
    })
 ```
 
-If an unknown pattern appears (unlikely), the system logs a warning and falls back to treating all forms as singular. This is a visible degradation, not a crash.
+If an unknown pattern appears (unlikely), the system falls back to treating all forms as singular. This is a visible degradation, not a crash.
 
 ## Key Design
 
@@ -321,17 +332,41 @@ Plugins use the same PO format, same tooling, same workflow. A translator workin
 
 ## Build-Time Verification
 
+### Two Operational Modes
+
+Build-time verification operates in two modes depending on context:
+
+**Normal Mode** (development, `lein i18n`):
+- Extracts all `tr` keys from source
+- Auto-adds missing keys to `en-GB.po` with `[TODO: Translation needed]` placeholders
+- Warns about TODO entries and orphaned keys
+- Never fails, supports rapid development iteration
+
+**Strict Mode** (CI/build, `lein i18n :strict true`):
+- Extracts all `tr` keys from source
+- Reports missing keys as errors (does not modify file)
+- Fails build if TODO entries exist (incomplete translations)
+- Fails build if catalog is incomplete
+- Hard gate preventing incomplete artifacts
+
 ### Canonical Completeness (Hard Gate)
 
-At build time:
+At build time (strict mode):
 
 1. Extract all `tr` keys from frontend source (possible because keys are literals)
 2. Parse `en-GB.po` and extract all `msgctxt` values
 3. Assert: every key in code exists in `en-GB.po`
+4. Assert: no TODO placeholders remain in catalog
 
-Build fails if the canonical UK English catalog is incomplete. This prevents shipping UI elements without English definitions.
+Build fails if the canonical UK English catalog is incomplete or contains TODO entries. This prevents shipping UI elements without complete English translations.
 
-Implementation is straightforward: grep for `(tr :` patterns, parse the literal keywords, compare against PO contents. The literal-only constraint makes this reliable.
+Implementation: Parse source with Clojure reader, extract literal keywords, compare against PO contents. The literal-only constraint makes this deterministic and reliable.
+
+**Build Integration:**
+- Verification runs automatically during `lein build`
+- Always uses strict mode in build pipeline
+- Positioned before uberjar creation (fails fast)
+- Colored terminal output for clear visibility
 
 ### Non-English Coverage (Soft)
 
@@ -343,6 +378,14 @@ For other locales:
 
 This preserves forward compatibility: an old `sv.po` continues to work when new UI strings are added in a release. Partial translations degrade gracefully rather than failing.
 
+### Orphaned Keys
+
+Keys in catalog but not in source are reported as warnings, never errors. Rationale:
+- Features may be temporarily removed
+- Keys may return in future iterations
+- Maintaining historical translations is valuable
+- Translators prefer stable keys over churn
+
 ## Forward Compatibility
 
 **Invariant:** A new Ooloi version adding new UI strings must not break existing translations.
@@ -350,8 +393,8 @@ This preserves forward compatibility: an old `sv.po` continues to work when new 
 Mechanism:
 
 - Missing key in locale → return UK English text
-- Missing key in UK English → return conspicuous placeholder (`[MISSING: key.name]`) and log warning, never crash
-- Malformed PO file → log warning with line number and error details, fall back to en-GB for entire locale
+- Missing key in UK English → return conspicuous placeholder (`[MISSING: key.name]`), never crash
+- Malformed PO file → fall back to en-GB for entire locale
 - Never mix broken and working entries from same file
 
 This ensures:
@@ -436,22 +479,22 @@ This architecture requires several distinct capabilities. The implementation str
 - ~100 lines: file traversal + keyword extraction + verification
 - Build-time completeness check: all keys exist in `en-GB.po`
 
-### Caching: Custom Implementation
+### Locale Loading: Direct Parsing
 
-**Decision:** Custom EDN cache generation and loading.
+**Decision:** Parse PO files directly at runtime, no caching layer.
 
 **Rationale:**
-- Our cache format is simple: `{:messages {:key "text" ...} :plural-rule "(n != 1)"}`
-- Potentilla gives us parsed PO data, we serialize to EDN
-- Platform-specific external directory requires custom path logic
-- Cache invalidation based on file timestamps (enables hot reload without restart)
+- PO parsing (via potentilla) is fast enough for startup
+- Keeping all catalogs in memory eliminates cache invalidation complexity
+- Simpler architecture: fewer moving parts, no timestamp checking
+- External locales loaded once at startup for instant switching
 
-**Cache structure:**
+**In-memory structure:**
 ```clojure
 {:plural-rule "(n != 1)"
  :messages {:menu.file.open "Open…"
             :dialog.export.warning "Export will overwrite %{filename}."
-            :files {:one "file" :other "files"}}}
+            :file.count ["file" "files"]}}  ; plural forms as vector
 ```
 
 ### Plural Rule Resolution: Lookup Table
@@ -474,13 +517,25 @@ This architecture requires several distinct capabilities. The implementation str
 
 ### Build-Time Verification: Custom Leiningen Task
 
-**Decision:** Custom build task extracting and verifying keys.
+**Decision:** Custom build task with dual-mode operation.
+
+**Implementation** (`frontend/src/main/clojure/ooloi/frontend/i18n/verify.clj`):
+- Parse source with Clojure reader (not regex)
+- Extract literal keywords (reject computed keys)
+- Compare against `en-GB.po` msgctxt values
+- Auto-add mode: append missing keys with TODO placeholders
+- Strict mode: fail on missing keys or TODO entries
+- Colored terminal output (ANSI codes)
+- Multiple source directory support
+- Configurable via command-line arguments
 
 **Rationale:**
-- Simple: grep source for `(tr :keyword)` patterns
-- Parse literal keywords (reject non-literals)
-- Compare against `en-GB.po` msgctxt values
-- Hard gate: build fails if canonical catalog incomplete
+- Reader-based parsing: more reliable than regex, handles all Clojure syntax
+- Two modes: rapid development vs. build quality gates
+- Auto-add reduces friction during active development
+- Strict mode enforces completeness in CI/production builds
+- Colored output improves developer experience
+- Integrated into build pipeline prevents incomplete artifacts
 
 ### Dependency Summary
 
@@ -490,11 +545,8 @@ This architecture requires several distinct capabilities. The implementation str
 ```
 
 **Custom implementation:**
-- `ooloi.frontend.i18n.core` — `tr` function, named parameters, plural selection
-- `ooloi.frontend.i18n.cache` — EDN caching, external directory, timestamps
-- `ooloi.frontend.i18n.build` — Key extraction, verification, completeness check
-- `ooloi.frontend.i18n.plural` — Plural rule lookup table
-- `ooloi.frontend.i18n.po` — Thin wrapper around potentilla Java API
+- `ooloi.frontend.i18n.tr` — `tr` function, named parameters, plural selection, PO parsing, locale management
+- `ooloi.frontend.i18n.verify` — Key extraction, verification, auto-add mode, strict mode, colored output
 
 **Why this split:**
 - Library for complex parsing (saves ~400-600 lines, handles edge cases with ANTLR)
