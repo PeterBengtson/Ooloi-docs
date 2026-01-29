@@ -354,6 +354,9 @@ Build-time verification operates in two modes depending on context:
 - Fails build if catalog is incomplete
 - Hard gate preventing incomplete artifacts
 
+**Development workflow:**
+Developers run `lein i18n` during active development as new UI strings are added. Missing translation keys are automatically added with TODO placeholders, keeping the catalog synchronized with code. The build pipeline then verifies this work was completed—running `lein i18n :strict true` to ensure all TODO placeholders have been replaced with actual translations before creating artifacts.
+
 ### Canonical Completeness (Hard Gate)
 
 At build time (strict mode):

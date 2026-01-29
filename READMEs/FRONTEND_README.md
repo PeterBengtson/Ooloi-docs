@@ -488,6 +488,33 @@ lein coverage
 
 **Important**: Use `lein midje` instead of `lein test`. The project is configured for Midje testing framework.
 
+### Translation Verification
+
+The frontend uses PO files for localisation. During development, run `lein i18n` to keep translations synchronized with code:
+
+```bash
+# Development: auto-add missing translation keys with TODO placeholders
+lein i18n
+
+# Scan specific directory (e.g., test files)
+lein i18n :source-dir "test/clojure"
+
+# Strict mode (fails on missing keys or TODO entries)
+lein i18n :strict true
+```
+
+**Parameters:**
+- `:source-dir` — Directory to scan (default: `"src/main/clojure"`)
+- `:po-file` — Translation catalog path (default: `"resources/i18n/en-GB.po"`)
+- `:pattern` — File pattern to match (default: `#"\.clj$"`)
+- `:strict` — Fail on incomplete translations (default: `false`)
+
+**Development workflow:** Run `lein i18n` as you add new UI strings. Missing keys are automatically added with `[TODO: Translation needed]` placeholders.
+
+**Build pipeline:** `lein build` runs verification in strict mode, failing if any keys are missing or contain TODO entries. This ensures all translations are complete before artifacts are created.
+
+**See also:** [ADR-0039: Localisation Architecture](../ADRs/0039-Localisation-Architecture.md)
+
 ### gRPC Integration
 
 **Essential Role**: Frontend is a **consumer of the unified Ooloi data model** located in shared/.
