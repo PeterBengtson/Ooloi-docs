@@ -437,13 +437,17 @@ Performance depends on:
 
 #### Phase 1: Infrastructure Foundation (No Music Rendering Yet)
 
-1. Event Router with category aggregation
-2. Rendering Data Manager (VPD-indexed paintlists + staleness)
-3. Fetch Coordinator (priority queues + gRPC calls)
+1. Event Router with category aggregation (full implementation)
+2. Rendering Data Manager (data structure + operations, mock paintlist data for testing)
+3. Fetch Coordinator (threading model + priority queues, mock backend calls for testing)
 4. cljfx UI shell (windows, dialogs, menus, palettes - **no music notation rendering**)
-5. Backend paintlist API integration and fetch testing
+5. Threading model validation (Event Router → RDM → FC coordination with Platform.runLater)
 
-**Note:** This phase builds event/cache infrastructure and UI chrome without rendering music. GPU acceleration becomes critical in Phase 2 when Skija music rendering is introduced.
+**Note:** This phase builds event/cache infrastructure and UI chrome without rendering music. RDM and FC use **mock paintlist data** to validate threading model and async coordination. Real paintlist API integration and GPU-accelerated rendering are Phase 2. This separation validates the event-driven architecture before adding GPU complexity.
+
+**Mock vs Real:**
+- Phase 1: Simple test paintlists, mock backend fetches, validates threading coordination
+- Phase 2: Real paintlist format (SMuFL glyphs, bezier curves), real gRPC API calls, Skija GPU rendering
 
 #### Phase 2: GPU-Accelerated Music Rendering (Skija Integration)
 
