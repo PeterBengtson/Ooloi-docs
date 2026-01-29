@@ -27,7 +27,7 @@
   - [PO File Parsing: Library-Based](#po-file-parsing-library-based)
   - [Translation API: Custom Implementation](#translation-api-custom-implementation)
   - [Named Parameter Substitution: Custom Implementation](#named-parameter-substitution-custom-implementation)
-  - [Key Extraction: Adapted from Pottery](#key-extraction-adapted-from-pottery)
+  - [Key Extraction: Custom Implementation](#key-extraction-custom-implementation)
   - [Plural Rule Resolution: Lookup Table](#plural-rule-resolution-lookup-table)
   - [Build-Time Verification: Custom Leiningen Task](#build-time-verification-custom-leiningen-task)
   - [Dependency Summary](#dependency-summary)
