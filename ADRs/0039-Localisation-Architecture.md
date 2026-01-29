@@ -21,6 +21,15 @@
   - [Canonical Completeness (Hard Gate)](#canonical-completeness-hard-gate)
   - [Non-English Coverage (Soft)](#non-english-coverage-soft)
 - [Forward Compatibility](#forward-compatibility)
+- [Implementation Strategy](#implementation-strategy)
+  - [PO File Parsing: Library-Based](#po-file-parsing-library-based)
+  - [Translation API: Custom Implementation](#translation-api-custom-implementation)
+  - [Named Parameter Substitution: Custom Implementation](#named-parameter-substitution-custom-implementation)
+  - [Key Extraction: Adapted from Pottery](#key-extraction-adapted-from-pottery)
+  - [Caching: Custom Implementation](#caching-custom-implementation)
+  - [Plural Rule Resolution: Lookup Table](#plural-rule-resolution-lookup-table)
+  - [Build-Time Verification: Custom Leiningen Task](#build-time-verification-custom-leiningen-task)
+  - [Dependency Summary](#dependency-summary)
 - [Invariants](#invariants)
 - [Consequences](#consequences)
 - [References](#references)
@@ -349,6 +358,135 @@ This ensures:
 - No localisation-layer failures during upgrades
 - Translators can update at their own pace after a release
 
+## Implementation Strategy
+
+This architecture requires several distinct capabilities. The implementation strategy balances library reuse (for complex parsing) against custom code (for our specific constraints):
+
+### PO File Parsing: Library-Based
+
+**Decision:** Use [brightin/pottery](https://github.com/brightin/pottery) for PO file parsing.
+
+**Rationale:**
+- PO format is complex: multiline strings, escape sequences, continuation syntax, various comment types
+- Gettext plural forms header parsing requires language-specific knowledge
+- Library handles edge cases we'd miss writing from scratch
+- Pottery is modular: "only meant to generate and read PO files. Translating is up to you."
+- Parses PO → simple Clojure dictionaries, no imposed API or framework
+
+**Scope:** Pottery handles:
+- PO/POT file format parsing
+- Multiline string handling and escape sequences
+- Plural forms header extraction
+- Source code scanning for extraction (adaptable to our literal keyword pattern)
+
+### Translation API: Custom Implementation
+
+**Decision:** Build custom `tr` function implementing our specific constraints.
+
+**Rationale:**
+- Existing libraries use positional parameters (`%s`, `{0}`) — we require named (`%{param}`)
+- Our API must enforce literal keyword keys — no library does this
+- We need tight integration with our EDN cache format
+- Simple implementation: keyword lookup, named parameter substitution, plural selection
+
+**Signature:**
+```clojure
+(tr :translation.key)                          ; Simple lookup
+(tr :translation.key {:param "value"})         ; Named parameters
+(tr :translation.key {:n 5})                   ; Plural forms
+```
+
+### Named Parameter Substitution: Custom Implementation
+
+**Decision:** Custom string substitution replacing `%{name}` with actual values.
+
+**Rationale:**
+- No existing library supports this syntax
+- Straightforward: regex or simple parser
+- ~50 lines of code
+
+**Implementation:**
+```clojure
+;; Input: "Export will overwrite %{filename}."
+;; Params: {:filename "score.ooloi"}
+;; Output: "Export will overwrite score.ooloi."
+```
+
+### Key Extraction: Adapted from Pottery
+
+**Decision:** Adapt pottery's extraction tools, add literal-only verification.
+
+**Rationale:**
+- Pottery scans source files using core.match patterns
+- We customize extractor to recognize `(tr :keyword)` patterns
+- Add verification: reject computed keys, ensure literals only
+- Build-time completeness check: all keys exist in `en-GB.po`
+
+### Caching: Custom Implementation
+
+**Decision:** Custom EDN cache generation and loading.
+
+**Rationale:**
+- Our cache format is simple: `{:messages {:key "text" ...} :plural-rule "(n != 1)"}`
+- Pottery gives us parsed PO data, we serialize to EDN
+- Platform-specific external directory requires custom path logic
+- Cache invalidation based on file timestamps
+
+**Cache structure:**
+```clojure
+{:plural-rule "(n != 1)"
+ :messages {:menu.file.open "Open…"
+            :dialog.export.warning "Export will overwrite %{filename}."
+            :files {:one "file" :other "files"}}}
+```
+
+### Plural Rule Resolution: Lookup Table
+
+**Decision:** Pre-defined function lookup table, not runtime compilation.
+
+**Rationale:**
+- Deployed app uses jlink minimal JVM without Clojure compiler
+- Gettext plural patterns are finite (~15-20 covering all languages)
+- Safe: unknown pattern logs warning, falls back to singular form
+
+**Example:**
+```clojure
+(def plural-rules
+  {"(n != 1)"              (fn [n] (if (= n 1) 0 1))       ; English, German, Swedish
+   "(n > 1)"               (fn [n] (if (> n 1) 1 0))       ; French, Portuguese
+   "(n % 10 == 1 && ...)"  (fn [n] ...)                    ; Russian (4 forms)
+   ...})
+```
+
+### Build-Time Verification: Custom Leiningen Task
+
+**Decision:** Custom build task extracting and verifying keys.
+
+**Rationale:**
+- Simple: grep source for `(tr :keyword)` patterns
+- Parse literal keywords (reject non-literals)
+- Compare against `en-GB.po` msgctxt values
+- Hard gate: build fails if canonical catalog incomplete
+
+### Dependency Summary
+
+**Added to frontend/project.clj:**
+```clojure
+[pottery "0.0.4"]  ; PO file parsing only
+```
+
+**Custom implementation:**
+- `ooloi.frontend.i18n.core` — `tr` function, named parameters, plural selection
+- `ooloi.frontend.i18n.cache` — EDN caching, external directory, timestamps
+- `ooloi.frontend.i18n.build` — Key extraction, verification, completeness check
+- `ooloi.frontend.i18n.plural` — Plural rule lookup table
+
+**Why this split:**
+- Library for complex parsing (saves ~300 lines, handles edge cases)
+- Custom for our constraints (named parameters, literal keys, our cache format)
+- Clear ownership: we control the API, rely on library for format complexity
+- Testable: mock pottery output, test our logic independently
+
 ## Invariants
 
 These are architectural constraints, not conventions. Violating any of them breaks determinism, translator usability, or both.
@@ -405,4 +543,5 @@ These are architectural constraints, not conventions. Violating any of them brea
 - PO file format specification: https://www.gnu.org/software/gettext/manual/html_node/PO-Files.html
 - Poedit: https://poedit.net/
 - Lokalize: https://apps.kde.org/lokalize/
+- brightin/pottery: https://github.com/brightin/pottery
 - `ooloi.shared.platform` namespace for cross-platform directory conventions
