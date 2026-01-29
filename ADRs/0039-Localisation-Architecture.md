@@ -31,6 +31,7 @@
   - [Build-Time Verification: Custom Leiningen Task](#build-time-verification-custom-leiningen-task)
   - [Dependency Summary](#dependency-summary)
 - [Invariants](#invariants)
+- [Out of Scope](#out-of-scope)
 - [Consequences](#consequences)
 - [References](#references)
 
@@ -350,6 +351,8 @@ Mechanism:
 
 - Missing key in locale → return UK English text
 - Missing key in UK English → return conspicuous placeholder (`[MISSING: key.name]`) and log warning, never crash
+- Malformed PO file → log warning with line number and error details, fall back to en-GB for entire locale
+- Never mix broken and working entries from same file
 
 This ensures:
 
@@ -364,20 +367,31 @@ This architecture requires several distinct capabilities. The implementation str
 
 ### PO File Parsing: Library-Based
 
-**Decision:** Use [brightin/pottery](https://github.com/brightin/pottery) for PO file parsing.
+**Decision:** Use [Potentilla](https://github.com/soberlemur/potentilla) (com.soberlemur:potentilla) for PO file parsing.
 
 **Rationale:**
 - PO format is complex: multiline strings, escape sequences, continuation syntax, various comment types
 - Gettext plural forms header parsing requires language-specific knowledge
-- Library handles edge cases we'd miss writing from scratch
-- Pottery is modular: "only meant to generate and read PO files. Translating is up to you."
-- Parses PO → simple Clojure dictionaries, no imposed API or framework
+- Library handles edge cases we'd miss writing from scratch (~400-600 lines of complex parsing code)
+- ANTLR-based parser: battle-tested parser technology with robust error handling
+- Based on jgettext: production-proven code used by Zanata translation platform for years
+- Modernized fork: updated dependencies, better test coverage, modular design
+- Production-validated: used by autopo (AI-powered PO file manager, actively maintained Jan 2026)
+- Minimal JVM interop cost with simple Java API
 
-**Scope:** Pottery handles:
-- PO/POT file format parsing
-- Multiline string handling and escape sequences
-- Plural forms header extraction
-- Source code scanning for extraction (adaptable to our literal keyword pattern)
+**Maintenance status (Jan 2026):**
+- Version 0.0.3 (April 2025) - dormant for 9 months but stable
+- Validated by autopo v1.0.8 (Jan 26, 2026) using it in production
+- Based on mature jgettext codebase with years of production use
+- Early version number reflects modernization work, not parser maturity
+
+**Scope:** Potentilla handles:
+- PO/POT file format parsing with ANTLR grammar
+- Multiline string handling and all escape sequences (`\n`, `\t`, `\"`, `\\`)
+- UTF-8 BOM handling and CRLF/LF line ending normalization
+- Plural forms header extraction (all languages including Russian 4-form, Arabic 6-form)
+- Malformed input error recovery and reporting
+- Comment types (translator, source reference, general)
 
 ### Translation API: Custom Implementation
 
@@ -412,14 +426,14 @@ This architecture requires several distinct capabilities. The implementation str
 ;; Output: "Export will overwrite score.ooloi."
 ```
 
-### Key Extraction: Adapted from Pottery
+### Key Extraction: Custom Implementation
 
-**Decision:** Adapt pottery's extraction tools, add literal-only verification.
+**Decision:** Custom source code scanner with literal-only verification.
 
 **Rationale:**
-- Pottery scans source files using core.match patterns
-- We customize extractor to recognize `(tr :keyword)` patterns
-- Add verification: reject computed keys, ensure literals only
+- Simple pattern: scan for `(tr :keyword)` using regex or parser
+- Literal-only enforcement: reject computed keys at build time
+- ~100 lines: file traversal + keyword extraction + verification
 - Build-time completeness check: all keys exist in `en-GB.po`
 
 ### Caching: Custom Implementation
@@ -428,9 +442,9 @@ This architecture requires several distinct capabilities. The implementation str
 
 **Rationale:**
 - Our cache format is simple: `{:messages {:key "text" ...} :plural-rule "(n != 1)"}`
-- Pottery gives us parsed PO data, we serialize to EDN
+- Potentilla gives us parsed PO data, we serialize to EDN
 - Platform-specific external directory requires custom path logic
-- Cache invalidation based on file timestamps
+- Cache invalidation based on file timestamps (enables hot reload without restart)
 
 **Cache structure:**
 ```clojure
@@ -472,7 +486,7 @@ This architecture requires several distinct capabilities. The implementation str
 
 **Added to frontend/project.clj:**
 ```clojure
-[pottery "0.0.4"]  ; PO file parsing only
+[com.soberlemur/potentilla "0.0.3"]  ; PO file parsing (ANTLR-based, Java interop)
 ```
 
 **Custom implementation:**
@@ -480,12 +494,14 @@ This architecture requires several distinct capabilities. The implementation str
 - `ooloi.frontend.i18n.cache` — EDN caching, external directory, timestamps
 - `ooloi.frontend.i18n.build` — Key extraction, verification, completeness check
 - `ooloi.frontend.i18n.plural` — Plural rule lookup table
+- `ooloi.frontend.i18n.po` — Thin wrapper around potentilla Java API
 
 **Why this split:**
-- Library for complex parsing (saves ~300 lines, handles edge cases)
+- Library for complex parsing (saves ~400-600 lines, handles edge cases with ANTLR)
 - Custom for our constraints (named parameters, literal keys, our cache format)
 - Clear ownership: we control the API, rely on library for format complexity
-- Testable: mock pottery output, test our logic independently
+- Testable: mock potentilla output, test our logic independently
+- Low risk: production-validated parser, minimal interop cost
 
 ## Invariants
 
@@ -506,6 +522,26 @@ These are architectural constraints, not conventions. Violating any of them brea
 7. **Translation keys are literal.** No computed keys, enabling deterministic extraction.
 
 8. **PO files are the sole translator interface.** Translators never edit code, EDN, or internal formats.
+
+## Out of Scope
+
+This ADR addresses **string translation only**. Related concerns handled separately:
+
+**Date/time/number formatting:**
+- Locale-specific formatting ("3,14" vs "3.14", date order variations, thousand separators)
+- Separate concern requiring different infrastructure (not gettext-based)
+- Future ADR if needed for user-configurable preferences
+
+**RTL language support (Arabic, Hebrew):**
+- Pure rendering concern, handled by JavaFX automatically
+- Translation infrastructure is direction-agnostic
+- Strings should not contain directional markup (Unicode bidi control characters)
+- Text rendering engine handles bidi algorithm
+
+**Currency/unit conversion:**
+- "5 miles" vs "8 kilometers" requires domain logic, not translation
+- Out of scope for string localisation
+- Application-specific logic if needed
 
 ## Consequences
 
@@ -543,5 +579,7 @@ These are architectural constraints, not conventions. Violating any of them brea
 - PO file format specification: https://www.gnu.org/software/gettext/manual/html_node/PO-Files.html
 - Poedit: https://poedit.net/
 - Lokalize: https://apps.kde.org/lokalize/
-- brightin/pottery: https://github.com/brightin/pottery
+- Potentilla: https://github.com/soberlemur/potentilla (ANTLR-based PO parser)
+- Autopo: https://github.com/soberlemur/autopo/ (production validation of potentilla)
+- Maven Central: https://central.sonatype.com/artifact/com.soberlemur/potentilla
 - `ooloi.shared.platform` namespace for cross-platform directory conventions
