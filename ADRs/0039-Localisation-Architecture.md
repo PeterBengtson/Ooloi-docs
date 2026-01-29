@@ -611,7 +611,7 @@ This ADR addresses **string translation only**. Related concerns handled separat
 1. **Clean adoption point** — Zero existing strings means the policy is established, not retrofitted
 2. **Translator-native workflow** — PO files and standard tooling, no Ooloi-specific learning curve
 3. **Guaranteed baseline** — Canonical UK English bundled in JAR, no installation failure modes
-4. **Zero startup overhead** — Bundled locale is pre-compiled; no parsing for default case
+4. **Minimal startup overhead** — PO parsing is fast; all catalogs loaded once at startup
 5. **Independent release cycles** — Non-English translations ship separately from application releases
 6. **Forward compatibility** — New versions don't break existing translations
 7. **Deterministic extraction** — Literal-only keys enable reliable build-time verification
@@ -622,9 +622,8 @@ This ADR addresses **string translation only**. Related concerns handled separat
 
 **Neutral:**
 
-1. **PO parsing for external locales** — One-time cost per locale at first use, cached thereafter; bundled canonical is pre-compiled
+1. **PO parsing at startup** — One-time cost; all catalogs kept in memory for instant locale switching
 2. **External directory** — User creates platform-specific `i18n/` directory for additional locales; not required for basic operation
-3. **Two-file workflow** — Translators work with PO, runtime uses EDN cache (but this is invisible to translators)
 
 **Negative:**
 
