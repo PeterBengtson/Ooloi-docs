@@ -580,17 +580,7 @@ These are architectural constraints, not conventions. Violating any of them brea
 
 ## Documentation
 
-**Current documentation:**
-- API documentation via codox (generated from docstrings)
-- ADR-0039 specification (architecture and implementation strategy)
-- Build-time verification integrated into build pipeline
-
-**Future documentation needs:**
-- Translator workflow guide (when community translations begin)
-- Developer patterns for adding new UI strings (as Layer 5+ UI components are built)
-- Both can be written on-demand as actual usage patterns emerge
-
-The PO file format itself is well-documented via GNU gettext manual and standard PO editors provide inline guidance.
+Translator and developer documentation can be written on-demand as actual usage patterns emerge. The PO file format itself is well-documented via GNU gettext manual and standard PO editors provide inline guidance.
 
 ## Out of Scope
 
