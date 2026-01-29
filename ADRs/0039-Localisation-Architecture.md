@@ -28,7 +28,6 @@
   - [Translation API: Custom Implementation](#translation-api-custom-implementation)
   - [Named Parameter Substitution: Custom Implementation](#named-parameter-substitution-custom-implementation)
   - [Key Extraction: Adapted from Pottery](#key-extraction-adapted-from-pottery)
-  - [Caching: Custom Implementation](#caching-custom-implementation)
   - [Plural Rule Resolution: Lookup Table](#plural-rule-resolution-lookup-table)
   - [Build-Time Verification: Custom Leiningen Task](#build-time-verification-custom-leiningen-task)
   - [Dependency Summary](#dependency-summary)
@@ -139,8 +138,7 @@ Localisation files are loaded from two locations:
 ```
 # Bundled in JAR (read-only)
 resources/i18n/
-  en-GB.po        ; canonical source (for reference)
-  en-GB.edn       ; pre-compiled cache (for runtime)
+  en-GB.po        ; canonical source
 
 # External (user-managed, platform-specific)
 # Windows: %APPDATA%/Ooloi/i18n/
@@ -149,10 +147,6 @@ resources/i18n/
   de.po           ; German
   en-US.po        ; American English
   en-GB.po        ; optional override of bundled canonical
-  .cache/
-    sv.edn        ; auto-generated runtime cache
-    de.edn
-    en-US.edn
 ```
 
 **Canonical locale:** The canonical source language is UK English (`en-GB`), not generic "en". This is the baseline for all translations and the fallback when a key is missing in other locales. American English (`en-US`) is a separate translation like any other, differing in spelling (colour/color, localisation/localization), punctuation conventions, and occasional terminology.
@@ -178,10 +172,14 @@ At application startup (`init-locales!`):
 
 1. Parse bundled `en-GB.po` from JAR resources
 2. Scan platform-specific directory for external `.po` files
-3. Parse all found external locales
-4. Keep all parsed catalogs in memory for instant locale switching
+3. Parse each found external locale:
+   - If parsing succeeds: add to loaded catalogs
+   - If malformed: log error, skip locale, continue (locale falls back to en-GB at runtime)
+4. Keep all successfully parsed catalogs in memory for instant locale switching
 
 No EDN caching. Parsing is fast enough for startup, and keeping catalogs in memory eliminates cache invalidation complexity.
+
+**Error handling:** Malformed PO files return an error map from the parser. The loader catches this during step 3, logs the error, and excludes that locale from the available catalog. At runtime, attempts to use the failed locale fall back to `en-GB`.
 
 **Locale selection:**
 
@@ -193,6 +191,8 @@ Locale loading and selection are separate:
 (init-locales!)                        ; Load all available
 (set-locale! (platform/get-os-locale)) ; Auto-select based on OS
 ```
+
+**Locale switching:** Switching locales is instant (all catalogs pre-loaded). UI updates occur through JavaFX property bindings—text properties bound to observable locale state automatically re-render visible strings when the locale changes. No manual re-render coordination required.
 
 **In-memory format:**
 
@@ -207,7 +207,7 @@ Locale loading and selection are separate:
 
 The `Plural-Forms` expression from the PO header is resolved to a pre-defined Clojure function via lookup table, not runtime compilation. The deployed application uses `jlink` for a minimal JVM runtime without the Clojure compiler, so `eval` is unavailable.
 
-Gettext plural patterns are well-documented and finite—approximately 15-20 patterns cover all real-world languages:
+Gettext plural patterns are well-documented and finite—approximately 15-20 patterns cover all real-world languages (documented in [GNU gettext manual section 11.2.6](https://www.gnu.org/software/gettext/manual/html_node/Plural-forms.html) and the [CLDR plural rules](https://cldr.unicode.org/index/cldr-spec/plural-rules)):
 
 ```clojure
 (def plural-rules
@@ -332,6 +332,8 @@ Plugin translation catalogs are namespaced by plugin identifier. No collision wi
 The exact API is implementation detail, but the architectural requirement is clear: plugin catalogs are isolated namespaces, not merged into a global soup where naming discipline is the only defence against collision.
 
 Plugins use the same PO format, same tooling, same workflow. A translator working on a plugin sees exactly the same file structure as core localisation.
+
+**Loading timing:** Plugin translation catalogs load at plugin load time, before any plugin UI renders. This ensures translations are available when the plugin's first UI elements are created.
 
 ## Build-Time Verification
 
@@ -548,7 +550,7 @@ This architecture requires several distinct capabilities. The implementation str
 ```
 
 **Custom implementation:**
-- `ooloi.frontend.i18n.tr` — `tr` function, named parameters, plural selection, PO parsing, locale management
+- `ooloi.frontend.i18n.tr` — `tr` function, named parameters, plural selection, locale management (consumes potentilla output)
 - `ooloi.frontend.i18n.verify` — Key extraction, verification, auto-add mode, strict mode, colored output
 
 **Why this split:**
