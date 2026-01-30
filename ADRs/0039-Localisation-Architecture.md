@@ -535,6 +535,7 @@ This architecture requires several distinct capabilities. The implementation str
 - Strict mode: fail on missing keys or TODO entries
 - Colored terminal output (ANSI codes)
 - Multiple source directory support
+- Exclusion patterns with wildcard support (`:exclude ["**/i18n/tr.clj"]` default)
 - Configurable via command-line arguments
 
 **Rationale:**
@@ -544,6 +545,7 @@ This architecture requires several distinct capabilities. The implementation str
 - Strict mode enforces completeness in CI/production builds
 - Colored output improves developer experience
 - Integrated into build pipeline prevents incomplete artifacts
+- Exclusion patterns prevent false positives from implementation files (tr.clj itself uses parameter names in delegation)
 
 ### Dependency Summary
 
