@@ -64,6 +64,8 @@ Once Ooloi reaches its first public release, the architecture will support contr
 
 **6. Core Development**: The musical foundations are complete. Post-release work will concern infrastructure, asynchronous processing, streaming, printing, and cross-platform concerns. This will not include redesigning musical semantics or architectural paradigms.
 
+**7. Translation and Localization**: Help make Ooloi accessible to musicians worldwide by translating the user interface. Ooloi uses industry-standard PO files for translations, making the workflow familiar to experienced translators. Frontend-only localization means translations focus on the user interface, not technical internals. See [ADR-0039: Localisation Architecture](ADRs/0039-Localisation-Architecture.md) for technical details.
+
 ## What You're Building On
 
 This is architecturally sound software built for durability. The core is complete, tested, and documented. The plugin system provides extensibility that lets you solve your problems with your tools.
