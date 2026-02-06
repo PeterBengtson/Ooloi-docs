@@ -12,6 +12,7 @@
 - [Decision](#decision)
   - [Approach](#approach)
   - [Metadata Keys](#metadata-keys)
+  - [Command Descriptors (Menu Specialisation)](#command-descriptors-menu-specialisation)
   - [Validation Strategy](#validation-strategy)
   - [Window Manager Integration](#window-manager-integration)
 - [Benefits](#benefits)
@@ -180,6 +181,38 @@ The window manager infrastructure automatically applies the configured UI theme 
 - Plugins don't need theme knowledge
 - Theme changes don't require spec updates
 - Separation of concerns (specification vs presentation)
+
+### Command Descriptors (Menu Specialisation)
+
+Menu items in Ooloi are defined as **command descriptors** — pure maps that each describe a single menu command. A command descriptor holds everything needed to render a menu item: the i18n text key, the keyboard accelerator, an enablement predicate, and the action handler. This eliminates duplication — each command is defined once, and the menu bar is generated from the collection of descriptors.
+
+```clojure
+;; A command descriptor — one per menu action
+{:id :ui/connect
+ :text-key :menu.file.connect                    ; ADR-0039 translation key
+ :accelerator {:key :O :mods [:shortcut :shift]}  ; Platform-aware shortcut
+ :enabled? (fn [state] (:backend-ready? state))    ; When is this command available?
+ :on-action {:event/type :ui/connect-dialog}}      ; What happens when selected
+```
+
+A small pure rendering function transforms each descriptor into a cljfx menu-item map. At render time, it applies the `:enabled?` predicate against current UI state to produce a concrete `:disable` boolean, and keeps `:text-key` unresolved (the frontend's i18n layer resolves translation keys to strings, consistent with ADR-0039):
+
+```clojure
+;; What the rendering function produces from the descriptor above
+{:fx/type :menu-item
+ :text-key :menu.file.connect
+ :accelerator {:key :O :mods [:shortcut :shift]}
+ :disable true   ; result of (not ((:enabled? cmd) current-state))
+ :on-action {:event/type :ui/connect-dialog}}
+```
+
+The menu bar itself is also pure data. A function assembles descriptors into a cljfx MenuBar spec, and the result is rendered like any other cljfx component. This is the same pure-map-to-cljfx pattern used for windows and dialogs.
+
+**Accelerators** in Ooloi always use `:mods [:shortcut ...]` — never hardcoded `:meta` or `:control`. The `:shortcut` modifier resolves to Cmd on macOS and Ctrl on other platforms at the JavaFX/cljfx level.
+
+**macOS system menu bar** (the menu bar embedded in the macOS top bar rather than in the window frame) is controlled by `:use-system-menu-bar` on the MenuBar spec. MenuBar specs are produced by the UI toolkit layer, which injects this flag based on an injectable OS predicate. Developer-authored and plugin-authored specs never contain this flag — infrastructure decides, specifications don't know.
+
+**Stub commands** are descriptors with `(constantly false)` as their enablement predicate and no `:on-action`. They exist to stabilise menu structure during early development. They are intentionally inert and do not imply feature commitment.
 
 ### Validation Strategy
 
