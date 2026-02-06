@@ -22,7 +22,6 @@
   - [Defrecords with Protocol Conversion](#defrecords-with-protocol-conversion)
 - [Comparison to Musical Elements](#comparison-to-musical-elements)
 - [Integration Points](#integration-points)
-- [Implementation Strategy](#implementation-strategy)
 - [Consequences](#consequences)
 - [Related ADRs](#related-adrs)
 
