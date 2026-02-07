@@ -2,7 +2,7 @@
 
 **Status**: Accepted
 **Date**: 2024-09-14
-**Updated**: 2026-01-05 (6-stage architecture)
+**Updated**: 2026-02-07 (shared thread pool — single pool replaces dual cpu/priority pools)
 
 ## Table of Contents
 
@@ -22,7 +22,7 @@
 - [User Interaction Flow](#user-interaction-flow)
 - [Computational Scaling Characteristics](#computational-scaling-characteristics)
 - [Claypoole Integration Architecture](#claypoole-integration-architecture)
-  - [Threadpool Lifecycle Contract](#threadpool-lifecycle-contract)
+  - [Shared Threadpool](#shared-threadpool)
   - [Cancellation Contract](#cancellation-contract)
 - [Caching and Incremental Processing](#caching-and-incremental-processing)
   - [Client-Server Event Coordination](#client-server-event-coordination)
@@ -384,23 +384,26 @@ The 100-millisecond **asynchronous** batching interval amplifies computational e
 - Preserves input order (required for measure sequences and cross-measure elements)
 - Alternatives rejected: `cp/upmap` loses ordering, `cp/pfor`/`cp/future` require manual coordination
 
-### Threadpool Lifecycle Contract
+### Shared Threadpool
+
+The rendering pipeline uses the shared Claypoole thread pool (see Issue #142), injected via Integrant dependency. One pool serves all parallel workloads — rendering pipeline, event bus subscriber dispatch, and future consumers. This prevents thread proliferation: separate pools would create 2×cores threads competing for the same hardware.
+
+**Priority via task ordering, not pool separation:** Visible measures are processed first in each batch by ordering the work queue. The 100ms batching interval already provides the priority mechanism — just order correctly within each batch. A separate priority pool would sit idle while the CPU pool is saturated (or vice versa), waste resources, and introduce priority inversion failure modes.
 
 ```clojure
-(defmethod ig/init-key ::renderer [_ {:keys [cpu-cores]}]
-  (let [cores (or cpu-cores (.availableProcessors (Runtime/getRuntime)))]
-    {:cpu-pool (cp/threadpool cores)
-     :priority-pool (cp/priority-threadpool cores)  ; For visible measures
-     :metrics (atom {})}))
+;; Renderer receives shared pool via Integrant dependency injection
+(defmethod ig/init-key ::renderer [_ {:keys [thread-pool]}]
+  {:pool thread-pool   ; Shared Claypoole pool from :ooloi.shared.components/thread-pool
+   :metrics (atom {})})
 
-(defmethod ig/halt-key! ::renderer [_ renderer]
-  (when-let [cpu (:cpu-pool renderer)]
-    (cp/shutdown cpu))
-  (when-let [prio (:priority-pool renderer)]
-    (cp/shutdown prio)))
+;; No halt-key! pool shutdown — the shared pool component manages its own lifecycle
+
+;; Priority through task ordering within each batch
+(let [visible-measures (filter viewport-visible? dirty-measures)
+      background-measures (remove viewport-visible? dirty-measures)]
+  (cp/pmap shared-pool format-measure
+           (concat visible-measures background-measures)))
 ```
-
-Threadpools require explicit shutdown (daemon threads prevent JVM exit). Integrant manages lifecycle deterministically.
 
 ### Cancellation Contract
 
@@ -569,7 +572,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 - [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) - Stage 3 algorithm computing preamble on-demand and consuming gutter_width values for system breaking
 
 ### Technical Dependencies
-- **Claypoole**: Threadpool-based parallel processing library providing controlled CPU-intensive task execution
+- **Claypoole**: Threadpool-based parallel processing library providing controlled CPU-intensive task execution, consumed via shared thread pool Integrant component (`ooloi.shared.components.thread-pool`)
 - **Clojure STM**: Transaction system coordinating multi-stage updates
 - **gRPC Streaming**: Bi-directional communication for real-time invalidation events
 - **SMuFL Font Metadata**: Glyph dimension data essential for spatial requirement calculations
