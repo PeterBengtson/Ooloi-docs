@@ -66,7 +66,7 @@ The frontend must handle two fundamentally different event sources with incompat
 
 ## Decision
 
-**Separate Event Systems with Event Router:** Backend events handled by dedicated Event Router component; local events remain in JavaFX event system.
+**Three-Layer Event Architecture:** Backend events handled by dedicated Event Router component; frontend component communication handled by a local category-based event bus with Claypoole thread pool; UI input events remain in the JavaFX event system.
 
 ### Why This Decision
 
@@ -109,9 +109,36 @@ Backend events are notifications of staleness, not data carriers. When rendering
 
 ### Component Architecture
 
-The Event Router acts as a protocol adapter that transforms server events into frontend subsystem operations. It's not an event bus - it's a synchronization protocol.
+Three event layers serve distinct purposes: the local event bus handles frontend component communication, the Event Router acts as a protocol adapter for backend events, and the JavaFX event system handles UI input.
 
-#### 1. Backend Event Router (Integrant Component)
+#### 1. Local Event Bus (`ooloi.frontend.ui.event-bus`)
+
+Category-based pub/sub for frontend component communication, backed by a shared Claypoole thread pool. Used by the UI Manager for internal dispatch — window lifecycle events, notification routing, theme propagation, splash state tracking.
+
+**Interface:**
+
+```clojure
+(create-event-bus pool)          ; Factory — takes a Claypoole thread pool
+                                 ; Returns {:pool pool :subscribers (atom {})}
+
+(subscribe! bus category handler-fn)   ; Register handler for a category
+                                       ; Handler receives vector of events
+
+(unsubscribe! bus category handler-fn) ; Remove handler from a category
+
+(publish! bus category events)         ; Dispatch events to category subscribers
+                                       ; Each handler invoked via cp/future — non-blocking
+```
+
+**Properties:**
+- Category isolation: subscribers only receive events for their subscribed categories
+- Non-blocking delivery: each handler invoked on the Claypoole thread pool, never on the caller's thread
+- Exception isolation: one handler's failure does not affect other handlers or the publisher
+- No ordering guarantees across categories; within a category, all handlers receive the same event vector
+
+Not an Integrant component — the event bus is a data structure created by the UI Manager and passed to components that need it.
+
+#### 2. Backend Event Router (Integrant Component)
 - Subscribes to gRPC event streams via backend API (subscribe-to-piece-events, unsubscribe-from-piece-events)
 - Routes events to appropriate subsystems based on event category
 - Category aggregators: Batch events per category, one Platform.runLater() per flush
@@ -120,7 +147,7 @@ The Event Router acts as a protocol adapter that transforms server events into f
 - On disconnect: Stops receiving events
 - On reconnect: Resumes receiving events, no special protocol needed
 
-#### 2. Rendering Data Manager
+#### 3. Rendering Data Manager
 - Maintains VPD-indexed hierarchy mirroring backend visual structure:
   - Layout → PageViews → SystemViews → StaffViews → MeasureViews
 - Stores paintlists at each level (independent, not nested):
@@ -138,7 +165,7 @@ The Event Router acts as a protocol adapter that transforms server events into f
 - Complete piece rendering data stored locally - no eviction
 - Structure specified in ADR-0022
 
-#### 3. Fetch Coordinator
+#### 4. Fetch Coordinator
 - Prioritizes and batches refetch requests for any visual hierarchy level
 - Uses normal gRPC API calls (ADR-0018 generated methods) to fetch rendering data
 - Fetch granularity determined by event VPD (PageView, SystemView, StaffView, or MeasureView)
@@ -152,7 +179,7 @@ The Event Router acts as a protocol adapter that transforms server events into f
 - Backend returns complete paintlist data for requested level
 - Fixed thread pool (4-6 threads) services queues, CRITICAL drains before others
 
-#### 4. Subsystem Targets
+#### 5. Subsystem Targets
 Components that receive routed events:
 - Rendering Data Manager: Invalidation events
 - Collaboration UI Manager: Presence, cursors, selections
@@ -160,7 +187,7 @@ Components that receive routed events:
 - Connection Manager: System events, reconnection
 - Notification Manager: User-facing messages, errors
 
-#### 5. JavaFX Scene
+#### 6. JavaFX Scene
 - Render pass checks data staleness at hierarchy elements (detects whether paintlist is current or needs refetch)
 - Standard JavaFX event handlers for user input (clicks, drags, keyboard)
 - Hit-testing: Spatial queries on visible paintlists (bounding box intersection for glyphs, path proximity for curves) return paintlist VPDs. Uses timewalk (ADR-0014) to resolve VPDs to musical elements. Enables all graphical interactions: selection, editing, dragging, deletion.

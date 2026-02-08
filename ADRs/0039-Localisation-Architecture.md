@@ -240,21 +240,47 @@ The key directly becomes the `msgctxt` in the PO file. This allows translators t
 - Understand UI placement (menu vs dialog vs tooltip vs error)
 - Detect insufficient context and flag issues
 
-### Literal-Only Constraint
+### No Computed Keys
 
-Translation keys in frontend code must be literal keywords, never computed:
+The invariant is absolute: **no computed keys**. Every translation key must exist as a literal keyword somewhere in the source code, deterministically extractable by static analysis. Computed keys — keywords constructed at runtime from strings, variables, or function results — are forbidden. This is what makes build-time verification possible.
+
+**Forbidden** — computed keys that defeat static extraction:
 
 ```clojure
-;; Allowed
-(tr :menu.file.open)
-(tr :dialog.export.warning {:filename name})
-
-;; Forbidden
-(tr (keyword (str "menu." section "." action)))
-(tr (get key-map some-key))
+(tr (keyword (str "menu." section "." action)))  ; constructed at runtime
+(tr (get key-map some-key))                       ; resolved at runtime
 ```
 
-This constraint enables deterministic key extraction. A simple grep or static parse of the codebase produces the complete set of translation keys. Computed keys would require runtime tracing or program analysis, neither of which provides completeness guarantees.
+### Two Extraction Mechanisms
+
+Keys appear as literals through two mechanisms. Both are extracted by the build-time scanner; their union must match the `.po` file exactly.
+
+**`tr` calls** — the scanner extracts literal keyword arguments:
+
+```clojure
+(tr :menu.file.open)
+(tr :dialog.export.warning {:filename name})
+```
+
+When `tr` receives a non-literal argument (a variable, a function call), the scanner silently skips it. This is not a violation — data-driven infrastructure legitimately passes keywords through variables. The key itself was a literal at its declaration site.
+
+**`tr-declare` maps** — declares keys with their canonical English text:
+
+```clojure
+(tr-declare {:menu.file.open "Open…"
+             :menu.file.save "Save"
+             :menu.file.close "Close"})
+```
+
+`tr-declare` takes a literal map of keyword → default English string. It is a no-op at runtime. The build-time scanner extracts the keys for `.po` file verification and uses the default strings as `msgid` when auto-adding missing entries. Non-literal arguments to `tr-declare` are scanner errors.
+
+### Declaration Use Cases
+
+`tr-declare` serves two purposes:
+
+1. **Indirect keys** — keys that reach `tr` through data structures (dialog specs, command descriptors, notification specs). The key is a literal at the construction site but a variable at the `tr` call site. Declaration makes these keys visible to the scanner.
+
+2. **Key documentation** — declaring canonical English text alongside direct `tr` usage. A `tr-declare` at the top of a file provides a manifest of all translation keys that file uses, with their English text visible without opening the `.po` file. Files using this pattern have both `tr-declare` and `tr` calls for the same keys; the scanner deduplicates.
 
 ### Named Parameters
 
@@ -361,14 +387,14 @@ Developers run `lein i18n` during active development as new UI strings are added
 
 At build time (strict mode):
 
-1. Extract all `tr` keys from frontend source (possible because keys are literals)
+1. Extract all `tr` keys and `tr-declare` keys from frontend source
 2. Parse `en-GB.po` and extract all `msgctxt` values
-3. Assert: every key in code exists in `en-GB.po`
+3. Assert: the union of extracted + declared keys matches `en-GB.po` exactly
 4. Assert: no TODO placeholders remain in catalog
 
 Build fails if the canonical UK English catalog is incomplete or contains TODO entries. This prevents shipping UI elements without complete English translations.
 
-Implementation: Parse source with Clojure reader, extract literal keywords, compare against PO contents. The literal-only constraint makes this deterministic and reliable.
+Implementation: Parse source with Clojure reader, extract literal keywords from `tr` calls and `tr-declare` maps, compare union against PO contents. Deterministic and reliable.
 
 **Build Integration:**
 - Verification runs automatically during `lein build`
@@ -479,12 +505,14 @@ This architecture requires several distinct capabilities. The implementation str
 
 ### Key Extraction: Custom Implementation
 
-**Decision:** Custom source code scanner with literal-only verification.
+**Decision:** Custom source code scanner with two extraction mechanisms.
 
 **Rationale:**
-- Simple pattern: scan for `(tr :keyword)` using regex or parser
-- Literal-only enforcement: reject computed keys at build time
-- ~100 lines: file traversal + keyword extraction + verification
+- Two patterns: `(tr :keyword)` for direct usage, `(tr-declare {...})` for indirect keys
+- Non-literal `tr` arguments silently skipped (tolerance for data-driven infrastructure)
+- Non-literal `tr-declare` arguments are errors (map must be a literal)
+- Union of extracted + declared keys verified against `en-GB.po`
+- Declared defaults used as `msgid` when auto-adding missing entries
 - Build-time completeness check: all keys exist in `en-GB.po`
 
 ### Locale Loading: Direct Parsing
@@ -555,8 +583,8 @@ This architecture requires several distinct capabilities. The implementation str
 ```
 
 **Custom implementation:**
-- `ooloi.frontend.i18n.tr` — `tr` function, named parameters, plural selection, locale management (consumes potentilla output)
-- `ooloi.frontend.i18n.verify` — Key extraction, verification, auto-add mode, strict mode, colored output
+- `ooloi.frontend.i18n.tr` — `tr` function, `tr-declare` declaration function, named parameters, plural selection, locale management (consumes potentilla output)
+- `ooloi.frontend.i18n.verify` — Key extraction from `tr` calls and `tr-declare` maps, verification, auto-add mode with defaults, strict mode, colored output
 
 **Why this split:**
 - Library for complex parsing (saves ~400-600 lines, handles edge cases with ANTLR)
@@ -581,7 +609,7 @@ These are architectural constraints, not conventions. Violating any of them brea
 
 6. **No localisation logic in protocols, persistence, or collaboration paths.** These layers are locale-agnostic.
 
-7. **Translation keys are literal.** No computed keys, enabling deterministic extraction.
+7. **No computed keys.** Every translation key is a literal keyword in source code — either in a `tr` call or a `tr-declare` map. Keys constructed at runtime are forbidden.
 
 8. **PO files are the sole translator interface.** Translators never edit code, EDN, or internal formats.
 
