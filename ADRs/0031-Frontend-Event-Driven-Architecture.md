@@ -132,7 +132,7 @@ Category-based pub/sub for frontend component communication, backed by a shared 
 
 **Properties:**
 - Category isolation: subscribers only receive events for their subscribed categories
-- Non-blocking delivery: each handler invoked on the Claypoole thread pool, never on the caller's thread
+- Non-blocking delivery: each handler invoked as a Claypoole future on the shared thread pool, never on the caller's thread — a slow subscriber cannot block the publisher or other subscribers
 - Exception isolation: one handler's failure does not affect other handlers or the publisher
 - No ordering guarantees across categories; within a category, all handlers receive the same event vector
 
