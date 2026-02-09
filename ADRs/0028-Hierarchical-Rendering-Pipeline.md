@@ -386,7 +386,7 @@ The 100-millisecond **asynchronous** batching interval amplifies computational e
 
 ### Shared Threadpool
 
-The rendering pipeline uses the shared Claypoole thread pool (see Issue #142), injected via Integrant dependency. One pool serves all parallel workloads — rendering pipeline, event bus subscriber dispatch, and future consumers. This prevents thread proliferation: separate pools would create 2×cores threads competing for the same hardware.
+The rendering pipeline uses the shared Claypoole thread pool (see Issue #142), injected via Integrant dependency. One pool serves all parallel workloads — rendering pipeline, event bus subscriber dispatch, fetch coordinator, and future consumers. This prevents thread proliferation: separate pools would create 2×cores threads competing for the same hardware.
 
 **Priority via task ordering, not pool separation:** Visible measures are processed first in each batch by ordering the work queue. The 100ms batching interval already provides the priority mechanism — just order correctly within each batch. A separate priority pool would sit idle while the CPU pool is saturated (or vice versa), waste resources, and introduce priority inversion failure modes.
 

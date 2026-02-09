@@ -177,7 +177,7 @@ Not an Integrant component — the event bus is a data structure created by the 
 - When fetch completes, posts Platform.runLater() to update local rendering data and trigger repaint
 - Fetching is pull-based: Client requests specific hierarchy level when needed
 - Backend returns complete paintlist data for requested level
-- Fixed thread pool (4-6 threads) services queues, CRITICAL drains before others
+- Shared Claypoole pool (max 4 concurrent fetches) services queues, CRITICAL drains before others
 
 #### 5. Subsystem Targets
 Components that receive routed events:

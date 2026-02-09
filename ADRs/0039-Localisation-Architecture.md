@@ -177,7 +177,7 @@ At application startup (`init-locales!`):
    - If malformed: log error, skip locale, continue (locale falls back to en-GB at runtime)
 4. Keep all successfully parsed catalogs in memory for instant locale switching
 
-No EDN caching. Parsing is fast enough for startup, and keeping catalogs in memory eliminates cache invalidation complexity.
+Parsing is fast enough for startup, and keeping all catalogs in memory enables instant locale switching.
 
 **Error handling:** Malformed PO files return an error map from the parser. The loader catches this during step 3, logs the error, and excludes that locale from the available catalog. At runtime, attempts to use the failed locale fall back to `en-GB`.
 
@@ -477,7 +477,6 @@ This architecture requires several distinct capabilities. The implementation str
 **Rationale:**
 - Existing libraries use positional parameters (`%s`, `{0}`) — we require named (`%{param}`)
 - Our API must enforce literal keyword keys — no library does this
-- We need tight integration with our EDN cache format
 - Simple implementation: keyword lookup, named parameter substitution, plural selection
 
 **Signature:**
@@ -588,7 +587,7 @@ This architecture requires several distinct capabilities. The implementation str
 
 **Why this split:**
 - Library for complex parsing (saves ~400-600 lines, handles edge cases with ANTLR)
-- Custom for our constraints (named parameters, literal keys, our cache format)
+- Custom for our constraints (named parameters, literal keys, in-memory catalog format)
 - Clear ownership: we control the API, rely on library for format complexity
 - Testable: mock potentilla output, test our logic independently
 - Low risk: production-validated parser, minimal interop cost
