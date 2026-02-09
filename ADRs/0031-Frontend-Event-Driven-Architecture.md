@@ -212,7 +212,7 @@ graph TB
 
     subgraph "Data Layer"
         RDM[Rendering Data Manager<br/>VPD-indexed hierarchy<br/>4 atoms: Page/System/Staff/Measure]
-        FC[Fetch Coordinator<br/>4 Priority Queues<br/>Thread Pool 4-6 threads]
+        FC[Fetch Coordinator<br/>4 Priority Queues<br/>Shared Claypoole Pool max 4 concurrent]
     end
 
     subgraph "Subsystem Targets"
