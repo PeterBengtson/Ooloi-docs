@@ -368,8 +368,10 @@ Plugins use the same PO format, same tooling, same workflow. A translator workin
 Build-time verification operates in two modes depending on context:
 
 **Normal Mode** (development, `lein i18n`):
-- Extracts all `tr` keys from source
-- Auto-adds missing keys to `en-GB.po` with `[TODO: Translation needed]` placeholders
+- Extracts all `tr` keys and `tr-declare` keys from source
+- Auto-adds missing keys to `en-GB.po`:
+  - Keys with `tr-declare` defaults: fully populated (msgid and msgstr from default text)
+  - Keys from bare `tr` calls only: `[TODO: Translation needed]` placeholder as msgstr
 - Warns about TODO entries and orphaned keys
 - Never fails, supports rapid development iteration
 
@@ -381,7 +383,7 @@ Build-time verification operates in two modes depending on context:
 - Hard gate preventing incomplete artifacts
 
 **Development workflow:**
-Developers run `lein i18n` during active development as new UI strings are added. Missing translation keys are automatically added with TODO placeholders, keeping the catalog synchronized with code. The build pipeline then verifies this work was completed—running `lein i18n :strict true` to ensure all TODO placeholders have been replaced with actual translations before creating artifacts.
+Developers run `lein i18n` during active development as new UI strings are added. Missing keys with `tr-declare` defaults are auto-populated with canonical English text; keys from bare `tr` calls get TODO placeholders. The build pipeline then verifies completeness—running `lein i18n :strict true` to ensure all TODO placeholders have been replaced with actual translations before creating artifacts.
 
 ### Canonical Completeness (Hard Gate)
 
@@ -511,7 +513,7 @@ This architecture requires several distinct capabilities. The implementation str
 - Non-literal `tr` arguments silently skipped (tolerance for data-driven infrastructure)
 - Non-literal `tr-declare` arguments are errors (map must be a literal)
 - Union of extracted + declared keys verified against `en-GB.po`
-- Declared defaults used as `msgid` when auto-adding missing entries
+- Declared defaults used as both `msgid` and `msgstr` when auto-adding missing entries
 - Build-time completeness check: all keys exist in `en-GB.po`
 
 ### Locale Loading: Direct Parsing
@@ -554,11 +556,11 @@ This architecture requires several distinct capabilities. The implementation str
 
 **Decision:** Custom build task with dual-mode operation.
 
-**Implementation** (`frontend/src/main/clojure/ooloi/frontend/i18n/verify.clj`):
+**Implementation** (`shared/src/main/clojure/ooloi/shared/i18n/verify.clj`):
 - Parse source with Clojure reader (not regex)
 - Extract literal keywords (reject computed keys)
 - Compare against `en-GB.po` msgctxt values
-- Auto-add mode: append missing keys with TODO placeholders
+- Auto-add mode: append missing keys (tr-declare defaults as msgstr, TODO for bare tr keys)
 - Strict mode: fail on missing keys or TODO entries
 - Colored terminal output (ANSI codes)
 - Multiple source directory support
@@ -576,14 +578,14 @@ This architecture requires several distinct capabilities. The implementation str
 
 ### Dependency Summary
 
-**Added to frontend/project.clj:**
+**Added to shared/project.clj:**
 ```clojure
 [com.soberlemur/potentilla "0.0.3"]  ; PO file parsing (ANTLR-based, Java interop)
 ```
 
 **Custom implementation:**
-- `ooloi.frontend.i18n.tr` — `tr` function, `tr-declare` declaration function, named parameters, plural selection, locale management (consumes potentilla output)
-- `ooloi.frontend.i18n.verify` — Key extraction from `tr` calls and `tr-declare` maps, verification, auto-add mode with defaults, strict mode, colored output
+- `ooloi.shared.i18n.tr` — `tr` function, `tr-declare` declaration function, named parameters, plural selection, locale management (consumes potentilla output)
+- `ooloi.shared.i18n.verify` — Key extraction from `tr` calls and `tr-declare` maps, verification, auto-add mode with defaults, strict mode, colored output
 
 **Why this split:**
 - Library for complex parsing (saves ~400-600 lines, handles edge cases with ANTLR)
