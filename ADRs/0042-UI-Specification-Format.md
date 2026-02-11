@@ -12,6 +12,8 @@
 - [Decision](#decision)
   - [Approach](#approach)
   - [Metadata Keys](#metadata-keys)
+  - [Content Builder Pattern](#content-builder-pattern-updated-2026-02-11)
+  - [Architectural Invariants](#architectural-invariants)
   - [Command Descriptors (Menu Specialisation)](#command-descriptors-menu-specialisation)
   - [Validation Strategy](#validation-strategy)
   - [Window Manager Integration](#window-manager-integration)
@@ -143,7 +145,80 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 **`:window/default-scale`** (double, optional)
 - Default zoom/scale factor: `1.0`, `1.5`, etc.
 
+**`:window/style`** (keyword, optional)
+- JavaFX StageStyle: `:decorated` (default), `:undecorated`, `:transparent`, `:utility`
+- Example: `:undecorated` for splash screen and About dialog
+
+**`:window/menu-bar`** (JavaFX MenuBar, optional)
+- Pre-built MenuBar instance to attach to the window's VBox root
+- On macOS with `:use-system-menu-bar true`, the bar integrates with the system menu
+
+**`:window/content`** (JavaFX Node, optional)
+- Content node to add to the window's VBox root with `VGrow/ALWAYS`
+- Produced by content builder functions (see Content Builder Pattern below)
+- When neither `:width` nor `:height` is specified, the Scene sizes itself from content
+
+**`:window/title-key`** (keyword, optional)
+- ADR-0039 translation key resolved via `tr` for the window title
+- Example: `:window/title-key :window.tool-palette.title` → title "Tools"
+
+### Content Builder Pattern (Updated 2026-02-11)
+
+UI elements that need custom content — splash screens, About dialogs, future tool palettes — follow the **content builder pattern**. A `build-*-content!` function constructs JavaFX nodes and returns a map of the root node plus any references the caller needs. The UI Manager's `show-window!` handles everything else: Stage creation, theming, registry, platform concerns.
+
+```clojure
+;; Content builder — returns nodes, never a Stage
+(defn build-about-content! []
+  (let [root (StackPane.)
+        ok-btn (Button. (tr :button.ok))]
+    ;; ... assemble content ...
+    {:root root :ok-button ok-btn}))
+
+;; Caller uses show-window! with :window/content
+(let [{:keys [root ok-button]} (about/build-about-content!)
+      stage (um/show-window! mgr
+              {:window/id :about
+               :window/content root
+               :window/style :undecorated
+               :title "About Ooloi"
+               :width 800 :height 700})]
+  (.setOnAction ok-button
+    (reify EventHandler (handle [_ _] (.close stage)))))
+```
+
+**The contract:**
+- `build-*-content!` returns `{:root Node, ...}` — the root node and any interactive references (buttons, labels)
+- `build-*-content!` never imports Stage, Scene, or StageStyle
+- The caller passes `:root` as `:window/content` to `show-window!`
+- The UI Manager handles Stage creation, theming, registry tracking, and platform behaviour (e.g. `initOwner` on macOS)
+
+This pattern ensures all windows go through the same path regardless of their content complexity.
+
 ### Architectural Invariants
+
+**All Windowing Goes Through the UI Manager**
+
+No code outside the UI Manager creates Stage or Scene objects directly. The UI Manager's `show-window!` is the single entry point for all window creation. This ensures consistent theming, registry tracking, platform behaviour (macOS `initOwner` for system menu bar inheritance), and lifecycle management.
+
+Content builders produce nodes. The UI Manager produces windows.
+
+```clojure
+;; ✅ CORRECT — Content builder returns nodes, UI Manager creates window
+(let [{:keys [root label]} (splash/build-splash-content!)]
+  (um/show-window! mgr {:window/id :splash
+                         :window/content root
+                         :window/style :undecorated}))
+
+;; ❌ WRONG — Direct Stage creation bypasses all infrastructure
+(let [stage (Stage. StageStyle/UNDECORATED)
+      scene (Scene. root)]
+  (.setScene stage scene)
+  (.show stage))
+```
+
+**Invariant:** If code imports `javafx.stage.Stage` or `javafx.scene.Scene` to create new instances, it is violating this invariant. Only the windowing infrastructure (`window.clj`, `ui_manager.clj`) may do so.
+
+**macOS Platform Behaviour:** On macOS, `register-window!` automatically calls `.initOwner` on non-main windows, setting the main Stage as owner. This ensures secondary windows (About, tool palettes) inherit the system menu bar. Without this, focused secondary windows show a blank menu bar.
 
 **Theme Application is Automatic**
 
