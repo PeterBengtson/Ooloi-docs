@@ -123,13 +123,18 @@ stateDiagram-v2
 - **Host permissions**: Full control including read, write, save, print, delete, invite, and permission management
 - **Guest permissions**: Default read-only access; invitations can specify additional permissions (write, save, print, etc.) if the invitation token is encrypted in transit. Host can also grant or revoke permissions after connection.
 - **Client registry**: Tracks email identity, role, granted permissions, connection timestamps, and session identifiers
-- **Collaboration history**: The host instance persists a local log of invitations, logins, and (optionally) modifications made by each collaborator. Previous permission assignments are remembered per collaborator email, so re-inviting the same person defaults to their last-used permissions rather than read-only.
+- **Collaborator registry**: The host persists a collaborator registry (EDN) mapping each email to display name, last-used permissions, and list of accessible piece IDs. Re-inviting the same person defaults to their stored name and last-used permissions rather than read-only. The display name is provided with the initial invitation and reused automatically for subsequent invitations to the same email.
+- **Collaboration log**: The host writes a text log of invitations, logins, disconnections, and (optionally) modifications made by each collaborator. The log is append-only and human-readable.
+- **Piece access registry**: The host tracks which pieces each collaborator (by email) has been granted access to. This enables file choosers to filter the local piece library to only show pieces the connected guest is authorised to see. Essential for server deployments where the piece library may contain hundreds of scores belonging to different users.
+- **Storage location**: All collaboration data (collaborator registry, logs, piece access mappings) is stored in the platform-specific local storage folder:
+  - **macOS/Linux**: `~/.ooloi/collaboration/`
+  - **Windows**: `%APPDATA%/Ooloi/collaboration/`
 - **Authorization enforcement**: gRPC interceptor validates permissions for each operation before execution
 
 ### Email-Based Invitation System
 
 **Invitation Flow**:
-1. Host creates invitation with guest email and configurable expiration (1 hour for quick help, 24 hours default, 1 week for extended collaboration)
+1. Host creates invitation with guest name, email, and configurable expiration (1 hour for quick help, 24 hours default, 1 week for extended collaboration). The name is associated with the email and reused for future invitations to the same address.
 2. Email sent with clickable link (`ooloi://join?token=...`) and connection details
 3. Guest accepts invitation → validates token → receives JWT with guest role and permissions from invitation
 4. Guest connects to host's network server using JWT authentication
@@ -332,9 +337,10 @@ This design prioritizes **ease of use over technical sophistication** - the righ
 - All operations checked by authorization interceptor; client-side UI is convenience only
 
 **Audit Trail**:
-- Host instance logs all invitations, logins, disconnections, and permission changes locally
+- Host writes an append-only text log of all invitations, logins, disconnections, and permission changes
 - Optional modification logging: host can enable tracking of what each collaborator modifies (off by default for privacy)
-- Collaboration history persisted across sessions — re-inviting a collaborator recalls their previous permission assignments
+- Collaborator registry (EDN) persisted across sessions — re-inviting a collaborator recalls their display name and previous permission assignments
+- All collaboration data stored in platform-specific local storage (`~/.ooloi/collaboration/` on macOS/Linux, `%APPDATA%/Ooloi/collaboration/` on Windows)
 - Integration with ADR-0021 authentication logging
 - Compliance support for FERPA, GDPR audit requirements
 
