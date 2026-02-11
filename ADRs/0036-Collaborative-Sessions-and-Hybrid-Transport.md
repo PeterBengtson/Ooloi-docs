@@ -123,6 +123,7 @@ stateDiagram-v2
 - **Host permissions**: Full control including read, write, save, print, delete, invite, and permission management
 - **Guest permissions**: Default read-only access; invitations can specify additional permissions (write, save, print, etc.) if the invitation token is encrypted in transit. Host can also grant or revoke permissions after connection.
 - **Client registry**: Tracks email identity, role, granted permissions, connection timestamps, and session identifiers
+- **Collaboration history**: The host instance persists a local log of invitations, logins, and (optionally) modifications made by each collaborator. Previous permission assignments are remembered per collaborator email, so re-inviting the same person defaults to their last-used permissions rather than read-only.
 - **Authorization enforcement**: gRPC interceptor validates permissions for each operation before execution
 
 ### Email-Based Invitation System
@@ -331,7 +332,9 @@ This design prioritizes **ease of use over technical sophistication** - the righ
 - All operations checked by authorization interceptor; client-side UI is convenience only
 
 **Audit Trail**:
-- Complete logging of invitation creation, acceptance, connection, permission changes
+- Host instance logs all invitations, logins, disconnections, and permission changes locally
+- Optional modification logging: host can enable tracking of what each collaborator modifies (off by default for privacy)
+- Collaboration history persisted across sessions — re-inviting a collaborator recalls their previous permission assignments
 - Integration with ADR-0021 authentication logging
 - Compliance support for FERPA, GDPR audit requirements
 
