@@ -121,7 +121,7 @@ stateDiagram-v2
 
 **Permission Model**:
 - **Host permissions**: Full control including read, write, save, print, delete, invite, and permission management
-- **Guest permissions**: Default read and write access only; host grants elevated permissions (save, print, etc.) on per-guest basis
+- **Guest permissions**: Default read-only access; invitations can specify additional permissions (write, save, print, etc.) if the invitation token is encrypted in transit. Host can also grant or revoke permissions after connection.
 - **Client registry**: Tracks email identity, role, granted permissions, connection timestamps, and session identifiers
 - **Authorization enforcement**: gRPC interceptor validates permissions for each operation before execution
 
@@ -130,12 +130,13 @@ stateDiagram-v2
 **Invitation Flow**:
 1. Host creates invitation with guest email and configurable expiration (1 hour for quick help, 24 hours default, 1 week for extended collaboration)
 2. Email sent with clickable link (`ooloi://join?token=...`) and connection details
-3. Guest accepts invitation → validates token → receives JWT with guest role and default permissions
+3. Guest accepts invitation → validates token → receives JWT with guest role and permissions from invitation
 4. Guest connects to host's network server using JWT authentication
 
 **Authentication Integration** (ADR-0021):
 - Invitation tokens are single-use, time-limited credentials
-- Upon acceptance, system generates JWT token with guest claims: email identity, guest role, session ID, and default permissions (read, write)
+- Invitation tokens carry permission grants; these are encrypted in transit to prevent tampering
+- Upon acceptance, system generates JWT token with guest claims: email identity, guest role, session ID, and granted permissions (read-only by default; invitation may specify additional permissions)
 - JWT enables authorized access to collaboration session
 
 ### Frontend Context Switching
@@ -246,7 +247,7 @@ This design prioritizes **ease of use over technical sophistication** - the righ
 
 1. **Security Model**: Clear distinction between session owner (host) and participants (guests)
 2. **Control Preservation**: Host retains authority over save/print operations and piece integrity
-3. **Collaboration Safety**: Guests can edit but can't destructively save over host's files
+3. **Collaboration Safety**: Guests are read-only by default; write and save permissions require explicit grant
 4. **Education Scenarios**: Teacher helps student without overwriting student's work
 5. **Professional Workflows**: Engraver reviews composer's work without file system access
 
@@ -325,7 +326,7 @@ This design prioritizes **ease of use over technical sophistication** - the righ
 - Email verification provides out-of-band authentication factor
 
 **Authorization**:
-- Default guest permissions are read/write only (no save/print/delete)
+- Default guest permissions are read-only; additional permissions (write, save, print) require explicit grant via invitation or host action after connection
 - Host explicitly grants elevated permissions on per-guest basis
 - All operations checked by authorization interceptor; client-side UI is convenience only
 
