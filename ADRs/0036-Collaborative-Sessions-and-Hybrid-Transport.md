@@ -126,7 +126,7 @@ stateDiagram-v2
 - **Collaborator registry**: The host persists a collaborator registry (EDN) mapping each email to display name, last-used permissions, and list of accessible piece IDs. Re-inviting the same person defaults to their stored name and last-used permissions rather than read-only. The display name is provided with the initial invitation and reused automatically for subsequent invitations to the same email.
 - **Collaboration log**: The host writes a text log of invitations, logins, disconnections, and (optionally) modifications made by each collaborator. The log is append-only and human-readable.
 - **Piece access registry**: The host tracks which pieces each collaborator (by email) has been granted access to. This enables file choosers to filter the local piece library to only show pieces the connected guest is authorised to see. Essential for server deployments where the piece library may contain hundreds of scores belonging to different users.
-- **Storage location**: All collaboration data (collaborator registry, logs, piece access mappings) is stored in the platform-specific local storage folder:
+- **Storage location**: All collaboration data (collaborator registry, logs, piece access mappings) is stored under the standard Ooloi platform storage folder, which also holds TLS certificates, translations, UI settings (dark/light mode, window state), and user identity (email):
   - **macOS/Linux**: `~/.ooloi/collaboration/`
   - **Windows**: `%APPDATA%/Ooloi/collaboration/`
 - **Authorization enforcement**: gRPC interceptor validates permissions for each operation before execution
