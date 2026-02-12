@@ -630,3 +630,4 @@ Frontend plugins can use direct callback functions since they don't cross gRPC b
 - **ADR-0038:** Backend-Authoritative Rendering - Defines cljfx responsibilities ("Windows, dialogs, menus, input handlers")
 - **ADR-0039:** Localisation Architecture - Requires all UI strings use translation keys
 - **ADR-0003:** Plugins - Plugin architecture requirements
+- **ADR-0043:** Frontend Settings - Application preferences system with registry-driven Settings dialog

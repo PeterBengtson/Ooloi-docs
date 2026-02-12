@@ -259,6 +259,7 @@ lein run
 | **TLS Certificate** | `--cert-path PATH` | `OOLOI_CERT_PATH` | platform default | Path to TLS certificate file (created if missing) |
 | **TLS Private Key** | `--key-path PATH` | `OOLOI_KEY_PATH` | platform default | Path to TLS private key file (created if missing) |
 | **Health Port** | `--health-port 10701` | `OOLOI_HEALTH_PORT` | 10701 | HTTP health endpoint port for monitoring |
+| **Thread Pool Size** | `--thread-pool-size 4` | `OOLOI_THREAD_POOL_SIZE` | -1 (cores−1) | Shared thread pool size |
 
 **Health Monitoring**:
 - **Health Port**: HTTP endpoint for external monitoring tools (load balancers, ops dashboards)

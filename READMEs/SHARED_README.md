@@ -97,22 +97,20 @@ KEY: Same data structures, same functions, same everything.
 
 See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) for complete shared model architecture, unified system design, and multi-project integration details.
 
-### Future Combined System Architecture
+### Combined System Architecture
 
-**Note:** The shared project will eventually include `system.clj` for combined deployment scenarios:
+The shared project includes `system.clj` and `app.clj` (in `src/app/clojure`) for combined deployment, composing all backend and frontend components into a single JVM process.
 
-**Combined System Components (Planned):**
-- **Backend Components**: piece-manager, grpc-server, http-server, cache-daemon (from backend project)
-- **Frontend Components**: grpc-clients, ui-manager (from frontend project)
-- **Startup Order**: Backend components initialize first, then frontend components connect
+**Combined System Components:**
+- **Backend Components**: piece-manager, grpc-server, http-server, cache-daemon
+- **Frontend Components**: grpc-clients, ui-manager
+- **Shared Components**: thread-pool
+- **Startup Order**: Backend components initialize first, then frontend components connect via in-process transport
 
-**Current Status:**
-- Backend system.clj always starts all backend components (piece-manager, grpc-server, http-server, cache-daemon)
-- Frontend system.clj always starts all frontend components (grpc-clients, ui-manager)
-- Combined deployment will be implemented in shared/system.clj when frontend stabilizes
-- Test helpers (with-server, with-clients) remain fully functional for component-level testing
-
-**Dependency:** Combined system architecture depends on stable component definitions in both backend and frontend projects. The implementation awaits frontend component stabilization.
+**Configuration Framework:**
+- Declarative config specs in each project define CLI switches, env vars, defaults, and validation
+- Shared machinery in `ooloi.shared.config` interprets these specs (parsing, merging, injection, error handling)
+- Each project provides its own specs; the combined app merges all three
 
 ## Directory structure
 
@@ -338,12 +336,19 @@ The combined application accepts the **union** of all backend and frontend CLI a
 | `--cert-path PATH` | file path | platform default | Path to server's public certificate |
 | `--key-path PATH` | file path | platform default | Path to server's private key (backend only) |
 | `--health-port PORT` | 1-65535 | 10701 | HTTP health endpoint port |
+| `--thread-pool-size N` | integer | -1 (cores−1) | Shared thread pool size |
 
 **Frontend Component Configuration:**
 
 | **Argument** | **Values** | **Default** | **Description** |
 |--------------|------------|-------------|-----------------|
 | `--ui-mode MODE` | graphical, headless | graphical | User interface display mode |
+
+**Peer Connection Configuration:**
+
+| **Argument** | **Values** | **Default** | **Description** |
+|--------------|------------|-------------|-----------------|
+| `--peer-port PORT` | 1-65535 | 10702 | Peer-to-peer connection port |
 
 **Note on Transport:** The combined application always uses in-process transport for maximum performance. Transport is not configurable - if you need network transport, run backend and frontend separately.
 
@@ -361,12 +366,19 @@ The combined application accepts the **union** of all backend and frontend envir
 | `OOLOI_CERT_PATH` | --cert-path | platform default | Path to server's public certificate |
 | `OOLOI_KEY_PATH` | --key-path | platform default | Path to server's private key (backend only) |
 | `OOLOI_HEALTH_PORT` | --health-port | 10701 | HTTP health endpoint port |
+| `OOLOI_THREAD_POOL_SIZE` | --thread-pool-size | -1 (cores−1) | Shared thread pool size |
 
 **Frontend Component Environment Variables:**
 
 | **Environment Variable** | **CLI Equivalent** | **Default** | **Description** |
 |-------------------------|-------------------|-------------|-----------------|
-| `OOLOI_FRONTEND_UI_MODE` | --ui-mode | graphical | User interface display mode |
+| `OOLOI_UI_MODE` | --ui-mode | graphical | User interface display mode |
+
+**Peer Connection Environment Variables:**
+
+| **Environment Variable** | **CLI Equivalent** | **Default** | **Description** |
+|-------------------------|-------------------|-------------|-----------------|
+| `OOLOI_PEER_CONNECTION_PORT` | --peer-port | 10702 | Peer-to-peer connection port |
 
 **Note on Transport:** The combined application always uses in-process transport. No transport-related environment variables are supported - if you need network transport, run backend and frontend separately.
 

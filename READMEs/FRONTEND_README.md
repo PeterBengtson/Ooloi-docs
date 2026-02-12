@@ -197,6 +197,7 @@ lein run -- --backend-host localhost --backend-port 10700 --ui-mode graphical --
 | `--timeout-ms MS` | milliseconds | 5000 | Backend connection timeout |
 | `--tls FLAG` | true, false | false | Enable TLS encryption for backend connection |
 | `--cert-path PATH` | file path | auto-discovered | Path to server's public certificate (TLS only) |
+| `--thread-pool-size N` | integer | -1 (cores−1) | Shared thread pool size |
 
 **Argument Validation:**
 - Port numbers are validated as integers within valid range
@@ -216,6 +217,7 @@ All CLI arguments have corresponding environment variable alternatives:
 | `OOLOI_FRONTEND_TIMEOUT_MS` | --timeout-ms | Connection timeout in milliseconds |
 | `OOLOI_FRONTEND_TLS` | --tls | Enable TLS (true/false) |
 | `OOLOI_FRONTEND_CERT_PATH` | --cert-path | Path to server's public certificate |
+| `OOLOI_THREAD_POOL_SIZE` | --thread-pool-size | Shared thread pool size |
 
 **Configuration Precedence:** CLI arguments override environment variables, which override application defaults.
 
@@ -467,7 +469,7 @@ For interactive development, you can start a REPL:
 lein repl
 ```
 
-The REPL will start in the `ooloi.frontend.core` namespace.
+The REPL will start in the `ooloi.frontend.app` namespace.
 
 ## Development Commands
 

@@ -353,6 +353,7 @@ Key implementation aspects:
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural boundaries maintained by settings-in-piece-data approach
 - [ADR-0008: Vector Path Descriptors](0008-VPDs.md) - VPD integration providing uniform access patterns
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Establishes that backend has no application settings, only piece data
+- [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) - Companion system for global application preferences (frontend-only); borrows validation patterns from this ADR
 
 ### Technical Dependencies
 - **Methodical**: Multimethod system providing polymorphic dispatch foundation
