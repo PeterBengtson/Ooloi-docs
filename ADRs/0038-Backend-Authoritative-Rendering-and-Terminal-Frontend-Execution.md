@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-01-07
+**Updated:** 2026-02-13 (Event Router as pure pipeline publishing to frontend event bus, RDM threading model)
 
 ## Table of Contents
 
@@ -116,9 +117,9 @@ We establish **backend-authoritative rendering with terminal frontend execution*
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │  Event Router (Integrant Component - ADR-0031)             │ │
 │  │  - Receives gRPC event stream                              │ │
-│  │  - Routes :piece-invalidation to Rendering Data Manager    │ │
-│  │  - Category aggregation: 50-100ms batches                  │ │
-│  │  - Posts Platform.runLater() per batch                     │ │
+│  │  - Categorises and batches events (50-100ms windows)       │ │
+│  │  - Publishes batches to frontend event bus (eb/publish!)   │ │
+│  │  - No direct handlers; downstream via UI Manager           │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │                               ↓                                 │
 │  ┌────────────────────────────────────────────────────────────┐ │
@@ -134,7 +135,7 @@ We establish **backend-authoritative rendering with terminal frontend execution*
 │  │  Fetch Coordinator (ADR-0031)                              │ │
 │  │  - 4 priority queues (Critical/High/Normal/Low)            │ │
 │  │  - Background threads call gRPC API                        │ │
-│  │  - Updates Rendering Data Manager via Platform.runLater()  │ │
+│  │  - Updates RDM (background); repaints via fx/run-later!     │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │                               ↓                                 │
 │  ┌────────────────────────────────────────────────────────────┐ │
@@ -222,29 +223,75 @@ Backend's 6-stage pipeline produces all drawing instructions:
 
 ### Frontend Components
 
+The following components implement the terminal frontend execution model. Events flow top-to-bottom; rendering data is fetched on demand:
+
+```
+┌──────────────────────────────────────┐
+│          Backend Server              │
+│  piece changes · presence · playback │
+└───────────────┬──────────────────────┘
+                │ gRPC event stream
+                ▼
+┌─────────────────────────────────────┐
+│          Event Client               │
+│  protobuf → Clojure map             │
+│  process-received-event             │
+└───────────────┬─────────────────────┘
+                │ individual events
+                ▼
+┌─────────────────────────────────────┐
+│    Event Router — Layer 3           │
+│  categorise → batch → publish       │
+│  time windows: 16ms – 100ms         │
+└───────────────┬─────────────────────┘
+                │ eb/publish!
+                │ (category, [events])
+                ▼
+┌─────────────────────────────────────┐    Frontend publishers
+│    Frontend Event Bus — Layer 2     │◄── start-app!
+│  category-based pub/sub             │◄── show-window!
+│  Claypoole thread pool delivery     │◄── set-app-setting!
+└───────────────┬─────────────────────┘
+                │ Claypoole futures
+                ▼
+┌─────────────────────────────────────┐
+│    UI Manager (central mediator)    │
+│  subscribes to all categories       │
+│  dispatches reactions               │
+└───────┬─────────────────┬───────────┘
+        │                 │
+        │ fx/run-later!   │ background work
+        ▼                 ▼
+┌────────────────┐  ┌────────────────┐
+│  JAT — Layer 1 │  │ Fetch Coord.,  │
+│  UI updates,   │  │ atom updates,  │
+│  theme, notifs │  │ stale marking  │
+└────────────────┘  └────────────────┘
+```
+
 #### 1. Event Router (Integrant Component)
 
-Routes backend gRPC events to frontend subsystems. This is a protocol adapter, not a unified event bus. JavaFX local events remain in JavaFX.
+Pure protocol adapter: categorises backend gRPC events, batches them by category with time windows, and publishes each batch to the frontend event bus (ADR-0031). JavaFX local events remain in JavaFX.
 
 **Responsibilities:**
 - Subscribe to gRPC event streams
 - Derive routing category from event type
 - Batch events by category with time windows
-- Post a single Platform.runLater() per batch
-- Coordinate atomic invalidation response: mark RDM stale AND queue FC fetch
+- Publish one `eb/publish!` per category batch to the frontend event bus
+- No direct category handlers — all downstream processing happens through bus subscribers mediated by the UI Manager
 - No rendering details; no UI chrome
 
-**Invalidation Coordination:**
+**Invalidation Flow:**
 
-For `:piece-invalidation` events, Event Router coordinates RDM and Fetch Coordinator as a unified atomic response:
+For `:cache-invalidation` events (the routing category derived from `:piece-invalidation` event types — see ADR-0031), the UI Manager's bus subscriber coordinates RDM and Fetch Coordinator:
 
 ```clojure
-;; Atomic invalidation response
-(rdm/mark-stale! rendering-data-manager vpd)              ; Mark stale
+;; UI Manager's :cache-invalidation handler (runs on Claypoole future thread)
+(rdm/mark-stale! rendering-data-manager vpd)              ; Mark stale (background-safe)
 (fc/queue-fetch! fetch-coordinator vpd piece-id :critical) ; Queue refetch
 ```
 
-This atomic coordination ensures no intermediate state where cache is marked stale but no refetch is queued.
+This coordination ensures no intermediate state where cache is marked stale but no refetch is queued.
 
 #### 2. Rendering Data Manager
 
@@ -255,7 +302,7 @@ VPD-indexed storage of backend-provided paintlists with staleness tracking. This
 - Track staleness per VPD
 - Provide O(1) lookup for rendering
 - Coordinate with Fetch Coordinator for refetch requests
-- All mutations on JavaFX Application Thread (via Platform.runLater)
+- Pure data cache (atoms) — updates happen on background threads; only subsequent scene graph repaints use `fx/run-later!`
 
 **Atomic Operations:**
 
@@ -268,12 +315,13 @@ RDM operations are atomic. `update-paintlist!` updates the paintlist AND clears 
 
 #### 3. Fetch Coordinator
 
-Priority-based fetching of paintlists from backend via normal gRPC API calls. All network work happens off the JavaFX Application Thread; updates are applied via Platform.runLater.
+Priority-based fetching of paintlists from backend via normal gRPC API calls. All network work happens off the JavaFX Application Thread; RDM updates happen on background threads, scene graph repaints are scheduled via `fx/run-later!`.
 
 **Responsibilities:**
 - Maintain priority queues (Critical/High/Normal/Low)
 - Perform background gRPC fetches
-- Apply results on JavaFX Application Thread
+- Update Rendering Data Manager on background thread
+- Schedule scene graph repaint via `fx/run-later!`
 - Implement retry/backoff/error reporting policy
 
 **Priority Level Usage:**
@@ -286,7 +334,7 @@ Priority-based fetching of paintlists from backend via normal gRPC API calls. Al
 Invalidation events queue at Critical priority to ensure visible viewport updates process immediately before speculative prefetch.
 
 **Not responsible for:**
-- Determining invalidation semantics (Event Router + RDM)
+- Determining invalidation semantics (UI Manager + RDM)
 - Rendering the paintlists (Skija layer)
 - Any engraving/layout logic (backend)
 
@@ -327,10 +375,10 @@ cljfx is used for windowing, dialogs, menus, palettes, and input handling. It pr
 2. Frontend sends an API command to backend (gRPC call). This is the only way rendering can change.
 3. Backend updates piece in STM, recomputes affected paintlists via ADR-0028 pipeline.
 4. Backend emits `:piece-invalidation` events with VPD scope (ADR-0024 FIFO per client).
-5. Event Router batches invalidations (50–100ms), posts a single Platform.runLater.
-6. Rendering Data Manager marks affected VPDs stale.
-7. Fetch Coordinator queues and performs gRPC fetches for fresh paintlists.
-8. Platform.runLater updates paintlists, invalidates Picture cache entries, requests repaint.
+5. Event Router categorises `:piece-invalidation` events as `:cache-invalidation`, batches (50–100ms), publishes batch to frontend event bus.
+6. UI Manager's bus subscriber marks affected VPDs stale in RDM and queues refetches.
+7. Fetch Coordinator performs background gRPC fetches for fresh paintlists.
+8. Fetch Coordinator updates RDM paintlists (background), then schedules `fx/run-later!` to invalidate Pictures and request repaint.
 9. JavaFX paint callback triggers Skija to render fresh paintlists.
 
 **Latency target:** <150ms p95 for visible edits (to be validated by measurement).
@@ -341,7 +389,7 @@ cljfx is used for windowing, dialogs, menus, palettes, and input handling. It pr
 2. Viewport calculation determines newly visible VPDs.
 3. For missing or stale VPDs, Fetch Coordinator queues fetches (HIGH priority for visible missing).
 4. Placeholders may render while fetching.
-5. When paintlists arrive, Platform.runLater updates and repaint occurs.
+5. When paintlists arrive, RDM updates on background thread; `fx/run-later!` invalidates Pictures and triggers repaint.
 
 No backend events are required for demand loading. Backend events only indicate staleness due to changes.
 
@@ -375,42 +423,52 @@ On reconnect:
 ```
 Backend Event
     ↓
-Event Router
+Event Router: categorise → batch → eb/publish!
     ↓
-Platform.runLater()
+Frontend Event Bus → UI Manager
     ↓
-Rendering Data Manager: Mark VPD stale
-    ↓
-Fetch Coordinator: Queue gRPC fetch
+UI Manager handler (Claypoole thread):
+    RDM: mark VPD stale (atom — background-safe)
+    FC:  queue gRPC fetch
     ↓
 Background Thread: api/fetch-measure-view(vpd)
     ↓
-Platform.runLater()
+Fetch Coordinator callback (background thread):
+    RDM: update paintlist (Level 1, atom — background-safe)
     ↓
-Rendering Data Manager: Update paintlist (Level 1)
+fx/run-later!
     ↓
-Skija Layer: Invalidate Picture (Level 2)
+JAT callback:
+    Skija: invalidate Picture (Level 2)
+    request-repaint!
     ↓
 Next Render: Regenerate Picture from fresh paintlist
 ```
 
-**Critical Synchronization Constraint:** Level 1 paintlist update and Level 2 Picture invalidation MUST occur synchronously within the same `Platform.runLater()` callback. They cannot be split across separate callbacks. This atomic execution prevents any rendering window where Level 1 is fresh but Level 2 still holds a stale Picture (or vice versa). Implementation example:
+**Critical Synchronization Invariant — applies globally, not only to this flow:**
+
+Any code path that updates a paintlist and triggers repaint must obey these three rules:
+
+1. **Level 1 before Level 2.** The RDM atom update (background-safe) must complete before Level 2 Picture invalidation begins on JAT.
+2. **Invalidation + repaint are atomic on JAT.** Picture invalidation and repaint request must occur in a single `fx/run-later!` callback — never split across separate callbacks.
+3. **RDM atoms stay off JAT.** `rdm/update-paintlist!` must never be called inside `fx/run-later!` — atom updates are background-safe and should not occupy JAT time.
+
+Together these rules ensure that **Level 2 is always derived from a valid Level 1 paintlist** and that the invalidation-triggered repaint always sees consistent state. A brief window exists between the background atom update and the JAT callback where Level 1 is fresh but Level 2 still holds the previous Picture. An independent repaint during that window (cursor blink, overlay animation, zoom) renders the previous Picture — stale by one version, but derived from the previous valid paintlist, never corrupt. The subsequent JAT callback invalidates Level 2 and triggers repaint with fresh data. This one-frame staleness is imperceptible and by design. Implementation example:
 
 ```clojure
-(Platform/runLater
+;; Fetch Coordinator callback (runs on background thread after gRPC fetch completes)
+(rdm/update-paintlist! vpd paintlist)             ; Level 1: atom swap — background-safe
+(fx/run-later!
   (fn []
-    (rdm/update-paintlist! vpd paintlist)           ; Level 1: Update authoritative paintlist
-    (skija/invalidate-execution-cache! vpd)         ; Level 2: Invalidate Picture (same callback!)
-    (request-repaint! vpd)))                        ; Now safe to render
+    (skija/invalidate-execution-cache! vpd)        ; Level 2: Invalidate Picture (JAT)
+    (request-repaint! vpd)))                       ; Now safe to render
 ```
-
-Never split these operations across different `Platform.runLater()` calls - doing so creates a race condition where rendering could observe inconsistent cache state.
 
 ### Memory Management
 
 **Paintlists:**
 - Stored locally; over time may accumulate to full-piece coverage.
-- Between edits, cache is stable: no spontaneous invalidations.
+- Between edits (local or remote), cache is stable: no time-based expiry, no spontaneous invalidations.
 - Loading is lazy: opening a piece downloads no graphical data until layout windows open.
 
 **Pictures:**
@@ -441,7 +499,7 @@ Performance depends on:
 2. Rendering Data Manager (data structure + operations, mock paintlist data for testing)
 3. Fetch Coordinator (threading model + priority queues, mock backend calls for testing)
 4. cljfx UI shell (windows, dialogs, menus, palettes - **no music notation rendering**)
-5. Threading model validation (Event Router → RDM → FC coordination with Platform.runLater)
+5. Threading model validation (Event Router → bus → UI Manager → RDM/FC coordination)
 
 **Note:** This phase builds event/cache infrastructure and UI chrome without rendering music. RDM and FC use **mock paintlist data** to validate threading model and async coordination. Real paintlist API integration and GPU-accelerated rendering are Phase 2. This separation validates the event-driven architecture before adding GPU complexity.
 

@@ -3,6 +3,7 @@
 ## Status
 
 Accepted - February 12, 2026
+Updated - February 13, 2026 (Defaults declared in def-app-setting; event bus integration)
 
 ## Table of Contents
 - [Context](#context)
@@ -47,7 +48,7 @@ These two systems are fundamentally different:
 ### Requirements
 
 1. **Persistence**: Settings survive application restarts
-2. **Defaults**: Ship default values as a classpath resource, always available
+2. **Defaults**: Ship default values as a generated classpath resource, always available
 3. **Validation**: Prevent invalid values at write time (enumerated choices or predicate)
 4. **Translation**: Setting names, descriptions, and choice labels must be translatable ([ADR-0039](0039-Localisation-Architecture.md))
 5. **Introspection**: A registry of all settings enables automatic Settings dialog generation
@@ -58,13 +59,13 @@ These two systems are fundamentally different:
 
 ### Architecture Overview
 
-Frontend settings use a `defonce` atom holding a map of namespaced keywords to values. Settings are lazy-loaded on first access: defaults from a classpath resource, overridden by the user's settings file (if it exists). Every change writes the full map to disk immediately.
+Frontend settings use a `defonce` atom holding a map of namespaced keywords to values. Settings are lazy-loaded on first access: defaults from a generated classpath resource, overridden by the user's settings file (if it exists). Every change writes the full map to disk immediately and publishes a `:setting-changed` event on the frontend event bus ([ADR-0031](0031-Frontend-Event-Driven-Architecture.md)).
 
-A settings registry (separate from the settings atom) holds metadata about each setting: validator and choice labels. Default values live exclusively in the defaults resource file — the registry does not duplicate them. This registry enables the Settings dialog to enumerate settings by category and render appropriate controls.
+A settings registry (separate from the settings atom) holds metadata about each setting: default value, validator, and choice labels. Default values are declared in `def-app-setting` alongside validation rules. A `lein frontend-settings` build task generates the defaults resource file from these declarations — the generated file is the runtime artifact, not a hand-maintained source of truth. This registry enables the Settings dialog to enumerate settings by category and render appropriate controls.
 
 ### Setting Definitions
 
-Each setting is defined using `def-app-setting` and a corresponding `tr-declare`. Default values are NOT declared in `def-app-setting` — they live exclusively in the defaults resource file (`shared/resources/app-settings/settings.edn`), which is the single source of truth for defaults.
+Each setting is defined using `def-app-setting` and a corresponding `tr-declare`. Default values are declared in `def-app-setting` alongside validation rules — `def-app-setting` is the single source of truth for each setting's default, validation, and UI metadata.
 
 ```clojure
 (tr-declare
@@ -73,9 +74,9 @@ Each setting is defined using `def-app-setting` and a corresponding `tr-declare`
    :setting.ui.theme.nord-dark  "Dark"
    :setting.ui.theme.nord-light "Light"})
 
-;; No :default — defaults come from the resource file only
 (def-app-setting :ui/theme
-  {:choices {:nord-dark  :setting.ui.theme.nord-dark
+  {:default :nord-dark
+   :choices {:nord-dark  :setting.ui.theme.nord-dark
              :nord-light :setting.ui.theme.nord-light}})
 ```
 
@@ -93,7 +94,8 @@ Two validation modes, mirroring [ADR-0016](0016-Settings.md)'s pattern:
 
 ```clojure
 (def-app-setting :ui/theme
-  {:choices {:nord-dark  :setting.ui.theme.nord-dark
+  {:default :nord-dark
+   :choices {:nord-dark  :setting.ui.theme.nord-dark
              :nord-light :setting.ui.theme.nord-light}})
 ```
 
@@ -101,15 +103,18 @@ Two validation modes, mirroring [ADR-0016](0016-Settings.md)'s pattern:
 
 ```clojure
 (def-app-setting :user/email
-  {:validator valid-email?
+  {:default   ""
+   :validator valid-email?
    :control   :text})
 
 (def-app-setting :editor/auto-save
-  {:validator boolean?
+  {:default   true
+   :validator boolean?
    :control   :toggle})
 
 (def-app-setting :editor/font-size
-  {:validator pos-int?
+  {:default   12
+   :validator pos-int?
    :control   :number})
 ```
 
@@ -140,12 +145,13 @@ All keys must appear as literals in `tr-declare` — no computed keys ([ADR-0039
 ### Storage
 
 **Defaults resource:** `shared/resources/app-settings/settings.edn`
+- **Generated** by `lein frontend-settings` from `def-app-setting` declarations — not hand-maintained
 - Ships with the application, always available via `io/resource`
 - Accessible from shared tests
-- **Single source of truth for default values** — no other location declares defaults
 - Contains the complete default settings map
 
 ```edn
+;; GENERATED — do not edit. Run: lein frontend-settings
 {:ui/theme :nord-dark}
 ```
 
@@ -169,42 +175,47 @@ Module: `frontend/src/main/clojure/ooloi/frontend/ui/app_settings.clj`
 ;; Read a setting (lazy-loads on first access)
 (get-app-setting :ui/theme)    ; => :nord-dark
 
-;; Write a setting (validates, updates atom, writes to disk)
+;; Write a setting (validates, updates atom, writes to disk, publishes event)
 (set-app-setting! :ui/theme :nord-light)
 
 ;; Register a setting definition (called at namespace load time)
 (def-app-setting :ui/theme
-  {:choices {:nord-dark  :setting.ui.theme.nord-dark
+  {:default :nord-dark
+   :choices {:nord-dark  :setting.ui.theme.nord-dark
              :nord-light :setting.ui.theme.nord-light}})
 ```
+
+**Event integration:** Every `set-app-setting!` call publishes a `{:type :setting-changed :key <key> :old-value <old> :new-value <new> :timestamp <ms>}` event to the `:settings` category on the frontend event bus ([ADR-0031](0031-Frontend-Event-Driven-Architecture.md)). The UI Manager subscribes to this category and dispatches reactions — e.g. a theme change triggers `apply-theme-to-all!`.
 
 **Lazy loading:** Settings are loaded on first `get-app-setting` or `set-app-setting!` call, not at an explicit startup point. This eliminates ordering dependencies in the startup sequence. The load itself is a pure EDN file read with no dependency on i18n or other infrastructure — so even if `:ui/language` is an app setting, the i18n system can safely call `get-app-setting` during `set-locale!` without circular dependencies.
 
 **Thread safety:** First access can occur from multiple threads simultaneously (e.g. UI thread + i18n init). The lazy load uses a `delay` to guarantee exactly-once evaluation: the `delay` performs the merge of defaults and user file, and the settings atom is initialized from the realized delay. The `delay` is thread-safe by JVM guarantee — concurrent derefs block until the single evaluation completes. Settings load exactly once with no interleaved partial state.
 
-`def-app-setting` may be a function or macro. No code generation is needed (unlike [ADR-0016](0016-Settings.md)'s multimethod generation), so a function suffices. However, a macro could provide compile-time validation that referenced tr keys exist in the corresponding `tr-declare`. The implementation will determine which is simpler.
+`def-app-setting` is a function, not a macro. It performs a `swap!` into the registry atom — no code generation is needed (unlike [ADR-0016](0016-Settings.md)'s multimethod generation). A macro could theoretically provide compile-time validation that referenced tr keys exist, but this would create a build-time dependency on the i18n scanner that doesn't exist in that direction. The existing build-time i18n verification already catches missing keys separately.
 
 ### Settings Registry
 
-A `defonce` atom holding metadata for all registered settings:
+A `defonce` atom holding metadata for all registered settings, including defaults:
 
 ```clojure
-{:ui/theme    {:choices {:nord-dark  :setting.ui.theme.nord-dark
+{:ui/theme    {:default :nord-dark
+               :choices {:nord-dark  :setting.ui.theme.nord-dark
                          :nord-light :setting.ui.theme.nord-light}}
- :user/email  {:validator valid-email?
+ :user/email  {:default   ""
+               :validator valid-email?
                :control   :text}
- :editor/auto-save {:validator boolean?
+ :editor/auto-save {:default   true
+                    :validator boolean?
                     :control   :toggle}}
 ```
 
-Note: no `:default` in registry entries. Defaults come exclusively from the defaults resource.
-
-**Consistency invariant:** Every key registered via `def-app-setting` must have a corresponding entry in `defaults.edn`, and every key in `defaults.edn` must have a registry entry. Without this, a registered setting with no default silently returns `nil` at runtime, and a default with no registry entry is unreachable in the Settings dialog. This invariant is enforced by a dedicated test that loads both the registry and the defaults resource and asserts bidirectional key coverage.
+Every `def-app-setting` call populates the registry with the default value, validation rules, and UI metadata. Since defaults and validation come from the same declaration, they cannot diverge.
 
 The registry enables:
 - **Settings dialog generation**: enumerate all settings, group by category (keyword namespace), render appropriate controls (dropdown for choices, declared control type for validators)
 - **Validation**: `set-app-setting!` looks up the validator/choices from the registry
-- **Reset to default**: the Settings dialog reads the loaded defaults resource to determine original values
+- **Reset to default**: the Settings dialog reads the `:default` from the registry
+- **Defaults resource generation**: `lein frontend-settings` extracts `:default` values from the registry to produce the classpath resource
 
 ### Settings Dialog
 
@@ -228,7 +239,7 @@ The Settings dialog is a separate implementation concern (separate ticket) that 
 
 ### Single Source of Truth for Defaults
 
-Default values exist only in `shared/resources/app-settings/settings.edn`. The `def-app-setting` registration does not declare defaults. This eliminates the risk of two authoritative default sources diverging silently — a problem that would be difficult to diagnose if the registry and resource file disagreed.
+Each setting's default value is declared exactly once, in its `def-app-setting` call. The classpath resource file is generated from these declarations by `lein frontend-settings` — it is a build artifact, not a source of truth. This eliminates the risk of divergence between declaration and resource: there is only one declaration site. This mirrors [ADR-0016](0016-Settings.md)'s pattern where `defsetting` declares the default inline.
 
 ### Lazy Loading Eliminates Ordering Dependencies
 
@@ -240,7 +251,7 @@ Settings are loaded on first access, not via an explicit init call. This elimina
 
 ### Atom Over Integrant Component
 
-Application settings are inherently global state. Wrapping them in an Integrant component would add dependency injection ceremony without changing their nature. The existing `theme.clj` pattern (`defonce` atom) demonstrates this approach works.
+Application settings are inherently global state. Wrapping them in an Integrant component would add dependency injection ceremony without changing their nature. An atom is the honest representation — it is what it is, with no lifecycle pretence.
 
 ### Validation Pattern Consistency
 
@@ -254,11 +265,11 @@ The `setting.<category>.<name>` convention enables systematic key derivation whi
 
 The frontend settings system is implemented in `frontend/src/main/clojure/ooloi/frontend/ui/app_settings.clj` with:
 
-- `def-app-setting` — registers setting metadata (choices/validator) in the registry
+- `def-app-setting` — registers setting metadata (default, choices/validator) in the registry
 - `get-app-setting` — reads from settings atom; lazy-loads on first call
-- `set-app-setting!` — validates, updates atom, writes to disk
+- `set-app-setting!` — validates, updates atom, writes to disk, publishes `:setting-changed` event
 
-Default values are stored in `shared/resources/app-settings/settings.edn`. User settings are stored in the platform-specific directory via `platform/get-platform-directory "Ooloi" "app-settings"`.
+Default values are declared in `def-app-setting` and extracted into `shared/resources/app-settings/settings.edn` by the `lein frontend-settings` build task. User settings are stored in the platform-specific directory via `platform/get-platform-directory "Ooloi" "app-settings"`.
 
 The Settings dialog (separate implementation) consumes the registry to generate UI controls automatically.
 
@@ -275,7 +286,8 @@ The Settings dialog (separate implementation) consumes the registry to generate 
 7. **Accessible**: Defaults on classpath, available from all test suites
 8. **Forward-compatible**: Unknown keys in user file preserved across upgrades
 9. **No ordering dependencies**: Lazy loading eliminates startup sequence constraints
-10. **Single source of truth**: Default values declared once in resource file, nowhere else
+10. **Single source of truth**: Default values declared once in `def-app-setting`, resource file generated
+11. **Event-driven reactions**: Setting changes publish to frontend event bus, enabling decoupled responses
 
 ### Negative
 
@@ -321,15 +333,15 @@ Use standard Java properties or JSON instead of EDN.
 - Consistent with existing persistence patterns (window state uses EDN)
 - EDN supports all Clojure data types without custom serialization
 
-### Defaults in Registry
+### Defaults in Separate Resource File
 
-Declare default values in `def-app-setting` alongside choices/validator.
+Maintain default values in a hand-edited resource file (`settings.edn`), separate from `def-app-setting` declarations.
 
 **Rejected because:**
-- Creates two authoritative sources for defaults (registry and resource file)
-- Silent divergence if they disagree — difficult to diagnose
-- Resource file already serves as complete, self-contained defaults document
-- Settings dialog can read defaults from the loaded resource for "reset to default"
+- Creates two locations where developers must look to understand a setting (definition + resource file)
+- Risk of divergence: a developer adds `def-app-setting` but forgets to update the resource file (or vice versa)
+- Generating the resource file from `def-app-setting` declarations eliminates this class of error entirely
+- `def-app-setting` with `:default` mirrors [ADR-0016](0016-Settings.md)'s `defsetting` pattern — consistency across the codebase
 
 ### Explicit Startup Init
 
@@ -346,12 +358,13 @@ Require `load-app-settings!` call in system.clj startup sequence.
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) — Establishes that backend has no application settings; user preferences managed by frontend
 - [ADR-0016: Settings](0016-Settings.md) — Backend per-piece entity settings; validation pattern (set/predicate) borrowed here
 - [ADR-0039: Localisation Architecture](0039-Localisation-Architecture.md) — Translation integration, `tr`/`tr-declare` API, literal key constraint
+- [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) — Frontend event bus; `set-app-setting!` publishes `:setting-changed` events
 - [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) — Dialog/window patterns for Settings dialog implementation
 
 ## Code References
 
 - `frontend/src/main/clojure/ooloi/frontend/ui/app_settings.clj` — Settings system implementation
-- `shared/resources/app-settings/settings.edn` — Default settings resource (single source of truth)
+- `shared/resources/app-settings/settings.edn` — Generated defaults resource (produced by `lein frontend-settings`)
 - `frontend/src/main/clojure/ooloi/frontend/ui/theme.clj` — Theme module consuming settings
 - `shared/src/main/clojure/ooloi/shared/platform.clj` — Platform-specific directory paths
 - `frontend/src/main/clojure/ooloi/frontend/ui/persistence.clj` — Existing EDN persistence pattern

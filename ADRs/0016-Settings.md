@@ -4,6 +4,7 @@
 
 Accepted - July 24, 2025
 Updated - November 24, 2025 (Added validation support)
+Updated - February 13, 2026 (Event emission for collaborative settings awareness)
 
 ## Context
 
@@ -264,6 +265,7 @@ Key implementation aspects:
 7. **Data Integrity**: Invalid settings prevented at write time with clear error messages
 8. **Declarative Constraints**: Validation requirements explicit and co-located with definitions
 9. **Reduced Boilerplate**: Eliminated separate validation functions and :around methods
+10. **Collaborative Awareness**: When a piece setting changes, the backend emits a piece-setting-changed event via the backend event router (ADR-0031). The frontend reacts only when a piece settings dialog is open — refreshing stale values so a collaborating user does not work on outdated settings. Visual consequences of piece setting changes (e.g. re-rendering after beam thickness changes) are handled separately by the backend's own cache-invalidation events, not by the settings event.
 
 ### Negative
 
@@ -353,6 +355,7 @@ Key implementation aspects:
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural boundaries maintained by settings-in-piece-data approach
 - [ADR-0008: Vector Path Descriptors](0008-VPDs.md) - VPD integration providing uniform access patterns
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Establishes that backend has no application settings, only piece data
+- [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Backend event router delivers piece-setting-changed events to the frontend event bus for collaborative settings awareness
 - [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) - Companion system for global application preferences (frontend-only); borrows validation patterns from this ADR
 
 ### Technical Dependencies

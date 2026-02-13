@@ -1,8 +1,9 @@
 # ADR-0031: Frontend Event-Driven Architecture
 
-**Status:** ACCEPTED  
-**Date:** 2025-10-15  
+**Status:** ACCEPTED
+**Date:** 2025-10-15
 **Implemented:** 2026-01-26
+**Updated:** 2026-02-13 (Frontend event bus as Integrant component, Event Router as pure pipeline, nomenclature clarification)
 
 ---
 
@@ -54,7 +55,7 @@ The frontend must handle two fundamentally different event sources with incompat
 - **Examples:** Piece modifications, collaborative edits, layout invalidations, presence updates, system notifications
 - **Error mode:** Network failures, disconnections, reconnection
 
-**Problem:** These event sources have irreconcilable differences. Synchronous UI events require immediate processing without blocking. Asynchronous network events require batching, backpressure, and failure isolation. A unified event system would compromise both.
+**Problem:** These event sources have irreconcilable differences. Synchronous UI events require immediate processing without blocking. Asynchronous network events require batching, backpressure, and failure isolation. A single mechanism handling both source models would compromise both — JavaFX's synchronous dispatch assumptions conflict with network-scale pub/sub requirements.
 
 **Research Context:**
 
@@ -66,7 +67,7 @@ The frontend must handle two fundamentally different event sources with incompat
 
 ## Decision
 
-**Three-Layer Event Architecture:** Backend events handled by dedicated Event Router component; frontend component communication handled by a local category-based event bus with Claypoole thread pool; UI input events remain in the JavaFX event system.
+**Three-Layer Event Architecture:** Backend events handled by dedicated Event Router component that categorises, batches, and publishes to the frontend event bus; frontend component communication handled by the same frontend event bus (a category-based pub/sub Integrant component backed by a Claypoole thread pool); UI input events remain in the JavaFX event system.
 
 ### Why This Decision
 
@@ -78,11 +79,11 @@ The frontend must handle two fundamentally different event sources with incompat
 
 **Architectural Alignment:** ADR-0024 already provides per-client FIFO event delivery via backend drainer threads. The Event Router simply receives ordered events and routes them - no complex synchronization needed. ADR-0022 specifies invalidation-based data synchronization with pull-based fetching, which requires protocol adaptation (events → invalidations → fetches) rather than event translation. Backend computes all layout via ADR-0028 - all clients must see those results.
 
-**Natural Priorities:** JavaFX gives UI events (clicks, drags) immediate processing. Backend events naturally queue behind UI work via Platform.runLater(). System events can preempt by posting immediately. This priority scheme emerges naturally from separate systems; a unified bus would require explicit priority queues.
+**Natural Priorities:** JavaFX gives UI events (clicks, drags) immediate processing. Backend events flow through the Event Router and frontend event bus on Claypoole futures, naturally behind UI work. System events are published immediately (no batching). This priority scheme emerges naturally from separate systems; a unified bus would require explicit priority queues.
 
 ### Alternatives Considered
 
-**Unified Event Bus (Rejected):** Single pub/sub component handling all events regardless of source would provide simpler mental model and natural event chaining, but conflates synchronous UI events with asynchronous network events. Unacceptable performance risk - slow async processing blocking fast local events. Loss of JavaFX event system optimizations that assume local, deterministic event sources. Backend failures would propagate to local event processing.
+**Unified Source Handling (Rejected):** A single mechanism processing both JavaFX input events and network events would provide a simpler mental model and natural event chaining, but conflates synchronous UI events with asynchronous network events. Unacceptable performance risk — slow async processing blocking fast local events. Loss of JavaFX event system optimizations that assume local, deterministic event sources. Backend failures would propagate to local event processing. (Note: the accepted architecture does use a single *delivery surface* — the frontend event bus — for all frontend component communication. What is rejected is a single *source handler* that processes both JavaFX input dispatch and network protocol adaptation in one mechanism.)
 
 **Backend→JavaFX Translation (Rejected):** Transforming server events into JavaFX platform events would let frontend code treat all events uniformly, but JavaFX event system is not designed for large-scale distributed pub/sub. Async network characteristics remain despite local injection. Would require fighting JavaFX assumptions about event origins (scene graph thread, local dispatch) and lose natural backpressure handling that gRPC streaming provides.
 
@@ -95,7 +96,7 @@ The frontend must handle two fundamentally different event sources with incompat
 Backend events are notifications of staleness, not data carriers. When rendering data is invalid, client fetches current rendering data (PageView, SystemView, StaffView, or MeasureView depending on VPD granularity) via normal gRPC API calls (ADR-0018 generated methods). This implements the architecture specified in ADR-0022.
 
 **Key Properties:**
-- Category aggregation: One Platform.runLater() per event category batch
+- Category aggregation: One `eb/publish!` per event category batch
 - Pull-based fetching: Client requests rendering data at appropriate hierarchy level when needed
 - Simple reconnection: Just invalidate stale data and refetch
 - Precise batching: Invalidations 50-100ms, cursors 33ms, playback ≤16ms
@@ -109,11 +110,11 @@ Backend events are notifications of staleness, not data carriers. When rendering
 
 ### Component Architecture
 
-Three event layers serve distinct purposes: the local event bus handles frontend component communication, the Event Router acts as a protocol adapter for backend events, and the JavaFX event system handles UI input.
+Three event layers serve distinct purposes: the frontend event bus (Integrant component) handles all frontend event delivery, the backend event router acts as a protocol adapter that categorises, batches, and publishes backend events to the frontend event bus, and the JavaFX event system handles UI input.
 
-#### 1. Local Event Bus (`ooloi.frontend.ui.event-bus`)
+#### 1. Frontend Event Bus (`ooloi.frontend.ui.event-bus`)
 
-Category-based pub/sub for frontend component communication, backed by a shared Claypoole thread pool. Used by the UI Manager for internal dispatch — window lifecycle events, notification routing, theme propagation, splash state tracking.
+Category-based pub/sub for all frontend event delivery, backed by a shared Claypoole thread pool. Both frontend components and the backend Event Router publish to this bus — it is the single event delivery mechanism for all frontend code. The UI Manager subscribes to event categories and dispatches reactions; individual windows and components do not subscribe directly.
 
 **Interface:**
 
@@ -136,16 +137,44 @@ Category-based pub/sub for frontend component communication, backed by a shared 
 - Exception isolation: one handler's failure does not affect other handlers or the publisher
 - No ordering guarantees across categories; within a category, all handlers receive the same event vector
 
-Not an Integrant component — the event bus is a data structure created by the UI Manager and passed to components that need it.
+**Frontend Event Categories:**
+
+| Category | Events | Publisher |
+|----------|--------|-----------|
+| `:app-lifecycle` | `:app-ready`, `:app-shutting-down` | `start-app!`, shutdown handler |
+| `:window-lifecycle` | `:window-opened`, `:window-closed`, `:window-hidden` | `show-window!`, `close-window!` |
+| `:settings` | `:setting-changed` | `set-app-setting!` (ADR-0043) |
+
+Categories are arbitrary keywords — any component can define new ones.
+
+**Backend Events on the Bus:**
+
+The Event Router (Layer 3) publishes backend event batches directly to the frontend event bus as part of its flush cycle. No separate bridge function is needed — the bridge is structural. When a time-windowed batch flushes, the Event Router calls `eb/publish!` with the batch's category keyword and the vector of events. This makes all backend events available to any frontend event bus subscriber under their original category keywords. A development aid (`notify-all-backend-events!`) subscribes to backend categories and generates UI notifications for every event — this can be removed without affecting production event flow.
+
+**Coordination Pattern:**
+
+The UI Manager subscribes to event categories and dispatches appropriately. Individual windows and components do not subscribe to the event bus directly — the UI Manager is the single point of event wiring.
+
+**Threading Model for Reactions:**
+
+UI Manager event handlers execute on Claypoole future threads (background), not on the JAT. Within a handler, two kinds of work occur:
+- **Background-safe work** (atom updates, stale marking, queueing fetches) — executes directly on the Claypoole thread. No `fx/run-later!` needed.
+- **Scene graph mutations** (theme application, notification display, cursor overlay updates) — dispatched to the JAT via `fx/run-later!`.
+
+This separation is critical: the Rendering Data Manager is a pure data cache (atoms) and does not require JAT affinity. Only the subsequent scene graph repaint uses `fx/run-later!`.
+
+Integrant component (`:ooloi.frontend.components/event-bus`), depending only on the thread pool. The UI Manager and Event Router both receive it as an Integrant dependency.
 
 #### 2. Backend Event Router (Integrant Component)
 - Subscribes to gRPC event streams via backend API (subscribe-to-piece-events, unsubscribe-from-piece-events)
-- Routes events to appropriate subsystems based on event category
-- Category aggregators: Batch events per category, one Platform.runLater() per flush
+- Pure pipeline: categorise → batch → `eb/publish!` to frontend event bus
+- Category aggregators: Batch events per category, one `eb/publish!` per flush
+- No direct category handlers — all downstream processing happens through frontend event bus subscribers mediated by the UI Manager
+- Dependencies: **grpc-clients** (for the event stream) and **event-bus** (for publishing batched events)
 - Manages lifecycle with Integrant
-- Subscription management: Exposes subscribe/unsubscribe API to Windowing System, proxies to backend
-- On disconnect: Stops receiving events
-- On reconnect: Resumes receiving events, no special protocol needed
+- Subscription management: The **Windowing System is authoritative** — it initiates subscribe/unsubscribe calls when pieces are opened or closed. The Event Router is a service that executes these requests, proxies them to the backend, and remembers the active subscription set. On reconnect, the Router autonomously replays its remembered set (re-subscribing to all pieces that were active at disconnect). On piece close during disconnect, the unsubscribe call updates the Router's internal state so the piece is not resubscribed on reconnect.
+- On disconnect: Stops receiving events, publishes `:system` disconnect to bus
+- On reconnect: Replays subscription set, resumes receiving events, no special protocol needed
 
 #### 3. Rendering Data Manager
 - Maintains VPD-indexed hierarchy mirroring backend visual structure:
@@ -162,7 +191,7 @@ Not an Integrant component — the event bus is a data structure created by the 
 - Paintlists converted to JavaFX/Skija-efficient representations for rendering
 - Handles lookup via VPD, invalidation at any hierarchy level
 - Not an Integrant component - data structure with operations
-- Complete piece rendering data stored locally - no eviction
+- Complete rendering cache stored locally - no eviction
 - Structure specified in ADR-0022
 
 #### 4. Fetch Coordinator
@@ -174,18 +203,20 @@ Not an Integrant component — the event bus is a data structure created by the 
   - High: Viewport + missing (visible demand loads - placeholders showing)
   - Normal: Prefetch (scrolling toward, buffered viewport)
   - Low: Background (opportunistic)
-- When fetch completes, posts Platform.runLater() to update local rendering data and trigger repaint
+- When fetch completes, updates Rendering Data Manager on background thread, then schedules scene graph repaint via `fx/run-later!`
 - Fetching is pull-based: Client requests specific hierarchy level when needed
 - Backend returns complete paintlist data for requested level
 - Shared Claypoole pool (max 4 concurrent fetches) services queues, CRITICAL drains before others
 
 #### 5. Subsystem Targets
-Components that receive routed events:
-- Rendering Data Manager: Invalidation events
+Components that react to events via frontend event bus subscriptions mediated by the UI Manager:
+- Rendering Data Manager: Invalidation events → mark stale, trigger Fetch Coordinator
 - Collaboration UI Manager: Presence, cursors, selections
 - Playback Controller: Playback position, start/stop
 - Connection Manager: System events, reconnection
 - Notification Manager: User-facing messages, errors
+
+The UI Manager subscribes to both frontend and backend event categories and dispatches reactions. Individual subsystems do not subscribe to the bus directly.
 
 #### 6. JavaFX Scene
 - Render pass checks data staleness at hierarchy elements (detects whether paintlist is current or needs refetch)
@@ -197,6 +228,54 @@ Components that receive routed events:
 
 ### Visual Architecture
 
+#### Event Flow Overview
+
+```
+┌──────────────────────────────────────┐
+│          Backend Server              │
+│  piece changes · presence · playback │
+└───────────────┬──────────────────────┘
+                │ gRPC event stream
+                ▼
+┌─────────────────────────────────────┐
+│          Event Client               │
+│  protobuf → Clojure map             │
+│  process-received-event             │
+└───────────────┬─────────────────────┘
+                │ individual events
+                ▼
+┌─────────────────────────────────────┐
+│    Event Router — Layer 3           │
+│  categorise → batch → publish       │
+│  time windows: 16ms – 100ms         │
+└───────────────┬─────────────────────┘
+                │ eb/publish!
+                │ (category, [events])
+                ▼
+┌─────────────────────────────────────┐    Frontend publishers
+│    Frontend Event Bus — Layer 2     │◄── start-app!
+│  category-based pub/sub             │◄── show-window!
+│  Claypoole thread pool delivery     │◄── set-app-setting!
+└───────────────┬─────────────────────┘
+                │ Claypoole futures
+                ▼
+┌─────────────────────────────────────┐
+│    UI Manager (central mediator)    │
+│  subscribes to all categories       │
+│  dispatches reactions               │
+└───────┬─────────────────┬───────────┘
+        │                 │
+        │ fx/run-later!   │ background work
+        ▼                 ▼
+┌────────────────┐  ┌────────────────┐
+│  JAT — Layer 1 │  │ Fetch Coord.,  │
+│  UI updates,   │  │ atom updates,  │
+│  theme, notifs │  │ stale marking  │
+└────────────────┘  └────────────────┘
+```
+
+Backend events flow top-to-bottom through the full pipeline. Frontend-originated events enter at the bus level. The UI Manager dispatches reactions on background threads — only reactions that mutate the scene graph use `fx/run-later!` to reach the JAT. JavaFX user input events (clicks, keyboard, drag) are handled synchronously on the JAT by node handlers and never pass through the event bus.
+
 #### Component Architecture Diagram
 
 ```mermaid
@@ -206,8 +285,16 @@ graph TB
     end
 
     subgraph "Event Router (Integrant)"
-        ER[Event Router<br/>Subscription Manager]
+        ER[Event Router<br/>categorise → batch → publish]
         CA[Category Aggregators<br/>Time-windowed batching]
+    end
+
+    subgraph "Frontend Event Bus (Integrant)"
+        BUS[Frontend Event Bus<br/>Category-based pub/sub<br/>Claypoole thread pool]
+    end
+
+    subgraph "UI Manager"
+        UM[UI Manager<br/>Central mediator<br/>Subscribes to all categories]
     end
 
     subgraph "Data Layer"
@@ -228,16 +315,18 @@ graph TB
 
     gRPC -->|events| ER
     ER -->|route by category| CA
-    CA -->|invalidation<br/>Platform.runLater| RDM
-    CA -->|presence<br/>Platform.runLater| COLLAB
-    CA -->|playback<br/>Platform.runLater| PLAYBACK
-    CA -->|system<br/>Platform.runLater| CONN
-    CA -->|errors<br/>Platform.runLater| NOTIFY
+    CA -->|eb/publish!| BUS
+    BUS -->|Claypoole futures| UM
+    UM -->|invalidation| RDM
+    UM -->|presence| COLLAB
+    UM -->|playback| PLAYBACK
+    UM -->|system| CONN
+    UM -->|notification| NOTIFY
 
     RDM -->|queue fetch| FC
     FC -->|gRPC API call<br/>background thread| gRPC
     gRPC -->|paintlist data| FC
-    FC -->|update data<br/>Platform.runLater| RDM
+    FC -->|update data<br/>background thread| RDM
 
     RDM -->|paintlist lookup| SCENE
     SCENE -->|demand load| FC
@@ -245,6 +334,8 @@ graph TB
 
     style ER fill:#cce5ff,stroke:#0066cc,stroke-width:2px,color:#000
     style CA fill:#cce5ff,stroke:#0066cc,stroke-width:2px,color:#000
+    style BUS fill:#d4edda,stroke:#28a745,stroke-width:2px,color:#000
+    style UM fill:#d4edda,stroke:#28a745,stroke-width:2px,color:#000
     style RDM fill:#ffe6cc,stroke:#cc6600,stroke-width:2px,color:#000
     style FC fill:#ffe6cc,stroke:#cc6600,stroke-width:2px,color:#000
     style SCENE fill:#e6e6e6,stroke:#666,stroke-width:2px,color:#000
@@ -258,11 +349,12 @@ sequenceDiagram
     participant BE as Backend<br/>(STM + gRPC)
     participant ER as Event Router
     participant CA as Category<br/>Aggregator
-    participant JAT as JavaFX<br/>App Thread
+    participant BUS as Frontend<br/>Event Bus
+    participant UM as UI Manager
     participant RDM as Rendering<br/>Data Manager
     participant FC as Fetch<br/>Coordinator
     participant BG as Background<br/>Thread
-    participant SCENE as JavaFX<br/>Scene
+    participant JAT as JavaFX<br/>App Thread
 
     U2->>BE: Edit measure 47
     BE->>BE: STM transaction
@@ -270,18 +362,18 @@ sequenceDiagram
     ER->>CA: Route to :cache-invalidation
     Note over CA: Batch 50-100ms
     CA->>CA: Window expires
-    CA->>JAT: Platform.runLater()
-    JAT->>RDM: Mark VPD stale
+    CA->>BUS: eb/publish! :cache-invalidation [events]
+    BUS->>UM: Claypoole future → handler
+    UM->>RDM: Mark VPD stale
     RDM->>FC: Queue fetch (CRITICAL priority)
     FC->>BG: Assign to thread pool
     BG->>BE: gRPC: fetch-measure-view(VPD)
     BE->>BG: Paintlist data (glyphs + curves)
-    BG->>JAT: Platform.runLater()
-    JAT->>RDM: Update paintlist at VPD
-    RDM->>SCENE: Trigger repaint
-    SCENE->>SCENE: Render with Skija
+    BG->>RDM: Update paintlist at VPD
+    BG->>JAT: fx/run-later!
+    JAT->>JAT: Invalidate Picture, trigger repaint
 
-    Note over U2,SCENE: Total latency: 86-157ms<br/>(batch 50-100ms + fetch 20-40ms + render 16ms)
+    Note over U2,JAT: Total latency: 86-157ms<br/>(batch 50-100ms + fetch 20-40ms + render 16ms)
 ```
 
 #### Sequence Diagram: Reconnection Flow
@@ -290,6 +382,8 @@ sequenceDiagram
 sequenceDiagram
     participant NET as Network
     participant ER as Event Router
+    participant BUS as Frontend<br/>Event Bus
+    participant UM as UI Manager
     participant BE as Backend
     participant RDM as Rendering<br/>Data Manager
     participant FC as Fetch<br/>Coordinator
@@ -297,18 +391,24 @@ sequenceDiagram
 
     NET->>ER: Connection lost
     ER->>ER: Stop receiving events
-    ER->>UI: Show "Disconnected"
+    ER->>BUS: eb/publish! :system [disconnected]
+    BUS->>UM: UI Manager handler
+    UM->>UI: Show "Disconnected"
     Note over NET: 30 seconds pass
     NET->>ER: Connection restored
     ER->>BE: Reconnect + resubscribe
     BE->>ER: Acknowledge subscription
-    ER->>RDM: Invalidate ALL data
+    ER->>BUS: eb/publish! :cache-invalidation [invalidate-all]
+    BUS->>UM: UI Manager handler
+    UM->>RDM: Invalidate ALL data
     RDM->>FC: Queue viewport fetches<br/>(CRITICAL priority)
     FC->>BE: Parallel gRPC fetches
     BE->>FC: Current paintlists
-    FC->>RDM: Update data (Platform.runLater)
-    RDM->>UI: Trigger repaints
-    ER->>UI: Show "Connected"
+    FC->>RDM: Update data
+    FC->>UI: fx/run-later! → repaint
+    ER->>BUS: eb/publish! :system [connected]
+    BUS->>UM: UI Manager handler
+    UM->>UI: Show "Connected"
     BE->>ER: Resume event stream
 
     Note over NET,UI: No event replay needed<br/>Just fetch current state
@@ -358,9 +458,9 @@ graph LR
         T[Timer: 33ms window]
     end
 
-    subgraph "JavaFX Application Thread"
-        PRL[Platform.runLater<br/>Single call]
-        SG[Scene Graph Update<br/>Update all cursors]
+    subgraph "Frontend Event Bus"
+        PUB[eb/publish!<br/>Single call per category]
+        UM[UI Manager<br/>category subscriber]
     end
 
     E1 --> Q
@@ -369,24 +469,26 @@ graph LR
     E10 --> Q
 
     Q --> T
-    T -->|Window expires| PRL
-    PRL --> SG
+    T -->|Window expires| PUB
+    PUB --> UM
 
     style Q fill:#cce5ff,stroke:#0066cc,stroke-width:2px,color:#000
     style T fill:#ffcccc,stroke:#cc0000,stroke-width:2px,color:#000
-    style PRL fill:#ccffcc,stroke:#009900,stroke-width:2px,color:#000
-    style SG fill:#e6e6e6,stroke:#666,stroke-width:2px,color:#000
+    style PUB fill:#ccffcc,stroke:#009900,stroke-width:2px,color:#000
+    style UM fill:#d4edda,stroke:#28a745,stroke-width:2px,color:#000
 
     note1[10 events arrive<br/>over 33ms]
-    note2[Batched into<br/>single update]
+    note2[Batched into<br/>single publish]
 
     E10 -.-> note1
-    SG -.-> note2
+    UM -.-> note2
 ```
 
 ### Event Envelope Structure
 
-Backend events arrive with the following structure (per ADR-0018):
+The frontend event bus carries heterogeneous event shapes — each category defines its own format. There is no universal envelope contract across all categories. Backend events and frontend-originated events have different structures:
+
+**Backend events** arrive with the following structure (per ADR-0018). Subscribers for backend categories (`:cache-invalidation`, `:presence`, `:playback`, `:system`, `:notification`) receive events in this format:
 
 ```clojure
 {:type :piece-invalidation        ; Required keyword, validated by backend
@@ -410,6 +512,8 @@ Events received by frontend are **pre-validated** and guaranteed to have:
 - `:client-id` is a string if present
 
 **Frontend Event Router does NOT need to re-validate** - backend guarantees correctness.
+
+**Frontend-originated events** (`:app-lifecycle`, `:window-lifecycle`, `:settings`) are maps with at minimum `:type` and `:timestamp`. Subscribers for these categories know their specific event shapes. The `:type` and `:timestamp` fields are a convention for frontend events, not a bus-wide contract — backend events happen to share these fields because the backend validation guarantees them, but this is coincidence of design rather than a universal bus requirement.
 
 ### Event Type Taxonomy and Category Derivation
 
@@ -548,61 +652,61 @@ The Event Router derives routing categories from backend event types. This mappi
 
 **Event Type:** `:piece-invalidation`
 
-**Route to:** Rendering Data Manager → Fetch Coordinator
+**Reaction:** UI Manager → Rendering Data Manager → Fetch Coordinator
 
 **Batching:** 50-100ms time windows to coalesce rapid updates
 
 **Processing:**
 
-Event arrives → VPD lookup in rendering data → Mark element at that VPD level as stale → Add to batch aggregator → After 50-100ms window: flush batch → Single Platform.runLater() for all invalidations → Fetch Coordinator: prioritize by viewport → Background thread: gRPC fetch for paintlist at VPD level → Platform.runLater() updates local rendering data → Trigger repaint with fresh paintlist
+Event arrives → Add to batch aggregator → After 50-100ms window: flush batch → `eb/publish!` to frontend event bus → UI Manager handler marks VPDs stale in Rendering Data Manager → Fetch Coordinator: prioritize by viewport → Background thread: gRPC fetch for paintlist at VPD level → Update rendering data on background thread → `fx/run-later!` triggers repaint with fresh paintlist
 
 #### 2. Presence/Collaboration Events
 
 **Event Types:** `:collaboration-user-joined`, `:collaboration-user-left`, `:collaboration-cursor-moved`, `:collaboration-selection-changed`
 
-**Route to:** Collaboration UI Manager
+**Reaction:** UI Manager → Collaboration UI Manager
 
 **Batching:** 33ms windows (30fps) for cursor movements, join/leave immediate
 
 **Processing:**
 
-Event arrives → Add to category aggregator → After 33ms window: flush batch → Single Platform.runLater() for all presence updates → Update avatar positions → Update collaborative cursors → Update selection highlights
+Event arrives → Add to category aggregator → After 33ms window: flush batch → `eb/publish!` to frontend event bus → UI Manager handler dispatches to Collaboration UI Manager → `fx/run-later!` for scene graph updates → Update avatar positions → Update collaborative cursors → Update selection highlights
 
 #### 3. Playback Events
 
 **Event Types:** `:piece-playback-position`, `:piece-playback-started`, `:piece-playback-stopped`
 
-**Route to:** Playback UI Controller
+**Reaction:** UI Manager → Playback UI Controller
 
 **Batching:** ≤16ms windows (60fps) for position, start/stop immediate
 
 **Processing:**
 
-Event arrives → Add to category aggregator → After ≤16ms window: flush batch → Single Platform.runLater() for all playback updates → Update timeline cursor → Highlight active measures → Update playback controls
+Event arrives → Add to category aggregator → After ≤16ms window: flush batch → `eb/publish!` to frontend event bus → UI Manager handler dispatches to Playback UI Controller → `fx/run-later!` for scene graph updates → Update timeline cursor → Highlight active measures → Update playback controls
 
 #### 4. System Events
 
 **Event Types:** `:server-maintenance`, `:server-shutdown`, `:server-status`, `:server-client-connected`, `:server-client-disconnected`
 
-**Route to:** Connection Manager + Notification Manager
+**Reaction:** UI Manager → Connection Manager + Notification Manager
 
 **Batching:** None - immediate processing
 
 **Processing:**
 
-Event arrives → Update connection state immediately → Single Platform.runLater() → Show system notification → May trigger reconnection logic
+Event arrives → Immediate `eb/publish!` to frontend event bus → UI Manager handler dispatches to Connection Manager and Notification Manager → Update connection state → `fx/run-later!` for UI updates → Show system notification → May trigger reconnection logic
 
 #### 5. Error/Notification Events
 
 **Event Types:** `:piece-validation-error`, `:piece-operation-failed`, `:server-warning`, `:server-info`, `:client-registration-confirmed`
 
-**Route to:** Notification Manager
+**Reaction:** UI Manager → Notification Manager
 
 **Batching:** None - immediate user feedback
 
 **Processing:**
 
-Event arrives → Single Platform.runLater() → Format message (i18n) → Show toast/banner/status bar → Auto-dismiss or sticky based on severity
+Event arrives → Immediate `eb/publish!` to frontend event bus → UI Manager handler dispatches to Notification Manager → Format message (i18n) → `fx/run-later!` → Show toast/banner/status bar → Auto-dismiss or sticky based on severity
 
 ### Event Flow Examples
 
@@ -613,17 +717,15 @@ Event arrives → Single Platform.runLater() → Format message (i18n) → Show 
 3. Event Router receives via gRPC stream
 4. Derives category `:cache-invalidation` from event type
 5. Routes to category aggregator for :cache-invalidation
-5. Aggregator batches for 50-100ms
-6. Window expires → flush batch
-7. Single Platform.runLater() with all invalidations
-8. Rendering Data Manager marks MeasureView at VPD as stale
-9. Fetch Coordinator receives batch, checks viewport
+6. Aggregator batches for 50-100ms
+7. Window expires → flush batch → `eb/publish!` to frontend event bus
+8. UI Manager's `:cache-invalidation` handler marks MeasureView at VPD as stale in Rendering Data Manager
+9. Fetch Coordinator receives request, checks viewport
 10. Measure 47 is visible → CRITICAL priority fetch (stale data visible to user)
 11. Background thread makes gRPC API call for MeasureView paintlist at that VPD
-12. Fetch completes → Platform.runLater()
-13. Updates local rendering data with fresh paintlist containing glyphs and curves
-14. Invalidates canvas region
-15. JavaFX repaint event renders with new data via Skija
+12. Fetch completes → updates rendering data on background thread
+13. `fx/run-later!` invalidates Picture, triggers canvas region repaint
+14. JavaFX repaint event renders with new data via Skija
 
 **Latency:** ~86-157ms (batch 50-100ms + fetch 20-40ms + render 16ms)
 
@@ -636,8 +738,8 @@ Event arrives → Single Platform.runLater() → Format message (i18n) → Show 
 5. Fetch Coordinator queues HIGH priority requests for those MeasureView paintlists (visible placeholders)
 6. Renders placeholders while fetching
 7. Background threads make gRPC API calls for each MeasureView paintlist
-8. Fetches complete → Platform.runLater()
-9. Updates local rendering data with glyphs and curves, triggers repaint
+8. Fetches complete → update rendering data with glyphs and curves on background thread
+9. `fx/run-later!` invalidates Pictures, triggers repaint
 10. Real content replaces placeholders
 
 **Note:** No backend events involved - pure frontend demand loading
@@ -646,32 +748,31 @@ Event arrives → Single Platform.runLater() → Format message (i18n) → Show 
 
 1. Network drops, Event Router detects
 2. Stops receiving events
-3. Rendering data remains as-is
-4. UI shows "Disconnected" status
+3. Event Router publishes `:system` disconnect event to bus → UI Manager shows "Disconnected"
+4. Rendering data remains as-is
 5. Network restored after 30 seconds
 6. Event Router reconnects, resubscribes to pieces
 7. Resumes receiving invalidation events
-8. Invalidate all rendering data on reconnect
+8. Event Router publishes invalidate-all to bus → UI Manager marks all rendering data stale
 9. Fetch Coordinator queues CRITICAL priority for viewport elements (stale data visible)
 10. Background threads make gRPC API calls for current paintlists
-11. Fetches complete → Platform.runLater()
-12. Updates local rendering data with fresh paintlists, triggers repaint
-13. UI shows "Connected" status
-14. Normal event flow resumes
+11. Fetches complete → update rendering data → `fx/run-later!` triggers repaint
+12. Event Router publishes `:system` connected event to bus → UI Manager shows "Connected"
+13. Normal event flow resumes
 
 **Result:** Simple reconnection - invalidate everything, refetch viewport
 
 ### Key Architectural Properties
 
-**Performance Isolation:** Network I/O never blocks JavaFX Application Thread. Invalidation is cheap (atomic flag swap). Fetch happens asynchronously in background threads via normal gRPC API calls. JavaFX only touched from JAT via Platform.runLater().
+**Performance Isolation:** Network I/O never blocks JavaFX Application Thread. The Event Router publishes to the bus on its own thread; the UI Manager's handlers run as Claypoole futures. Invalidation is cheap (atomic flag swap). Fetch happens asynchronously in background threads via normal gRPC API calls. JavaFX only touched from JAT via `fx/run-later!`.
 
-**Category Aggregation Pattern:** One Platform.runLater() per category batch, not per event. Multiple events in same category coalesce into single JAT pass. Dramatically reduces scene graph update overhead. Example: 10 cursor movements → 1 scene graph update.
+**Category Aggregation Pattern:** One `eb/publish!` per category batch, not per event. Multiple events in same category coalesce into a single publish to the frontend event bus. The UI Manager's handler then dispatches the batch — only scene graph mutations use `fx/run-later!`. Dramatically reduces overhead. Example: 10 cursor movements → 1 bus publish → 1 scene graph update.
 
 **Pull-Based Data Model:** Events are notifications of staleness, not data carriers. Actual paintlist data comes from fetch requests (normal gRPC API calls). Client requests what it needs, when it needs it. No complex synchronization protocol required. **Lazy fetching at layout window level:** Opening a piece subscribes to events but downloads no graphical data. Only when a layout window opens does the frontend fetch paintlists for that layout's viewport. Events may mark paintlists stale at various hierarchy levels, but fetching remains lazy - triggered by viewport visibility or explicit user navigation.
 
 **Guaranteed Event Ordering:** ADR-0024 per-client drainer threads ensure FIFO delivery. Events arrive in exact STM transaction order. Each client has dedicated queue with strict ordering. gRPC streaming provides reliable, ordered transport. No sequence numbers or ordering logic needed in Event Router.
 
-**Natural Priorities:** UI events process immediately (JavaFX native priority). Backend events queue behind UI work. Fetch priorities: Critical (viewport stale) > High (viewport missing) > Normal (prefetch) > Low (background). System events preempt via immediate Platform.runLater().
+**Natural Priorities:** UI events process immediately (JavaFX native priority). Backend events flow through the bus on Claypoole futures, naturally behind UI work. Fetch priorities: Critical (viewport stale) > High (viewport missing) > Normal (prefetch) > Low (background). System events published immediately (no batching) for rapid UI Manager response.
 
 **Precise Batching Timings:** Invalidations: 50-100ms (balances latency vs throughput). Cursors: 33ms (30fps, smooth without overwhelming UI). Playback: ≤16ms (60fps for fluid playback cursor). System/Errors: Immediate (no batching).
 
@@ -683,7 +784,7 @@ Event arrives → Single Platform.runLater() → Format message (i18n) → Show 
 
 **Clear Failure Boundaries:** gRPC failures contained in Event Router. Paintlist fetches can fail independently (retry logic in Fetch Coordinator). UI remains responsive during network issues. Reconnection is just "resume receiving events + refetch stale data".
 
-**Phase Separation:** Event Architecture: Routes events to subsystems. (Windowing System): Implements notification UI, collaboration UI, etc. Event Router doesn't know about toasts, banners, or window layout. Clean separation of concerns.
+**Phase Separation:** Event Architecture: delivers events via the bus. UI Manager: dispatches reactions to subsystems. Windowing System: implements notification UI, collaboration UI, etc. Event Router doesn't know about toasts, banners, or window layout. Clean separation of concerns.
 
 **Vector Graphics Editing:** The architecture must support Illustrator-level manipulation of graphical elements. Any semantic element (glyphs, curves) can be converted to pure graphics with editable bezier paths and control points. Paintlists support both computed semantic elements (font glyphs, musical curves) and user-edited graphics (arbitrary bezier paths detached from musical semantics). Conversion flow: User converts element → backend resolves glyph/curve to paths → creates graphic element → stores as user data → recomputes paintlist → invalidation event → frontend refetches paintlist with editable graphic. Subsequent edits (drag control points, adjust curves, add/remove points) send commands to backend → stored → invalidation → refetch → render. This enables professional-grade graphic design capabilities within the event-driven architecture. Examples: Convert clef glyph to paths and distort, convert slur to graphic and reshape arbitrarily, add custom vector art overlays.
 
@@ -706,11 +807,11 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 
 ### Connection Management
 
-**Normal Operation:** Client connects → Subscribes to piece event streams → Receives invalidation events → Marks rendering data entries invalid → Fetches what's needed via gRPC API calls → Updates local data, renders
+**Normal Operation:** Client connects → Subscribes to piece event streams → Receives invalidation events → Event Router batches and publishes to bus → UI Manager marks rendering data stale → Fetches what's needed via gRPC API calls → Updates local data, renders
 
-**Disconnection:** Connection lost → Event Router detects → Stops receiving events → Rendering data remains as-is → UI shows connection status
+**Disconnection:** Connection lost → Event Router detects → Stops receiving events → Publishes `:system` disconnect to bus → UI Manager shows connection status → Rendering data remains as-is
 
-**Reconnection:** Connection restored → Event Router resubscribes to pieces → Resumes receiving invalidation events → Invalidate all rendering data on reconnect → Fetch Coordinator queues HIGH priority for viewport → Normal fetch mechanism requests fresh paintlists
+**Reconnection:** Connection restored → Event Router resubscribes to pieces → Resumes receiving invalidation events → Publishes invalidate-all to bus → UI Manager marks all rendering data stale → Fetch Coordinator queues HIGH priority for viewport → Normal fetch mechanism requests fresh paintlists
 
 **Key insight:** Clients don't need to "catch up" on missed events. They just fetch current state when they need it.
 
@@ -728,7 +829,7 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 2. UI component begins loading viewport (triggers initial fetches via Fetch Coordinator)
 3. Fetch Coordinator queues HIGH priority requests for visible paintlists
 4. Background threads fetch paintlists at appropriate hierarchy levels (Page/System/Staff/Measure)
-5. Paintlists arrive → Platform.runLater() → Rendering Data Manager → trigger repaint
+5. Paintlists arrive → update Rendering Data Manager on background thread → `fx/run-later!` triggers repaint
 
 **Closing a Piece:**
 1. User closes piece window
@@ -750,12 +851,12 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 - **In-viewport collaborative edit:** ≤150ms p95 from event receipt to painted frame
   - Batch window: 50-100ms
   - Fetch (if needed): 20-40ms  
-  - Platform.runLater() + render: <20ms
+  - fx/run-later! + render: <20ms
 
 - **Scroll-triggered fetch:** ≤100ms p95 from scroll to painted frame
   - No batching (immediate)
   - Fetch: 20-40ms
-  - Platform.runLater() + render: <20ms
+  - fx/run-later! + render: <20ms
   - Placeholders shown during fetch
 
 - **Cursor updates:** 33ms batching → 30fps collaborative cursor movement
@@ -790,7 +891,7 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 
 **What Frontend Stores:**
 
-*Local Piece Rendering Data (complete, persistent):*
+*Local Rendering Cache (paintlists, not semantics — complete, persistent):*
 - Frontend hierarchy mirrors backend visual hierarchy:
   - Backend: Layout → PageView → SystemView → StaffView → MeasureView
   - Frontend: Same structure with staleness tracking at each level
@@ -805,7 +906,7 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 - Paintlists converted to JavaFX/Skija-efficient representations
 - Addressed via VPD (same system as musical hierarchy)
 - Event VPD determines which paintlist to invalidate/fetch
-- Complete piece data stored locally - no eviction policy needed
+- Complete rendering cache stored locally - no eviction policy needed
 
 *UI State:*
 - Window positions, sizes
@@ -837,7 +938,7 @@ Event Router is agnostic to loading policy.
 **Steady-State Behavior (Efficiency Over Time):**
 
 The system naturally converges to high efficiency through gradual accumulation:
-- **Complete paintlist coverage**: Over time, frontend builds complete piece representation with all paintlists fetched and stored locally
+- **Complete paintlist coverage**: Over time, frontend builds a complete rendering cache with all paintlists fetched and stored locally
 - **Perfect cache stability**: Paintlists remain valid indefinitely unless piece changes - 100% of paintlists stay fresh between edits
 - **Zero fetch on reopen**: Once fully loaded, reopening a layout window requires no network fetches (all data already local)
 - **Targeted refreshes only**: When piece changes, only affected VPD hierarchy levels marked stale and refetched
@@ -850,13 +951,13 @@ This creates a **write-once, read-many** pattern where paintlist data is fetched
 
 ### Tradeoffs and Limitations
 
-**Complexity:** Two event models require bridge/adapter code (Event Router). Developers must understand which events flow through which system. Testing requires two strategies - JavaFX event simulation for local events, mock gRPC streams for backend events.
+**Complexity:** Two event models require an adapter component (Event Router). The Event Router's publish-to-bus architecture mitigates this by exposing backend events on the frontend event bus, giving frontend code a single subscription point. Developers must understand the origin distinction (frontend-originated vs backend-routed) but interact with both through the same pub/sub interface. Testing requires two strategies — JavaFX event simulation for local events, mock gRPC streams for backend events.
 
-**Coordination:** Cross-system coordination (invalidating rendering data after backend event) requires explicit routing through Event Router to Rendering Data Manager, rather than implicit event chaining in a unified bus.
+**Coordination:** Cross-system coordination (invalidating rendering data after backend event) requires explicit routing through Event Router → frontend event bus → UI Manager → Rendering Data Manager, rather than implicit event chaining in a unified bus.
 
 **Benefits Realized:**
 - Backend event batching (50-100ms windows) never delays local UI responsiveness
-- Category-specific aggregation reduces Platform.runLater() calls from 60+/sec to ~30/sec
+- Category-specific aggregation reduces bus publishes from 60+/sec to ~30/sec
 - gRPC streaming failures contained - UI shows "disconnected" but remains interactive
 - All clients see backend-computed layout results consistently
 
@@ -869,21 +970,21 @@ This creates a **write-once, read-many** pattern where paintlist data is fetched
 1. **Architecture Pattern:** Separate Event Systems with Event Router (Option 2)
 2. **Event Envelope:** piece-id, server-ts-ns, vpd, category, data (no source-client-id needed)
 3. **Batching Timings:** Invalidations 50-100ms, cursors 33ms, playback ≤16ms, system immediate
-4. **Category Aggregation:** One Platform.runLater() per category batch, not per event
+4. **Category Aggregation:** One `eb/publish!` per category batch, not per event
 5. **Data Model:** Pull-based - events notify staleness, fetches are normal gRPC API calls
 6. **Reconnection:** No replay, no sequence numbers - just invalidate and refetch
 7. **Connection Model:** Connection-oriented - each gRPC stream connection is fresh
 8. **Echo Suppression:** Not used - all clients must see backend-computed layout results
 9. **VPD Granularity:** Fetch at exact level specified by event VPD. Paintlists are independent at each hierarchy level, not nested. API supports fetching any specific paintlist.
-10. **Data Storage:** Complete piece rendering data stored locally, converted to JavaFX/Skija-efficient representations. Staleness tracked at each hierarchy level (implementation may use explicit flags, sentinel values, or data presence). No eviction - memory is cheap.
-11. **Data Structure:** Four atoms, one per hierarchy level (PageViews, SystemViews, StaffViews, MeasureViews). Each atom contains `{vpd-key → paintlist-data}` for O(1) lookup/update. All mutations happen on JavaFX Application Thread via Platform.runLater() - no complex synchronization needed. JAT FIFO queue provides serialization. Atoms are for functional updates, not thread safety. Different hierarchy levels don't contend since each has separate atom.
-12. **Platform.runLater() Ordering:** Accept potential 16ms one-frame discrepancy between category batches. JavaFX guarantees FIFO within category, but not deterministic interleaving across categories. Imperceptible to users. Stricter sequencing would require coalescing all categories into single Platform.runLater(), losing parallelism benefits. Not worth the complexity.
+10. **Data Storage:** Complete rendering cache (paintlists, not semantic data) stored locally, converted to JavaFX/Skija-efficient representations. Staleness tracked at each hierarchy level (implementation may use explicit flags, sentinel values, or data presence). No eviction — memory is cheap. The frontend stores renderable views, not piece semantics — the backend remains the sole authority for musical content.
+11. **Data Structure:** Four atoms, one per hierarchy level (PageViews, SystemViews, StaffViews, MeasureViews). Each atom contains `{vpd-key → paintlist-data}` for O(1) lookup/update. The RDM is a pure data cache — atom updates happen on background threads (stale marking from UI Manager handler, paintlist updates from Fetch Coordinator). Only the subsequent scene graph repaint uses `fx/run-later!`. Atoms provide thread-safe functional updates via `swap!`. Different hierarchy levels don't contend since each has separate atom.
+12. **Cross-Category Ordering:** Accept that events from the same STM transaction may arrive in different categories at different times. A single backend transaction can produce events in multiple categories (e.g. `:cache-invalidation` + `:notification`). These enter separate category aggregators with independent time windows and flush independently. Intra-transaction events in different categories are **not** ordered relative to each other. The frontend event bus delivers each category's batch independently via Claypoole futures. This is imperceptible to users — a notification arriving one batch window before or after its associated invalidation has no observable effect. Stricter cross-category sequencing would require coalescing all categories into a single publish, losing parallelism benefits. Not worth the complexity.
 13. **Viewport Definition:** Buffered viewport (visible + N measures ahead/behind). Updates discretely when scroll settles (~100ms debounce), not continuously. Strict viewport causes fetch thrashing during scroll, risking visible blanks. Buffered costs minimal memory (few MB per piece) but maintains latency targets and smooth scrolling. Discrete updates prevent flooding prefetch queue.
-14. **Category Aggregator Implementation:** Single ScheduledExecutorService (1 thread) manages all category flushes. Per-category Clojure atom (vector) accumulates events from Event Router threads. Atomic drain via `reset-vals!` ensures no events are lost between read and clear. Schedule flush at fixed delay per category (50-100ms invalidations, 33ms cursors, 16ms playback). On flush: atomic drain → single Platform.runLater() with drained events. Rationale: No core.async dependency. Atoms accept concurrent `swap!` from multiple Event Router threads. Single scheduler thread means no concurrent flushes per category (no AtomicBoolean guard needed). Predictable timing via fixed delays. Alternative considered: core.async channels with alts! timeout - more elegant but adds dependency and scheduler complexity. Atoms + scheduled executor is simpler, sufficient for event rates (tens/sec), and fits Integrant lifecycle cleanly.
+14. **Category Aggregator Implementation:** Single ScheduledExecutorService (1 thread) manages all category flushes. Per-category Clojure atom (vector) accumulates events from Event Router threads. Atomic drain via `reset-vals!` ensures no events are lost between read and clear. Schedule flush at fixed delay per category (50-100ms invalidations, 33ms cursors, 16ms playback). On flush: atomic drain → single `eb/publish!` with drained events to frontend event bus. Rationale: No core.async dependency. Atoms accept concurrent `swap!` from multiple Event Router threads. Single scheduler thread means no concurrent flushes per category (no AtomicBoolean guard needed). Predictable timing via fixed delays. Alternative considered: core.async channels with alts! timeout - more elegant but adds dependency and scheduler complexity. Atoms + scheduled executor is simpler, sufficient for event rates (tens/sec), and fits Integrant lifecycle cleanly.
 15. **Fetch Batching Semantics:** Start unbatched - one VPD → one gRPC call. No range coalescing initially. Rationale: gRPC call overhead is negligible compared to network latency (20-40ms). Single-VPD fetches are simpler to implement, instrument, and debug. Easier to track per-VPD latency and hit rates. Batching adds complexity (how to group? timeout vs count threshold? error handling for partial batches?). If profiling later shows network overhead is significant, add contiguous-range coalescing behind feature flag without changing API. Start simple - optimize when data proves necessary.
 16. **Fetch Priorities Within Viewport:** Four priority levels: CRITICAL (in-viewport stale from invalidations), HIGH (in-viewport missing from demand loads), NORMAL (buffered prefetch), LOW (background opportunistic). Implementation: 4 priority queues with event-driven dispatch on shared Claypoole pool (max 4 concurrent fetches). CRITICAL always drains before others. Rationale for 4 levels vs 3: Implementation cost trivial (one additional queue). Distinction matters under load: when fetch pool saturated + viewport invalidation + viewport demand load occur together, stale data (shows wrong notes) is more perceptually confusing than missing data (shows understood placeholder). Users interpret stale as "broken", placeholder as "loading". With 4-6 threads at 20-40ms latency, capacity is 100-150 fetches/sec. Typical load 10-50/sec means conflict is rare, but when it occurs CRITICAL preemption provides better UX. If profiling shows CRITICAL/HIGH distinction unused, can collapse to 3 levels later. Considerations: Monitor queue depth metrics per priority. If CRITICAL queue never has >1 item, may be overengineered. If HIGH queue regularly blocks CRITICAL, distinction is valuable.
 
-17. **Testing Strategy:** Multiple test levels for comprehensive coverage. **Deterministic (unit tests):** Mock gRPC streams using test doubles, verify event routing logic, category aggregation, and Platform.runLater() invocations without network. **Integration tests:** Replay recorded event streams to test realistic event sequences and timing patterns. **End-to-end tests:** Real backend with gRPC transport, measure p95 latencies against targets (≤150ms collaborative edits, ≤100ms scroll-triggered fetches). **Soak testing:** Synthetic edit workloads at 30-60 events/sec for 10-15 minutes to verify batch aggregation, memory stability, and fetch queue behavior under sustained load. Rationale: Unit tests provide fast feedback on logic correctness. Integration tests catch timing bugs and event cascade issues. End-to-end tests validate performance targets. Soak tests expose resource leaks and queue saturation. Multi-level approach balances speed, realism, and confidence.
+17. **Testing Strategy:** Multiple test levels for comprehensive coverage. **Deterministic (unit tests):** Mock gRPC streams using test doubles, verify event routing logic, category aggregation, and `fx/run-later!` invocations without network. **Integration tests:** Replay recorded event streams to test realistic event sequences and timing patterns. **End-to-end tests:** Real backend with gRPC transport, measure p95 latencies against targets (≤150ms collaborative edits, ≤100ms scroll-triggered fetches). **Soak testing:** Synthetic edit workloads at 30-60 events/sec for 10-15 minutes to verify batch aggregation, memory stability, and fetch queue behavior under sustained load. Rationale: Unit tests provide fast feedback on logic correctness. Integration tests catch timing bugs and event cascade issues. End-to-end tests validate performance targets. Soak tests expose resource leaks and queue saturation. Multi-level approach balances speed, realism, and confidence.
 
 18. **Monitoring Implementation:** Lightweight HTTP server on localhost serving JSON metrics, disabled by default (enabled via config flag for debugging). Port configurable to avoid conflicts with multiple clients. Metrics exposed at `http://localhost:PORT/metrics` with JSON structure:
 ```json
@@ -908,11 +1009,11 @@ Can be consumed directly by Grafana (native JSON data source support) for unifie
 
 19. **Fetch Failure Handling:** Per-VPD exponential backoff with jitter to handle transient network failures gracefully. **Retry strategy:** Initial retry after 200ms, then 500ms, 1s, 2s, capped at 5s between retries. Jitter (±20%) prevents thundering herd if many fetches fail simultaneously. **Max retries:** 5 attempts, then mark VPD as stale+error state and stop retrying. **Recovery:** Next invalidation event for that VPD or explicit user action (refresh/retry) triggers fresh fetch attempt with reset backoff. **User notification:** Route fetch-failure events to Notification Manager (Windowing System). UI implementation deferred to - may show toast notification, status bar indicator, or inline error marker depending on failure severity and duration. Temporary failures (1-2 retries succeed) silent to user. Persistent failures (all retries exhausted) trigger user-visible notification. Rationale: Exponential backoff handles temporary network hiccups without user awareness. Jitter prevents synchronized retry storms. Capped backoff ensures reasonable retry latency. separation keeps Event Router focused on protocol, not UI concerns.
 
-20. **Component Integration and Dependency Injection:** Event Router, Rendering Data Manager, and Fetch Coordinator wire together via Integrant dependency injection with clear component boundaries. **Event Router (Integrant Component):** Depends on `grpc-clients` (Integrant ref), `fetch-coordinator` (Integrant ref), `rendering-data-manager` (config value). Receives dependencies via `init-key` configuration map. Creates handler functions during initialization, capturing dependencies in closures. Handler signature: `(fn [events] ...)` where `events` is batched vector. Manages subscription state atom internally for reconnection. **Rendering Data Manager (NOT Integrant Component):** Pure data structure: 4 atoms + pure functions. Created via simple factory function `(create-rendering-data-manager)`. Passed to Event Router and Fetch Coordinator as config value (not Integrant ref). Rationale for NOT being component: No lifecycle needed (atoms don't require cleanup), no stateful resources (no connections, threads, files), purely functional interface, component lifecycle overhead unnecessary for simple data structure. **Fetch Coordinator (Integrant Component):** Depends on `grpc-clients` (Integrant ref), `rendering-data-manager` (config value), `thread-pool` (Integrant ref to shared Claypoole pool). Uses shared pool for concurrent fetches (max 4 via CAS-based slot claiming). Requires component status because it holds mutable dispatch state (in-flight counter, priority queues) requiring cleanup on halt. **Integrant Configuration:** `{:ooloi.frontend.components/grpc-clients {}, :ooloi.frontend.rendering/data-manager {}, :ooloi.shared.components/thread-pool {:size 4}, :ooloi.frontend.components/fetch-coordinator {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients) :rendering-data-manager (ig/ref :ooloi.frontend.rendering/data-manager) :thread-pool (ig/ref :ooloi.shared.components/thread-pool)}, :ooloi.frontend.components/event-router {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients) :fetch-coordinator (ig/ref :ooloi.frontend.components/fetch-coordinator) :rendering-data-manager (ig/ref :ooloi.frontend.rendering/data-manager)}, :ooloi.frontend.components/ui-manager {:event-router (ig/ref :ooloi.frontend.components/event-router)}}`. **Handler Creation Pattern:** Event Router creates handlers during `init-key` with injected dependencies captured in closures: cache-invalidation handler calls `rdm/mark-stale!` and `fc/queue-fetch!`, presence/playback/system/notification handlers delegate to appropriate subsystems. Rationale: Event Router creates handlers during init with injected dependencies captured in closures. This provides clean dependency management without global state, enables testing with mock dependencies, and follows Integrant lifecycle patterns. RDM passed as config value (not Integrant ref) because it's not a component - this distinction prevents lifecycle coupling where none is needed.
+20. **Component Integration and Dependency Injection:** Components wire together via Integrant dependency injection with clear boundaries. **Frontend Event Bus (Integrant Component):** Depends on `thread-pool` (Integrant ref). Pure data structure `{:pool pool :subscribers (atom {})}` created during `init-key`. Both the UI Manager and Event Router receive it as an Integrant dependency. **Event Router (Integrant Component):** Depends on `grpc-clients` (Integrant ref) and `event-bus` (Integrant ref). Pure pipeline: categorise → batch → `eb/publish!` to frontend event bus. No direct category handlers — all downstream processing happens through bus subscribers mediated by the UI Manager. Manages subscription state atom internally for reconnection. **Rendering Data Manager (NOT Integrant Component):** Pure data structure: 4 atoms + pure functions. Created via simple factory function `(create-rendering-data-manager)`. Owned by the Fetch Coordinator. Rationale for NOT being component: No lifecycle needed (atoms don't require cleanup), no stateful resources (no connections, threads, files), purely functional interface. **Fetch Coordinator (Integrant Component):** Depends on `grpc-clients` (Integrant ref), `thread-pool` (Integrant ref to shared Claypoole pool). Creates and owns the Rendering Data Manager. Uses shared pool for concurrent fetches (max 4 via CAS-based slot claiming). Requires component status because it holds mutable dispatch state (in-flight counter, priority queues) requiring cleanup on halt. **Integrant Configuration:** `{:ooloi.shared.components/thread-pool {:size 4}, :ooloi.frontend.components/event-bus {:thread-pool (ig/ref :ooloi.shared.components/thread-pool)}, :ooloi.frontend.components/grpc-clients {}, :ooloi.frontend.components/fetch-coordinator {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients) :thread-pool (ig/ref :ooloi.shared.components/thread-pool)}, :ooloi.frontend.components/event-router {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients) :event-bus (ig/ref :ooloi.frontend.components/event-bus)}, :ooloi.frontend.components/ui-manager {:event-bus (ig/ref :ooloi.frontend.components/event-bus)}}`. Rationale: The Event Router publishes to the bus and the UI Manager subscribes. Neither needs direct references to downstream subsystems (RDM, FC, etc.) — bus-mediated delivery decouples them. This provides clean dependency management without global state, enables testing with mock dependencies, and follows Integrant lifecycle patterns.
 
 21. **Subscription State Management:** Event Router maintains internal subscription state to enable autonomous reconnection without external coordination. **State Structure:** `{:subscription-state (atom #{piece-id-1 piece-id-2 ...})}`. **Subscribe Operation:** Proxy subscription request to backend via gRPC, on success add piece-id to subscription-state atom, return result to caller. **Unsubscribe Operation:** Proxy unsubscription request to backend via gRPC, on success remove piece-id from subscription-state atom, return result to caller. **Reconnection Flow:** Event Router detects connection loss (gRPC stream error), connection restored (automatic or manual), Event Router iterates @subscription-state, for each piece-id calls backend subscribe-to-piece-events, resumes normal event processing. **API Surface:** `(subscribe-to-piece event-router piece-id)` subscribes to piece events, proxies to backend and tracks for reconnection. `(unsubscribe-from-piece event-router piece-id)` unsubscribes from piece events, proxies to backend and updates tracking. Both implemented in `ooloi.frontend.components.event-router` namespace. Rationale: Event Router needs subscription state for autonomous reconnection. Alternative considered: External coordinator tracks subscriptions and calls Event Router after reconnect - rejected because it distributes reconnection logic across multiple components and requires coordination protocol. Internal state keeps reconnection logic localized and self-contained. State is simple (set of piece-ids), requires no persistence (subscriptions are session-scoped), and enables Event Router to be self-sufficient for connection management per reconnection scenarios described in this ADR.
 
-22. **Component API Surfaces:** Clear API boundaries between components enable testing and future evolution. **Rendering Data Manager API:** `(create-rendering-data-manager)` returns `{:page-views (atom {}) :system-views (atom {}) :staff-views (atom {}) :measure-views (atom {})}`. `(mark-stale! rdm vpd)` marks paintlist at VPD as stale, returns nil, must be called on JavaFX Application Thread. `(update-paintlist! rdm vpd paintlist)` updates paintlist at VPD, returns nil, must be called on JavaFX Application Thread. `(get-paintlist rdm vpd)` gets paintlist at VPD, returns paintlist or nil if missing/stale. `(is-stale? rdm vpd)` checks if paintlist at VPD is stale, returns boolean. **Fetch Coordinator API:** `(queue-fetch! fc vpd priority)` queues paintlist fetch at priority level (`:critical`, `:high`, `:normal`, `:low`), returns nil immediately, fetch happens asynchronously on background thread, completion updates RDM via Platform.runLater(). **Event Router API:** `(subscribe-to-piece event-router piece-id)` subscribes to piece events, returns backend response or error. `(unsubscribe-from-piece event-router piece-id)` unsubscribes from piece events, returns backend response or error. Rationale: Explicit API surfaces enable component testing in isolation with mocks, clear contracts for future maintainers, API evolution without implementation coupling, documentation of threading constraints (RDM mutations on JAT). These APIs are minimal - only operations needed by collaborating components. Internal operations (aggregator flushing, thread pool management) remain encapsulated.
+22. **Component API Surfaces:** Clear API boundaries between components enable testing and future evolution. **Frontend Event Bus API:** `(create-event-bus pool)` returns `{:pool pool :subscribers (atom {})}`. `(subscribe! bus category handler-fn)` registers handler for a category. `(unsubscribe! bus category handler-fn)` removes handler. `(publish! bus category events)` dispatches events to all category subscribers via Claypoole futures. **Rendering Data Manager API:** `(create-rendering-data-manager)` returns `{:page-views (atom {}) :system-views (atom {}) :staff-views (atom {}) :measure-views (atom {})}`. `(mark-stale! rdm vpd)` marks paintlist at VPD as stale, returns nil. `(update-paintlist! rdm vpd paintlist)` updates paintlist at VPD, returns nil. `(get-paintlist rdm vpd)` gets paintlist at VPD, returns paintlist or nil if missing/stale. `(is-stale? rdm vpd)` checks if paintlist at VPD is stale, returns boolean. RDM is a pure data cache (atoms) — updates happen on background threads; only the subsequent scene graph repaint uses `fx/run-later!`. **Fetch Coordinator API:** `(queue-fetch! fc vpd priority)` queues paintlist fetch at priority level (`:critical`, `:high`, `:normal`, `:low`), returns nil immediately, fetch happens asynchronously on background thread, completion updates RDM on background thread and schedules repaint via `fx/run-later!`. **Event Router API:** `(subscribe-to-piece event-router piece-id)` subscribes to piece events, returns backend response or error. `(unsubscribe-from-piece event-router piece-id)` unsubscribes from piece events, returns backend response or error. Rationale: Explicit API surfaces enable component testing in isolation with mocks, clear contracts for future maintainers, API evolution without implementation coupling. These APIs are minimal — only operations needed by collaborating components. Internal operations (aggregator flushing, thread pool management) remain encapsulated.
 
 ### Outstanding
 
@@ -931,13 +1032,14 @@ None - all implementation questions resolved.
 - **ADR-0022: Event-Driven Data Synchronization** - Core architecture this implements. Describes interaction patterns. Event Router implements the architecture. Cache invalidation → fetch → update flow.
 - **ADR-0024: gRPC Flow Control** - Per-client drainer pattern guarantees FIFO event delivery. Event Router benefits from backpressure handling. Drop-oldest queue prevents memory exhaustion.
 - **ADR-0028: Hierarchical Rendering Pipeline** - Backend computes MeasureView structures with glyphs and curves. Computed by 6-stage rendering pipeline with fan-out/fan-in pattern.
-- **ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution** - Rendering Data Manager stores backend paintlists. GPU-accelerated Skija execution implements terminal frontend principle. Event Router → RDM → Fetch Coordinator → Skija rendering flow.
+- **ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution** - Rendering Data Manager stores backend paintlists. GPU-accelerated Skija execution implements terminal frontend principle. Event Router → bus → UI Manager → RDM → Fetch Coordinator → Skija rendering flow.
 
 **Supporting:**
 - **ADR-0014: Timewalk** - Temporal traversal for hit-testing and element discovery. Frontend uses timewalk to resolve clicks to VPDs for backend operations.
-- **ADR-0017: Integrant Component Lifecycle** - Event Router is Integrant component. Depends on gRPC client component. Manages subscription lifecycle. Proper cleanup on shutdown.
+- **ADR-0017: Integrant Component Lifecycle** - Event Router and event bus are Integrant components. Event Router depends on gRPC clients and event bus. Manages subscription lifecycle. Proper cleanup on shutdown.
 - **ADR-0018: API-gRPC Interface Generation** - Event streams defined in ADR-0018. Two event categories: Server events, Piece events. Event Router subscribes to both streams.
 - **ADR-0032: Flow Mode** - Modal keyboard input integrates with JavaFX event system. Keyboard events processed immediately, modal state changes trigger backend updates via gRPC, invalidation events refresh display.
+- **ADR-0043: Frontend Settings** - Frontend app settings publish `:setting-changed` events on the frontend event bus via the `:settings` category. Theme changes flow through the event bus to the UI Manager.
 
 ---
 
