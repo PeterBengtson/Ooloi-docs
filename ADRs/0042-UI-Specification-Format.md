@@ -175,15 +175,15 @@ UI elements that need custom content — splash screens, About dialogs, future t
     {:root root :ok-button ok-btn}))
 
 ;; Caller uses show-window! with :window/content
-(let [{:keys [root ok-button]} (about/build-about-content!)
-      stage (um/show-window! mgr
-              {:window/id :about
-               :window/content root
-               :window/style :undecorated
-               :title "About Ooloi"
-               :width 800 :height 700})]
+(let [{:keys [root ok-button]} (about/build-about-content!)]
+  (um/show-window! mgr
+    {:window/id :about
+     :window/content root
+     :window/style :undecorated
+     :title "About Ooloi"
+     :width 800 :height 700})
   (.setOnAction ok-button
-    (reify EventHandler (handle [_ _] (.close stage)))))
+    (reify EventHandler (handle [_ _] (um/close-window! mgr :about)))))
 ```
 
 **The contract:**
@@ -218,7 +218,7 @@ Content builders produce nodes. The UI Manager produces windows.
 
 **Invariant:** If code imports `javafx.stage.Stage` or `javafx.scene.Scene` to create new instances, it is violating this invariant. Only the windowing infrastructure (`window.clj`, `ui_manager.clj`) may do so.
 
-**macOS Platform Behaviour:** On macOS, `register-window!` automatically calls `.initOwner` on non-main windows, setting the main Stage as owner. This ensures secondary windows (About, tool palettes) inherit the system menu bar. Without this, focused secondary windows show a blank menu bar.
+**macOS Platform Behaviour:** On macOS, `register-window!` automatically calls `.initOwner` on secondary windows, setting the first registered Stage as owner. This ensures secondary windows (About, tool palettes) inherit the system menu bar. Without this, focused secondary windows show a blank menu bar.
 
 **Theme Application is Automatic**
 

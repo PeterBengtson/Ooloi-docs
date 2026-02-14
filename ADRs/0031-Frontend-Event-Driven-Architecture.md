@@ -149,7 +149,7 @@ Categories are arbitrary keywords — any component can define new ones.
 
 **Backend Events on the Bus:**
 
-The Event Router (Layer 3) publishes backend event batches directly to the frontend event bus as part of its flush cycle. No separate bridge function is needed — the bridge is structural. When a time-windowed batch flushes, the Event Router calls `eb/publish!` with the batch's category keyword and the vector of events. This makes all backend events available to any frontend event bus subscriber under their original category keywords. A development aid (`notify-all-backend-events!`) subscribes to backend categories and generates UI notifications for every event — this can be removed without affecting production event flow.
+The Event Router (Layer 3) publishes backend event batches directly to the frontend event bus as part of its flush cycle. No separate bridge function is needed — the bridge is structural. When a time-windowed batch flushes, the Event Router calls `eb/publish!` with the batch's category keyword and the vector of events. This makes all backend events available to any frontend event bus subscriber under their original category keywords. A development aid (`notify-all-events!`) subscribes to all event bus categories via wildcard and generates an AtlantaFX UI notification for every event (both frontend-originated and backend-routed). Event bus dispatches on Claypoole pool threads, so `notify-all-events!` bridges to the JAT via `fx/run-later!`. Notification messages include event type and `:window/id` when present. This can be removed without affecting production event flow.
 
 **Coordination Pattern:**
 
