@@ -128,6 +128,7 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
 - **Integration**: Direct JavaFX theme integration through AtlantaFX, minimal code changes required
 - **Extensibility**: AtlantaFX provides foundation for custom styling and component extensions
 - **Colour System**: AtlantaFX implements the GitHub Primer colour system with semantic (functional) tokens (`-color-fg-default`, `-color-accent-muted`, `-color-danger-emphasis`, etc.) that resolve to different concrete values in dark vs light mode. All frontend CSS must use these tokens exclusively — no hardcoded hex/rgb values. Scale tokens (`-color-base-N`) are raw palette values and must not be used. See [UI Architecture §7: Colour Tokens](../research/UI_ARCHITECTURE.md) for the full reference.
+- **Icons**: Ikonli Material Design 2 (`ikonli-javafx` + `ikonli-material2-pack` 12.4.0) provides font-based icons via `FontIcon` nodes. Icons are referenced by string literals and inherit colour from parent control severity classes. See [UI Architecture §7: Icons](../research/UI_ARCHITECTURE.md).
 
 ## Notes
 

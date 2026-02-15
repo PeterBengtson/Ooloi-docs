@@ -258,6 +258,8 @@ The window manager infrastructure automatically applies the configured UI theme 
 
 **Colour Token Invariant:** When CSS overrides are necessary (e.g., notification severity backgrounds, custom component styling), all colours must use AtlantaFX semantic tokens (`-color-fg-default`, `-color-danger-muted`, `-color-success-muted`, etc.). Literal hex values, `rgb()` functions, or JavaFX `Color` constants are prohibited. This extends the theme-as-infrastructure principle to CSS-level customisation — overrides adapt automatically to dark/light mode. See [UI Architecture §7: Colour Tokens](../research/UI_ARCHITECTURE.md) for the full token reference.
 
+**Icons:** Ikonli Material Design 2 icons (`ikonli-javafx` + `ikonli-material2-pack`) provide font-based icons via `FontIcon` nodes. Icons are referenced by string literals (e.g. `"mdal-info"`, `"mdmz-warning"`). Notification severity types have default icons that inherit colour from AtlantaFX severity classes automatically. See [UI Architecture §7: Icons](../research/UI_ARCHITECTURE.md) for the full icon reference.
+
 ### Command Descriptors (Menu Specialisation)
 
 Menu items in Ooloi are defined as **command descriptors** — pure maps that each describe a single menu command. A command descriptor holds everything needed to render a menu item: the i18n text key, the keyboard accelerator, an enablement predicate, and the action handler. This eliminates duplication — each command is defined once, and the menu bar is generated from the collection of descriptors.
