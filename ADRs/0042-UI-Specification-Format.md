@@ -260,6 +260,8 @@ The window manager infrastructure automatically applies the configured UI theme 
 
 **Icons:** Ikonli Material Design 2 icons (`ikonli-javafx` + `ikonli-material2-pack`) provide font-based icons via `FontIcon` nodes. Icons are referenced by string literals (e.g. `"mdal-info"`, `"mdmz-warning"`). Notification severity types have default icons that inherit colour from AtlantaFX severity classes automatically. See [UI Architecture §7: Icons](../research/UI_ARCHITECTURE.md) for the full icon reference.
 
+**Notification opacity:** Notifications are semi-transparent by default (0.8 opacity) for a lighter visual presence. Configurable per-notification via `:opacity` in the spec.
+
 ### Command Descriptors (Menu Specialisation)
 
 Menu items in Ooloi are defined as **command descriptors** — pure maps that each describe a single menu command. A command descriptor holds everything needed to render a menu item: the i18n text key, the keyboard accelerator, an enablement predicate, and the action handler. This eliminates duplication — each command is defined once, and the menu bar is generated from the collection of descriptors.
