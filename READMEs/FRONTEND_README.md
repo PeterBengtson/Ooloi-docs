@@ -35,7 +35,7 @@ The frontend project retains `lein run` for development and testing purposes, al
 
 ## System Architecture
 
-The frontend is a full-featured application using **Integrant dependency injection** for component lifecycle management:
+The frontend uses **Integrant dependency injection** for component lifecycle management:
 
 ```
 ┌─────────────────┐    ┌──────────────────┐
@@ -109,7 +109,7 @@ lein midje        # Verify installation
 
 ### Application Architecture
 
-The Ooloi Frontend is now a full-featured application with comprehensive system architecture matching the backend. It uses Integrant dependency injection for component lifecycle management.
+The Ooloi Frontend uses Integrant dependency injection for component lifecycle management. It provides the presentation layer consumed by the combined desktop application built from [shared/](../shared/).
 
 **Key Components:**
 - **gRPC Client**: Manages connection to backend server
