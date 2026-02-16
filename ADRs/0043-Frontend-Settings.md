@@ -4,6 +4,7 @@
 
 Accepted - February 12, 2026
 Updated - February 13, 2026 (Defaults declared in def-app-setting; event bus integration)
+Updated - February 16, 2026 (Settings dialog implemented; code references added)
 
 ## Table of Contents
 - [Context](#context)
@@ -233,7 +234,7 @@ The settings registry provides everything needed to generate a Settings dialog:
 - **Choice labels**: `(tr :setting.ui.theme.nord-dark)` → "Dark"
 - **Validation feedback**: immediate validation on input change
 
-The Settings dialog is a separate implementation concern (separate ticket) that consumes the registry.
+The Settings dialog is implemented in `settings_dialog.clj`, consuming the registry to generate the UI automatically. It follows the content builder pattern (ADR-0042): `build-settings-content!` (private) constructs a TabPane with one tab per category, and `show-settings!` (public) handles lifecycle via the UI Manager. Each tab contains a ScrollPane of setting rows — `Tile` + `ComboBox` for choices, `Tile` + `TextField` for validator-based settings — each with a per-field reset button. A unified bottom bar provides Reset All Defaults (scoped to the active tab's category) and OK.
 
 ## Rationale
 
@@ -271,7 +272,7 @@ The frontend settings system is implemented in `frontend/src/main/clojure/ooloi/
 
 Default values are declared in `def-app-setting` and extracted into `shared/resources/app-settings/settings.edn` by the `lein frontend-settings` build task. User settings are stored in the platform-specific directory via `platform/get-platform-directory "Ooloi" "app-settings"`.
 
-The Settings dialog (separate implementation) consumes the registry to generate UI controls automatically.
+The Settings dialog (`settings_dialog.clj`) consumes the registry to generate UI controls automatically, following the content builder pattern (ADR-0042). `system.clj` maps the `:ui/open-settings` action handler to a one-line delegation to `show-settings!`.
 
 ## Consequences
 
@@ -364,6 +365,7 @@ Require `load-app-settings!` call in system.clj startup sequence.
 ## Code References
 
 - `frontend/src/main/clojure/ooloi/frontend/ui/app_settings.clj` — Settings system implementation
+- `frontend/src/main/clojure/ooloi/frontend/ui/settings_dialog.clj` — Settings dialog (content builder pattern, ADR-0042)
 - `shared/resources/app-settings/defaults.edn` — Generated defaults resource (produced by `lein frontend-settings`)
 - `frontend/src/main/clojure/ooloi/frontend/ui/theme.clj` — Theme module consuming settings
 - `shared/src/main/clojure/ooloi/shared/platform.clj` — Platform-specific directory paths
