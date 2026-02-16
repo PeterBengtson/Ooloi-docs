@@ -220,12 +220,12 @@ This design ensures:
 **Certificate Strategy**: No TLS needed - in-process communication bypasses network layer  
 **Configuration**:
 ```bash
-# Combined mode - in-process transport, no network communication
-./ooloi-combined
+# Combined desktop application - in-process transport, no network communication
+./ooloi
 
 # TLS flags ignored in combined mode (no network transport)
-OOLOI_TLS=true ./ooloi-combined  # TLS setting has no effect
-./ooloi-combined --tls true      # TLS setting has no effect
+OOLOI_TLS=true ./ooloi  # TLS setting has no effect
+./ooloi --tls true      # TLS setting has no effect
 ```
 
 **In-Process Transport Characteristics**:
@@ -242,16 +242,13 @@ OOLOI_TLS=true ./ooloi-combined  # TLS setting has no effect
 - **No network dependencies**: Works offline or in restricted network environments
 
 ### Local Development (No TLS) - Default
-**Architecture**: Backend and frontend on same machine, network transport
-**Certificate Strategy**: No TLS - plaintext communication
+**Architecture**: Combined desktop application with in-process transport
+**Certificate Strategy**: No TLS - in-process communication
 **Use Case**: Default development workflow, fastest iteration
 
 ```bash
-# Backend - no TLS
-./ooloi-backend
-
-# Frontend - no TLS
-./ooloi-frontend
+# Combined application - no TLS, in-process transport (default)
+./ooloi
 ```
 
 **Benefits**:
@@ -260,18 +257,18 @@ OOLOI_TLS=true ./ooloi-combined  # TLS setting has no effect
 - **Default**: Most developers work this way
 
 ### Local Development with TLS (Self-Signed Certificates)
-**Architecture**: Backend and frontend on same or different machines, testing TLS functionality
+**Architecture**: Standalone backend server with combined app connecting as guest client, testing TLS functionality
 **Certificate Strategy**: Server auto-generates self-signed certificate, client uses insecure mode
 **Use Case**: Testing TLS features, multi-machine development, verifying encryption
 
 ```bash
-# Backend - generates self-signed cert at ~/.ooloi/certs/server.crt
+# Standalone backend - generates self-signed cert at ~/.ooloi/certs/server.crt
 OOLOI_TLS=true ./ooloi-backend
 
-# Frontend - uses insecure mode to accept self-signed cert
+# Combined app connecting as guest - uses insecure mode to accept self-signed cert
 OOLOI_FRONTEND_TLS=true
 OOLOI_FRONTEND_INSECURE_DEV_MODE=true
-./ooloi-frontend
+./ooloi --connect-to remote-backend
 ```
 
 **Important Notes**:
@@ -281,9 +278,9 @@ OOLOI_FRONTEND_INSECURE_DEV_MODE=true
 - **When to use**: Testing TLS functionality, not production-like security
 
 ### Multi-Client Development (Distributed Testing)
-**Architecture**: Multiple client machines connecting to shared development server
+**Architecture**: Multiple combined app instances connecting as guests to a shared development server
 **Certificate Strategy**: Self-signed certificate shared across development team
-**Use Case**: Testing collaboration features with TLS enabled
+**Use Case**: Testing collaboration features with TLS enabled (see [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md))
 
 ```bash
 # Development server with auto-generated cert
@@ -292,11 +289,11 @@ OOLOI_TLS=true ./ooloi-backend
 # Copy certificate to client machines:
 # scp ~/.ooloi/certs/server.crt dev-machine-2:~/.ooloi/certs/
 
-# Clients on different machines
+# Combined apps on different machines connecting as guests
 OOLOI_FRONTEND_TLS=true
 OOLOI_FRONTEND_INSECURE_DEV_MODE=true
 OOLOI_FRONTEND_CERT_PATH=~/.ooloi/certs/server.crt
-./ooloi-frontend
+./ooloi --connect-to remote-backend
 ```
 
 **Certificate Requirements**:
@@ -348,11 +345,11 @@ OOLOI_TLS=true OOLOI_CERT_PATH=/etc/certs/ooloi.crt OOLOI_KEY_PATH=/etc/certs/oo
 **Enterprise Client with Custom CA (non-localhost hostname):**
 
 ```bash
-# Client trusts enterprise CA certificate, authority derived from backend-host
+# Combined app connecting as guest trusts enterprise CA certificate
 OOLOI_FRONTEND_TLS=true \
 OOLOI_FRONTEND_CERT_PATH=/etc/ssl/company-ca.crt \
 OOLOI_FRONTEND_BACKEND_HOST=internal.corp.com \
-./ooloi-frontend
+./ooloi --connect-to remote-backend
 ```
 
 **Enterprise Certificate Characteristics**:
@@ -376,13 +373,12 @@ OOLOI_TLS=true OOLOI_CERT_PATH=/secrets/tls.crt OOLOI_KEY_PATH=/secrets/tls.key 
 # DEVELOPMENT SCENARIOS
 # ============================================================================
 
-# Default: No TLS (fastest, simplest)
-./ooloi-backend
-./ooloi-frontend
+# Default: Combined app with in-process transport (fastest, simplest)
+./ooloi  # No TLS needed — in-process transport
 
-# Testing TLS with self-signed certificates (same machine)
+# Testing TLS with self-signed certificates (guest connecting to standalone server)
 OOLOI_TLS=true ./ooloi-backend
-OOLOI_FRONTEND_TLS=true OOLOI_FRONTEND_INSECURE_DEV_MODE=true ./ooloi-frontend
+OOLOI_FRONTEND_TLS=true OOLOI_FRONTEND_INSECURE_DEV_MODE=true ./ooloi --connect-to remote-backend
 
 # Testing TLS across multiple machines
 OOLOI_TLS=true ./ooloi-backend  # Generates cert at ~/.ooloi/certs/
@@ -390,10 +386,7 @@ OOLOI_TLS=true ./ooloi-backend  # Generates cert at ~/.ooloi/certs/
 OOLOI_FRONTEND_TLS=true \
 OOLOI_FRONTEND_INSECURE_DEV_MODE=true \
 OOLOI_FRONTEND_CERT_PATH=~/.ooloi/certs/server.crt \
-./ooloi-frontend
-
-# Combined mode (in-process, no network)
-./ooloi-combined  # TLS not applicable
+./ooloi --connect-to remote-backend
 
 # ============================================================================
 # PRODUCTION SCENARIOS
@@ -405,10 +398,10 @@ OOLOI_CERT_PATH=/etc/letsencrypt/live/api.example.com/fullchain.pem \
 OOLOI_KEY_PATH=/etc/letsencrypt/live/api.example.com/privkey.pem \
 ./ooloi-backend
 
-# Client connects with system trust (validates actual hostname)
+# Combined app connecting as guest with system trust (validates actual hostname)
 OOLOI_FRONTEND_TLS=true \
 OOLOI_FRONTEND_BACKEND_HOST=api.example.com \
-./ooloi-frontend
+./ooloi --connect-to remote-backend
 
 # SaaS: TLS termination at load balancer
 OOLOI_TLS=false OOLOI_PORT=8080 ./ooloi-backend  # Behind AWS ALB
@@ -423,7 +416,7 @@ OOLOI_KEY_PATH=/etc/ssl/company.key \
 OOLOI_FRONTEND_TLS=true \
 OOLOI_FRONTEND_CERT_PATH=/etc/ssl/company-ca.crt \
 OOLOI_FRONTEND_BACKEND_HOST=internal.corp.com \
-./ooloi-frontend
+./ooloi --connect-to remote-backend
 ```
 
 ## Health Endpoint Integration

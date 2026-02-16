@@ -79,18 +79,19 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 - Implements gRPC server using Integrant components
 - Contains backend-specific business logic
 - Generates Java gRPC classes from shared `.proto` definitions
-- Builds "Ooloi Server" binary
+- Builds standalone "Ooloi Server" binary for dedicated server deployments
 
 **Frontend Project** (`frontend/`):
 - Implements gRPC client for server communication
 - Contains JavaFX/Skija UI implementation
-- Generates Java gRPC classes from shared `.proto` definitions  
-- Builds "Ooloi Client" binary
+- Generates Java gRPC classes from shared `.proto` definitions
+- Code library consumed by the combined application; does not produce a standalone artifact
+- Retains `lein run` for development and testing
 
 **Shared Project** (`shared/`):
 - Contains `.proto` definitions for gRPC communication
 - Houses shared Clojure code accessible to both frontend and backend
-- Builds "Ooloi" combined binary with both components
+- Builds the combined "Ooloi" desktop application with both frontend and backend components
 - Serves as the source of truth for API contracts
 
 ### Code Sharing Strategy
@@ -141,18 +142,14 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 
 ### 4. Deployment Models
 
-**Combined Deployment**:
+**Combined Deployment** (primary):
 - Single process with both frontend and backend components
-- gRPC communication over localhost or in-process
+- Starts with in-process gRPC transport for zero-overhead local operation
+- Can dynamically enable network server for collaboration sessions (see [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md))
 - Built from `shared/` project
 
-**Distributed Deployment**:
-- Backend process hosts gRPC server on network port
-- Frontend process connects as gRPC client
-- Built from separate `backend/` and `frontend/` projects
-
 **Backend-Only Deployment**:
-- Headless server for API access or integration
+- Headless server for dedicated server, API access, or integration scenarios
 - Built from `backend/` project
 
 ### 5. State Management and Responsibility Boundaries

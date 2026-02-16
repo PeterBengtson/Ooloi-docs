@@ -14,7 +14,7 @@ Ooloi's architecture presents unique challenges for implementing undo/redo funct
 
 The architectural constraints established by previous ADRs create specific requirements:
 
-- **ADR-0001**: Frontend-backend separation with three deployment models (combined, distributed, backend-only)
+- **ADR-0001**: Frontend-backend separation with two deployment models (combined desktop application, backend-only server)
 - **ADR-0002**: gRPC streaming for real-time collaboration between frontend clients and backend server
 - **ADR-0004**: STM-based concurrency for coordinated updates to musical structures
 - **ADR-0009**: Multi-user collaborative editing with conflict resolution

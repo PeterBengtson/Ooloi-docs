@@ -13,26 +13,25 @@ This directory contains the frontend client code for Ooloi, a high-performance m
 3. [Directory Structure](#directory-structure)
 4. [Prerequisites](#prerequisites)
 5. [Installation](#installation)
-6. [Building the Frontend](#building-the-frontend)
-7. [Build Process Details](#build-process-details)
-8. [Version Handling](#version-handling)
-9. [Configuration and Deployment](#configuration-and-deployment)
-10. [Development](#development)
-11. [Development Commands](#development-commands)
-12. [Shared Model Integration](#shared-model-integration)
-13. [Notes](#notes)
-14. [Related Documentation](#related-documentation)
+6. [Configuration and Deployment](#configuration-and-deployment)
+7. [Development](#development)
+8. [Development Commands](#development-commands)
+9. [Shared Model Integration](#shared-model-integration)
+10. [Notes](#notes)
+11. [Related Documentation](#related-documentation)
 
 ## Project Role
 
-The **Ooloi Frontend** serves as the user-facing client component providing:
+The **Ooloi Frontend** is the presentation layer code library providing:
 
 1. **User Interface**: cljfx + JavaFX-based graphical interface with AtlantaFX dark theme for modern, futuristic music notation editing and visualization
 2. **Score Rendering**: High-performance visual display of musical structures and notation
 3. **gRPC Client Integration**: Communication with backend via protocol buffer-based unified interface
 4. **User Interaction Management**: Click handling, form validation, real-time UI updates, and client-side state management
 
-**Key Architectural Responsibility**: Implements presentation layer functionality and user experience while communicating with backend server through gRPC for all musical data operations.
+The frontend project does not produce a standalone deployable application. Instead, it is consumed by the **combined application** built from the [shared/](../shared/) project, which bundles frontend and backend code into a single JVM process using in-process gRPC transport. For standalone server deployment without a UI, see the [backend/](../backend/) project.
+
+The frontend project retains `lein run` for development and testing purposes, along with full CLI argument and environment variable support.
 
 ## System Architecture
 
@@ -105,55 +104,6 @@ lein midje        # Verify installation
 ```
 
 **Important**: Frontend requires shared/ to be built first (`lein protoc` in shared/ directory). See [../dev-setup/](../dev-setup/) for the correct build sequence.
-
-## Building the Frontend
-
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   ```
-
-2. Run tests:
-   ```bash
-   lein midje
-   ```
-
-3. Build the application:
-   ```bash
-   lein build
-   ```
-
-   This command will perform the following steps:
-   - Clean the project
-   - Create an uberjar
-   - Run jlink to create a custom runtime
-   - Run the build function to package the application
-
-   You will see colored output indicating the progress of each step.
-
-4. The packaged frontend application will be in the `frontend/target` directory.
-
-## Build Process Details
-
-The build process uses the following tools and steps:
-
-1. **Cleaning**: Removes previous build artifacts.
-2. **Uberjar Creation**: Compiles the code and creates a standalone jar file.
-3. **Jlink**: Creates a custom Java runtime with only the necessary modules.
-4. **Jpackage**: Packages the application for distribution, creating platform-specific installers or application images.
-
-The build process handles both SNAPSHOT (development) versions and release versions:
-
-- For SNAPSHOT versions, it creates an app image.
-- For release versions, it creates platform-specific installers (DMG for macOS, DEB for Linux, MSI for Windows).
-
-## Version Handling
-
-The build process automatically adjusts version numbers for compatibility with different platforms:
-
-- SNAPSHOT suffixes are removed for the final package version.
-- If the version starts with "0", it's changed to "1.0.0" for macOS compatibility.
-- The original version (including SNAPSHOT if applicable) is included in the application name.
 
 ## Configuration and Deployment
 
@@ -247,8 +197,8 @@ The frontend uses sensible JVM defaults (G1GC, compact object headers, string de
 # Development override
 JVM_OPTS="-Xmx16g" lein run
 
-# Production override
-JAVA_OPTS="-Xmx24g" java -jar target/ooloi-frontend-*-standalone.jar
+# Production: use the combined application from shared/
+# See shared/README.md for production deployment
 ```
 
 ### Error Handling and Exit Codes
@@ -513,7 +463,7 @@ lein i18n :strict true
 
 **Development workflow:** Run `lein i18n` as you add new UI strings. Missing keys are automatically added with `[TODO: Translation needed]` placeholders.
 
-**Build pipeline:** `lein build` runs verification in strict mode, failing if any keys are missing or contain TODO entries. This ensures all translations are complete before artifacts are created.
+**Build pipeline:** The combined application build (in shared/) runs verification in strict mode, failing if any keys are missing or contain TODO entries. This ensures all translations are complete before artifacts are created.
 
 **See also:** [ADR-0039: Localisation Architecture](../ADRs/0039-Localisation-Architecture.md)
 
@@ -573,19 +523,6 @@ lein clean && lein compile
 lein midje  # Test - that's it!
 ```
 
-### Building and Packaging
-
-```bash
-# Full build process (clean, compile, test, package)
-lein build
-
-# Create standalone JAR only
-lein uberjar
-
-# Clean build artifacts
-lein clean
-```
-
 ### Documentation Generation
 
 ```bash
@@ -601,7 +538,7 @@ Recommended development sequence:
 1. **Setup**: `lein deps` (install dependencies)
 2. **Compile**: `lein compile` (compile application with gRPC client)
 3. **Test**: `lein midje` (run test suite)
-4. **Run**: `lein run` (start frontend client)
+4. **Run**: `lein run` (start frontend for development/testing)
 5. **Iterate**: Make changes and repeat steps 2-4
 
 ## Shared Model Integration
@@ -610,11 +547,9 @@ See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) f
 
 ## Notes
 
-- Ensure all tests pass before creating the final package.
-- The packaged application is platform-specific and ready for distribution.
 - JavaFX is included in the project dependencies, ensuring GUI capabilities.
-
-Remember to run tests (`lein midje`) before packaging to ensure everything is working correctly.
+- The frontend project is consumed by the combined application built from [shared/](../shared/). It does not produce its own standalone artifact.
+- Run `lein midje` to verify all frontend tests pass before committing changes.
 
 ## Related Documentation
 

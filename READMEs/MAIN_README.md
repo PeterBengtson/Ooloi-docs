@@ -100,7 +100,7 @@ We are committed to providing a friendly, safe, and welcoming environment for al
 1. **Server-Client Architecture**
    - Backend service handles computations, formatting, and data management
    - Frontend service manages UI and rendering
-   - Decoupled design allows for local operation or potential SaaS deployment
+   - Combined desktop application bundles frontend and backend in a single JVM; standalone server mode available for dedicated deployments (see [ADR-0036](/ADRs/0036-Hybrid-Transport-Architecture.md))
    - Utilizes multithreading and multiprocessing for efficiency
 
 2. **Backend (Clojure)**
@@ -203,7 +203,7 @@ For complete development environment setup instructions, see **[dev-setup/](dev-
 The setup guide covers:
 - Platform-specific installation (macOS, Windows, Linux)
 - Required dependencies (Java 25+, Leiningen)
-- Critical project build sequence (shared → backend → frontend)
+- Critical project build sequence (shared → backend)
 - Comprehensive test verification
 
 ### Project Components
@@ -218,10 +218,10 @@ The core server that handles musical data, calculations, and business logic.
 - **Key Features**: gRPC server, piece management, real-time event streaming, server components
 - **Setup**: Requires shared project to be built first
 
-### 📁 **[Frontend](/frontend/)** - User Interface Client
-The client application providing the graphical interface for music notation.
-- **Key Features**: gRPC client, UI manager, comprehensive configuration system, deployment modes
-- **Setup**: Requires shared project to be built first
+### 📁 **[Frontend](/frontend/)** - User Interface Code Library
+The presentation layer providing the graphical interface for music notation. Consumed by the combined application built from shared/; does not produce a standalone artifact. See [ADR-0036](/ADRs/0036-Hybrid-Transport-Architecture.md) for the deployment architecture.
+- **Key Features**: gRPC client, UI manager, comprehensive configuration system, CLI/environment variable support
+- **Development**: Retains `lein run` for development and testing; requires shared project to be built first
 
 For technical architecture details, see:
 - [Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md) - Comprehensive server architecture analysis and enterprise patterns
