@@ -245,7 +245,7 @@ The window manager infrastructure automatically applies the configured UI theme 
 ```
 
 **Implementation:**
-- Theme preference stored in settings (ADR-0016)
+- Theme preference stored in settings (ADR-0043)
 - `render-cljfx-to-stage` applies theme automatically during rendering
 - All Scenes receive consistent theme styling without specification
 - Theme changes apply system-wide without modifying UI specs

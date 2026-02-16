@@ -144,7 +144,7 @@ All keys must appear as literals in `tr-declare` — no computed keys ([ADR-0039
 
 ### Storage
 
-**Defaults resource:** `shared/resources/app-settings/settings.edn`
+**Defaults resource:** `shared/resources/app-settings/defaults.edn`
 - **Generated** by `lein frontend-settings` from `def-app-setting` declarations — not hand-maintained
 - Ships with the application, always available via `io/resource`
 - Accessible from shared tests
@@ -364,7 +364,7 @@ Require `load-app-settings!` call in system.clj startup sequence.
 ## Code References
 
 - `frontend/src/main/clojure/ooloi/frontend/ui/app_settings.clj` — Settings system implementation
-- `shared/resources/app-settings/settings.edn` — Generated defaults resource (produced by `lein frontend-settings`)
+- `shared/resources/app-settings/defaults.edn` — Generated defaults resource (produced by `lein frontend-settings`)
 - `frontend/src/main/clojure/ooloi/frontend/ui/theme.clj` — Theme module consuming settings
 - `shared/src/main/clojure/ooloi/shared/platform.clj` — Platform-specific directory paths
 - `frontend/src/main/clojure/ooloi/frontend/ui/persistence.clj` — Existing EDN persistence pattern
