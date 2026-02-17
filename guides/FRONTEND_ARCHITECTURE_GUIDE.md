@@ -887,7 +887,7 @@ This is what makes the “no hardcoded strings” invariant enforceable.
 
 Localisation is therefore not a convention maintained by habit. It is a property upheld by tooling.
 
-### 10.5 Default Language and Locale Model
+### 10.6 Default Language and Locale Model
 
 Ooloi’s source language is **UK English**. The strings provided in `tr-declare` are written in UK English and form the canonical wording of the application.
 
@@ -901,7 +901,7 @@ This keeps the model conceptually clean:
 
 Because the canonical wording lives alongside the code (via `tr-declare`), the source language remains visible during development rather than being buried in translation files.
 
-### 10.6 Practical Guidance
+### 10.7 Practical Guidance
 
 A few habits make localisation frictionless:
 
