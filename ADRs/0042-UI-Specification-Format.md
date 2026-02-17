@@ -333,66 +333,46 @@ The menu bar itself is also pure data. A function assembles descriptors into a c
   
 ### Window Manager Integration
 
+**Implementation Note (Updated 2026-02-17)**: The actual implementation uses an atom + lock architecture for thread-safe persistence. Window geometry is persisted on every close, move, and resize — not just on shutdown. An in-memory atom is the source of truth; disk writes are serialized via a lock. `show-window!` restores persisted geometry on open. See UI_ARCHITECTURE.md §10.
+
 ```clojure
-(defn create-window
-  "Creates JavaFX Stage from window spec with automatic lifecycle management.
+;; show-window! restores persisted geometry, overriding spec defaults
+(defn show-window! [manager spec]
+  (let [persisted (persistence/get-persisted-geometry (:window/id spec))
+        merged-spec (if persisted
+                      (merge spec
+                             {:x     (get-in persisted [:position :x])
+                              :y     (get-in persisted [:position :y])
+                              :width  (get-in persisted [:size :width])
+                              :height (get-in persisted [:size :height])})
+                      spec)
+        stage (register-window! manager merged-spec)]
+    ...))
 
-   Lifecycle:
-   - Validates spec
-   - Loads saved state if :window/persist? true
-   - Merges saved state with defaults
-   - Creates JavaFX Stage via cljfx
-   - Applies configured theme automatically (AtlantaFX)
-   - Attaches close handler to save state
+;; register-window! wires geometry listeners for live persistence
+(defn- wire-geometry-listeners! [stage window-id]
+  ;; Listeners on xProperty, yProperty, widthProperty, heightProperty
+  ;; Each triggers persist-window! with current geometry
+  ...)
 
-   Parameters:
-   - spec: Window specification map (pure cljfx + :window/ metadata)
+;; close-window! persists geometry before closing
+(defn close-window! [manager window-id]
+  (when-let [stage (get @(:window-registry manager) window-id)]
+    (let [geom (window/stage-geometry stage)]
+      (persistence/persist-window!
+        {:id window-id :title (:title geom)
+         :position {:x (:x geom) :y (:y geom)}
+         :size {:width (:width geom) :height (:height geom)}
+         :scale 1.0 :state :normal}))
+    (window/close! stage)
+    ...))
 
-   Returns: JavaFX Stage with theme applied"
-  [spec]
-  (validate-window-spec spec)
-
-  (let [window-id (:window/id spec)
-        persist? (:window/persist? spec)
-
-        ;; Load saved state if persistent
-        saved-state (when (and persist? window-id)
-                     (persistence/load-window-state window-id))
-
-        ;; Merge: saved state > defaults from spec
-        final-position (or (:position saved-state)
-                          (:window/default-position spec))
-        final-size (or (:size saved-state)
-                      (:window/default-size spec))
-        final-scale (or (:scale saved-state)
-                       (:window/default-scale spec)
-                       1.0)
-
-        ;; Render cljfx spec to JavaFX Stage (theme applied automatically)
-        stage (render-cljfx-to-stage spec)]
-
-    ;; Apply window state
-    (when final-position
-      (.setX stage (:x final-position))
-      (.setY stage (:y final-position)))
-    (when final-size
-      (.setWidth stage (:width final-size))
-      (.setHeight stage (:height final-size)))
-
-    ;; Attach close handler for persistence
-    (when persist?
-      (.setOnCloseRequest stage
-        (event-handler [_]
-          (persistence/save-window-state
-            {:id window-id
-             :title (.getTitle stage)
-             :position {:x (int (.getX stage))
-                        :y (int (.getY stage))}
-             :size {:width (int (.getWidth stage))
-                    :height (int (.getHeight stage))}
-             :scale final-scale}))))
-
-    stage))
+;; persist-window! is thread-safe: atom swap + disk write under lock
+(defn persist-window! [state-map]
+  (ensure-loaded!)
+  (swap! window-states merge-window-state state-map)
+  (locking persistence-lock
+    (save-window-state @window-states)))
 ```
 
 ## Benefits
@@ -524,22 +504,22 @@ This is consistent with how events work: they're boundary data, so they're maps.
 ### With Persistence Layer
 
 ```clojure
-;; On window close, extract state and save
-(.setOnCloseRequest stage
-  (event-handler [_]
-    (when (:window/persist? spec)
-      (persistence/save-window-state
-        {:id (:window/id spec)
-         :position {:x (int (.getX stage)) :y (int (.getY stage))}
-         :size {:width (int (.getWidth stage)) :height (int (.getHeight stage))}
-         :scale (get-current-scale stage)}))))
+;; Geometry persists on every close, move, and resize via atom + lock.
+;; close-window! captures geometry before closing:
+(persistence/persist-window!
+  {:id window-id :title (:title geom)
+   :position {:x (:x geom) :y (:y geom)}
+   :size {:width (:width geom) :height (:height geom)}
+   :scale 1.0 :state :normal})
 
-;; On window create, load and apply saved state
-(when-let [saved (persistence/load-window-state (:window/id spec))]
-  (.setX stage (:x (:position saved)))
-  (.setY stage (:y (:position saved)))
-  (.setWidth stage (:width (:size saved)))
-  (.setHeight stage (:height (:size saved))))
+;; On window open, show-window! restores persisted geometry:
+(when-let [persisted (persistence/get-persisted-geometry (:window/id spec))]
+  ;; Merge persisted x/y/width/height into spec, overriding defaults
+  ...)
+
+;; JavaFX property listeners on xProperty, yProperty, widthProperty,
+;; heightProperty trigger persist-window! on every move and resize.
+;; No shutdown-only save — state is always current on disk.
 ```
 
 ### With gRPC/Plugin Communication
