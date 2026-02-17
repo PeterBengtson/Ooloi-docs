@@ -78,13 +78,31 @@ The goal is not to demote the frontend or constrain frontend developers. It is t
 
 Allowing arbitrary local mutation in the UI would compromise reproducibility and distributed collaboration. Instead, Ooloi channels all semantic change through a single authoritative backend, while giving the frontend significant computational responsibility for rendering, caching, scheduling, and interaction.
 
-If anything, this increases the frontend’s architectural importance. It must remain disciplined precisely because it is powerful.
+If anything, this increases the frontend's architectural importance. It must remain disciplined precisely because it is powerful.
+
+There is a further reason for this discipline that is easy to overlook: **plugins are first‑class citizens in Ooloi.**
+
+A backend plugin — running in the server process, potentially across a network — must be able to declare that it has an associated window, dialog, settings panel, or toolbar contribution. It must be able to describe the contents of that UI, its validation rules, its localisation keys, and its event subscriptions. And it must do all of this without ever touching a JavaFX object.
+
+This is why UI structure is expressed as pure data (cljfx specs, setting declarations, command descriptors, localisation keys). Data can travel across the wire. Data can be validated, composed, and projected by infrastructure that the plugin author never sees. An imperative widget API cannot do any of this safely.
+
+The same principle ripples through the entire frontend:
+
+* A plugin declares settings via `def-app-setting` — they appear automatically in the settings dialog, validated and localised.
+* A plugin declares commands via data descriptors — they appear in menus with correct keyboard shortcuts and localisation.
+* A plugin declares event subscriptions by category — they receive events through the same bus as core code.
+* A plugin describes a window as a cljfx spec — it is materialised, lifecycle‑managed, and geometry‑persisted by the same UI Manager.
+
+None of this requires the plugin to import JavaFX classes, manipulate scene graphs, or manage threads. The frontend infrastructure handles materialisation. The plugin speaks in data.
+
+This is what the apparent rigidity protects. It is not rigidity for its own sake. It is the structural precondition for a plugin system where third‑party extensions operate at the same level of architectural integrity as core code — across process boundaries, across network boundaries, and across trust boundaries.
 
 The result is a system where:
 
 * Semantic truth is centralised and deterministic.
 * Rendering and interaction are high‑performance and parallel.
 * Collaboration modes do not alter structural guarantees.
+* Plugins participate as peers, not as guests.
 
 This architecture preserves clarity at scale.
 
@@ -291,7 +309,7 @@ JavaFX enforces a single UI thread. By keeping specification pure and deferring 
 The backend produces authoritative paintlists. The frontend turns those into GPU pictures. Because UI description and rendering preparation are separated from semantic authority, the frontend can aggressively cache, batch, parallelise, and discard derived state without risking semantic drift. If all frontend state is dropped and reconstructed from backend data, the visible result must be identical. The spec → materialisation model reinforces that guarantee.
 
 **Plugin compatibility.**
-Plugins operate at the same declarative level as core code. They contribute specs, commands, settings, and UI fragments as data. They do not receive privileged access to mutable widget graphs. This keeps extension boundaries clean. A plugin can describe what it wants; the frontend infrastructure decides how and when that description becomes concrete JavaFX objects.
+Plugins operate at the same declarative level as core code. They contribute specs, commands, settings, and UI fragments as data. They do not receive privileged access to mutable widget graphs. This keeps extension boundaries clean. A plugin can describe what it wants; the frontend infrastructure decides how and when that description becomes concrete JavaFX objects. Crucially, because specs are pure data, a backend plugin running in a remote server process can describe a window or dialog to the frontend across the wire — the spec is serialised, transmitted, and materialised without the plugin ever importing a JavaFX class. An imperative widget API would make this impossible. The declarative model is therefore not a stylistic choice; it is the structural foundation of Ooloi's plugin architecture.
 
 **Transport independence.**
 Whether the backend runs in‑process, over gRPC to a local server, or across a network to a collaboration host ([ADR‑0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md)), the frontend’s responsibility is the same: render what it receives, express user intent as API calls, and react to invalidation events. Because semantic authority is never embedded in widget state, switching transport modes does not require architectural reinterpretation.
