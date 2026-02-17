@@ -142,7 +142,7 @@ Category-based pub/sub for all frontend event delivery, backed by a shared Clayp
 | Category | Events | Publisher |
 |----------|--------|-----------|
 | `:app-lifecycle` | `:app-ready`, `:app-shutting-down` | `start-app!`, shutdown handler |
-| `:window-lifecycle` | `:window-opened`, `:window-closed`, `:window-hidden` | `show-window!`, `close-window!` |
+| `:window-lifecycle` | `:window-opened`, `:window-closed`, `:window-hidden`, `:window-state-persisted` | `show-window!`, `close-window!`, `persist-stage-geometry!` |
 | `:settings` | `:setting-changed` | `set-app-setting!` (ADR-0043) |
 
 Categories are arbitrary keywords — any component can define new ones.
