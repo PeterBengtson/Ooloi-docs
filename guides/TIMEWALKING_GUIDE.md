@@ -1265,6 +1265,7 @@ Everything you've learned in this guide comes together here:
 - **🔴 Advanced concurrency**: See [Advanced Concurrency Patterns](ADVANCED_CONCURRENCY_PATTERNS.md) for parallel processing with STM coordination
 - **VPD addressing**: See [VPDs Guide](VPDs.md) for understanding the Vector Path Descriptors returned in timewalking tuples
 - **Type predicates**: See [Polymorphic API Guide](POLYMORPHIC_API_GUIDE.md) for the type predicates and helper functions used in filtering
+- **Frontend rendering**: See [Frontend Architecture Guide](FRONTEND_ARCHITECTURE_GUIDE.md) for how timewalking results feed into the rendering pipeline
 - **Architecture**: See [ADR-0014: Timewalk](../ADRs/0014-Timewalk.md) for the architectural decisions behind timewalking
 
 ## Further Reading

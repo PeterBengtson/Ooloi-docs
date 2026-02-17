@@ -764,5 +764,6 @@ For implementers of custom gRPC clients, these patterns are relevant regardless 
 - **[ADR-0024: gRPC Concurrency and Flow Control Architecture](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)** - Detailed technical decisions behind these communication patterns
 
 ### Implementation Guides
+- **[FRONTEND_ARCHITECTURE_GUIDE.md](FRONTEND_ARCHITECTURE_GUIDE.md)** - Frontend event architecture and how gRPC events drive rendering
 - **[PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** - STM-based storage operations that integrate with gRPC transactions
 - **[ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** - Advanced STM coordination patterns used in server implementation

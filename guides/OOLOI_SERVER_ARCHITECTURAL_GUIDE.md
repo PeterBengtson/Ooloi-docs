@@ -417,6 +417,7 @@ The Ooloi backend server represents a specialized approach to concurrent distrib
 - **[ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)** - Backend-authoritative rendering with GPU-accelerated frontend execution
 
 ### Implementation Guides
+- **[FRONTEND_ARCHITECTURE_GUIDE.md](FRONTEND_ARCHITECTURE_GUIDE.md)** - Frontend execution layer that renders and interacts with server decisions
 - **[GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - Practical gRPC usage patterns and collaborative scenarios
 - **[POLYMORPHIC_API_GUIDE.md](POLYMORPHIC_API_GUIDE.md)** - Type system foundations underlying the server's API design
 - **[ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** - STM coordination patterns used in the server
