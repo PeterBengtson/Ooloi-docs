@@ -333,12 +333,13 @@ The menu bar itself is also pure data. A function assembles descriptors into a c
   
 ### Window Manager Integration
 
-**Implementation Note (Updated 2026-02-17)**: The actual implementation uses an atom + lock architecture for thread-safe persistence. Window geometry is persisted on every close, move, and resize — not just on shutdown. An in-memory atom is the source of truth; disk writes are serialized via a lock. `show-window!` restores persisted geometry on open. See UI_ARCHITECTURE.md §10.
+**Implementation Note (Updated 2026-02-17)**: The actual implementation uses an atom + lock architecture for thread-safe persistence. Window geometry is persisted on close (immediate), move, and resize (debounced 250ms) — not just on shutdown. An in-memory atom is the source of truth; disk writes are serialized via a lock. `show-window!` restores persisted geometry on open. Windows with `:window/persist? false` (e.g. splash screen) skip both persistence and restore. See UI_ARCHITECTURE.md §10.
 
 ```clojure
-;; show-window! restores persisted geometry, overriding spec defaults
+;; show-window! restores persisted geometry (when :window/persist? is true, the default)
 (defn show-window! [manager spec]
-  (let [persisted (persistence/get-persisted-geometry (:window/id spec))
+  (let [persisted (when (get spec :window/persist? true)
+                    (persistence/get-persisted-geometry (:window/id spec)))
         merged-spec (if persisted
                       (merge spec
                              {:x     (get-in persisted [:position :x])
@@ -349,15 +350,19 @@ The menu bar itself is also pure data. A function assembles descriptors into a c
         stage (register-window! manager merged-spec)]
     ...))
 
-;; register-window! wires geometry listeners for live persistence
-(defn- wire-geometry-listeners! [stage window-id]
+;; register-window! wires debounced geometry listeners (when :window/persist? is true)
+;; Each property change resets a 250ms timer; persist fires once when changes stop
+(defn- wire-geometry-listeners! [stage window-id manager]
   ;; Listeners on xProperty, yProperty, widthProperty, heightProperty
-  ;; Each triggers persist-window! with current geometry
+  ;; Each calls schedule-geometry-persist! which debounces via ScheduledExecutorService
   ...)
 
-;; close-window! persists geometry before closing
+;; close-window! cancels any pending debounce timer and persists immediately
 (defn close-window! [manager window-id]
   (when-let [stage (get @(:window-registry manager) window-id)]
+    ;; Cancel pending debounce — close persists immediately
+    (when-let [pending (get @(:geometry-timers manager) window-id)]
+      (.cancel pending false))
     (let [geom (window/stage-geometry stage)]
       (persistence/persist-window!
         {:id window-id :title (:title geom)
