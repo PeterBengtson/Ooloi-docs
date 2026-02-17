@@ -20,8 +20,8 @@
 6. [The JAT Boundary](#6-the-jat-boundary)
 7. [Rendering Pipeline](#7-rendering-pipeline)
 8. [Fetch Coordination and Viewport Logic](#8-fetch-coordination-and-viewport-logic)
-9. [Settings System](#9-settings-system)
-10. [Localisation Architecture](#10-localisation-architecture)
+9. [Localisation Architecture](#9-localisation-architecture)
+10. [Settings System](#10-settings-system)
 11. [Collaboration and Transport Switching](#11-collaboration-and-transport-switching)
 12. [Testing Model](#12-testing-model)
 13. [Architectural Invariants](#13-architectural-invariants)
@@ -116,7 +116,7 @@ In Ooloi, even this small step reflects several invariants: lifecycle authority,
 
 ### 2.1 Localisation First
 
-There are no hardcoded user-facing strings in the frontend. This is not a stylistic preference; it is an architectural rule defined in [ADR‑0039](../ADRs/0039-Localisation-Architecture.md).
+There are no hardcoded user-facing strings in the frontend. This is not a stylistic preference; it is an architectural rule defined in [ADR‑0039](../ADRs/0039-Localisation-Architecture.md). The full localisation architecture is described in Section 9; here we introduce only what is needed to read the first example.
 
 Every visible string is declared and resolved through translation keys.
 
@@ -690,120 +690,15 @@ Fetch coordination and viewport logic make that scaling predictable rather than 
 
 ---
 
-## 9. Settings System
+## 9. Localisation Architecture
 
-Application settings in Ooloi are not an afterthought and not a collection of ad-hoc preference reads scattered across the UI. They form a small, explicit subsystem with its own invariants ([ADR‑0043](../ADRs/0043-Frontend-Settings.md)).
-
-The central idea is simple: settings are declared once, validated centrally, stored consistently, and exposed through a uniform API. UI surfaces for editing those settings are derived from that declaration rather than hand-crafted repeatedly.
-
-### 9.1 `def-app-setting`
-
-Settings are defined declaratively using `def-app-setting`.
-
-A setting definition includes:
-
-* A key (e.g. `:ui/theme`).
-* A default value.
-* Validation rules.
-* Optional metadata (category, description key, choice map, etc.).
-
-This does several important things at once.
-
-First, defaults are structural, not implicit. The system always knows what the baseline configuration is, even before any persisted user configuration is loaded.
-
-Second, validation is explicit. A setting can define strict validation (reject invalid values), permissive modes, or transformation logic. Invalid state is not allowed to drift silently into the application.
-
-Third, all settings are registered in a central registry. This registry is what allows automatic dialog generation (see below), uniform persistence, and event publication when settings change.
-
-The frontend reads settings through a small API (`get-app-setting`, etc.) rather than directly touching storage. Mutation flows through a controlled path so that validation and event publication happen consistently.
-
-### 9.2 Automatic Settings Dialog
-
-Because settings are declared structurally, the settings dialog does not need to be manually assembled field by field.
-
-Instead:
-
-* Settings are grouped by category.
-* Categories map to tabs in the dialog.
-* Choice maps become dropdowns.
-* Boolean settings become checkboxes.
-* Text settings become text fields.
-
-The dialog layer (`ooloi.frontend.ui.dialog`) builds real JavaFX controls from a spec, wires validation, and returns a result promise. The settings subsystem feeds it structured metadata derived from the registry.
-
-The result is a dialog that is consistent by construction:
-
-* Every visible string is a localisation key ([ADR‑0039](../ADRs/0039-Localisation-Architecture.md)).
-* Validation logic lives with the setting definition.
-* New settings appear automatically when declared.
-
-There is no duplication between “settings storage” and “settings UI.” The dialog is a projection of the registry.
-
-### 9.3 Settings Events and Live Updates
-
-When a setting changes, the system publishes an event through the frontend event bus (Section 5).
-
-This allows subsystems to react declaratively.
-
-For example:
-
-* Changing `:ui/theme` triggers a theme reapplication across all windows.
-* Notification positioning can be recalculated.
-* Rendering parameters can be adjusted.
-
-The UI Manager already exposes operations such as `apply-theme-to-all!` and `refresh-menu-text!`. These are invoked in response to structured events rather than direct cross-component calls.
-
-This reinforces the broader architectural pattern:
-
-* State change is explicit.
-* Effects are triggered via event subscription.
-* No subsystem reaches sideways to mutate another’s internals.
-
-### 9.4 Persistence and Scope
-
-Settings persistence is handled centrally.
-
-On startup:
-
-* Defaults are established.
-* Persisted values are loaded.
-* Validation ensures that only acceptable values enter runtime state.
-
-When settings are mutated:
-
-* The new value is validated.
-* The registry is updated.
-* An event is published.
-* Persistence is updated.
-
-The backend does not own application settings. It owns piece data. This boundary is intentional. Settings concern application behaviour (theme, UI preferences, notification placement), not musical semantics.
-
-Keeping this separation clean avoids a subtle but common architectural drift where UI configuration becomes entangled with domain state.
-
-### 9.5 Architectural Role
-
-The settings system may appear modest compared to rendering or collaboration, but it plays a stabilising role.
-
-It ensures that:
-
-* Configuration is predictable.
-* UI generation is systematic.
-* Validation is centralised.
-* Changes propagate cleanly through the event system.
-
-In a system that emphasises determinism and explicit structure, settings follow the same discipline. They are declared, validated, projected, and reacted to — never improvised.
-
----
-
-## 10. Localisation Architecture
-
-Localisation is part of the frontend’s structural discipline.
+Localisation is part of the frontend's structural discipline.
 
 The rule is simple and strict: **no hardcoded user-facing strings**. Every visible string is represented by a translation key and resolved through the localisation subsystem ([ADR‑0039](../ADRs/0039-Localisation-Architecture.md)).
 
 This is not primarily about translating the UI later. It is about keeping the UI describable, verifiable, and composable — especially once plugins and generated UI (such as the settings dialog) enter the picture.
 
-### 10.1 Translation API: `tr` and `tr-declare`
+### 9.1 Translation API: `tr` and `tr-declare`
 
 The translation function is `tr`. It takes a keyword and returns the current-locale string.
 
@@ -828,7 +723,7 @@ For this reason, it is increasingly good practice to declare keys explicitly eve
    :dialog.confirm.title "Confirm"})
 ```
 
-### 10.2 Where Keys Appear
+### 9.2 Where Keys Appear
 
 Localisation keys show up in several places that matter architecturally.
 
@@ -842,11 +737,11 @@ Dialogs follow the same principle: the dialog subsystem resolves `:window/title-
 Notifications accept either raw text or a `:text-key`. When a key is provided, it is resolved through `tr` and combined with any dynamic details.
 
 **Generated UI (settings dialog).**
-The settings dialog is derived from the settings registry ([ADR‑0043](../ADRs/0043-Frontend-Settings.md)). That registry carries localisation keys for category names, setting descriptions, and choice labels. Because the UI is generated, key discipline is what prevents “surprise English” from leaking into the application.
+The settings dialog is derived from the settings registry ([ADR‑0043](../ADRs/0043-Frontend-Settings.md)). That registry carries localisation keys for category names, setting descriptions, and choice labels. Because the UI is generated, key discipline is what prevents "surprise English" from leaking into the application.
 
 The essential idea is that every string has a stable identity, whether translated immediately or not.
 
-### 10.3 Runtime Initialisation
+### 9.3 Runtime Initialisation
 
 Localisation is initialised during frontend startup by the UI Manager.
 
@@ -858,7 +753,7 @@ In broad strokes:
 
 Because this happens before windows are shown, window titles and early startup UI (including the splash label and menu items) can be resolved through the same mechanism from the first frame.
 
-### 10.4 GNU gettext and the `.po` Ecosystem
+### 9.4 GNU gettext and the `.po` Ecosystem
 
 Ooloi uses the GNU gettext model and standard `.po` files for translations.
 
@@ -873,7 +768,7 @@ That choice has architectural implications.
 
 Because `.po` is an externalised, standard format, localisation remains a first‑class concern without becoming a custom subsystem that Ooloi must maintain indefinitely.
 
-### 10.5 Build-Time Verification
+### 9.5 Build-Time Verification
 
 [ADR‑0039](../ADRs/0039-Localisation-Architecture.md) defines the verification model.
 
@@ -883,13 +778,13 @@ At build time, the tooling checks that:
 * no keys are misspelled or orphaned,
 * declared keys (`tr-declare`) match what the UI expects.
 
-This is what makes the “no hardcoded strings” invariant enforceable.
+This is what makes the "no hardcoded strings" invariant enforceable.
 
 Localisation is therefore not a convention maintained by habit. It is a property upheld by tooling.
 
-### 10.6 Default Language and Locale Model
+### 9.6 Default Language and Locale Model
 
-Ooloi’s source language is **UK English**. The strings provided in `tr-declare` are written in UK English and form the canonical wording of the application.
+Ooloi's source language is **UK English**. The strings provided in `tr-declare` are written in UK English and form the canonical wording of the application.
 
 This has a structural consequence: American English is treated as a translation, just like German, French, or Swedish. There is no special case for US spelling or phrasing. If the locale is `en_US`, it resolves through the same `.po` mechanism as any other locale.
 
@@ -901,7 +796,7 @@ This keeps the model conceptually clean:
 
 Because the canonical wording lives alongside the code (via `tr-declare`), the source language remains visible during development rather than being buried in translation files.
 
-### 10.7 Practical Guidance
+### 9.7 Practical Guidance
 
 A few habits make localisation frictionless:
 
@@ -910,6 +805,111 @@ A few habits make localisation frictionless:
 * Prefer key-based UI specs (`:window/title-key`, dialog button keys, notification keys) rather than embedding literals.
 
 Once you work this way for a little while, it becomes natural. The benefit is that UI composition remains clean, build verification remains strict, and the system can generate UI without accidentally hardcoding language.
+
+---
+
+## 10. Settings System
+
+Application settings in Ooloi are not an afterthought and not a collection of ad-hoc preference reads scattered across the UI. They form a small, explicit subsystem with its own invariants ([ADR‑0043](../ADRs/0043-Frontend-Settings.md)).
+
+The central idea is simple: settings are declared once, validated centrally, stored consistently, and exposed through a uniform API. UI surfaces for editing those settings are derived from that declaration rather than hand-crafted repeatedly.
+
+### 10.1 `def-app-setting`
+
+Settings are defined declaratively using `def-app-setting`.
+
+A setting definition includes:
+
+* A key (e.g. `:ui/theme`).
+* A default value.
+* Validation rules.
+* Optional metadata (category, description key, choice map, etc.).
+
+This does several important things at once.
+
+First, defaults are structural, not implicit. The system always knows what the baseline configuration is, even before any persisted user configuration is loaded.
+
+Second, validation is explicit. A setting can define strict validation (reject invalid values), permissive modes, or transformation logic. Invalid state is not allowed to drift silently into the application.
+
+Third, all settings are registered in a central registry. This registry is what allows automatic dialog generation (see below), uniform persistence, and event publication when settings change.
+
+The frontend reads settings through a small API (`get-app-setting`, etc.) rather than directly touching storage. Mutation flows through a controlled path so that validation and event publication happen consistently.
+
+### 10.2 Automatic Settings Dialog
+
+Because settings are declared structurally, the settings dialog does not need to be manually assembled field by field.
+
+Instead:
+
+* Settings are grouped by category.
+* Categories map to tabs in the dialog.
+* Choice maps become dropdowns.
+* Boolean settings become checkboxes.
+* Text settings become text fields.
+
+The dialog layer (`ooloi.frontend.ui.dialog`) builds real JavaFX controls from a spec, wires validation, and returns a result promise. The settings subsystem feeds it structured metadata derived from the registry.
+
+The result is a dialog that is consistent by construction:
+
+* Every visible string is a localisation key (Section 9).
+* Validation logic lives with the setting definition.
+* New settings appear automatically when declared.
+
+There is no duplication between "settings storage" and "settings UI." The dialog is a projection of the registry.
+
+### 10.3 Settings Events and Live Updates
+
+When a setting changes, the system publishes an event through the frontend event bus (Section 5).
+
+This allows subsystems to react declaratively.
+
+For example:
+
+* Changing `:ui/theme` triggers a theme reapplication across all windows.
+* Notification positioning can be recalculated.
+* Rendering parameters can be adjusted.
+
+The UI Manager already exposes operations such as `apply-theme-to-all!` and `refresh-menu-text!`. These are invoked in response to structured events rather than direct cross-component calls.
+
+This reinforces the broader architectural pattern:
+
+* State change is explicit.
+* Effects are triggered via event subscription.
+* No subsystem reaches sideways to mutate another's internals.
+
+### 10.4 Persistence and Scope
+
+Settings persistence is handled centrally.
+
+On startup:
+
+* Defaults are established.
+* Persisted values are loaded.
+* Validation ensures that only acceptable values enter runtime state.
+
+When settings are mutated:
+
+* The new value is validated.
+* The registry is updated.
+* An event is published.
+* Persistence is updated.
+
+The backend does not own application settings. It owns piece data. This boundary is intentional. Settings concern application behaviour (theme, UI preferences, notification placement), not musical semantics.
+
+Keeping this separation clean avoids a subtle but common architectural drift where UI configuration becomes entangled with domain state.
+
+### 10.5 Architectural Role
+
+The settings system may appear modest compared to rendering or collaboration, but it plays a stabilising role.
+
+It ensures that:
+
+* Configuration is predictable.
+* UI generation is systematic.
+* Validation is centralised.
+* Changes propagate cleanly through the event system.
+
+In a system that emphasises determinism and explicit structure, settings follow the same discipline. They are declared, validated, projected, and reacted to — never improvised.
 
 ---
 
