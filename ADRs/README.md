@@ -107,7 +107,7 @@ Plugin architecture and external format interchange.
 
 Computing visual layout and engraving decisions from semantic musical data.
 
-- **[0013-Slur-Formatting](0013-Slur-Formatting.md)**: Slur rendering approach
+- **[0013-Slur-Formatting](0013-Slur-Formatting.md)**: Convex half-hull slur shape with copper plate aesthetics (rounded endpoints, variable thickness); foundational algorithms for point collection and hull calculation
 - **[0028-Hierarchical-Rendering-Pipeline](0028-Hierarchical-Rendering-Pipeline.md)**: Five-stage rendering pipeline with plugin-based formatters for professional music engraving
 - **[0037-Measure-Distribution-Optimization](0037-Measure-Distribution-Optimization.md)**: Capacity-constrained segmentation with proportional width allocation using Knuth-Plass dynamic programming for exact optimization of measure distribution
 - **[0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**: Backend-authoritative rendering with terminal frontend execution and GPU-accelerated vector rendering
