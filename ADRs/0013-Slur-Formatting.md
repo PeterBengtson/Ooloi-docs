@@ -127,6 +127,12 @@ The convex half-hull is the **primary shape model** for slurs that must follow a
 - **Natural shape**: Upper/lower hull matches traditional slur placement where the curve traces the notehead contour
 - **Mathematical stability**: O(n) algorithm, numerically stable
 
+#### From Angular Hull to Smooth Curve
+
+The convex hull is a polygon — angular vertices connected by straight segments. The actual slur is a smooth curve. The hull provides the **constraint envelope**: the set of points the slur must pass through or near. A Bézier curve is then fitted to these hull points to produce the smooth shape.
+
+If a single cubic Bézier can pass through (or within tolerance of) all hull points while respecting configurable quality criteria (maximum slope, maximum notehead departure, minimum curvature radius, endpoint tangent angle) — the slur is done. When the simple fit violates any criterion, the solver escalates to composite Béziers, higher-degree curves, or constrained optimisation. The hull defines *where* the slur goes; the Bézier fitting defines *how smoothly* it gets there. Quality criteria, escalation thresholds, and the progressive solver are defined in ADR-0044.
+
 ### 4. The Euler Elastica: Ideal Unrestricted Shape
 
 The convex hull gives the right shape when there is a melodic landscape to follow. But what about a short slur over two adjacent notes with nothing in between? Or a tie between two noteheads at the same pitch? These have no intermediate points to form a hull — they need a different shape model.
