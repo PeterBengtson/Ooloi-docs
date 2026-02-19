@@ -132,7 +132,11 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
 
 ## Copper Plate Aesthetic Principle
 
-All Skija-rendered line terminations and corners default to **rounded**, following the copper plate engraving tradition (Henle, Bärenreiter, Peters). This applies everywhere Skija draws curves or line endings:
+Skija stroke caps and joins are **ROUND by default** across the entire rendering system. Element-specific geometry may reduce cap radius but may not introduce geometric points unless explicitly required by house style.
+
+This follows the copper plate engraving tradition (Henle, Bärenreiter, Peters). The burin entering and leaving a copper plate naturally rounds; this rounding is both physically necessary in engraving and aesthetically correct. Sharp terminations look fragile and mechanical; rounded ends look confident and crafted.
+
+The default applies everywhere Skija draws curves, line endings, or corners:
 
 - Slur and tie endpoints
 - Hairpin tips
@@ -140,9 +144,7 @@ All Skija-rendered line terminations and corners default to **rounded**, followi
 - Rehearsal mark box corners
 - Any line termination or corner Ooloi generates
 
-The principle: no geometric sharp points by default. The burin entering and leaving a copper plate naturally rounds; this rounding is both physically necessary in engraving and aesthetically correct. Sharp terminations look fragile and mechanical; rounded ends look confident and crafted.
-
-Each element type has its own cap radius or corner radius setting. House styles or contemporary notation that require sharp points can override to zero. See [ADR-0013](0013-Slur-Formatting.md) for the slur-specific treatment.
+Each element type has its own cap radius or corner radius setting. See [ADR-0013](0013-Slur-Formatting.md) for the slur-specific treatment.
 
 ## Notes
 
