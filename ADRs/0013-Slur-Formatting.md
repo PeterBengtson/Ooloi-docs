@@ -186,7 +186,7 @@ All formatting parameters are user-accessible through Ooloi's settings system ([
 
 **Endpoint Shape — Copper Plate Aesthetics:**
 
-In traditional copper plate engraving, the burin entering and leaving the plate produces natural rounding at line terminations. Ooloi adopts this as the default: a **global minimum cap radius** at the house style level establishes the floor for all line terminations, including slur and tie endpoints. Nothing tapers to a geometric point by default. The Minkowski clearance system (§5) accounts for this thickness during placement.
+In traditional copper plate engraving, the burin entering and leaving the plate produces natural rounding at line terminations. Ooloi adopts this as the default: nothing tapers to a geometric point. Slur and tie endpoints have configurable cap radius settings; the exact settings architecture (per-element, global floor, or combination) is an implementation decision not yet made. The Minkowski clearance system (§5) accounts for this thickness during placement.
 
 | Parameter | Range | Description |
 |---|---|---|
