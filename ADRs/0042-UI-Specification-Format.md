@@ -712,19 +712,19 @@ The menu bar itself is also pure data. A function assembles descriptors into a c
   "Validates window specification map following ADR-0018 event validation pattern.
 
    Validates:
-   - Required :fx/type field must be present
    - Persistent windows must have :window/id
    - Position/size maps have correct structure
    - Field names are kebab-case keywords
+
+   Note: :fx/type is NOT expected in window specs. It is added internally by
+   build-window! when constructing the cljfx stage description. Window specs
+   passed to show-window! are plain maps with :window/* keys and :window/content.
 
    Returns: spec if valid
    Throws: ExceptionInfo with descriptive message if validation fails"
   [spec]
   (when-not (map? spec)
     (throw (ex-info "Window spec must be a map" {:spec spec})))
-
-  (when-not (:fx/type spec)
-    (throw (ex-info "Window spec missing required :fx/type" {:spec spec})))
 
   (when (and (not (false? (:window/persist? spec))) (not (:window/id spec)))
     (throw (ex-info "Persistent window must have :window/id" {:spec spec})))  
@@ -885,10 +885,10 @@ This is consistent with how events work: they're boundary data, so they're maps.
 ```clojure
 ;; Frontend code calls show-window! (never creates Stage directly)
 (defn show-about! [manager]
-  (let [{:keys [root]} (build-about-content!)]
+  (let [content (cljfx/instance (cljfx/create-component (about-content-spec manager)))]
     (um/show-window! manager
       {:window/id :about
-       :window/content root
+       :window/content content
        :window/style :undecorated
        :window/title-key :window.about.title})))
 
