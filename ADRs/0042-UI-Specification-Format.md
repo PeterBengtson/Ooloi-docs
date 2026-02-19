@@ -12,7 +12,8 @@
 - [Decision](#decision)
   - [Approach](#approach)
   - [Metadata Keys](#metadata-keys)
-  - [Content Builder Pattern](#content-builder-pattern-updated-2026-02-11)
+  - [Content Builder Pattern](#content-builder-pattern-updated-2026-02-19)
+  - [Custom cljfx Component Functions](#custom-cljfx-component-functions-updated-2026-02-19)
   - [Architectural Invariants](#architectural-invariants)
   - [Theme-Independent Styling](#theme-independent-styling)
   - [Command Descriptors (Menu Specialisation)](#command-descriptors-menu-specialisation)
@@ -92,31 +93,28 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 
 ```clojure
 ;; Backend plugin sends this over gRPC (symbolic event handlers)
-;; NOTE: Future capability - not implemented in initial windowing system
-{:fx/type :stage
- :window/id :plugin-config           ; Window management metadata
+;; NOTE: Future capability - not implemented in initial windowing system.
+;; Custom ooloi components referenced by qualified symbol (resolved on the frontend).
+{:window/id :plugin-config
  :window/persist? true
- :window/type :dialog
- :window/default-position {:x 100 :y 100}
- :window/default-size {:width 600 :height 400}
  :window/title-key :plugin.config.title  ; → "Plugin Configuration"
- :scene {:fx/type :scene
-         :root {:fx/type :v-box
-                :children [{:fx/type :text-field
-                            :prompt-text-key :plugin.config.api-key-prompt}  ; → "API Key"
-                           {:fx/type :button
-                            :text-key :common.save  ; → "Save"
-                            :on-action {:event/type :plugin/save-settings}}]}}}  ; Symbolic
+ :window/content {:fx/type :v-box
+                  :children [{:fx/type :text-field
+                              :prompt-text (tr :plugin.config.api-key-prompt)}
+                             {:fx/type 'ooloi.frontend.ui.cljfx/ooloi-button
+                              :text-key :common.save
+                              :on-action {:event/type :plugin/save-settings}}]}}
 
-;; Frontend plugin can use direct functions (no gRPC boundary)
-{:fx/type :stage
- :window/id :local-tool
+;; Frontend plugin uses var directly (no gRPC boundary, no serialization)
+;; and passes the spec to show-window! directly or builds content nodes via cljfx
+{:window/id :local-tool
  :window/title-key :tool.palette.title
- :scene {:fx/type :scene
-         :root {:fx/type :v-box
-                :children [{:fx/type :button
-                            :text-key :common.save
-                            :on-action (fn [e] (save-local-data!))}]}}}  ; Direct function
+ :window/content (cljfx/instance
+                   (cljfx/create-component
+                     {:fx/type :v-box
+                      :children [{:fx/type ooloi-button
+                                  :text-key :common.save
+                                  :on-action (fn [e] (save-local-data!))}]}))}
 ```
 
 ### Metadata Keys
@@ -133,7 +131,7 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 
 **`:window/type`** (keyword, optional)
 - Semantic type hint: `:stage`, `:dialog`, `:notification`
-- Consumed by rendering functions (`render-window`, `render-dialog`) and stripped from the cljfx output — it does not reach JavaFX
+- Consumed by `render-window` and stripped from the cljfx output — it does not reach JavaFX
 - Currently informational; no type-specific defaults are applied automatically
 - Not required — `:fx/type` is authoritative for rendering
 
@@ -168,8 +166,8 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 **`:window/modal?`** (boolean, optional)
 - When `true`, the dialog opens as `:application-modal` (blocks input to all other windows)
 - When absent or `false`, the window is non-modal
-- Consumed by `render-dialog` and stripped from the cljfx output
-- Only meaningful for dialogs — ignored by `render-window`/`build-window!`
+- Only meaningful for modal dialogs — currently not implemented (no generic dialog infrastructure)
+- Retained in the spec format for future use
 
 **`:title`** (string, optional)
 - Raw JavaFX Stage title string, passed directly to `Stage.setTitle()`
@@ -178,37 +176,82 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 - Spec authors must use `:window/title-key` for all titles — all user-facing strings must be localisable per ADR-0039
 - No production code should pass hardcoded strings via `:title`; all window titles go through `tr-declare` + `:window/title-key`
 
-### Content Builder Pattern (Updated 2026-02-11)
+### Content Builder Pattern (Updated 2026-02-19)
 
-UI elements that need custom content — splash screens, About dialogs, future tool palettes — follow the **content builder pattern**. A `build-*-content!` function constructs JavaFX nodes and returns a map of the root node plus any references the caller needs. The UI Manager's `show-window!` handles everything else: Stage creation, theming, registry, platform concerns.
+UI elements that need custom content — splash screens, About dialogs, piece windows, settings windows — follow the **content builder pattern**. A `build-*-content!` function constructs JavaFX nodes and returns a map of the root node plus any references the caller needs. The UI Manager's `show-window!` handles everything else: Stage creation, theming, registry, platform concerns.
 
 ```clojure
 ;; Content builder — returns nodes, never a Stage
-(defn build-about-content! []
-  (let [root (StackPane.)
-        ok-btn (Button. (tr :button.ok))]
-    ;; ... assemble content ...
-    {:root root :ok-button ok-btn}))
+(defn- build-about-content! []
+  ;; Uses cljfx/create-component + cljfx/instance internally
+  ;; Returns {:root StackPane}
+  ...)
 
 ;; Caller uses show-window! with :window/content
-(let [{:keys [root ok-button]} (about/build-about-content!)]
-  (um/show-window! mgr
-    {:window/id :about
-     :window/content root
-     :window/style :undecorated
-     :window/title-key :window.about.title  ; → "About Ooloi"
-     :width 800 :height 700})
-  (.setOnAction ok-button
-    (reify EventHandler (handle [_ _] (um/close-window! mgr :about)))))
+(defn show-about! [manager]
+  (let [{:keys [root]} (build-about-content!)]
+    (um/show-window! manager
+      {:window/id :about
+       :window/content root
+       :window/style :undecorated
+       :window/title-key :window.about.title  ; → "About Ooloi"
+       :width 800 :height 700})))
 ```
 
 **The contract:**
+- `build-*-content!` is private (`defn-`). The public API is `show-*!`.
 - `build-*-content!` returns `{:root Node, ...}` — the root node and any interactive references (buttons, labels)
 - `build-*-content!` never imports Stage, Scene, or StageStyle
 - The caller passes `:root` as `:window/content` to `show-window!`
 - The UI Manager handles Stage creation, theming, registry tracking, and platform behaviour (e.g. `initOwner` on macOS)
 
 This pattern ensures all windows go through the same path regardless of their content complexity.
+
+**Content materialisation via cljfx:** Content builders use `cljfx/create-component` + `cljfx/instance` as the materialisation pipeline for their internal node trees. This provides the full cljfx component tree — custom component functions, `ext-instance-factory`, `ext-on-instance-lifecycle` — while producing real JavaFX `Node` objects that the UI Manager can embed in a Stage.
+
+### Custom cljfx Component Functions (Updated 2026-02-19)
+
+cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to define a library of custom component functions in `ooloi.frontend.ui.cljfx`. Each function:
+
+1. Receives an Ooloi-enriched props map (with `:text-key`, layout conventions, Ooloi-specific keys)
+2. `dissoc`s Ooloi-specific keys so they don't leak to cljfx
+3. Resolves Ooloi keys to standard cljfx values (`:text-key` → `:text` via `(tr text-key)`, etc.)
+4. Passes all other props through unchanged (`:style-class`, `:disable`, `:on-action`, etc.)
+5. Returns a standard cljfx description map
+
+```clojure
+;; Definition — pure function, map → map
+(defn ooloi-button [{:keys [text-key] :as props}]
+  (-> (dissoc props :text-key)
+      (assoc :fx/type :button
+             :text (tr text-key)
+             :min-width 90.0)))
+
+;; Usage — keywords, no tr calls, serialisable over gRPC
+{:fx/type ooloi-button
+ :text-key :piece-window.piece-settings-button}
+
+;; Composite component — encapsulates layout convention
+{:fx/type ooloi-button-bar
+ :children [{:fx/type ooloi-ok-button}
+            {:fx/type ooloi-cancel-button}]}
+```
+
+**Why this matters for the ADR-0042 vision:** The spec format requires that backend plugins describe UI using keyword-based specs over gRPC — no frontend-specific code, no `tr` calls. The custom component functions are the resolution mechanism: plugins write `{:fx/type ooloi-button :text-key :some.key}`, the frontend's cljfx pipeline calls `ooloi-button` during materialisation, and `tr` runs at render time on the frontend where the locale is known.
+
+**Testing:** Custom component functions are pure — testable without JavaFX:
+
+```clojure
+(fact "ooloi-button resolves text-key and sets min-width"
+  (ooloi-button {:text-key :button.ok})
+  => (contains {:fx/type :button :text "OK" :min-width 90.0}))
+
+(fact "ooloi-button passes through arbitrary props"
+  (ooloi-button {:text-key :button.ok :style-class ["accent"] :disable false})
+  => (contains {:style-class ["accent"] :disable false}))
+```
+
+The complete component inventory is in `research/UI_ARCHITECTURE.md` §16.
 
 ### Architectural Invariants
 
@@ -294,11 +337,12 @@ All UI Manager operations that create, modify, or close JavaFX objects must be c
 
 **Functions that require the JAT:**
 - `show-window!`, `register-window!`, `close-window!` — Stage lifecycle
-- `build-window!`, `build-dialog!` — Node/Stage construction
-- `show-notification!`, `dismiss-notification!` — Notification overlay operations
+- `build-window!` — Stage construction
+- `show-notification!`, `dismiss-notification!`, `build-notification!` — Notification overlay operations
 - Any `build-*-content!` function that creates JavaFX nodes
+- `show-confirmation!` — blocks on `.showAndWait`
 
-**Enforcement:** `build-window!` and `build-dialog!` include an explicit `assert (Platform/isFxApplicationThread)`. Other functions document the requirement in their docstring. Calling from the wrong thread produces unpredictable JavaFX behaviour (visual corruption, race conditions, silent failures).
+**Enforcement:** `build-window!` and `build-notification!` include an explicit `assert (Platform/isFxApplicationThread)`. Other functions document the requirement in their docstring. Calling from the wrong thread produces unpredictable JavaFX behaviour (visual corruption, race conditions, silent failures).
 
 **For callers on a background thread:** Use `fx/run-later!` to post work to the JAT:
 
@@ -315,7 +359,7 @@ All UI Manager operations that create, modify, or close JavaFX objects must be c
 
 **Translation Key Resolution**
 
-Keys ending in `-key` (`:window/title-key`, `:text-key`, `:prompt-text-key`) are ADR-0039 translation keys, resolved to localised strings by calling `(tr key)` at render time. Resolution happens inside the rendering functions (`build-window!`, `render-window`, `render-dialog`), not in the spec author's code:
+Keys ending in `-key` (`:window/title-key`, `:text-key`) are ADR-0039 translation keys, resolved to localised strings by calling `(tr key)` at render time. Resolution happens inside `build-window!` (for `:window/title-key`) and inside custom component functions like `ooloi-button` (for `:text-key`), not in the spec author's code:
 
 1. The spec author writes `:window/title-key :window.settings.title`
 2. The rendering function calls `(tr :window.settings.title)` → `"Settings"`
@@ -343,11 +387,11 @@ The spec author never calls `tr` — the rendering infrastructure does. This ens
 
 | Icon Literal | Where | Purpose |
 |-------------|-------|---------|
-| `mdal-info` | `notifications.clj` | Default icon for `:info` notifications |
-| `mdal-check` | `notifications.clj` | Default icon for `:success` notifications |
-| `mdmz-warning` | `notifications.clj` | Default icon for `:warning` notifications |
-| `mdal-error` | `notifications.clj` | Default icon for `:error` notifications |
-| `mdmz-undo` | `settings_dialog.clj` | Reset-to-default button |
+| `mdal-info` | `cljfx.clj` | Default icon for `:info` notifications |
+| `mdal-check` | `cljfx.clj` | Default icon for `:success` notifications |
+| `mdmz-warning` | `cljfx.clj` | Default icon for `:warning` notifications |
+| `mdal-error` | `cljfx.clj` | Default icon for `:error` notifications |
+| `mdmz-undo` | `settings_window.clj` | Reset-to-default button beside each setting field |
 
 **Icon packs:** Only Material Design 2 (`ikonli-material2-pack`) is currently included. Additional packs (Feather, FontAwesome, etc.) can be added as separate dependencies if needed. Browse available icons: [Material2 cheat sheet](https://kordamp.org/ikonli/cheat-sheet-material2.html).
 
@@ -529,7 +573,9 @@ The following patterns are established in the Ooloi codebase. New UI code should
 
 **Notifications** (severity-typed popup messages):
 
-Notifications are shown via `(um/show-notification! mgr spec)` where `spec` is a map with `:message` (string), `:type` (`:info`, `:success`, `:warning`, `:error`), and optional `:timeout-ms` (auto-dismiss delay) and `:opacity` (default 0.8). Notifications do not create a Stage — they are rendered into a shared overlay StackPane attached to the primary window.
+Notifications are shown via `(um/show-notification! mgr spec)` where `spec` is a map with `:message` (string), `:type` (`:info`, `:success`, `:warning`, `:error`), and optional `:timeout-ms` (auto-dismiss delay) and `:opacity` (default 0.8). Notifications do not create a Stage — they are rendered into a shared overlay Popup attached to the primary window.
+
+The notification component (`ooloi-notification` in `ooloi.frontend.ui.cljfx`) is an `ext-instance-factory` that materialises an AtlantaFX `Notification` control. It resolves `:text-key` via `tr`, applies severity style classes, and sets a default icon from the type. `build-notification!` in `ui_manager.clj` is the materialisation wrapper called by the notification system.
 
 Notifications demonstrate the two-layer mechanism. The style class (`Styles/SUCCESS`, etc.) selects the severity variant. A generated CSS stylesheet maps each variant to its theme-aware background using CSS semantic tokens:
 
@@ -550,11 +596,10 @@ The style classes applied per notification type:
 
 | Notification type | Style classes | Background token |
 |-------------------|---------------|------------------|
-| `:info` | `"notification"` | Default (no severity accent) |
-| `:success` | `"notification"` `Styles/SUCCESS` | `-color-success-muted` |
-| `:warning` | `"notification"` `Styles/WARNING` | `-color-warning-muted` |
-| `:error` | `"notification"` `Styles/DANGER` | `-color-danger-muted` |
-| All notifications | `Styles/ELEVATED_2` | (shadow, not background) |
+| `:info` | `"notification"` `Styles/ELEVATED_2` | Default (no severity accent) |
+| `:success` | `"notification"` `Styles/SUCCESS` `Styles/ELEVATED_2` | `-color-success-muted` |
+| `:warning` | `"notification"` `Styles/WARNING` `Styles/ELEVATED_2` | `-color-warning-muted` |
+| `:error` | `"notification"` `Styles/DANGER` `Styles/ELEVATED_2` | `-color-danger-muted` |
 
 This is the general pattern: **style classes** name the variant, **CSS tokens** provide the themed visual. The `Styles` class constants are selectors; the `-color-*` tokens are values. Neither works alone — both are needed for theme-independent styling that also carries semantic meaning.
 
@@ -586,13 +631,11 @@ This is the general pattern: **style classes** name the variant, **CSS tokens** 
 
 #### Documented Exceptions
 
-Three narrow cases permit literal colour values:
+Two narrow cases permit literal colour values:
 
-1. **Pre-theme rendering (splash screen).** The splash renders before AtlantaFX themes are loaded. It uses `Color/WHITE` for text and `Color/web "#1a1a2e"` for the background — branding colours that are constant regardless of theme. These are applied via Java API (`setTextFill`, `Background`/`BackgroundFill`), not CSS strings.
+1. **Pre-theme rendering (splash screen).** The splash renders before AtlantaFX themes are loaded. It uses hardcoded CSS strings for branding colours that are constant regardless of theme: `:style "-fx-background-color: #1a1a2e;"` for the background, `:style "-fx-text-fill: white; ..."` for the progress label, and `:color "#000000cc"` for the drop shadow effect. These are cljfx spec properties, not Java API calls — but the colour values themselves are intentionally non-adaptive.
 
-2. **Effect parameters (DropShadow, etc.).** JavaFX effect objects like `DropShadow` take `Color` constructor arguments, not CSS. `(Color. 0.0 0.0 0.0 0.8)` for a semi-transparent black shadow is a rendering parameter, not a themed colour.
-
-3. **Theme-aware transparency overlays.** The About dialog's translucent background implements both light and dark appearances directly using `rgba()` values that are chosen per-theme at construction time. This is legitimate because transparency blending over arbitrary content cannot be expressed as a single semantic token — the overlay must know the target luminance.
+2. **Theme-aware transparency overlays.** The About dialog's translucent background implements both light and dark appearances directly using `rgba()` values that are chosen per-theme at construction time. This is legitimate because transparency blending over arbitrary content cannot be expressed as a single semantic token — the overlay must know the target luminance.
 
 #### Font Handling
 
@@ -610,14 +653,14 @@ Ooloi relies on the platform's system font as selected by JavaFX — no applicat
 (-> (.getStyleClass label) (.add Styles/TITLE_3))
 ```
 
-**When style classes are insufficient:** If a specific font size or weight is genuinely needed beyond what the typography classes provide (e.g., branding text in the splash screen), inline CSS font properties are acceptable. However, font *colour* must still use style classes or CSS semantic tokens — never hardcoded values.
+**When style classes are insufficient:** If a specific font size or weight is genuinely needed beyond what the typography classes provide (e.g., branding text in the splash screen), inline CSS font properties are acceptable. However, font *colour* must still use style classes or CSS semantic tokens — never hardcoded values, except in the documented exceptions above.
 
 ```clojure
-;; Acceptable for special-purpose text (splash branding)
-(.setStyle label "-fx-font-size: 14px; -fx-font-weight: bold;")
-
-;; But colour MUST use a style class or token, not inline CSS
-(.setTextFill label Color/WHITE)  ; Only in documented exception contexts (splash)
+;; Acceptable for special-purpose sizing (splash branding)
+{:fx/type :label
+ :style "-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: white;"}
+;; Note: white text here is a documented exception (pre-theme rendering)
+;; Outside of documented exceptions, always use style classes or semantic tokens
 ```
 
 **Font family overrides are discouraged.** Specifying `-fx-font-family` ties the UI to a font that may not exist on all platforms. If a specific font family is ever required (e.g., for music-specific glyphs), it should be declared as a project-level decision and loaded as a resource, not hardcoded in individual components.
@@ -832,38 +875,19 @@ This is consistent with how events work: they're boundary data, so they're maps.
 ### With cljfx Rendering
 
 ```clojure
-;; Window manager receives spec (from plugin or local code)
-(defn show-window [spec]
-  (let [stage (create-window spec)]
-    (.show stage)
-    stage))
+;; Frontend code calls show-window! (never creates Stage directly)
+(defn show-about! [manager]
+  (let [{:keys [root]} (build-about-content!)]
+    (um/show-window! manager
+      {:window/id :about
+       :window/content root
+       :window/style :undecorated
+       :window/title-key :window.about.title})))
 
-;; No conversion needed - spec IS cljfx
-(show-window {:fx/type :stage
-              :window/id :tool-palette
-              :window/persist? true
-              :window/title-key :window.tool-palette.title  ; → "Tools"
-              :scene ...})
-
-;; Theme application is automatic
-(defn render-cljfx-to-stage [spec]
-  "Renders cljfx spec to JavaFX Stage with automatic theme application."
-  (let [stage (Stage.)
-        scene (create-scene-from-spec spec)]
-    ;; Apply configured theme automatically
-    (apply-current-theme! scene)
-    (.setScene stage scene)
-    stage))
-
-(defn apply-current-theme! [scene]
-  "Applies configured UI theme to Scene. Reads theme preference from settings."
-  (let [theme-name (settings/get ::ui-theme :nord-dark)
-        theme (case theme-name
-                :nord-dark (NordDark.)
-                :nord-light (NordLight.)
-                ;; Additional AtlantaFX themes...
-                (NordDark.))]  ; default fallback
-    (.add (.getStylesheets scene) (.getUserAgentStylesheet theme))))
+;; Theme application is global — one call sets the UA stylesheet for all windows
+;; (Application/setUserAgentStylesheet sets it once for the entire application)
+(theme/apply-theme!)
+;; All Scenes inherit the theme automatically — no per-scene stylesheet manipulation
 ```
 
 ### With Persistence Layer
@@ -911,44 +935,38 @@ This is consistent with how events work: they're boundary data, so they're maps.
 
 **Backend Plugins (Over gRPC):**
 
-Backend and remote plugins use symbolic event handlers (maps) because functions don't serialize over gRPC:
+Backend and remote plugins use symbolic event handlers (maps) because functions don't serialize over gRPC. For Ooloi-standard translation, they use `ooloi-button` (the custom component var), referenced by qualified symbol:
 
 ```clojure
-;; Backend plugin sends symbolic handler
-{:fx/type :button
- :text-key :common.save  ; → "Save"
+;; Backend plugin sends ooloi-button spec with symbolic handler
+{:fx/type 'ooloi.frontend.ui.cljfx/ooloi-button
+ :text-key :common.save   ; → "Save" resolved by ooloi-button via tr
  :on-action {:event/type :plugin/save-settings
              :plugin-id :my-plugin}}
-
-;; Frontend resolves at render time
-(defn resolve-event-handler [handler-spec]
-  (fn [event]
-    (send-to-backend (:event/type handler-spec) handler-spec)))
+;; NOTE: future capability — backend-described dialogs not yet implemented
 ```
 
 **Frontend Plugins (Local):**
 
-Frontend plugins can use direct callback functions since they don't cross gRPC boundary:
+Frontend plugins reference Clojure vars directly — no serialization needed:
 
 ```clojure
-;; Frontend plugin uses direct function reference
-{:fx/type :button
- :text-key :common.save  ; → "Save"
- :on-action (fn [event]
-               ;; Direct function call - no serialization needed
-               (save-local-settings!))}
+;; Frontend plugin uses ooloi-button var directly, with function handler
+{:fx/type ooloi-button
+ :text-key :common.save   ; → "Save"
+ :on-action (fn [event] (save-local-settings!))}
 
-;; OR using symbolic handlers if preferred for consistency
-{:fx/type :button
+;; OR using symbolic handlers if preferred for consistency with backend plugins
+{:fx/type ooloi-button
  :text-key :common.save
  :on-action {:event/type :frontend-plugin/save-settings}}
 ```
 
 **Key Distinction:**
-- **Serialization boundary determines handler format**
-- Backend plugins → symbolic handlers (required)
-- Frontend plugins → direct functions (allowed) or symbolic (optional)
-- Same cljfx spec format works for both
+- **Serialization boundary determines handler format and how `:fx/type` is expressed**
+- Backend plugins → qualified symbols (serializable), symbolic handlers (required)
+- Frontend plugins → direct var references, direct functions (allowed) or symbolic (optional)
+- Same spec structure, different serialisation form of `:fx/type`
 
 ## Consequences
 
