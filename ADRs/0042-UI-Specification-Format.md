@@ -100,7 +100,7 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
  :window/title-key :plugin.config.title  ; → "Plugin Configuration"
  :window/content {:fx/type :v-box
                   :children [{:fx/type :text-field
-                              :prompt-text (tr :plugin.config.api-key-prompt)}
+                              :prompt-text-key :plugin.config.api-key-prompt}  ; future: custom component resolves via tr
                              {:fx/type 'ooloi.frontend.ui.cljfx/ooloi-button
                               :text-key :common.save
                               :on-action {:event/type :plugin/save-settings}}]}}
@@ -130,9 +130,9 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 - Non-persistent: splash screen (`:window/persist? false`), notifications (no Stage)
 
 **`:window/type`** (keyword, optional)
-- Semantic type hint: `:stage`, `:dialog`, `:notification`
-- Consumed by `render-window` and stripped from the cljfx output — it does not reach JavaFX
-- Currently informational; no type-specific defaults are applied automatically
+- Reserved key — not currently in the recognised key set. Passing it to `show-window!`
+  will throw "Unknown window/* keys". Documented for future use as a semantic type hint
+  (e.g. `:stage`, `:dialog`, `:notification`).
 - Not required — `:fx/type` is authoritative for rendering
 
 **`:window/default-position`** (map, optional)
@@ -164,10 +164,12 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 - When present, overrides any `:title` value in the spec
 
 **`:window/modal?`** (boolean, optional)
-- When `true`, the dialog opens as `:application-modal` (blocks input to all other windows)
-- When absent or `false`, the window is non-modal
-- Only meaningful for modal dialogs — currently not implemented (no generic dialog infrastructure)
-- Retained in the spec format for future use
+- Reserved key — not currently in the recognised key set. Passing it to `show-window!`
+  will throw "Unknown window/* keys".
+- **Frontend modal dialogs** (e.g. confirmation dialogs) use cljfx's `:alert` type directly
+  and do not use this key.
+- **Backend-described modal windows** over gRPC: not implemented.
+- Documented for future use when a generic modal dialog infrastructure exists.
 
 **`:title`** (string, optional)
 - Raw JavaFX Stage title string, passed directly to `Stage.setTitle()`
@@ -178,36 +180,41 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 
 ### Content Builder Pattern (Updated 2026-02-19)
 
-UI elements that need custom content — splash screens, About dialogs, piece windows, settings windows — follow the **content builder pattern**. A `build-*-content!` function constructs JavaFX nodes and returns a map of the root node plus any references the caller needs. The UI Manager's `show-window!` handles everything else: Stage creation, theming, registry, platform concerns.
+UI elements that need custom content — splash screens, About dialogs, piece windows, settings windows — follow the **content builder pattern**. A private content function constructs the content; the public `show-*!` function materialises it and passes it to `show-window!`. The UI Manager handles everything else: Stage creation, theming, registry, platform concerns.
 
 ```clojure
-;; Content builder — returns nodes, never a Stage
-(defn- build-about-content! []
-  ;; Uses cljfx/create-component + cljfx/instance internally
-  ;; Returns {:root StackPane}
-  ...)
+;; about.clj — private spec function returns a cljfx description map
+(defn- about-content-spec [manager]
+  ;; Returns a cljfx description map — materialised by show-about! via create-component/instance
+  {:fx/type :stack-pane
+   :children [... {:fx/type cljfx/ext-on-instance-lifecycle
+                   :on-created (fn [btn]
+                                 (.setOnAction btn
+                                   (reify EventHandler
+                                     (handle [_ _] (um/close-window! manager :about)))))
+                   :desc (ofx/ooloi-ok-button {})}]})
 
-;; Caller uses show-window! with :window/content
 (defn show-about! [manager]
-  (let [{:keys [root]} (build-about-content!)]
-    (um/show-window! manager
-      {:window/id :about
-       :window/content root
-       :window/style :undecorated
-       :window/title-key :window.about.title  ; → "About Ooloi"
-       :width 800 :height 700})))
+  (um/show-window! manager
+    {:window/id :about
+     :window/content (cljfx/instance (cljfx/create-component (about-content-spec manager)))
+     :window/title-key :window.about.title}))
+
+;; system.clj — one-line delegation
+show-about-fn (fn [] (about/show-about! mgr))
 ```
 
 **The contract:**
-- `build-*-content!` is private (`defn-`). The public API is `show-*!`.
-- `build-*-content!` returns `{:root Node, ...}` — the root node and any interactive references (buttons, labels)
-- `build-*-content!` never imports Stage, Scene, or StageStyle
-- The caller passes `:root` as `:window/content` to `show-window!`
-- The UI Manager handles Stage creation, theming, registry tracking, and platform behaviour (e.g. `initOwner` on macOS)
+- The content function is private (`defn-`). The public API is `show-*!`.
+- For cljfx-based modules: a private `*-spec` function returns a cljfx description map;
+  `show-*!` materialises it via `cljfx/create-component` + `cljfx/instance`.
+- For modules not yet fully migrated: `build-*-content!` constructs JavaFX nodes directly
+  and returns `{:root Node, ...}`.
+- The content function never imports Stage, Scene, or StageStyle.
+- The caller passes the materialised Node as `:window/content` to `show-window!`.
+- The UI Manager handles Stage creation, theming, registry tracking, and platform behaviour (e.g. `initOwner` on macOS).
 
 This pattern ensures all windows go through the same path regardless of their content complexity.
-
-**Content materialisation via cljfx:** Content builders use `cljfx/create-component` + `cljfx/instance` as the materialisation pipeline for their internal node trees. This provides the full cljfx component tree — custom component functions, `ext-instance-factory`, `ext-on-instance-lifecycle` — while producing real JavaFX `Node` objects that the UI Manager can embed in a Stage.
 
 ### Custom cljfx Component Functions (Updated 2026-02-19)
 
@@ -251,7 +258,7 @@ cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to 
   => (contains {:style-class ["accent"] :disable false}))
 ```
 
-The complete component inventory is in `research/UI_ARCHITECTURE.md` §16.
+The complete component inventory is in the `ooloi.frontend.ui.cljfx` namespace.
 
 ### Architectural Invariants
 
@@ -321,9 +328,10 @@ The window manager infrastructure automatically applies the configured UI theme 
 
 **Implementation:**
 - Theme preference stored in settings (ADR-0043)
-- `render-cljfx-to-stage` applies theme automatically during rendering
-- All Scenes receive consistent theme styling without specification
-- Theme changes apply system-wide without modifying UI specs
+- `build-window!` in `window.clj` calls `(theme/apply-theme!)` when constructing each
+  Stage — theme is applied as a global JavaFX user agent stylesheet, so all Scenes
+  receive it automatically
+- Theme changes propagate to all open windows via `apply-theme-to-all!` in the UI Manager
 
 **Benefits:**
 - Visual consistency enforced by architecture
@@ -718,7 +726,7 @@ The menu bar itself is also pure data. A function assembles descriptors into a c
   (when-not (:fx/type spec)
     (throw (ex-info "Window spec missing required :fx/type" {:spec spec})))
 
-  (when (and (:window/persist? spec) (not (:window/id spec)))  
+  (when (and (not (false? (:window/persist? spec))) (not (:window/id spec)))
     (throw (ex-info "Persistent window must have :window/id" {:spec spec})))  
   
   ;; Validate position structure if present  
