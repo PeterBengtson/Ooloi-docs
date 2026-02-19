@@ -13,7 +13,7 @@ The core challenges are:
 3. **Variable Thickness Rendering**: Creating slur shapes with rounded endpoints and variable thickness, following copper plate engraving aesthetics
 4. **Visual Integration**: Storing the resulting curves in the appropriate MeasureView visual hierarchy structures
 
-This ADR establishes the foundational algorithms for slur shape computation. A follow-up ADR ([ADR-0044](0044-Slur-and-Tie-Geometry.md)) will address the complete geometric constraint solving system — collision detection, the progressive solver, nested and overlapping slurs, cross-system breaks, and the interaction between slurs and other notation elements within the phase-5 processing sequence.
+This ADR establishes the foundational algorithms for slur shape computation. A follow-up ADR ([ADR-00XX](00XX-Slur-and-Tie-Geometry.md)) will address the complete geometric constraint solving system — collision detection, the progressive solver, nested and overlapping slurs, cross-system breaks, and the interaction between slurs and other notation elements within the phase-5 processing sequence.
 
 ## Musical Slur Characteristics (Based on Traditional Engraving)
 
@@ -40,9 +40,9 @@ We will implement slur formatting through:
 1. **General extent point collection** using `collect-extent-items` function that works for any spanning attachment
 2. **Convex half-hull calculation** to determine natural slur shape from collected notehead positions
 3. **Layout-aware coordinate retrieval** using composable transducers for x,y position calculation
-4. **Dual Bézier curve rendering** with variable thickness, rounded endpoints (copper plate aesthetics), and MeasureView integration — curve generation algorithm defined in ADR-0044
+4. **Dual Bézier curve rendering** with variable thickness, rounded endpoints (copper plate aesthetics), and MeasureView integration — curve generation algorithm defined in ADR-00XX
 
-The convex half-hull is the **primary shape model** for slurs that must follow a melodic contour. It produces curves that hug the noteheads — as close as possible to the music, even passing under articulations which the solver may adjust. For unrestricted slurs (no obstacles along the path), the Euler elastica provides the ideal shape; see ADR-0044 for the progressive solver that selects between these approaches.
+The convex half-hull is the **primary shape model** for slurs that must follow a melodic contour. It produces curves that hug the noteheads — as close as possible to the music, even passing under articulations which the solver may adjust. For unrestricted slurs (no obstacles along the path), the Euler elastica provides the ideal shape; see ADR-00XX for the progressive solver that selects between these approaches.
 
 ## Detailed Design
 
@@ -131,7 +131,7 @@ The convex half-hull is the **primary shape model** for slurs that must follow a
 
 The convex hull is a polygon — angular vertices connected by straight segments. The actual slur is a smooth curve. The hull provides the **constraint envelope**: the set of points the slur must pass through or near. A Bézier curve is then fitted to these hull points to produce the smooth shape.
 
-If a single cubic Bézier can pass through (or within tolerance of) all hull points while respecting configurable quality criteria (maximum slope, maximum notehead departure, minimum curvature radius, endpoint tangent angle) — the slur is done. When the simple fit violates any criterion, the solver escalates to composite Béziers, higher-degree curves, or constrained optimisation. The hull defines *where* the slur goes; the Bézier fitting defines *how smoothly* it gets there. Quality criteria, escalation thresholds, and the progressive solver are defined in ADR-0044.
+If a single cubic Bézier can pass through (or within tolerance of) all hull points while respecting configurable quality criteria (maximum slope, maximum notehead departure, minimum curvature radius, endpoint tangent angle) — the slur is done. When the simple fit violates any criterion, the solver escalates to composite Béziers, higher-degree curves, or constrained optimisation. The hull defines *where* the slur goes; the Bézier fitting defines *how smoothly* it gets there. Quality criteria, escalation thresholds, and the progressive solver are defined in ADR-00XX.
 
 ### 4. The Euler Elastica: Ideal Unrestricted Shape
 
@@ -153,7 +153,7 @@ The elastica serves three roles:
 
 2. **Rotation-invariant**: A slur ascending from a low note to a high note, descending, or connecting notes at the same height all take the same elastica shape rotated to match the endpoint geometry. This gives visual consistency across different musical contexts.
 
-3. **Collision probe**: Fit the elastica between endpoints and test whether any element along the span intersects it. If nothing collides — done, use the elastica. If collisions are detected — escalate to the hull-based approach. This makes the elastica the entry point of the progressive solver defined in ADR-0044.
+3. **Collision probe**: Fit the elastica between endpoints and test whether any element along the span intersects it. If nothing collides — done, use the elastica. If collisions are detected — escalate to the hull-based approach. This makes the elastica the entry point of the progressive solver defined in ADR-00XX.
 
 The relationship between elastica and hull is not competitive — they address different cases:
 
@@ -176,7 +176,7 @@ In plain terms: take each obstacle (notehead, stem, accidental) and inflate it o
 
 With copper plate rounded endpoints (§6), the slur half-thickness *r(t)* is never zero — even at the endpoints, the inflation equals the end cap radius. This eliminates the degenerate zero-width case that arises with pointed endpoints, making the clearance computation well-behaved everywhere along the curve.
 
-**Practical simplification**: for simple placement (elastica within available space), treating the slur thickness as uniform at its maximum gives conservative clearance — if the centreline clears the maximally-inflated obstacles, the actual slur certainly clears. The exact Minkowski profile matters most in tight passages where the progressive solver (ADR-0044) has escalated to constrained optimisation, and the precise clearance at the thick midsection vs the thinner endpoints makes a difference.
+**Practical simplification**: for simple placement (elastica within available space), treating the slur thickness as uniform at its maximum gives conservative clearance — if the centreline clears the maximally-inflated obstacles, the actual slur certainly clears. The exact Minkowski profile matters most in tight passages where the progressive solver (ADR-00XX) has escalated to constrained optimisation, and the precise clearance at the thick midsection vs the thinner endpoints makes a difference.
 
 ### 6. Bézier Curve Generation with Variable Thickness
 
@@ -213,11 +213,11 @@ In traditional copper plate engraving, the burin entering and leaving the plate 
 - **Proximity to music**: Slurs should be as close to the noteheads as possible, even under articulations which the solver may adjust
 - **Voice separation**: Upper voice slurs typically above, lower voice slurs below
 
-The rendering approach is dual Bézier curves (top edge and bottom edge) with fill between them and rounded end caps. The curve generation algorithm will be defined in ADR-0044 as part of the complete progressive solver.
+The rendering approach is dual Bézier curves (top edge and bottom edge) with fill between them and rounded end caps. The curve generation algorithm will be defined in ADR-00XX as part of the complete progressive solver.
 
 ### Edge Cases
 
-This ADR establishes the basic algorithm. The following cases require the progressive solver and constraint system defined in ADR-0044:
+This ADR establishes the basic algorithm. The following cases require the progressive solver and constraint system defined in ADR-00XX:
 
 1. **Nested slurs**: Inner slur takes its natural shape; outer slur encompasses it. Deterministic post-processing adjusts only on detected tight fit.
 2. **Overlapping slurs**: Independently placed; local collision adjustment only where overlap is detected.
@@ -235,9 +235,9 @@ This ADR establishes the basic algorithm. The following cases require the progre
 
 3. **Layout abstraction**: `(obtain-xy layout)` transducer allows same algorithm to work with different layout contexts (transposed parts, different spacing, etc.).
 
-4. **Convex hull as primary shape**: The half-hull produces notehead-hugging curves that follow the melodic contour — the right default for music. Polynomial fitting or manual control points cannot achieve this without explicit knowledge of the note positions. For unrestricted paths (no obstacles), the Euler elastica provides the smoothest possible curve; the progressive solver in ADR-0044 selects between them.
+4. **Convex hull as primary shape**: The half-hull produces notehead-hugging curves that follow the melodic contour — the right default for music. Polynomial fitting or manual control points cannot achieve this without explicit knowledge of the note positions. For unrestricted paths (no obstacles), the Euler elastica provides the smoothest possible curve; the progressive solver in ADR-00XX selects between them.
 
-5. **Dual Bézier curves with rounded ends**: The rendering approach — two edge curves with fill between them and copper plate endpoint rounding — is specified here; the curve generation algorithm belongs to the progressive solver in ADR-0044.
+5. **Dual Bézier curves with rounded ends**: The rendering approach — two edge curves with fill between them and copper plate endpoint rounding — is specified here; the curve generation algorithm belongs to the progressive solver in ADR-00XX.
 
 6. **Single-staff focus**: Simplifies implementation while covering the majority of slur cases. Multi-staff spanning can be addressed in future iterations.
 
@@ -263,7 +263,7 @@ This ADR establishes the basic algorithm. The following cases require the progre
 
 - **Complexity**: More sophisticated than simple straight-line connections
 - **Single-staff limitation**: Multi-staff slurs require additional complexity (future work)
-- **Hull alone insufficient**: Complex cases require the progressive solver (ADR-0044)
+- **Hull alone insufficient**: Complex cases require the progressive solver (ADR-00XX)
 
 ### Neutral
 
@@ -272,7 +272,7 @@ This ADR establishes the basic algorithm. The following cases require the progre
 
 ## Related Decisions
 
-- **[ADR-0044: Slur and Tie Geometry](0044-Slur-and-Tie-Geometry.md)** — Follow-up: progressive solver, collision detection, nested/overlapping slurs, cross-system breaks, tie geometry, and the complete phase-5 processing sequence
+- **[ADR-00XX: Slur and Tie Geometry](00XX-Slur-and-Tie-Geometry.md)** — Follow-up: progressive solver, collision detection, nested/overlapping slurs, cross-system breaks, tie geometry, and the complete phase-5 processing sequence
 - **[ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md)** — Slur formatting is part of pipeline stage 5 (Spanners and Margins)
 - **[ADR-0038: Backend-Authoritative Rendering](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)** — Rendering boundary constraints: the slur algorithm consumes resolved semantics and layout decisions without introducing new semantic state or backward causality
 - **[ADR-0014: Timewalk](0014-Timewalk.md)** — Timewalking provides the point collection algorithm
