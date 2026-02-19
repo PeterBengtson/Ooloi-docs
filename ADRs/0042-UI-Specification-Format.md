@@ -14,6 +14,7 @@
   - [Metadata Keys](#metadata-keys)
   - [Content Builder Pattern](#content-builder-pattern-updated-2026-02-19)
   - [Custom cljfx Component Functions](#custom-cljfx-component-functions-updated-2026-02-19)
+  - [Per-Window Reactive Renderer](#per-window-reactive-renderer-updated-2026-02-19)
   - [Architectural Invariants](#architectural-invariants)
   - [Theme-Independent Styling](#theme-independent-styling)
   - [Command Descriptors (Menu Specialisation)](#command-descriptors-menu-specialisation)
@@ -259,6 +260,97 @@ cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to 
 ```
 
 The complete component inventory is in the `ooloi.frontend.ui.cljfx` namespace.
+
+### Per-Window Reactive Renderer (Updated 2026-02-19)
+
+Windows with rich, stateful content use a **per-window cljfx renderer** alongside the standard `show-window!` boundary. The renderer manages the **content** node reactively; the UI Manager manages the **Stage**. These two responsibilities are absolute and never overlap.
+
+#### Architecture
+
+```
+┌────────────── piece_window.clj ───────────────────────────────────┐
+│                                                                   │
+│  backend events ──(future)──► swap!                               │
+│                                  │                                │
+│                     ┌────────────▼───────────────────────────┐    │
+│                     │      *piece-state (atom {})            │    │
+│                     └────────────┬───────────────────────────┘    │
+│                                  │ mount-renderer watches         │
+│                                  ▼                                │
+│                     ┌───────────────────────────────────────┐     │
+│                     │         cljfx renderer                │     │
+│                     │                                       │     │
+│                     │  :middleware — wrap-map-desc          │     │
+│                     │    s → {:fx/type piece-window-spec    │     │
+│                     │         :state s}                     │     │
+│                     │                                       │     │
+│                     │  :fx.opt/map-event-handler            │     │
+│                     │    dispatch-fn                        │     │
+│                     └────────────┬──────────────────────────┘     │
+│                                  │ cljfx/instance                 │
+│                     ┌────────────▼───────────────────────────┐    │
+│                     │    JavaFX Node (BorderPane)            │    │
+│                     │                                        │    │
+│                     │  SplitPane (centre)                    │    │
+│                     │  ├─ ooloi-vscroll-pane: Musicians      │    │
+│                     │  └─ ooloi-vscroll-pane: Layouts        │    │
+│                     │                                        │    │
+│                     │  ooloi-button-bar (bottom)             │    │
+│                     │  └─ ooloi-button "Piece Settings…"     │    │
+│                     │     :on-action {:ooloi/event           │    │
+│                     │                 :ui/show-piece-settings}│   │
+│                     └────────────┬───────────────────────────┘    │
+└──────────────────────────────────┼────────────────────────────────┘
+                                   │ :window/content
+                                   ▼
+                        show-window! (UI Manager)
+                        Stage → window-registry
+
+Map event flow:
+  Button click
+    │ cljfx appends :fx/event, calls map-event-handler
+    ▼
+  dispatch-fn (injected from system.clj)
+    ├─ piece-internal events ──► piece_window.clj handler (future)
+    └─ app commands ────────────► action-handlers (system.clj)
+                                   :ui/show-piece-settings → fn
+                                   :ui/quit → fn
+                                   ...
+```
+
+#### How it works
+
+1. A private state atom (`*piece-state`) holds the window's local UI state.
+2. `piece-window-content` creates the renderer with two configurations:
+   - **`:middleware`** — `cljfx/wrap-map-desc` transforms each new atom value into a cljfx description by calling `piece-window-spec` with the current state.
+   - **`:fx.opt/map-event-handler`** — routes all map-form `:on-action` values to a single dispatcher. When a cljfx element has `:on-action {:ooloi/event :foo}` (a map, not a function), cljfx appends `:fx/event` and calls this handler on the JAT.
+3. The renderer is called once with the initial state. `cljfx/mount-renderer` then keeps it watching the atom.
+4. `cljfx/instance` extracts the JavaFX Node. This is passed to `show-window!` as `:window/content`.
+5. After `show-window!` returns, the renderer continues managing the Node reactively — `swap!`ing `*piece-state` diffs and patches the live scene graph without Stage recreation.
+
+#### Map events and dispatch
+
+Map-form `:on-action` values are pure data (serialisable, inspectable). The `:fx.opt/map-event-handler` is the window module's complete internal event dispatch system.
+
+Routing follows a two-tier strategy:
+
+- **Module-internal events** are handled entirely within the window module. Navigation, selection, drag-and-drop reactions, and backend-update reactions live here.
+- **App-level commands** (e.g., `:ui/show-piece-settings`) are delegated through `dispatch-fn` to the application's `action-handlers`. The `dispatch-fn` is injected by the caller — the window module has no direct reference to application state or action tables.
+
+This keeps each window module a **self-contained dispatch world**: internal events never leave the module; commands that affect the wider application bubble out through `dispatch-fn` only.
+
+#### Boundary invariants
+
+- **Renderers manage content nodes, never Stages.** `show-window!` remains the sole window lifecycle API and is unaware of the renderer.
+- **`dispatch-fn` is injected, not captured.** Window content functions receive it as a parameter. This keeps modules independently testable.
+- **State atoms are private.** Only the owning module writes to them. Callers cannot mutate window state directly.
+- **State updates from any source are safe.** `swap!` may come from user interactions, event bus subscriptions, or settings changes. The renderer reacts uniformly.
+
+#### When to use a renderer
+
+**Use a renderer** when the window reacts to changing data, has rich internal event handling, or requires ongoing state-driven re-renders without Stage recreation.
+
+**Use `cljfx/create-component` + `cljfx/instance` once** (no renderer) when the content is static, the window is modal and dismissed quickly, or there is no ongoing reactivity needed after materialisation.
 
 ### Architectural Invariants
 
