@@ -14,6 +14,7 @@
   - [Metadata Keys](#metadata-keys)
   - [Content Builder Pattern](#content-builder-pattern-updated-2026-02-11)
   - [Architectural Invariants](#architectural-invariants)
+  - [Theme-Independent Styling](#theme-independent-styling)
   - [Command Descriptors (Menu Specialisation)](#command-descriptors-menu-specialisation)
   - [Validation Strategy](#validation-strategy)
   - [Window Manager Integration](#window-manager-integration)
@@ -125,15 +126,16 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 - Used for state persistence lookup
 - Example: `:main-editor`, `:plugin-config`, `:tool-palette`
 
-**`:window/persist?`** (boolean, default false)
-- Whether to save/restore window state
-- Persistent: main windows, tool palettes
-- Non-persistent: notifications, alerts
+**`:window/persist?`** (boolean, default true)
+- Whether to save/restore window geometry (position, size) across sessions
+- Persistent (default): main windows, tool palettes, dialogs
+- Non-persistent: splash screen (`:window/persist? false`), notifications (no Stage)
 
 **`:window/type`** (keyword, optional)
 - Semantic type hint: `:stage`, `:dialog`, `:notification`
-- Used for applying type-specific defaults
-- Not required - `:fx/type` is authoritative for rendering
+- Consumed by rendering functions (`render-window`, `render-dialog`) and stripped from the cljfx output — it does not reach JavaFX
+- Currently informational; no type-specific defaults are applied automatically
+- Not required — `:fx/type` is authoritative for rendering
 
 **`:window/default-position`** (map, optional)
 - Default position if no saved state: `{:x int :y int}`
@@ -159,8 +161,22 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 - When neither `:width` nor `:height` is specified, the Scene sizes itself from content
 
 **`:window/title-key`** (keyword, optional)
-- ADR-0039 translation key resolved via `tr` for the window title
+- ADR-0039 translation key resolved via `tr` at render time for the window title
 - Example: `:window/title-key :window.tool-palette.title` → title "Tools"
+- When present, overrides any `:title` value in the spec
+
+**`:window/modal?`** (boolean, optional)
+- When `true`, the dialog opens as `:application-modal` (blocks input to all other windows)
+- When absent or `false`, the window is non-modal
+- Consumed by `render-dialog` and stripped from the cljfx output
+- Only meaningful for dialogs — ignored by `render-window`/`build-window!`
+
+**`:title`** (string, optional)
+- Raw JavaFX Stage title string, passed directly to `Stage.setTitle()`
+- This is the **low-level target** that `:window/title-key` resolves into — `build-window!` calls `(tr title-key)` and places the result in `:title`
+- `:window/title-key` takes precedence: if both are present, the resolved translation replaces `:title`
+- Spec authors must use `:window/title-key` for all titles — all user-facing strings must be localisable per ADR-0039
+- No production code should pass hardcoded strings via `:title`; all window titles go through `tr-declare` + `:window/title-key`
 
 ### Content Builder Pattern (Updated 2026-02-11)
 
@@ -180,7 +196,7 @@ UI elements that need custom content — splash screens, About dialogs, future t
     {:window/id :about
      :window/content root
      :window/style :undecorated
-     :title "About Ooloi"
+     :window/title-key :window.about.title  ; → "About Ooloi"
      :width 800 :height 700})
   (.setOnAction ok-button
     (reify EventHandler (handle [_ _] (um/close-window! mgr :about)))))
@@ -220,6 +236,22 @@ Content builders produce nodes. The UI Manager produces windows.
 
 **macOS Platform Behaviour:** On macOS, `register-window!` automatically calls `.initOwner` on secondary windows, setting the first registered Stage as owner. This ensures secondary windows (About, tool palettes) inherit the system menu bar. Without this, focused secondary windows show a blank menu bar.
 
+**All Window Close Goes Through `close-window!`**
+
+No code closes a Stage by calling `.close` directly. The UI Manager's `close-window!` is the single exit point for all window closure. It performs three operations in sequence: persists the window's geometry to disk, closes the Stage, and publishes a `:window-closed` lifecycle event. Bypassing it loses geometry persistence and breaks lifecycle event consumers.
+
+Native close (the window's X button) is intercepted by `onCloseRequest` wiring in `register-window!`, which consumes the JavaFX event and delegates to `close-window!`. Programmatic close (OK/Cancel buttons, quit handlers) calls `close-window!` directly. Component shutdown (`halt-key!`) iterates the window registry and calls `close-window!` for each open window.
+
+```clojure
+;; ✅ CORRECT — route through close-window!
+(um/close-window! mgr :settings)
+
+;; ❌ WRONG — bypasses persistence and lifecycle events
+(.close stage)
+```
+
+**Invariant:** If code calls `.close` on a Stage outside of the windowing infrastructure (`window.clj`), it is violating this invariant.
+
 **Theme Application is Automatic**
 
 The window manager infrastructure automatically applies the configured UI theme (AtlantaFX) to all windows, dialogs, and notifications. Developers never specify theme details in UI specifications.
@@ -256,11 +288,339 @@ The window manager infrastructure automatically applies the configured UI theme 
 - Theme changes don't require spec updates
 - Separation of concerns (specification vs presentation)
 
-**Colour Token Invariant:** When CSS overrides are necessary (e.g., notification severity backgrounds, custom component styling), all colours must use AtlantaFX semantic tokens (`-color-fg-default`, `-color-danger-muted`, `-color-success-muted`, etc.). Literal hex values, `rgb()` functions, or JavaFX `Color` constants are prohibited. This extends the theme-as-infrastructure principle to CSS-level customisation — overrides adapt automatically to dark/light mode. See [UI Architecture §7: Colour Tokens](../research/UI_ARCHITECTURE.md) for the full token reference.
+**Threading: JavaFX Application Thread Required**
 
-**Icons:** Ikonli Material Design 2 icons (`ikonli-javafx` + `ikonli-material2-pack`) provide font-based icons via `FontIcon` nodes. Icons are referenced by string literals (e.g. `"mdal-info"`, `"mdmz-warning"`). Notification severity types have default icons that inherit colour from AtlantaFX severity classes automatically. See [UI Architecture §7: Icons](../research/UI_ARCHITECTURE.md) for the full icon reference.
+All UI Manager operations that create, modify, or close JavaFX objects must be called on the JavaFX Application Thread (JAT). This is a JavaFX platform constraint, not an Ooloi-specific rule.
+
+**Functions that require the JAT:**
+- `show-window!`, `register-window!`, `close-window!` — Stage lifecycle
+- `build-window!`, `build-dialog!` — Node/Stage construction
+- `show-notification!`, `dismiss-notification!` — Notification overlay operations
+- Any `build-*-content!` function that creates JavaFX nodes
+
+**Enforcement:** `build-window!` and `build-dialog!` include an explicit `assert (Platform/isFxApplicationThread)`. Other functions document the requirement in their docstring. Calling from the wrong thread produces unpredictable JavaFX behaviour (visual corruption, race conditions, silent failures).
+
+**For callers on a background thread:** Use `fx/run-later!` to post work to the JAT:
+
+```clojure
+;; ✅ CORRECT — post to JAT from background thread
+(fx/run-later!
+  (fn [] (um/show-window! mgr {:window/id :tool-palette ...})))
+
+;; ❌ WRONG — calling directly from background thread
+(future (um/show-window! mgr {:window/id :tool-palette ...}))
+```
+
+**Plugin implication:** Backend plugins sending specs over gRPC are unaffected — the frontend's gRPC handler is responsible for dispatching to the JAT. Frontend plugins that call UI Manager functions directly must ensure they are on the JAT or use `fx/run-later!`.
+
+**Translation Key Resolution**
+
+Keys ending in `-key` (`:window/title-key`, `:text-key`, `:prompt-text-key`) are ADR-0039 translation keys, resolved to localised strings by calling `(tr key)` at render time. Resolution happens inside the rendering functions (`build-window!`, `render-window`, `render-dialog`), not in the spec author's code:
+
+1. The spec author writes `:window/title-key :window.settings.title`
+2. The rendering function calls `(tr :window.settings.title)` → `"Settings"`
+3. The resolved string is set as the Stage's `:title`
+
+The spec author never calls `tr` — the rendering infrastructure does. This ensures localisation is consistent and the spec remains language-neutral (important for specs crossing gRPC from backend plugins where `tr` is not available).
+
+**Unresolved keys:** If a `-key` value has no translation registered, `tr` returns the key itself as a string (e.g., `":window.settings.title"`). This is a development-time indicator, not a silent failure.
+
+**Icons:** Ikonli Material Design 2 icons (`ikonli-javafx` + `ikonli-material2-pack`) provide font-based icons as JavaFX `Node` instances via `FontIcon`. Icons are referenced by string literals (e.g. `"mdal-info"`, `"mdmz-warning"`) — no enum imports needed from Clojure.
+
+```clojure
+(import '[org.kordamp.ikonli.javafx FontIcon])
+
+(FontIcon. "mdal-info")              ; Create icon from literal
+(doto (FontIcon. "mdal-check")
+  (.setIconSize 24))                 ; With explicit size
+```
+
+`FontIcon` can be passed to any JavaFX method accepting `Node`, including `Notification.setGraphic()`, `Button.setGraphic()`, `MenuItem.setGraphic()`, etc.
+
+**Icon colour:** Ikonli icons inherit the `-fx-icon-color` CSS property from their parent control. AtlantaFX severity classes (`.success`, `.warning`, `.danger`, `.accent`) set this property, so icons placed inside severity-styled controls (e.g. notifications) pick up the correct colour automatically.
+
+**Current icon usage:**
+
+| Icon Literal | Where | Purpose |
+|-------------|-------|---------|
+| `mdal-info` | `notifications.clj` | Default icon for `:info` notifications |
+| `mdal-check` | `notifications.clj` | Default icon for `:success` notifications |
+| `mdmz-warning` | `notifications.clj` | Default icon for `:warning` notifications |
+| `mdal-error` | `notifications.clj` | Default icon for `:error` notifications |
+| `mdmz-undo` | `settings_dialog.clj` | Reset-to-default button |
+
+**Icon packs:** Only Material Design 2 (`ikonli-material2-pack`) is currently included. Additional packs (Feather, FontAwesome, etc.) can be added as separate dependencies if needed. Browse available icons: [Material2 cheat sheet](https://kordamp.org/ikonli/cheat-sheet-material2.html).
 
 **Notification opacity:** Notifications are semi-transparent by default (0.8 opacity) for a lighter visual presence. Configurable per-notification via `:opacity` in the spec.
+
+### Theme-Independent Styling
+
+All UI styling in Ooloi must work identically in dark and light mode without code changes. This is achieved through two complementary mechanisms provided by [AtlantaFX](https://mkpaz.github.io/atlantafx/): **style classes** for component-level styling and **CSS semantic tokens** for inline CSS when style classes don't cover the need. Both adapt automatically when the theme changes.
+
+**Why this matters for plugins:** UI specifications are pure data (maps) that cross boundaries — a backend plugin sends a cljfx spec over gRPC, and the frontend renders it. If a plugin hardcodes `#888888` for muted text, it breaks in one theme. If it uses `"text-muted"` as a style class, it works in every theme the frontend supports. Theme independence is not cosmetic — it is a serialization and interoperability requirement.
+
+#### Two Levels of Styling
+
+**Level 1 — Style Classes (preferred).** AtlantaFX's [`Styles`](https://mkpaz.github.io/atlantafx/apidocs/atlantafx.base/atlantafx/base/theme/Styles.html) class provides named string constants for typography, severity, elevation, borders, and interactive states. These map to CSS classes that AtlantaFX themes define. Use style classes whenever possible.
+
+**Level 2 — CSS Semantic Tokens (when needed).** When no style class covers the requirement (e.g., a custom background colour for a specific panel), use AtlantaFX's CSS custom properties (`-color-fg-default`, `-color-danger-muted`, etc.) in inline CSS. These resolve to theme-appropriate values at runtime.
+
+**Prohibited:** Literal hex values (`#888`), `rgb()`/`rgba()` functions, and JavaFX `Color` constants in theme-dependent contexts. See [Documented Exceptions](#documented-exceptions) below for the narrow cases where this is acceptable.
+
+#### cljfx Declarative Specs — The Preferred Path
+
+[cljfx](https://github.com/cljfx/cljfx) is Ooloi's declarative UI layer. Its `:style-class` property accepts a vector of strings — exactly what `Styles` constants evaluate to. This is the **preferred** way to apply styling because the result is pure data that serializes over gRPC:
+
+```clojure
+;; ✅ PREFERRED — cljfx declarative spec (pure data, serializable)
+{:fx/type :label
+ :text "Section Header"
+ :style-class ["title-2" "text-muted"]}
+
+;; ✅ PREFERRED — cljfx spec using Styles constants (evaluated at definition time)
+{:fx/type :label
+ :text "Section Header"
+ :style-class [Styles/TITLE_2 Styles/TEXT_MUTED]}
+
+;; ✅ ACCEPTABLE — Java interop for dynamic mutations after construction
+(-> (.getStyleClass node) (.addAll [Styles/TITLE_2 Styles/TEXT_MUTED]))
+
+;; ❌ WRONG — bare strings without constants (fragile, undiscoverable)
+(-> (.getStyleClass node) (.add "title-2"))
+
+;; ❌ WRONG — inline CSS for something a style class handles
+(.setStyle node "-fx-font-size: 24; -fx-text-fill: #888;")
+```
+
+**When to use Java interop:** Only for dynamic style mutations on already-constructed nodes (e.g., adding a `Styles/DANGER` class when validation fails, removing it when the input is corrected). Initial construction should use cljfx specs wherever possible.
+
+**Plugin implication:** A backend plugin that includes `:style-class ["title-2" "accent"]` in its cljfx spec will render correctly on any Ooloi frontend regardless of the active theme. The string values are stable AtlantaFX API — they don't change between themes.
+
+#### AtlantaFX Style Class Reference
+
+The [`Styles`](https://mkpaz.github.io/atlantafx/apidocs/atlantafx.base/atlantafx/base/theme/Styles.html) class in `atlantafx.base.theme` provides these constants. Each is a `public static final String` that evaluates to the CSS class name shown.
+
+**Typography:**
+
+| Constant | CSS Class | Effect |
+|----------|-----------|--------|
+| `TITLE_1` | `"title-1"` | Largest heading |
+| `TITLE_2` | `"title-2"` | Second heading |
+| `TITLE_3` | `"title-3"` | Third heading |
+| `TITLE_4` | `"title-4"` | Smallest heading |
+| `TEXT` | `"text"` | Standard body text |
+| `TEXT_BOLD` | `"text-bold"` | Bold body text |
+| `TEXT_CAPTION` | `"text-caption"` | Caption/small text |
+| `TEXT_MUTED` | `"text-muted"` | De-emphasised text (theme-aware grey) |
+| `TEXT_SUBTLE` | `"text-subtle"` | Even lighter de-emphasis |
+| `TEXT_SMALL` | `"text-small"` | Reduced font size |
+
+**Severity / Accent:**
+
+| Constant | CSS Class | Effect |
+|----------|-----------|--------|
+| `ACCENT` | `"accent"` | Theme accent colour |
+| `SUCCESS` | `"success"` | Green success state |
+| `DANGER` | `"danger"` | Red error/danger state |
+| `WARNING` | `"warning"` | Yellow/orange warning state |
+
+**Elevation:**
+
+| Constant | CSS Class | Effect |
+|----------|-----------|--------|
+| `ELEVATED_1` | `"elevated-1"` | Subtle shadow |
+| `ELEVATED_2` | `"elevated-2"` | Medium shadow |
+| `ELEVATED_3` | `"elevated-3"` | Prominent shadow |
+| `ELEVATED_4` | `"elevated-4"` | Maximum shadow |
+
+**Buttons:**
+
+| Constant | CSS Class | Effect |
+|----------|-----------|--------|
+| `FLAT` | `"flat"` | No background until hover |
+| `BUTTON_CIRCLE` | `"button-circle"` | Circular button |
+| `BUTTON_ICON` | `"button-icon"` | Icon-only button (no text padding) |
+| `BUTTON_OUTLINED` | `"button-outlined"` | Border, no fill |
+
+**Backgrounds:**
+
+| Constant | CSS Class | Effect |
+|----------|-----------|--------|
+| `BG_DEFAULT` | `"bg-default"` | Standard background |
+| `BG_INSET` | `"bg-inset"` | Recessed background |
+| `BG_SUBTLE` | `"bg-subtle"` | Subtle differentiation |
+| `BG_NEUTRAL_MUTED` | `"bg-neutral-muted"` | Neutral muted background |
+| `BG_NEUTRAL_EMPHASIS` | `"bg-neutral-emphasis"` | Neutral prominent background |
+
+**Borders:**
+
+| Constant | CSS Class | Effect |
+|----------|-----------|--------|
+| `BORDERED` | `"bordered"` | Standard border |
+| `BORDERED_DEFAULT` | `"bordered-default"` | Default colour border |
+| `BORDERED_MUTED` | `"bordered-muted"` | Muted border |
+| `BORDERED_ACCENT` | `"bordered-accent"` | Accent colour border |
+| `BORDERED_SUCCESS` | `"bordered-success"` | Success colour border |
+| `BORDERED_DANGER` | `"bordered-danger"` | Danger colour border |
+| `BORDERED_WARNING` | `"bordered-warning"` | Warning colour border |
+
+**Layout / Behaviour:**
+
+| Constant | CSS Class | Effect |
+|----------|-----------|--------|
+| `DENSE` | `"dense"` | Reduced padding/spacing |
+| `INTERACTIVE` | `"interactive"` | Hover/click visual feedback |
+| `STRIPED` | `"striped"` | Alternating row colours (tables) |
+| `LEFT` | `"left"` | Left alignment |
+| `CENTER` | `"center"` | Centre alignment |
+| `RIGHT` | `"right"` | Right alignment |
+| `TOP` | `"top"` | Top alignment |
+| `BOTTOM` | `"bottom"` | Bottom alignment |
+
+**Utility Methods:**
+
+`Styles` also provides `addStyleClass(Node, String...)`, `removeStyleClass(Node, String...)`, and `toggleStyleClass(Node, String)` for imperative use. In Clojure these are less useful than direct `.getStyleClass` manipulation, but plugins targeting Java interop may use them.
+
+#### CSS Semantic Token Reference
+
+When inline CSS is needed (and no style class suffices), use AtlantaFX's CSS custom properties. These resolve to theme-appropriate values automatically. Apply via `:style` in cljfx specs or `.setStyle` in interop:
+
+```clojure
+;; ✅ CORRECT — semantic token adapts to theme
+{:fx/type :label
+ :text "Status"
+ :style "-fx-text-fill: -color-fg-muted;"}
+
+;; ❌ WRONG — hardcoded colour breaks in other theme
+{:fx/type :label
+ :text "Status"
+ :style "-fx-text-fill: #888888;"}
+```
+
+AtlantaFX follows the [GitHub Primer colour system](https://primer.style/foundations/color). Tokens are organised into functional categories that describe *purpose*, not *appearance*. The same token resolves to different concrete colours in dark vs light mode.
+
+**Available Functional Tokens:**
+
+| Category | Tokens | Purpose |
+|----------|--------|---------|
+| **Foreground** | `-color-fg-default`, `-color-fg-muted`, `-color-fg-subtle`, `-color-fg-emphasis` | Text and icon colours at varying prominence levels |
+| **Background** | `-color-bg-default`, `-color-bg-overlay` | Surface colours for panels, popups, overlays |
+| **Border** | `-color-border-default`, `-color-border-muted`, `-color-border-subtle` | Separator and outline colours |
+| **Accent** | `-color-accent-fg`, `-color-accent-muted`, `-color-accent-subtle`, `-color-accent-emphasis` | Primary brand/info colour in four intensities |
+| **Success** | `-color-success-fg`, `-color-success-muted`, `-color-success-subtle`, `-color-success-emphasis` | Positive/confirmation colour in four intensities |
+| **Warning** | `-color-warning-fg`, `-color-warning-muted`, `-color-warning-subtle`, `-color-warning-emphasis` | Caution colour in four intensities |
+| **Danger** | `-color-danger-fg`, `-color-danger-muted`, `-color-danger-subtle`, `-color-danger-emphasis` | Error/destructive colour in four intensities |
+| **Neutral** | `-color-neutral-emphasis-plus`, `-color-neutral-emphasis`, `-color-neutral-muted`, `-color-neutral-subtle` | Grey tones for secondary UI elements |
+
+**Choosing Tokens — Intensity Levels:**
+
+Each severity category offers four intensity levels. Choose based on the UI element's role:
+
+- **`-fg`**: Use as text colour on a default or subtle background. High contrast.
+- **`-muted`**: Use as background for medium-emphasis surfaces (e.g., notification backgrounds). Good contrast with `-color-fg-default` text.
+- **`-subtle`**: Use as background for low-emphasis surfaces. Lighter tint, less prominent.
+- **`-emphasis`**: Use as background for high-emphasis elements (e.g., badges, pills). Often requires `-color-fg-emphasis` text for contrast.
+
+**Invariant:** Scale tokens (`-color-base-0` through `-color-base-9`, `-color-accent-0` through `-color-accent-9`, etc.) must NOT be used. They are raw palette values that do not adapt semantically across themes. Always use the functional tokens above.
+
+#### Established Usage Patterns
+
+The following patterns are established in the Ooloi codebase. New UI code should follow these conventions.
+
+**Notifications** (severity-typed popup messages):
+
+Notifications are shown via `(um/show-notification! mgr spec)` where `spec` is a map with `:message` (string), `:type` (`:info`, `:success`, `:warning`, `:error`), and optional `:timeout-ms` (auto-dismiss delay) and `:opacity` (default 0.8). Notifications do not create a Stage — they are rendered into a shared overlay StackPane attached to the primary window.
+
+Notifications demonstrate the two-layer mechanism. The style class (`Styles/SUCCESS`, etc.) selects the severity variant. A generated CSS stylesheet maps each variant to its theme-aware background using CSS semantic tokens:
+
+```css
+/* Generated at runtime by init-notification-overlay! */
+.notification.success > .container {
+  -fx-background-color: -color-success-muted;   /* ← CSS token, adapts to theme */
+}
+.notification.warning > .container {
+  -fx-background-color: -color-warning-muted;
+}
+.notification.danger > .container {
+  -fx-background-color: -color-danger-muted;
+}
+```
+
+The style classes applied per notification type:
+
+| Notification type | Style classes | Background token |
+|-------------------|---------------|------------------|
+| `:info` | `"notification"` | Default (no severity accent) |
+| `:success` | `"notification"` `Styles/SUCCESS` | `-color-success-muted` |
+| `:warning` | `"notification"` `Styles/WARNING` | `-color-warning-muted` |
+| `:error` | `"notification"` `Styles/DANGER` | `-color-danger-muted` |
+| All notifications | `Styles/ELEVATED_2` | (shadow, not background) |
+
+This is the general pattern: **style classes** name the variant, **CSS tokens** provide the themed visual. The `Styles` class constants are selectors; the `-color-*` tokens are values. Neither works alone — both are needed for theme-independent styling that also carries semantic meaning.
+
+**Window content** (headings, placeholder text):
+
+| Purpose | Style classes | Example |
+|---------|---------------|---------|
+| Section heading | `Styles/TITLE_2` | Piece window placeholder |
+| De-emphasised text | `Styles/TEXT_MUTED` | Placeholder/hint text |
+| Combined heading + muted | `[Styles/TITLE_2 Styles/TEXT_MUTED]` | "Temporary Piece Window" label |
+
+**Form controls** (settings dialog, input validation):
+
+| Purpose | Style class | Usage |
+|---------|-------------|-------|
+| Flat icon button (reset) | `Styles/FLAT` | Reset-to-default buttons beside settings fields |
+| Invalid input | `Styles/DANGER` | Added dynamically when validation fails |
+| Valid input (restore) | Remove `Styles/DANGER` | Removed dynamically when input becomes valid |
+
+**Dialogs** (About, Settings):
+
+| Purpose | Approach | Notes |
+|---------|----------|-------|
+| Dialog title bar | `Styles/TITLE_3` or `Styles/TITLE_4` | Depending on dialog size |
+| OK / Cancel buttons | Standard Button (no extra class) | AtlantaFX default styling is sufficient |
+| Action buttons | `Styles/ACCENT` | For primary action emphasis |
+
+**Plugin guidelines:** Plugins should use the same patterns. A plugin notification uses `:style-class (into ["notification"] [(get type->severity type)])`. A plugin dialog heading uses `:style-class ["title-3"]`. The string values (not the Java constants) travel over gRPC — `"title-3"` and `Styles/TITLE_3` are the same string at runtime.
+
+#### Documented Exceptions
+
+Three narrow cases permit literal colour values:
+
+1. **Pre-theme rendering (splash screen).** The splash renders before AtlantaFX themes are loaded. It uses `Color/WHITE` for text and `Color/web "#1a1a2e"` for the background — branding colours that are constant regardless of theme. These are applied via Java API (`setTextFill`, `Background`/`BackgroundFill`), not CSS strings.
+
+2. **Effect parameters (DropShadow, etc.).** JavaFX effect objects like `DropShadow` take `Color` constructor arguments, not CSS. `(Color. 0.0 0.0 0.0 0.8)` for a semi-transparent black shadow is a rendering parameter, not a themed colour.
+
+3. **Theme-aware transparency overlays.** The About dialog's translucent background implements both light and dark appearances directly using `rgba()` values that are chosen per-theme at construction time. This is legitimate because transparency blending over arbitrary content cannot be expressed as a single semantic token — the overlay must know the target luminance.
+
+#### Font Handling
+
+Ooloi relies on the platform's system font as selected by JavaFX — no application-wide font override. AtlantaFX themes set font metrics (size, weight, family) through their CSS; the `Styles` typography classes (`TITLE_1` through `TITLE_4`, `TEXT`, `TEXT_BOLD`, `TEXT_CAPTION`, `TEXT_SMALL`) adjust size and weight relative to this base.
+
+**Preferred approach:** Use `Styles` typography classes for all text sizing and weight. They respect the platform font and adapt to theme changes.
+
+```clojure
+;; ✅ PREFERRED — typography class handles size and weight
+{:fx/type :label
+ :text "Section Header"
+ :style-class ["title-3"]}
+
+;; ✅ ACCEPTABLE — interop equivalent
+(-> (.getStyleClass label) (.add Styles/TITLE_3))
+```
+
+**When style classes are insufficient:** If a specific font size or weight is genuinely needed beyond what the typography classes provide (e.g., branding text in the splash screen), inline CSS font properties are acceptable. However, font *colour* must still use style classes or CSS semantic tokens — never hardcoded values.
+
+```clojure
+;; Acceptable for special-purpose text (splash branding)
+(.setStyle label "-fx-font-size: 14px; -fx-font-weight: bold;")
+
+;; But colour MUST use a style class or token, not inline CSS
+(.setTextFill label Color/WHITE)  ; Only in documented exception contexts (splash)
+```
+
+**Font family overrides are discouraged.** Specifying `-fx-font-family` ties the UI to a font that may not exist on all platforms. If a specific font family is ever required (e.g., for music-specific glyphs), it should be declared as a project-level decision and loaded as a resource, not hardcoded in individual components.
 
 ### Command Descriptors (Menu Specialisation)
 
@@ -333,7 +693,7 @@ The menu bar itself is also pure data. A function assembles descriptors into a c
   
 ### Window Manager Integration
 
-**Implementation Note (Updated 2026-02-17)**: The actual implementation uses an atom + lock architecture for thread-safe persistence. Window geometry is persisted on close (immediate), move, and resize (debounced 250ms) — not just on shutdown. An in-memory atom is the source of truth; disk writes are serialized via a lock. `show-window!` restores persisted geometry on open. Windows with `:window/persist? false` (e.g. splash screen) skip both persistence and restore. See UI_ARCHITECTURE.md §10.
+**Implementation Note (Updated 2026-02-17)**: The actual implementation uses an atom + lock architecture for thread-safe persistence. Window geometry is persisted on close (immediate), move, and resize (debounced 250ms) — not just on shutdown. An in-memory atom is the source of truth; disk writes are serialized via a lock. `show-window!` restores persisted geometry on open. Windows with `:window/persist? false` (e.g. splash screen) skip both persistence and restore.
 
 ```clojure
 ;; show-window! restores persisted geometry (when :window/persist? is true, the default)
