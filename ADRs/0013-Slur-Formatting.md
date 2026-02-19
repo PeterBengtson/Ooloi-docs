@@ -279,6 +279,7 @@ This ADR establishes the basic algorithm. The following cases require the progre
 - **[ADR-0011: Shared Structure](0011-Shared-Structure.md)** — Shared structure concepts that slur formatting builds upon
 - **[ADR-0008: VPDs](0008-VPDs.md)** — VPD addressing system used for navigation
 - **[ADR-0010: Pure Trees](0010-Pure-Trees.md)** — Tree structure that the algorithm traverses
+- **[ADR-0005: JavaFX and Skija](0005-JavaFX-and-Skija.md)** — Copper plate aesthetic principle: all Skija-rendered line terminations and corners default to rounded
 - **[ADR-0016: Settings](0016-Settings.md)** / **[ADR-0043: Frontend Settings](0043-Frontend-Settings.md)** — All slur formatting parameters are user-configurable
 
 ## See Also

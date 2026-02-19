@@ -130,6 +130,20 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
 - **Colour System**: AtlantaFX implements the GitHub Primer colour system with semantic (functional) tokens (`-color-fg-default`, `-color-accent-muted`, `-color-danger-emphasis`, etc.) that resolve to different concrete values in dark vs light mode. All frontend CSS must use these tokens exclusively — no hardcoded hex/rgb values. Scale tokens (`-color-base-N`) are raw palette values and must not be used. See [UI Architecture §7: Colour Tokens](../research/UI_ARCHITECTURE.md) for the full reference.
 - **Icons**: Ikonli Material Design 2 (`ikonli-javafx` + `ikonli-material2-pack` 12.4.0) provides font-based icons via `FontIcon` nodes. Icons are referenced by string literals and inherit colour from parent control severity classes. See [UI Architecture §7: Icons](../research/UI_ARCHITECTURE.md).
 
+## Copper Plate Aesthetic Principle
+
+All Skija-rendered line terminations and corners default to **rounded**, following the copper plate engraving tradition (Henle, Bärenreiter, Peters). This applies everywhere Skija draws curves or line endings:
+
+- Slur and tie endpoints
+- Hairpin tips
+- Bracket corners (tuplet brackets, ottava brackets, system brackets)
+- Rehearsal mark box corners
+- Any line termination or corner Ooloi generates
+
+The principle: no geometric sharp points by default. The burin entering and leaving a copper plate naturally rounds; this rounding is both physically necessary in engraving and aesthetically correct. Sharp terminations look fragile and mechanical; rounded ends look confident and crafted.
+
+Each element type has its own cap radius or corner radius setting. House styles or contemporary notation that require sharp points can override to zero. See [ADR-0013](0013-Slur-Formatting.md) for the slur-specific treatment.
+
 ## Notes
 
 - Regular performance benchmarking should be conducted, especially for large score rendering and printing.
