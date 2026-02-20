@@ -16,6 +16,11 @@
 2. [Opening a Window (Minimal Example)](#2-opening-a-window-minimal-example)
 3. [The Window Lifecycle Invariant](#3-the-window-lifecycle-invariant)
 4. [Pure Builders and Materialisation](#4-pure-builders-and-materialisation)
+   - [4.1 Two-Level Abstraction](#41-two-level-abstraction)
+   - [4.2 Why This Separation Exists](#42-why-this-separation-exists)
+   - [4.3 cljfx Spec Over Java Interop](#43-cljfx-spec-over-java-interop)
+   - [4.4 Custom cljfx Component Functions](#44-custom-cljfx-component-functions)
+   - [4.5 Per-Window Reactive Renderer](#45-per-window-reactive-renderer)
 5. [Event Architecture](#5-event-architecture)
 6. [The JAT Boundary](#6-the-jat-boundary)
 7. [Rendering Pipeline](#7-rendering-pipeline)
@@ -31,9 +36,9 @@
 
 ## 1. The Frontend Is Not a Viewer
 
-The Ooloi frontend is often described as “terminal.” That word can sound dismissive, as if the frontend were merely a thin wrapper around something more important. That is not what it means here.
+In architectural terms, this type of frontend is sometimes called “terminal.” That word can sound dismissive, as if the frontend were merely a thin wrapper around something more important. That is not what it means here.
 
-Here, terminal means that the frontend stands at the end of a decision pipeline whose authority resides elsewhere.
+Terminal means that the frontend stands at the end of a decision pipeline whose authority resides elsewhere.
 
 Ooloi’s backend is the single semantic authority for musical state. It owns pitch representation, time signatures, key signatures, remembered alterations, layout computation, and the full rendering pipeline. When a piece changes, the backend determines what that change *means* and how it affects the structure of the score.
 
@@ -136,7 +141,7 @@ Before looking at the example, one architectural point must be absolutely clear:
 
 Ooloi uses **cljfx specifications** to describe UI structure.
 
-UI content is not constructed imperatively and not mutated through widget references. It is expressed as immutable Clojure data using cljfx’s declarative model (`:fx/type`, `:children`, `:scene`, etc.). That data is then materialised into real JavaFX objects on the JavaFX Application Thread.
+UI content is not constructed imperatively and not mutated through widget references. It is expressed as immutable Clojure data using cljfx’s declarative model (`:fx/type`, `:children`, `:style-class`, `:text-key`, etc.). That data is then materialised into real JavaFX objects on the JavaFX Application Thread.
 
 This is not an aesthetic choice. It is foundational to the architecture:
 
@@ -147,37 +152,37 @@ This is not an aesthetic choice. It is foundational to the architecture:
 
 Window lifecycle is handled by the UI Manager, but window *content* is described using cljfx specs.
 
-Now we can describe a minimal window.
+One detail matters for correctness: the UI Manager owns window lifecycle. Frontend code supplies a **plain map with `:window/*` metadata and a materialised content node**; it does not construct `Stage` or `Scene` directly ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)).
 
-One detail matters for correctness: the UI Manager owns window lifecycle. Frontend code supplies **specs** and/or **content roots**; it does not construct `Stage` or `Scene` directly ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)).
-
-A minimal example therefore stays at the spec level:
+A minimal example illustrates the pattern:
 
 ```clojure
 (tr-declare
   {:hello.window/title "Hello"
    :hello.label/text  "Hello, Ooloi"})
 
-(def hello-window
-  {:fx/type         :stage
-   :window/id       :hello
-   :window/title-key :hello.window/title
-   :scene {:fx/type :scene
-           :root {:fx/type :v-box
-                  :children [{:fx/type :label
-                              :text-key :hello.label/text}]}}})
+(defn- hello-content-spec []
+  {:fx/type :v-box
+   :children [{:fx/type :label
+               :text-key :hello.label/text}]})
 
 (defn show-hello! [ui-manager]
-  (um/show-window! ui-manager hello-window))
+  (um/show-window! ui-manager
+    {:window/id        :hello
+     :window/title-key :hello.window/title
+     :window/content   (cljfx/instance
+                         (cljfx/create-component
+                           (hello-content-spec)))}))
 ```
 
 This shows the intended layering:
 
 1. Window identity and lifecycle metadata are `:window/*` keys.
-2. UI structure is pure cljfx data.
-3. User-facing strings are translation keys (resolved by the i18n/materialisation layer, per [ADR‑0039](../ADRs/0039-Localisation-Architecture.md)).
+2. Content is a pure cljfx description produced by a private spec function.
+3. `cljfx/create-component` + `cljfx/instance` materialise the description into a JavaFX Node before it is passed to `show-window!`.
+4. User-facing strings are translation keys (resolved at materialisation time by the i18n layer, per [ADR‑0039](../ADRs/0039-Localisation-Architecture.md)).
 
-When a window requires imperative wiring to specific JavaFX nodes (e.g. an OK button reference), it uses the **content builder pattern**: a `build-*-content!` function may construct JavaFX nodes and return `{:root ... :some-control ...}`, but the caller still passes only `:root` as `:window/content` to `show-window!` ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)).
+The pattern is consistent whether a window is simple or complex. For windows that need imperative wiring — an action handler on a specific button, a focus request after construction — the private spec function may use `ext-on-instance-lifecycle` to attach behaviour at node creation time ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). Section 4 covers this in full.
 
 ### 2.3 What Happens Internally
 
@@ -203,26 +208,17 @@ Even this minimal path demonstrates three recurring principles:
 
 From here, we can expand the example — adding interaction, backend calls, and rendering — while preserving these invariants.
 
-### 2.4 Dialog and Interaction Helpers
+### 2.4 Confirmation and Custom Components
 
-Windows are the general lifecycle mechanism. For common interaction patterns, the frontend provides dedicated helpers so that developers do not repeatedly wire low‑level controls.
+Windows are the general lifecycle mechanism. Three other pieces complete the common interaction vocabulary.
 
-The `ooloi.frontend.ui.dialog` namespace defines:
+**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.confirmation-dialog` is the sole dialog helper. It materialises a standard cljfx `:alert` spec via `cljfx/create-component` + `cljfx/instance`, blocks synchronously on the JAT via `.showAndWait`, and returns `true` if the user confirmed. No custom dialog infrastructure is needed beyond this.
 
-* `render-dialog` — declarative dialog spec → cljfx stage map
-* `build-dialog!` — materialises JavaFX controls, wires validation, OK/Cancel handling
-* `show-confirmation!` — a convenience wrapper for confirmation dialogs
+**Notifications.** The UI Manager provides a non-blocking notification overlay through convenience functions: `show-info-notification!`, `show-warning-notification!`, `show-error-notification!`, and `show-success-notification!`. Notifications auto-dismiss after a configurable delay, stack vertically in a corner of the screen, and are backed by AtlantaFX `Notification` controls materialised via the `ooloi-notification` custom component function. Application code calls the convenience wrappers; the overlay lifecycle is managed entirely by the UI Manager.
 
-Button helpers (e.g. `create-ok-button`, `create-cancel-button`) encapsulate consistent localisation, styling, and action wiring. Default keys such as `:button.ok`, `:button.cancel`, and `:dialog.confirm.title` are declared via `tr-declare` and verified at build time ([ADR‑0039](../ADRs/0039-Localisation-Architecture.md)).
+**Custom cljfx component functions.** Buttons, labels, scroll panes, menus, and notifications are expressed as custom cljfx component functions in `ooloi.frontend.ui.cljfx` (`ooloi-button`, `ooloi-ok-button`, `ooloi-cancel-button`, `ooloi-button-bar`, etc.). These are pure functions from props maps to cljfx description maps — not imperative builders. They handle localisation key resolution internally. Section 4.4 describes the full inventory and the architectural reason this mechanism exists.
 
-The intent is architectural consistency:
-
-* Dialogs follow the same spec → materialisation model as windows.
-* Validation logic is explicit and testable.
-* Result handling uses promises rather than implicit state mutation.
-* Localisation remains key‑based and verifiable.
-
-These helpers are not shortcuts around the architecture. They are disciplined implementations of it.
+The pattern is the same throughout: specs are pure data, materialisation happens at a controlled boundary, and every user-facing string resolves through a localisation key ([ADR‑0039](../ADRs/0039-Localisation-Architecture.md)).
 
 ---
 
@@ -232,7 +228,7 @@ The window lifecycle sits at the structural core of the frontend. It is a quiet 
 
 In Ooloi, window creation, showing, hiding, and closing are centralised in the UI Manager. The intention is simple: geometry persistence, event publication, macOS ownership rules, and headless compatibility should happen automatically, without each developer having to remember them every time. By gathering lifecycle responsibilities in one place, the system takes care of these details quietly and consistently.
 
-The invariant can be stated precisely:
+The invariant can be stated precisely ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)):
 
 1. **Never construct `Stage` directly in application code.**
 2. **Never close a window by calling `.close` on a `Stage`.** Always route through `close-window!`.
@@ -250,9 +246,7 @@ Centralising lifecycle control ensures that window behaviour remains determinist
 
 When lifecycle control is centralised, the rest of the system can reason about windows structurally rather than defensively. That makes the frontend calmer, not stricter.
 
----
-
-### Compact Reference: Window and Dialog Helpers
+### 3.1 Compact Reference: Window Lifecycle and Custom Components
 
 This is not a full API reference, but the most commonly used frontend entry points are:
 
@@ -261,16 +255,36 @@ This is not a full API reference, but the most commonly used frontend entry poin
 * `show-window!`
 * `close-window!`
 
-**Dialog helpers (`ooloi.frontend.ui.dialog`)**
+**Confirmation dialogs**
 
-* `render-dialog`
-* `build-dialog!`
-* `show-confirmation!`
+* `show-confirmation!` (`ooloi.frontend.ui.confirmation-dialog`) — materialises a cljfx `:alert`, blocks on the JAT via `.showAndWait`, and returns `true` if the user confirmed.
 
-**Button helpers**
+**Notifications (UI Manager)**
 
-* `create-ok-button`
-* `create-cancel-button`
+* `show-info-notification!`
+* `show-warning-notification!`
+* `show-error-notification!`
+* `show-success-notification!`
+
+**Custom cljfx component functions** — see Section 4.4 for the full inventory.
+
+**Common window spec keys**
+
+The recognised `:window/*` keys consumed by `show-window!`:
+
+| Key | Purpose |
+|-----|---------|
+| `:window/id` | Unique identifier for registry tracking and geometry persistence |
+| `:window/content` | Materialised JavaFX Node for the window's main content |
+| `:window/menu-bar` | JavaFX MenuBar to attach above the content |
+| `:window/title-key` | i18n key resolved into the Stage title (use instead of raw `:title`) |
+| `:window/style` | Stage style: `:decorated` (default), `:undecorated`, `:transparent`, `:utility` |
+| `:window/persist?` | Whether to save and restore window geometry across sessions (default `true`) |
+| `:window/resizable?` | Whether the window can be resized by the user (default `true`) |
+| `:window/default-position` | Default `{:x n :y n}` if no persisted state exists |
+| `:window/default-size` | Default `{:width n :height n}` if no persisted state exists |
+
+Unknown `:window/*` keys throw at construction time. Non-`:window/*` keys (`:width`, `:height`, etc.) pass through to the Stage directly.
 
 All of these respect localisation ([ADR‑0039](../ADRs/0039-Localisation-Architecture.md)), lifecycle invariants, and JAT constraints.
 
@@ -280,18 +294,16 @@ If you are reaching for raw JavaFX constructs in application code, you are proba
 
 ## 4. Pure Builders and Materialisation
 
+Section 2 showed the basic pattern: a private spec function returns a cljfx description map, a public `show-*!` function materialises it and hands the Node to `show-window!`. This section examines why that pattern exists, how it extends to the full range of UI construction, and where its firm boundaries lie.
+
 ### 4.1 Two-Level Abstraction
 
-The architecture does not require a separate content builder function. A window specification can be constructed inline, as in the previous example.
-
-In practice, much of the frontend codebase factors UI specifications into pure builder functions. This is not a rule imposed by the windowing architecture itself. It is a pragmatic decision that enables testing in the majority of cases and keeps complex specifications manageable.
-
-The essential abstraction is therefore not “builder function versus inline map,” but:
+The architecture's essential abstraction is not “builder function versus inline map.” It is:
 
 1. Declarative UI specification (pure data).
 2. Materialisation on the JavaFX Application Thread.
 
-Whether that specification is produced inline or by a dedicated function is an implementation choice.
+Whether the specification is produced inline or by a dedicated private function is an implementation choice. In practice, the established convention is a private `*-spec` function that returns a cljfx description map, with a public `show-*!` function that materialises it via `cljfx/create-component` + `cljfx/instance` and hands the Node to `show-window!`. This convention enables testing in the majority of cases and keeps complex specifications manageable — but the architecture's invariant is the spec-to-materialisation boundary, not the presence of a function.
 
 ### 4.2 Why This Separation Exists
 
@@ -303,7 +315,7 @@ At first glance it can look like a stylistic preference: describe UI as data, th
 When UI structure is expressed as pure data, most of it can be constructed and inspected without launching JavaFX at all. Builder functions can be evaluated in isolation. Specs can be validated. Structural invariants can be asserted. Around 80% of frontend logic becomes ordinary functional code, not thread‑bound widget manipulation. The JavaFX Application Thread (JAT) is only required at the final step: materialising nodes and attaching them to a scene.
 
 **JAT discipline.**
-JavaFX enforces a single UI thread. By keeping specification pure and deferring all object creation to clearly defined materialisation boundaries (`build-window!`, `build-dialog!`, etc.), the architecture makes the JAT boundary explicit. There is one bridge (`fx/run-later!`, see Section 6), and it is visible. This clarity prevents accidental blocking, hidden cross‑thread mutation, and subtle race conditions.
+JavaFX enforces a single UI thread. By keeping specification pure and deferring all object creation to clearly defined materialisation boundaries — `cljfx/create-component` + `cljfx/instance` for content, `show-window!` for lifecycle — the architecture makes the JAT boundary explicit. There is one bridge (`fx/run-later!`, see Section 6), and it is visible. This clarity prevents accidental blocking, hidden cross‑thread mutation, and subtle race conditions.
 
 **Backend‑authoritative rendering ([ADR‑0038](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)).**
 The backend produces authoritative paintlists. The frontend turns those into GPU pictures. Because UI description and rendering preparation are separated from semantic authority, the frontend can aggressively cache, batch, parallelise, and discard derived state without risking semantic drift. If all frontend state is dropped and reconstructed from backend data, the visible result must be identical. The spec → materialisation model reinforces that guarantee.
@@ -315,6 +327,130 @@ Plugins operate at the same declarative level as core code. They contribute spec
 Whether the backend runs in‑process, over gRPC to a local server, or across a network to a collaboration host ([ADR‑0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md)), the frontend’s responsibility is the same: render what it receives, express user intent as API calls, and react to invalidation events. Because semantic authority is never embedded in widget state, switching transport modes does not require architectural reinterpretation.
 
 Taken together, this separation produces a frontend that is both powerful and calm. It can mutate local copies, prepare payloads, stage optimistic updates, and manage large rendering caches — yet its structural contract remains simple: describe, materialise, execute, discard, regenerate. The musical truth remains elsewhere, and that clarity keeps the whole system coherent.
+
+### 4.3 cljfx Spec Over Java Interop
+
+The declarative separation described above has a corollary rule codified in [ADR‑0042](../ADRs/0042-UI-Specification-Format.md): **always prefer cljfx spec to Java interop.**
+
+cljfx specs are pure Clojure data — maps and keywords. They compose naturally, test without a running JavaFX toolkit, and follow the single consistent materialisation path described in this section. Java interop bypasses all of this: it is imperative, JavaFX Application Thread-bound, untestable as data, and adds noise that obscures intent.
+
+The rule is concrete: if a layout property — size, padding, alignment, spacing, max-width, style — can be expressed as a cljfx spec key, it must be. Only reach for interop when cljfx has no equivalent.
+
+```clojure
+;; ❌ Wrong — interop for a property cljfx handles declaratively
+{:fx/type cljfx/ext-on-instance-lifecycle
+ :on-created (fn [node] (.setMaxWidth node 500.0))
+ :desc {:fx/type :v-box ...}}
+
+;; ✅ Correct — pure spec, testable without JavaFX
+{:fx/type :v-box
+ :max-width 500.0
+ :children [...]}
+```
+
+**Where interop is legitimate** — two narrow cases:
+
+* `ext-on-instance-lifecycle :on-created` for one-time property bindings that have no cljfx spec equivalent (e.g. JavaFX property bindings with `.bind`).
+* Wiring action handlers on pre-existing JavaFX nodes that the renderer cannot manage (e.g. `setOnAction` on a materialised control referenced by a variable).
+
+The windowing infrastructure itself (`window.clj`, `ui_manager.clj`) necessarily creates Stages and Scenes — that is not interop in the sense of this rule; it is the materialisation layer itself.
+
+Everything else is spec.
+
+### 4.4 Custom cljfx Component Functions
+
+The plugin architecture described in Section 1 requires that UI descriptions remain pure data, portable across process and network boundaries. [ADR‑0042](../ADRs/0042-UI-Specification-Format.md) specifies the mechanism. This creates a specific challenge: how does a backend plugin specify a button with a localised label when `tr` (the translation function) lives on the frontend?
+
+The answer is a library of **custom cljfx component functions** in `ooloi.frontend.ui.cljfx`.
+
+cljfx supports functions as `:fx/type` values. Each Ooloi custom component function receives an enriched props map containing Ooloi-specific keys such as `:text-key` that are not part of cljfx's standard vocabulary. It strips those keys, resolves them to standard cljfx values — calling `tr` for text keys — passes all other props through unchanged, and returns a standard cljfx description map.
+
+```clojure
+;; The function is a pure map → map transformation
+(defn ooloi-button [{:keys [text-key] :as props}]
+  (-> (dissoc props :text-key)
+      (assoc :fx/type :button
+             :text    (tr text-key)
+             :min-width 90.0)))
+
+;; Usage — keyword-only spec, serialisable over gRPC
+{:fx/type ooloi-button
+ :text-key :piece-window.piece-settings-button}
+```
+
+Resolution happens at render time on the frontend, where the locale is known. The spec author — whether frontend code or a backend plugin — writes `:text-key :some.key`. The infrastructure calls `tr` at materialisation.
+
+**Why this matters architecturally.** This is the mechanism that makes the plugin claim in Section 1 concrete. A backend plugin can include `{:fx/type 'ooloi.frontend.ui.cljfx/ooloi-button :text-key :common.save}` in a cljfx spec sent over gRPC. The symbol resolves on the frontend; `tr` runs on the frontend. The plugin itself never imports JavaFX or i18n infrastructure.
+
+**Custom components are pure and testable.** Because they are ordinary functions from maps to maps, they can be evaluated and inspected without launching JavaFX:
+
+```clojure
+(ooloi-button {:text-key :button.ok})
+;; => {:fx/type :button :text "OK" :min-width 90.0}
+```
+
+**Atomic components** handle a single element with Ooloi-enriched keys:
+
+| Component | Ooloi keys | Output |
+|-----------|-----------|--------|
+| `ooloi-button` | `:text-key` | `:button` with min-width 90px |
+| `ooloi-ok-button` | `:text-key` (default `:button.ok`) | `:button` with `:default-button true` |
+| `ooloi-cancel-button` | `:text-key` (default `:button.cancel`) | `:button` with `:cancel-button true` |
+| `ooloi-label` | `:text-key` | `:label` |
+| `ooloi-menu-item` | `:text-key` | `:menu-item` |
+| `ooloi-menu` | `:text-key` | `:menu` |
+| `ooloi-command-item` | `:descriptor`, `:state` | `:menu-item` with resolved text and `:disable` |
+| `ooloi-notification` | `:text-key`, `:type`, `:icon`, `:opacity` | AtlantaFX `Notification` node |
+
+**Composite components** encode Ooloi's layout conventions, not just atomic elements:
+
+| Component | Encapsulated layout |
+|-----------|---------------------|
+| `ooloi-button-bar` | Right-aligned HBox with a spacer Region; consistent button padding |
+| `ooloi-vscroll-pane` | Optionally titled ScrollPane with a muted border; title style via `TITLE_4` |
+
+These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
+
+### 4.5 Per-Window Reactive Renderer
+
+Every application window uses a **per-window reactive renderer** ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). The renderer manages the content Node reactively; the UI Manager manages the Stage. These two responsibilities are absolute and never overlap. One-time `cljfx/create-component` + `cljfx/instance` materialisation without a renderer is reserved for modal, blocking interactions with no ongoing state — confirmation dialogs being the primary example, where `show-confirmation!` bypasses `show-window!` entirely.
+
+The architecture divides responsibility clearly:
+
+* The **UI Manager** manages the Stage: creation, registry, geometry persistence, lifecycle events.
+* A **cljfx renderer** manages the content Node: reactive diffs and patches driven by a private state atom.
+
+These two responsibilities never overlap.
+
+```
+  private state atom (*piece-state)
+       │
+       │  cljfx/mount-renderer watches
+       ▼
+  cljfx renderer
+       │  :middleware — wrap-map-desc (atom value → spec)
+       │  :fx.opt/map-event-handler — dispatch-fn
+       │
+       │  cljfx/instance
+       ▼
+  JavaFX Node
+       │  :window/content
+       ▼
+  show-window! (UI Manager)
+  Stage → window-registry
+```
+
+The renderer is created with two configurations:
+
+* **`:middleware`** — `cljfx/wrap-map-desc` transforms each new atom value into a cljfx description by calling the window's spec function with the current state.
+* **`:fx.opt/map-event-handler`** — routes all map-form `:on-action` events through a single dispatcher. When a cljfx element carries `{:on-action {:ooloi/event :some-command}}` (a map, not a function), cljfx appends the JavaFX event object and calls this handler on the JAT.
+
+After initialisation, `cljfx/mount-renderer` keeps the renderer watching the atom. `cljfx/instance` extracts the JavaFX Node, which is passed to `show-window!` as `:window/content`. From that point, `swap!`ing the state atom causes the renderer to diff and patch the live scene graph without recreating the Stage.
+
+**Two-tier event routing.** Map-form events are pure data — serialisable, inspectable, loggable. The `:fx.opt/map-event-handler` dispatcher routes them:
+
+* **Module-internal events** (navigation, selection, drag-and-drop reactions, backend data updates) are handled entirely within the window module.
+* **Application-level commands** (quit, show another window) bubble out through an injected `dispatch-fn` to `system.clj`'s action handlers. The `dispatch-fn` is injected by the caller — the window module holds no direct reference to application state or action tables. This keeps each window module independently testable.
 
 ---
 
@@ -335,7 +471,7 @@ Mouse movement, key presses, window resize events — these originate in JavaFX.
 Semantic mutations do not propagate through UI state. They are sent to the backend through the polymorphic API. The backend processes them and publishes structured events describing what became stale. These are not UI instructions; they are invalidation signals.
 
 **3. Frontend Event Bus.**
-The UI Manager owns a pub/sub event bus. Window lifecycle events, settings changes, collaboration status changes, and backend invalidations all travel through this bus. Subsystems subscribe by category. No subsystem reaches sideways into another.
+The frontend event bus is a category-based pub/sub mechanism. Window lifecycle events, settings changes, collaboration status changes, and backend invalidations all travel through this bus. The UI Manager is the central mediator — it subscribes to all relevant event categories on behalf of the entire UI layer and dispatches reactions. Individual windows do not subscribe to the event bus directly. No subsystem reaches sideways into another.
 
 The separation is deliberate. Input, semantic mutation, and UI reaction are not collapsed into one mechanism. Each layer speaks in its own vocabulary.
 
@@ -810,9 +946,14 @@ Once you work this way for a little while, it becomes natural. The benefit is th
 
 ## 10. Settings System
 
-Application settings in Ooloi are not an afterthought and not a collection of ad-hoc preference reads scattered across the UI. They form a small, explicit subsystem with its own invariants ([ADR‑0043](../ADRs/0043-Frontend-Settings.md)).
+Application settings in Ooloi are not an afterthought and not a collection of ad-hoc preference reads scattered across the UI. They form two independent systems serving different scopes:
 
-The central idea is simple: settings are declared once, validated centrally, stored consistently, and exposed through a uniform API. UI surfaces for editing those settings are derived from that declaration rather than hand-crafted repeatedly.
+* **Frontend app settings** — global application preferences (theme, UI language, editor preferences). Declared on the frontend with `def-app-setting`, stored in an EDN file, accessed directly through an in-process atom API. Described in full below.
+* **Piece settings** — configuration that travels with piece data (beam thickness, staff spacing, accidental behaviour). Declared on the backend with `defsetting`, stored in STM-managed piece state, accessed exclusively through the polymorphic API over gRPC. The frontend reads and writes piece settings via `SRV/` calls — no direct access.
+
+These two systems are architecturally independent. Piece settings concern musical semantics and belong to the backend. Frontend app settings concern application behaviour and belong to the frontend. Mixing the two would compromise the backend-authoritative invariant (Section 13.1).
+
+The remainder of this section covers frontend app settings, governed by [ADR‑0043](../ADRs/0043-Frontend-Settings.md). The central idea: settings are declared once, validated centrally, stored consistently, and exposed through a uniform API. UI surfaces for editing those settings are derived from that declaration rather than hand-crafted repeatedly.
 
 ### 10.1 `def-app-setting`
 
@@ -843,11 +984,11 @@ Instead:
 
 * Settings are grouped by category.
 * Categories map to tabs in the dialog.
-* Choice maps become dropdowns.
+* Choice maps become ComboBoxes.
 * Boolean settings become checkboxes.
-* Text settings become text fields.
+* Text and validated settings become TextFields.
 
-The dialog layer (`ooloi.frontend.ui.dialog`) builds real JavaFX controls from a spec, wires validation, and returns a result promise. The settings subsystem feeds it structured metadata derived from the registry.
+The settings window (`settings_window.clj`) follows the content builder pattern ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). `show-settings!` manages lifecycle through the UI Manager; `show-window!` ensures the window is a singleton — opening it twice brings the existing instance to the front. Internally, the window is a TabPane with one tab per settings category namespace, each tab holding a ScrollPane of setting rows. Controls derive from registry metadata: a `:choices` entry becomes a ComboBox inside an AtlantaFX Tile; a validator-equipped text setting becomes a TextField that commits on Enter or focus loss. Each field has a per-field reset button; a "Reset All to Defaults" button at the bottom resets every setting in the active tab category after confirmation.
 
 The result is a dialog that is consistent by construction:
 
@@ -990,6 +1131,8 @@ switching between local and remote backends does not require reinterpretation of
 The frontend continues to perform the same role: a computationally strong execution layer at the end of a deterministic decision pipeline.
 
 Where that pipeline runs may vary. The discipline of the frontend remains constant.
+
+---
 
 ## 12. Testing Model
 
@@ -1153,6 +1296,24 @@ Keys are declared (`tr-declare`) and verified at build time. UK English is the c
 
 This keeps UI generation consistent, plugin contributions safe, and language visible alongside code rather than hidden in resource files.
 
+### 13.9 No Hardcoded Colours
+
+All colours in the frontend use AtlantaFX semantic tokens or `Styles` constants. Literal hex values, `rgb()`/`rgba()` functions, and JavaFX `Color` constants are prohibited in theme-dependent UI code.
+
+```clojure
+;; ✅ Correct — semantic token adapts to light and dark themes
+{:fx/type :label :style "-fx-text-fill: -color-fg-muted;"}
+
+;; ❌ Wrong — breaks in one theme
+{:fx/type :label :style "-fx-text-fill: #888888;"}
+```
+
+The reason is architectural, not cosmetic. UI specifications are pure data that cross boundaries — plugins send cljfx specs over gRPC. A hardcoded colour survives transport but breaks under theme switching. A semantic token survives both because it resolves at render time against the active theme's stylesheet.
+
+AtlantaFX follows the GitHub Primer semantic colour model. Tokens describe purpose, not appearance: `-color-fg-muted` is "de-emphasised foreground text," not "medium grey." The same token resolves to different concrete values in dark and light mode automatically.
+
+Two narrow exceptions exist: pre-theme rendering (the splash screen, which displays before any AtlantaFX stylesheet is loaded) and theme-aware transparency overlays whose blending cannot be expressed as a single semantic token. Both are documented explicitly and not imitable by general UI code.
+
 ---
 
 Taken together, these invariants create a frontend that is simultaneously:
@@ -1163,7 +1324,7 @@ Taken together, these invariants create a frontend that is simultaneously:
 * Transport-independent.
 * Extensible.
 
-None of them exists in isolation. Each reinforces the others. Backend authority makes pull-based invalidation meaningful. Declarative specification makes JAT discipline practical. Derived caches make collaboration scalable. Localisation keys make generated UI predictable.
+None of them exists in isolation. Each reinforces the others. Backend authority makes pull-based invalidation meaningful. Declarative specification makes JAT discipline practical. Derived caches make collaboration scalable. Localisation keys make generated UI predictable. Semantic colour tokens make theme switching transparent.
 
 The result is coherence rather than rigidity.
 
@@ -1181,6 +1342,8 @@ What you have seen in this guide is a set of agreements rather than a collection
 * Rendering is derived.
 * Lifecycle is centralised.
 * Strings have identity.
+* Colours are semantic.
+* UI is specified as data, not built as objects.
 * Transport does not alter structure.
 
 Individually, none of these ideas is revolutionary. Together, they create a system that remains calm under scale — large scores, high zoom levels, parallel rendering, remote collaborators.
