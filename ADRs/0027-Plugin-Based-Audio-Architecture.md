@@ -328,6 +328,10 @@ All these alternatives converge on the same principle: playback belongs in plugi
 - [ADR-0003: Plugin Architecture](0003-Plugins.md) - Plugin system design establishing extensibility foundations
 - [ADR-0041: OVID](0041-Ooloi-Virtual-Instrument-Definition-OVID.md) - Virtual instrument definition defining how playback plugins control sample libraries
 
+## Related Guides
+
+- [MIDI in Ooloi](../guides/MIDI_IN_OOLOI.md) - MIDI input for note entry, the deliberate absence of MIDI output from the core, and extension points for plugins requiring MIDI capabilities
+
 ## Conclusion
 
 Plugin-based audio architecture positions Ooloi as a forward-looking professional notation system capable of serving contemporary music, educational applications, and collaborative workflows. By completely separating audio processing to frontend clients through plugins, the architecture eliminates the constraints that plagued Igor Engraver's sophisticated MIDI approach while enabling cloud deployment and professional audio integration.

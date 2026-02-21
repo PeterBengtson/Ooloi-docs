@@ -308,6 +308,10 @@ Why the 23-year absence doesn't matter:
 **Supporting:**
 - **ADR-0014: Timewalk** – Three-stage workflow (position → select → create) uses timewalk for cursor positioning and element resolution
 
+## Related Guides
+
+- [MIDI in Ooloi](../guides/MIDI_IN_OOLOI.md) – How MIDI pitch input reaches Flow Mode: the Receiver implementation, the `:midi` event bus category, event shapes, and device management
+
 ---
 
 ## References

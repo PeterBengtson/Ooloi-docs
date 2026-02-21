@@ -1380,6 +1380,7 @@ For deeper formal detail, see:
 * **[Polymorphic API Guide](POLYMORPHIC_API_GUIDE.md)** — How musical structures are exposed and manipulated through Ooloi's polymorphic command surface
 * **[Timewalking Guide](TIMEWALKING_GUIDE.md)** — How musical structure is traversed and transformed
 * **[gRPC Communication and Flow Control](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** — Frontend–backend communication patterns
+* **[MIDI in Ooloi](MIDI_IN_OOLOI.md)** — MIDI input for note entry, why the core produces no MIDI output, and how MIDI events flow through the frontend event bus to Flow Mode
 * **[Server Architectural Guide](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** — Complementary server architecture that the frontend executes against
 * **[VPDs](VPDs.md)** — The address system used for rendering regions and invalidation
 

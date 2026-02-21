@@ -820,6 +820,10 @@ These criteria represent goals for a mature implementation rather than acceptanc
 
 **Machine learning assistance**: ML-based calibration refinement using perceptual metrics rather than purely technical measurement.
 
+## Related Guides
+
+- [MIDI in Ooloi](../guides/MIDI_IN_OOLOI.md) — Why the core produces no MIDI output (playback delegates to host parameter automation via OVID instead), and how a plugin requiring MIDI output would be built using the frontend event bus as the integration point
+
 ## Conclusion
 
 OVID provides the abstraction layer between Ooloi's notation semantics and the fragmented landscape of virtual instrument control. By defining capabilities declaratively in human-readable files, using a canonical technique taxonomy, requiring calibration data, specifying fallback generators, and enabling library manifests with fallback chains, OVID enables consistent, high-quality playback across diverse libraries without vendor-specific code in the playback engine.

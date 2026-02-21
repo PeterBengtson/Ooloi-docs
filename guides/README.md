@@ -7,21 +7,23 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 **Start here:**
 
 1. **🔵 [FRONTEND_ARCHITECTURE_GUIDE.md](FRONTEND_ARCHITECTURE_GUIDE.md)** - The central gateway into Ooloi's architecture: principles, boundaries, event flow, rendering, window lifecycle, settings, localisation, and collaboration context
-2. **🟢 [TIMEWALKING_GUIDE.md](TIMEWALKING_GUIDE.md)** - Musical traversal patterns (beginner-friendly)
-3. **🟢 [PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** - Asynchronous I/O (foundational)
-4. **🟡 [VPDs.md](VPDs.md)** - Path-based navigation (core concepts)
-5. **🟡 [PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** - Basic storage operations (important)
-6. **🟠 [POLYMORPHIC_API_GUIDE.md](POLYMORPHIC_API_GUIDE.md)** - Type system foundations (advanced intermediate)
-7. **🟠 [GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - gRPC communication patterns (distributed systems)
-8. **🔴 [GRPC_STREAMING_THREADING_GUIDE.md](GRPC_STREAMING_THREADING_GUIDE.md)** - gRPC streaming implementation patterns (advanced threading - trips up developers across all languages)
-9. **🔵 [OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Server architecture reference (comprehensive)
-10. **🔴 [ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** - Performance optimization (advanced/dangerous)
+2. **🟢 [MIDI_IN_OOLOI.md](MIDI_IN_OOLOI.md)** - MIDI input for note entry, why the core produces no MIDI output, and how MIDI events flow to Flow Mode via the frontend event bus
+3. **🟢 [TIMEWALKING_GUIDE.md](TIMEWALKING_GUIDE.md)** - Musical traversal patterns (beginner-friendly)
+4. **🟢 [PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** - Asynchronous I/O (foundational)
+5. **🟡 [VPDs.md](VPDs.md)** - Path-based navigation (core concepts)
+6. **🟡 [PIECE_MANAGER_GUIDE.md](PIECE_MANAGER_GUIDE.md)** - Basic storage operations (important)
+7. **🟠 [POLYMORPHIC_API_GUIDE.md](POLYMORPHIC_API_GUIDE.md)** - Type system foundations (advanced intermediate)
+8. **🟠 [GRPC_COMMUNICATION_AND_FLOW_CONTROL.md](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - gRPC communication patterns (distributed systems)
+9. **🔴 [GRPC_STREAMING_THREADING_GUIDE.md](GRPC_STREAMING_THREADING_GUIDE.md)** - gRPC streaming implementation patterns (advanced threading - trips up developers across all languages)
+10. **🔵 [OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Server architecture reference (comprehensive)
+11. **🔴 [ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** - Performance optimization (advanced/dangerous)
 
 ## What Each Guide Teaches
 
 | Guide | Ooloi Concepts | Clojure Concepts |
 |-------|----------------|------------------|
 | **🔵 [FRONTEND_ARCHITECTURE_GUIDE.md](FRONTEND_ARCHITECTURE_GUIDE.md)** | Window lifecycle, event architecture, rendering pipeline, settings, localisation, collaboration | Declarative UI specs, pub/sub events, JAT threading discipline, cljfx |
+| **🟢 [MIDI_IN_OOLOI.md](MIDI_IN_OOLOI.md)** | MIDI input subsystem, Flow Mode integration, device management, event bus `:midi` category | `reify`, SPI pattern, `javax.sound.midi` |
 | **🟢 [TIMEWALKING_GUIDE.md](TIMEWALKING_GUIDE.md)** | Temporal coordination, musical traversal | Transducers, lazy sequences, functional composition, threading macros |
 | **🟢 [PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** | Save/load workflows, I/O backends | Agents, asynchronous operations, error handling patterns |
 | **🟡 [VPDs.md](VPDs.md)** | Path-based navigation, addressing | Vector operations, `get-in`/`update-in` patterns |
@@ -36,6 +38,7 @@ This directory contains guides for understanding Ooloi's core concepts and APIs.
 
 ### Frontend Architecture
 - **🔵 [FRONTEND_ARCHITECTURE_GUIDE.md](FRONTEND_ARCHITECTURE_GUIDE.md)** - The central architectural gateway: window lifecycle, event system, rendering pipeline, settings, localisation, and collaboration (comprehensive)
+- **🟢 [MIDI_IN_OOLOI.md](MIDI_IN_OOLOI.md)** - MIDI input for note entry, why the core produces no MIDI output, and how events flow to Flow Mode via the frontend event bus (concise)
 
 ### Core Architecture
 - **🟢 [TIMEWALKING_GUIDE.md](TIMEWALKING_GUIDE.md)** - Temporal piece traversal (beginner-friendly)

@@ -362,6 +362,10 @@ Require `load-app-settings!` call in system.clj startup sequence.
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) — Frontend event bus; `set-app-setting!` publishes `:setting-changed` events
 - [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) — Dialog/window patterns for Settings dialog implementation
 
+## Related Guides
+
+- [MIDI in Ooloi](../guides/MIDI_IN_OOLOI.md) — MIDI device selection is stored as `:midi/input-device-id` in the frontend settings system; the settings dialog auto-generates a dropdown populated with currently available physical input devices
+
 ## Code References
 
 - `frontend/src/main/clojure/ooloi/frontend/ui/app_settings.clj` — Settings system implementation

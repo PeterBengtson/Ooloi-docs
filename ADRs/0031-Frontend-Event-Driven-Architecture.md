@@ -1041,6 +1041,10 @@ None - all implementation questions resolved.
 - **ADR-0032: Flow Mode** - Modal keyboard input integrates with JavaFX event system. Keyboard events processed immediately, modal state changes trigger backend updates via gRPC, invalidation events refresh display.
 - **ADR-0043: Frontend Settings** - Frontend app settings publish `:setting-changed` events on the frontend event bus via the `:settings` category. Theme changes flow through the event bus to the UI Manager.
 
+## Related Guides
+
+- [MIDI in Ooloi](../guides/MIDI_IN_OOLOI.md) - MIDI input events are published to the frontend event bus under the `:midi` category. Describes the Receiver implementation, event shapes (`{:type :midi/note ...}`, `{:type :midi/sustain ...}`), and the threading discipline that keeps the MIDI callback thread away from the JavaFX scene graph.
+
 ---
 
 ## References
