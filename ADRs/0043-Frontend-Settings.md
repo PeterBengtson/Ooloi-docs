@@ -364,6 +364,7 @@ Require `load-app-settings!` call in system.clj startup sequence.
 
 ## Related Guides
 
+- [ADR-0044: MIDI Input Library and Boundary Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture) — Device selection persistence via `def-app-setting` is cited in ADR-0044 as a consequence of the MIDI input architecture
 - [MIDI in Ooloi](../guides/MIDI_IN_OOLOI.md) — MIDI device selection is stored as `:midi/input-device-id` in the frontend settings system; the settings dialog auto-generates a dropdown populated with currently available physical input devices
 
 ## Code References

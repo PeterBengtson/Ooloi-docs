@@ -822,6 +822,7 @@ These criteria represent goals for a mature implementation rather than acceptanc
 
 ## Related Guides
 
+- [ADR-0044: MIDI Input Library and Boundary Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture) — Confirms that MIDI output is rejected for the core input subsystem; plugin extension point for MIDI output described
 - [MIDI in Ooloi](../guides/MIDI_IN_OOLOI.md) — Why the core produces no MIDI output (playback delegates to host parameter automation via OVID instead), and how a plugin requiring MIDI output would be built using the frontend event bus as the integration point
 
 ## Conclusion
