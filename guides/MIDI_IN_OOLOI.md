@@ -176,5 +176,5 @@ The core stays narrow because note entry is the only thing MIDI input needs to d
   How playback plugins control virtual instruments without MIDI output
 - [ADR-0043: Frontend Settings](ADRs/0043-Frontend-Settings.md) —
   Device selection persistence and the settings system
-- [ADR-0044: MIDI Input Library and Boundary Architecture](ADRs/0044-MIDI-Input-Library-and-Boundary-Architecture) —
+- [ADR-0044: MIDI Input Library and Boundary Architecture](ADRs/0044-MIDI-Input-Library-and-Boundary-Architecture.md) —
   The formal decisions behind this guide: `javax.sound.midi`, CoreMidi4J, and the hard input boundary filter

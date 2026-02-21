@@ -310,7 +310,7 @@ Why the 23-year absence doesn't matter:
 
 ## Related Guides
 
-- [ADR-0044: MIDI Input Library and Boundary Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture) – Formal decisions governing how MIDI pitch events are received: `javax.sound.midi`, CoreMidi4J on macOS, and why only NOTE_ON/NOTE_OFF/CC64 are accepted
+- [ADR-0044: MIDI Input Library and Boundary Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture.md) – Formal decisions governing how MIDI pitch events are received: `javax.sound.midi`, CoreMidi4J on macOS, and why only NOTE_ON/NOTE_OFF/CC64 are accepted
 - [MIDI in Ooloi](../guides/MIDI_IN_OOLOI.md) – How MIDI pitch input reaches Flow Mode: the Receiver implementation, the `:midi` event bus category, event shapes, and device management
 
 ---

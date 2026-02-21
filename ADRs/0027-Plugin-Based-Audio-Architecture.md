@@ -327,7 +327,7 @@ All these alternatives converge on the same principle: playback belongs in plugi
 
 - [ADR-0003: Plugin Architecture](0003-Plugins.md) - Plugin system design establishing extensibility foundations
 - [ADR-0041: OVID](0041-Ooloi-Virtual-Instrument-Definition-OVID.md) - Virtual instrument definition defining how playback plugins control sample libraries
-- [ADR-0044: MIDI Input Library and Boundary Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture) - How MIDI input is received at the frontend: `javax.sound.midi`, CoreMidi4J on macOS, and the hard input boundary
+- [ADR-0044: MIDI Input Library and Boundary Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture.md) - How MIDI input is received at the frontend: `javax.sound.midi`, CoreMidi4J on macOS, and the hard input boundary
 
 ## Related Guides
 

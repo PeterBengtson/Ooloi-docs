@@ -131,4 +131,4 @@ Playback generation delegated to frontend plugins with backend coordination.
 
 - **[0027-Plugin-Based-Audio-Architecture](0027-Plugin-Based-Audio-Architecture.md)**: Frontend plugin-based audio architecture with complete backend-frontend audio separation
 - **[0041-Ooloi-Virtual-Instrument-Definition-OVID](0041-Ooloi-Virtual-Instrument-Definition-OVID.md)**: YAML-based virtual instrument definition with canonical technique taxonomy, calibration requirements, and fallback generators
-- **[0044-MIDI-Input-Library-and-Boundary-Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture)**: `javax.sound.midi` as single MIDI API, CoreMidi4J as macOS SPI provider, and hard input boundary filter accepting only note and sustain messages
+- **[0044-MIDI-Input-Library-and-Boundary-Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture.md)**: `javax.sound.midi` as single MIDI API, CoreMidi4J as macOS SPI provider, and hard input boundary filter accepting only note and sustain messages

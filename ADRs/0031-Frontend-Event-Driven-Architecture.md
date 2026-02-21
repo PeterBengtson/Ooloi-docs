@@ -1043,7 +1043,7 @@ None - all implementation questions resolved.
 
 ## Related Guides
 
-- [ADR-0044: MIDI Input Library and Boundary Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture) - The MIDI `Receiver` that publishes to this event bus: `javax.sound.midi` API, CoreMidi4J SPI, and the hard input boundary filter
+- [ADR-0044: MIDI Input Library and Boundary Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture.md) - The MIDI `Receiver` that publishes to this event bus: `javax.sound.midi` API, CoreMidi4J SPI, and the hard input boundary filter
 - [MIDI in Ooloi](../guides/MIDI_IN_OOLOI.md) - MIDI input events are published to the frontend event bus under the `:midi` category. Describes the Receiver implementation, event shapes (`{:type :midi/note ...}`, `{:type :midi/sustain ...}`), and the threading discipline that keeps the MIDI callback thread away from the JavaFX scene graph.
 
 ---
