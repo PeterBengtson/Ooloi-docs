@@ -69,7 +69,9 @@ the replacement transparent. Application code is unaffected. On Windows and Linu
 CoreMidi4J is present on the classpath but inactive — the JDK providers take
 precedence, and the library contributes nothing and costs nothing.
 
-CoreMidi4J is added as a dependency in `frontend/project.clj`. No conditional loading,
+CoreMidi4J is added as a dependency in both `frontend/project.clj` and
+`shared/project.clj`. The frontend dependency covers the standalone frontend client;
+the shared dependency covers the combined app build. No conditional loading,
 no platform detection, no application-level branching.
 
 ### 3. Hard Input Boundary Filter as Architectural Invariant
