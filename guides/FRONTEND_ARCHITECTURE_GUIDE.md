@@ -212,11 +212,11 @@ From here, we can expand the example — adding interaction, backend calls, and 
 
 Windows are the general lifecycle mechanism. Three other pieces complete the common interaction vocabulary.
 
-**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.confirmation-dialog` is the sole dialog helper. It materialises a standard cljfx `:alert` spec via `cljfx/create-component` + `cljfx/instance`, blocks synchronously on the JAT via `.showAndWait`, and returns `true` if the user confirmed. No custom dialog infrastructure is needed beyond this.
+**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.core.confirmation-dialog` is the sole dialog helper. It materialises a standard cljfx `:alert` spec via `cljfx/create-component` + `cljfx/instance`, blocks synchronously on the JAT via `.showAndWait`, and returns `true` if the user confirmed. No custom dialog infrastructure is needed beyond this.
 
 **Notifications.** The UI Manager provides a non-blocking notification overlay through convenience functions: `show-info-notification!`, `show-warning-notification!`, `show-error-notification!`, and `show-success-notification!`. Notifications auto-dismiss after a configurable delay, stack vertically in a corner of the screen, and are backed by AtlantaFX `Notification` controls materialised via the `ooloi-notification` custom component function. Application code calls the convenience wrappers; the overlay lifecycle is managed entirely by the UI Manager.
 
-**Custom cljfx component functions.** Buttons, labels, scroll panes, menus, and notifications are expressed as custom cljfx component functions in `ooloi.frontend.ui.cljfx` (`ooloi-button`, `ooloi-ok-button`, `ooloi-cancel-button`, `ooloi-button-bar`, etc.). These are pure functions from props maps to cljfx description maps — not imperative builders. They handle localisation key resolution internally. Section 4.4 describes the full inventory and the architectural reason this mechanism exists.
+**Custom cljfx component functions.** Buttons, labels, scroll panes, menus, and notifications are expressed as custom cljfx component functions in `ooloi.frontend.ui.core.cljfx` (`ooloi-button`, `ooloi-ok-button`, `ooloi-cancel-button`, `ooloi-button-bar`, etc.). These are pure functions from props maps to cljfx description maps — not imperative builders. They handle localisation key resolution internally. Section 4.4 describes the full inventory and the architectural reason this mechanism exists.
 
 The pattern is the same throughout: specs are pure data, materialisation happens at a controlled boundary, and every user-facing string resolves through a localisation key ([ADR‑0039](../ADRs/0039-Localisation-Architecture.md)).
 
@@ -257,7 +257,7 @@ This is not a full API reference, but the most commonly used frontend entry poin
 
 **Confirmation dialogs**
 
-* `show-confirmation!` (`ooloi.frontend.ui.confirmation-dialog`) — materialises a cljfx `:alert`, blocks on the JAT via `.showAndWait`, and returns `true` if the user confirmed.
+* `show-confirmation!` (`ooloi.frontend.ui.core.confirmation-dialog`) — materialises a cljfx `:alert`, blocks on the JAT via `.showAndWait`, and returns `true` if the user confirmed.
 
 **Notifications (UI Manager)**
 
@@ -361,7 +361,7 @@ Everything else is spec.
 
 The plugin architecture described in Section 1 requires that UI descriptions remain pure data, portable across process and network boundaries. [ADR‑0042](../ADRs/0042-UI-Specification-Format.md) specifies the mechanism. This creates a specific challenge: how does a backend plugin specify a button with a localised label when `tr` (the translation function) lives on the frontend?
 
-The answer is a library of **custom cljfx component functions** in `ooloi.frontend.ui.cljfx`.
+The answer is a library of **custom cljfx component functions** in `ooloi.frontend.ui.core.cljfx`.
 
 cljfx supports functions as `:fx/type` values. Each Ooloi custom component function receives an enriched props map containing Ooloi-specific keys such as `:text-key` that are not part of cljfx's standard vocabulary. It strips those keys, resolves them to standard cljfx values — calling `tr` for text keys — passes all other props through unchanged, and returns a standard cljfx description map.
 
@@ -380,7 +380,7 @@ cljfx supports functions as `:fx/type` values. Each Ooloi custom component funct
 
 Resolution happens at render time on the frontend, where the locale is known. The spec author — whether frontend code or a backend plugin — writes `:text-key :some.key`. The infrastructure calls `tr` at materialisation.
 
-**Why this matters architecturally.** This is the mechanism that makes the plugin claim in Section 1 concrete. A backend plugin can include `{:fx/type 'ooloi.frontend.ui.cljfx/ooloi-button :text-key :common.save}` in a cljfx spec sent over gRPC. The symbol resolves on the frontend; `tr` runs on the frontend. The plugin itself never imports JavaFX or i18n infrastructure.
+**Why this matters architecturally.** This is the mechanism that makes the plugin claim in Section 1 concrete. A backend plugin can include `{:fx/type 'ooloi.frontend.ui.core.cljfx/ooloi-button :text-key :common.save}` in a cljfx spec sent over gRPC. The symbol resolves on the frontend; `tr` runs on the frontend. The plugin itself never imports JavaFX or i18n infrastructure.
 
 **Custom components are pure and testable.** Because they are ordinary functions from maps to maps, they can be evaluated and inspected without launching JavaFX:
 

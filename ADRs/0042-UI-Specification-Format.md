@@ -102,7 +102,7 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
  :window/content {:fx/type :v-box
                   :children [{:fx/type :text-field
                               :prompt-text-key :plugin.config.api-key-prompt}  ; future: custom component resolves via tr
-                             {:fx/type 'ooloi.frontend.ui.cljfx/ooloi-button
+                             {:fx/type 'ooloi.frontend.ui.core.cljfx/ooloi-button
                               :text-key :common.save
                               :on-action {:event/type :plugin/save-settings}}]}}
 
@@ -219,7 +219,7 @@ This pattern ensures all windows go through the same path regardless of their co
 
 ### Custom cljfx Component Functions (Updated 2026-02-19)
 
-cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to define a library of custom component functions in `ooloi.frontend.ui.cljfx`. Each function:
+cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to define a library of custom component functions in `ooloi.frontend.ui.core.cljfx`. Each function:
 
 1. Receives an Ooloi-enriched props map (with `:text-key`, layout conventions, Ooloi-specific keys)
 2. `dissoc`s Ooloi-specific keys so they don't leak to cljfx
@@ -259,7 +259,7 @@ cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to 
   => (contains {:style-class ["accent"] :disable false}))
 ```
 
-The complete component inventory is in the `ooloi.frontend.ui.cljfx` namespace.
+The complete component inventory is in the `ooloi.frontend.ui.core.cljfx` namespace.
 
 ### Per-Window Reactive Renderer (Updated 2026-02-19)
 
@@ -675,7 +675,7 @@ The following patterns are established in the Ooloi codebase. New UI code should
 
 Notifications are shown via `(um/show-notification! mgr spec)` where `spec` is a map with `:message` (string), `:type` (`:info`, `:success`, `:warning`, `:error`), and optional `:timeout-ms` (auto-dismiss delay) and `:opacity` (default 0.8). Notifications do not create a Stage — they are rendered into a shared overlay Popup attached to the primary window.
 
-The notification component (`ooloi-notification` in `ooloi.frontend.ui.cljfx`) is an `ext-instance-factory` that materialises an AtlantaFX `Notification` control. It resolves `:text-key` via `tr`, applies severity style classes, and sets a default icon from the type. `build-notification!` in `ui_manager.clj` is the materialisation wrapper called by the notification system.
+The notification component (`ooloi-notification` in `ooloi.frontend.ui.core.cljfx`) is an `ext-instance-factory` that materialises an AtlantaFX `Notification` control. It resolves `:text-key` via `tr`, applies severity style classes, and sets a default icon from the type. `build-notification!` in `ui_manager.clj` is the materialisation wrapper called by the notification system.
 
 Notifications demonstrate the two-layer mechanism. The style class (`Styles/SUCCESS`, etc.) selects the severity variant. A generated CSS stylesheet maps each variant to its theme-aware background using CSS semantic tokens:
 
@@ -1039,7 +1039,7 @@ Backend and remote plugins use symbolic event handlers (maps) because functions 
 
 ```clojure
 ;; Backend plugin sends ooloi-button spec with symbolic handler
-{:fx/type 'ooloi.frontend.ui.cljfx/ooloi-button
+{:fx/type 'ooloi.frontend.ui.core.cljfx/ooloi-button
  :text-key :common.save   ; → "Save" resolved by ooloi-button via tr
  :on-action {:event/type :plugin/save-settings
              :plugin-id :my-plugin}}

@@ -112,7 +112,7 @@ Backend events are notifications of staleness, not data carriers. When rendering
 
 Three event layers serve distinct purposes: the frontend event bus (Integrant component) handles all frontend event delivery, the backend event router acts as a protocol adapter that categorises, batches, and publishes backend events to the frontend event bus, and the JavaFX event system handles UI input.
 
-#### 1. Frontend Event Bus (`ooloi.frontend.ui.event-bus`)
+#### 1. Frontend Event Bus (`ooloi.frontend.event-bus`)
 
 Category-based pub/sub for all frontend event delivery, backed by a shared Claypoole thread pool. Both frontend components and the backend Event Router publish to this bus — it is the single event delivery mechanism for all frontend code. The UI Manager subscribes to event categories and dispatches reactions; individual windows and components do not subscribe directly.
 
