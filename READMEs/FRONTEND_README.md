@@ -67,22 +67,38 @@ The frontend uses **Integrant dependency injection** for component lifecycle man
 frontend/
 ├── docs/                            ; HTML documentation created by Codox
 ├── resources/                       ; Application resources, icons
-├── src/main/clojure/ooloi/frontend/ ; Frontend consumer source code
-│   ├── api.clj                      ; Frontend API functions (delegates to backend)
-│   ├── core.clj                     ; Application entry point and main function
+├── src/main/clojure/ooloi/frontend/ ; Frontend source code
+│   ├── app.clj                      ; Application entry point and main function
+│   ├── app_settings.clj             ; App settings registry, persistence, event bus integration
+│   ├── event_bus.clj                ; Pure pub/sub event bus (no UI concern)
 │   ├── system.clj                   ; Integrant system configuration
+│   ├── api/                         ; Frontend API
+│   │   └── remote_api.clj           ; API functions delegating to backend
 │   ├── components/                  ; Integrant system components
+│   │   ├── event_bus.clj            ; Event bus component
+│   │   ├── event_router.clj         ; Event router component
+│   │   ├── fetch_coordinator.clj    ; Fetch coordinator component
 │   │   ├── grpc_clients.clj         ; gRPC client component
 │   │   └── ui_manager.clj           ; UI manager component
-│   └── grpc/                        ; gRPC client implementation
-│       ├── api_client.clj           ; API client with connection pooling
-│       ├── event_client.clj         ; Event client for backend communication
-│       └── server_registry.clj      ; Server registry management
-├── test/clojure/ooloi/frontend/     ; Frontend tests
-│   ├── components/                  ; Component tests
-│   ├── grpc/                        ; gRPC client tests
-│   └── system_integration_test.clj  ; System integration tests
-├── CHANGELOG.md
+│   ├── event_router/                ; Event routing subsystem
+│   │   ├── aggregator.clj           ; Event aggregation
+│   │   └── core.clj                 ; Event router core
+│   ├── grpc/                        ; gRPC client implementation
+│   │   ├── api_client.clj           ; API client with connection pooling
+│   │   └── event_client.clj         ; Event client for backend communication
+│   ├── ops/                         ; Frontend operations
+│   │   ├── atomic_handler.clj       ; Atomic operation handler
+│   │   └── piece_ref.clj            ; Piece reference resolution
+│   ├── rendering/                   ; Score rendering infrastructure
+│   │   └── data_manager.clj         ; Rendering data management
+│   ├── settings/                    ; App settings declarations (one file per tab)
+│   │   ├── notifications.clj        ; Notifications settings
+│   │   ├── ui.clj                   ; Appearance settings
+│   │   └── user.clj                 ; User settings
+│   └── ui/                          ; User interface (see ui/README.md)
+│       ├── core/                    ; General reusable UI machinery
+│       └── app/                     ; Ooloi-specific application UI
+├── test/clojure/ooloi/frontend/     ; Frontend tests (mirror of src structure)
 ├── README.md
 └── project.clj                      ; Dependencies: shared/ (complete Ooloi system)
 ```
