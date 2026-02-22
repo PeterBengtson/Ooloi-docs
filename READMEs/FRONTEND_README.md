@@ -35,31 +35,15 @@ The frontend project retains `lein run` for development and testing purposes, al
 
 ## System Architecture
 
-The frontend uses **Integrant dependency injection** for component lifecycle management:
+The frontend uses **Integrant dependency injection** for component lifecycle management. It defines five Integrant components:
 
-```
-┌─────────────────┐    ┌──────────────────┐
-│   Application   │    │   Environment    │
-│      Core       │◄──►│   Configuration  │
-└─────────────────┘    └──────────────────┘
-         │
-         ▼
-┌─────────────────┐    ┌──────────────────┐
-│   gRPC Client   │◄──►│   UI Manager     │
-│   Component     │    │   Component      │
-└─────────────────┘    └──────────────────┘
-         │                       │
-         ▼                       ▼
-┌─────────────────┐    ┌──────────────────┐
-│  Backend Server │    │ User Interface   │
-│  Communication  │    │ & Interactions   │
-└─────────────────┘    └──────────────────┘
-```
+- **event-bus**: Pure pub/sub message bus for internal frontend events
+- **ui-manager**: User interface lifecycle — windows, dialogs, notifications, splash, theme
+- **grpc-clients**: Connection to backend server (in-process transport in combined app)
+- **event-router**: Routes backend events to the frontend event bus
+- **fetch-coordinator**: Coordinates data fetches from the backend
 
-**Component Dependencies:**
-- **Application Core** → **gRPC Client** → **UI Manager**
-- Configuration flows from CLI/environment through all components
-- Clean shutdown ensures proper resource cleanup in reverse dependency order
+The frontend project's own standalone configuration wires three of these (thread-pool, grpc-clients, ui-manager) with no declared dependencies between them — this is the test harness configuration. The full dependency graph, including event-bus, event-router, and fetch-coordinator, is assembled by the combined application in [shared/](../shared/).
 
 ## Directory structure
 
@@ -128,9 +112,11 @@ lein midje        # Verify installation
 The Ooloi Frontend uses Integrant dependency injection for component lifecycle management. It provides the presentation layer consumed by the combined desktop application built from [shared/](../shared/).
 
 **Key Components:**
-- **gRPC Client**: Manages connection to backend server
-- **UI Manager**: Handles user interface lifecycle and user interactions
-- **Application Core**: CLI argument parsing, configuration management, error handling
+- **event-bus**: Pure pub/sub message bus for internal frontend events
+- **ui-manager**: User interface lifecycle — windows, dialogs, notifications, splash, theme
+- **grpc-clients**: Connection to backend server (in-process transport in combined app)
+- **event-router**: Routes backend events to the frontend event bus
+- **fetch-coordinator**: Coordinates data fetches from the backend
 
 ### Command-Line Arguments
 

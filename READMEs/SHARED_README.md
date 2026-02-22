@@ -101,11 +101,27 @@ See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) f
 
 The shared project includes `system.clj` and `app.clj` (in `src/app/clojure`) for combined deployment, composing all backend and frontend components into a single JVM process.
 
-**Combined System Components:**
-- **Backend Components**: piece-manager, grpc-server, http-server, cache-daemon
-- **Frontend Components**: grpc-clients, ui-manager
-- **Shared Components**: thread-pool
-- **Startup Order**: Backend components initialize first, then frontend components connect via in-process transport
+**Combined System Components (10 total):**
+- **Shared**: thread-pool
+- **Frontend (early)**: event-bus, ui-manager — start before backend so the splash screen exists to report backend startup progress
+- **Backend**: piece-manager, grpc-server, http-server, cache-daemon
+- **Frontend (late)**: grpc-clients, event-router, fetch-coordinator — connect to backend after it is running
+
+**Dependency graph** (each component depends on those listed in brackets):
+```
+thread-pool                                      [no dependencies]
+event-bus                                        [thread-pool]
+ui-manager          (shows splash screen)        [thread-pool, event-bus]
+piece-manager                                    [ui-manager]
+grpc-clients        (in-process transport)       [ui-manager]
+grpc-server                                      [piece-manager]
+cache-daemon                                     [piece-manager]
+event-router                                     [grpc-clients, event-bus]
+fetch-coordinator                                [thread-pool, grpc-clients]
+http-server                                      [grpc-server]
+```
+
+Integrant initialises components in dependency order, so ui-manager (and its splash screen) is running before any backend component starts.
 
 **Configuration Framework:**
 - Declarative config specs in each project define CLI switches, env vars, defaults, and validation
