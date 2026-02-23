@@ -354,9 +354,11 @@ This keeps each window module a **self-contained dispatch world**: internal even
 
 #### When to use a renderer
 
-**Use a renderer** when the window reacts to changing data, has rich internal event handling, or requires ongoing state-driven re-renders without Stage recreation.
+**Use a renderer for all application windows.** Every window that goes through `show-window!` uses `cljfx/mount-renderer` + a private state atom. `swap!`ing the state atom from any source — user interactions, event bus subscriptions, or settings changes such as locale — causes the renderer to diff and patch the live scene graph without Stage recreation. This is what makes locale and theme reactivity automatic for free.
 
-**Use `cljfx/create-component` + `cljfx/instance` once** (no renderer) when the content is static, the window is modal and dismissed quickly, or there is no ongoing reactivity needed after materialisation.
+**Use `cljfx/create-component` + `cljfx/instance` once** (no renderer) only for `show-confirmation!`, which materialises a blocking cljfx `:alert` spec and returns synchronously via `.showAndWait`. Confirmation dialogs are not full windows — they bypass `show-window!` entirely and have no ongoing lifecycle.
+
+**Locale reactivity pattern.** Windows subscribe to `:app-settings` events on the event bus while open. On `:setting-changed` for `:ui/locale`, they post `(fx/run-later! #(swap! *state identity))` to the JAT. The UI Manager's subscriber (registered at startup, before any window opens) calls `tr/set-locale!` first; the window's `swap!` is queued immediately after. The renderer re-evaluates the spec after the locale is already updated. The `:app-settings` subscription is torn down in the same lifecycle handler that unmounts the renderer on window close.
 
 ### Architectural Invariants
 

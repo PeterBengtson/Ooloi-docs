@@ -420,7 +420,7 @@ These ensure consistent spatial rhythm throughout the application without repeat
 
 ### 4.5 Per-Window Reactive Renderer
 
-Every application window uses a **per-window reactive renderer** ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). The renderer manages the content Node reactively; the UI Manager manages the Stage. These two responsibilities are absolute and never overlap. One-time `cljfx/create-component` + `cljfx/instance` materialisation without a renderer is reserved for modal, blocking interactions with no ongoing state — confirmation dialogs being the primary example, where `show-confirmation!` bypasses `show-window!` entirely.
+Every application window uses a **per-window reactive renderer** ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). The renderer manages the content Node reactively; the UI Manager manages the Stage. These two responsibilities are absolute and never overlap. One-time `cljfx/create-component` + `cljfx/instance` materialisation without a renderer is reserved exclusively for `show-confirmation!`, which materialises a blocking cljfx `:alert` spec and returns synchronously via `.showAndWait`. Confirmation dialogs bypass `show-window!` entirely and have no lifecycle after dismissal. All other windows use `cljfx/mount-renderer`.
 
 The architecture divides responsibility clearly:
 
@@ -480,7 +480,7 @@ Mouse movement, key presses, window resize events — these originate in JavaFX.
 Semantic mutations do not propagate through UI state. They are sent to the backend through the polymorphic API. The backend processes them and publishes structured events describing what became stale. These are not UI instructions; they are invalidation signals.
 
 **3. Frontend Event Bus.**
-The frontend event bus is a category-based pub/sub mechanism. All frontend coordination travels through it: window lifecycle requests and results, settings changes, app lifecycle signals, collaboration status, and backend invalidations. Application code publishes requests; the UI Manager subscribes, performs the work, and publishes results. No subsystem reaches sideways into another through direct function calls on the UI Manager — the bus is the interface. Individual windows do not subscribe to the event bus directly; the UI Manager mediates all subscriptions on behalf of the UI layer.
+The frontend event bus is a category-based pub/sub mechanism. All frontend coordination travels through it: window lifecycle requests and results, settings changes, app lifecycle signals, collaboration status, and backend invalidations. Application code publishes requests; the UI Manager subscribes, performs the work, and publishes results. No subsystem reaches sideways into another through direct function calls on the UI Manager — the bus is the interface. Window modules subscribe to the categories they own: `:window-lifecycle` to unmount their renderer on close, and `:app-settings` to react to settings changes such as locale — posting `(fx/run-later! #(swap! *state identity))` so the renderer re-evaluates the spec after the UI Manager has already applied the change.
 
 The separation is deliberate. Input, semantic mutation, and UI reaction are not collapsed into one mechanism. Each layer speaks in its own vocabulary.
 
