@@ -323,13 +323,16 @@ Map event flow:
 
 #### How it works
 
-1. A private state atom (`*piece-state`) holds the window's local UI state.
+1. `piece-window-content` allocates a fresh state atom per call — each piece window has its own isolated state.
 2. `piece-window-content` creates the renderer with two configurations:
    - **`:middleware`** — `cljfx/wrap-map-desc` transforms each new atom value into a cljfx description by calling `piece-window-spec` with the current state.
    - **`:fx.opt/map-event-handler`** — routes all map-form `:on-action` values to a single dispatcher. When a cljfx element has `:on-action {:ooloi/event :foo}` (a map, not a function), cljfx appends `:fx/event` and calls this handler on the JAT.
 3. The renderer is called once with the initial state. `cljfx/mount-renderer` then keeps it watching the atom.
-4. `cljfx/instance` extracts the JavaFX Node. This is passed to `show-window!` as `:window/content`.
-5. After `show-window!` returns, the renderer continues managing the Node reactively — `swap!`ing `*piece-state` diffs and patches the live scene graph without Stage recreation.
+4. `cljfx/instance` extracts the JavaFX Node. This is passed as `:window/content` in the `:window-open-requested` event.
+5. The renderer continues managing the Node reactively after the window opens — `swap!`ing the state atom diffs and patches the live scene graph without Stage recreation.
+6. A one-shot `:window-lifecycle` subscriber calls `cljfx/unmount-renderer` when `:window-closed` fires for the window's id, releasing the atom watch.
+
+Because each call to `piece-window-content` allocates a fresh atom and renderer, any number of piece windows can be open simultaneously with fully isolated state.
 
 #### Map events and dispatch
 
@@ -344,7 +347,7 @@ This keeps each window module a **self-contained dispatch world**: internal even
 
 #### Boundary invariants
 
-- **Renderers manage content nodes, never Stages.** `show-window!` remains the sole window lifecycle API and is unaware of the renderer.
+- **Renderers manage content nodes, never Stages.** The windowing infrastructure is unaware of renderers; renderers are unaware of Stages.
 - **`dispatch-fn` is injected, not captured.** Window content functions receive it as a parameter. This keeps modules independently testable.
 - **State atoms are private.** Only the owning module writes to them. Callers cannot mutate window state directly.
 - **State updates from any source are safe.** `swap!` may come from user interactions, event bus subscriptions, or settings changes. The renderer reacts uniformly.

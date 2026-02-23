@@ -430,7 +430,7 @@ The architecture divides responsibility clearly:
 These two responsibilities never overlap.
 
 ```
-  private state atom (*piece-state)
+  fresh state atom (allocated per call)
        │
        │  cljfx/mount-renderer watches
        ▼
@@ -441,18 +441,20 @@ These two responsibilities never overlap.
        │  cljfx/instance
        ▼
   JavaFX Node
-       │  :window/content
+       │  :window/content in :window-open-requested event
        ▼
-  show-window! (UI Manager)
+  UI Manager (:window-requests subscriber)
   Stage → window-registry
 ```
+
+Each call to `piece-window-content` allocates a fresh, independent state atom. This means any number of piece windows can be open simultaneously — each has fully isolated state, its own renderer, and its own lifecycle. When the window closes, a one-shot `:window-lifecycle` subscriber calls `cljfx/unmount-renderer`, releasing the atom watch.
 
 The renderer is created with two configurations:
 
 * **`:middleware`** — `cljfx/wrap-map-desc` transforms each new atom value into a cljfx description by calling the window's spec function with the current state.
 * **`:fx.opt/map-event-handler`** — routes all map-form `:on-action` events through a single dispatcher. When a cljfx element carries `{:on-action {:ooloi/event :some-command}}` (a map, not a function), cljfx appends the JavaFX event object and calls this handler on the JAT.
 
-After initialisation, `cljfx/mount-renderer` keeps the renderer watching the atom. `cljfx/instance` extracts the JavaFX Node, which is passed to `show-window!` as `:window/content`. From that point, `swap!`ing the state atom causes the renderer to diff and patch the live scene graph without recreating the Stage.
+After initialisation, `cljfx/mount-renderer` keeps the renderer watching the atom. `cljfx/instance` extracts the JavaFX Node, which is published as `:window/content` in a `:window-open-requested` event. From that point, `swap!`ing the state atom causes the renderer to diff and patch the live scene graph without recreating the Stage.
 
 **Two-tier event routing.** Map-form events are pure data — serialisable, inspectable, loggable. The `:fx.opt/map-event-handler` dispatcher routes them:
 
