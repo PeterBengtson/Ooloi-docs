@@ -152,7 +152,7 @@ This is not an aesthetic choice. It is foundational to the architecture:
 
 Window lifecycle is handled by the UI Manager, but window *content* is described using cljfx specs.
 
-One detail matters for correctness: the UI Manager owns window lifecycle. Frontend code supplies a **plain map with `:window/*` metadata and a materialised content node**; it does not construct `Stage` or `Scene` directly ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)).
+One detail matters for correctness: the UI Manager owns window lifecycle. Frontend code supplies a **plain map with `:window/*` metadata and a materialised content node** as an event; it does not construct `Stage` or `Scene` directly, and it does not call `show-window!` directly ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)).
 
 A minimal example illustrates the pattern:
 
@@ -167,26 +167,28 @@ A minimal example illustrates the pattern:
                :text-key :hello.label/text}]})
 
 (defn show-hello! [ui-manager]
-  (um/show-window! ui-manager
-    {:window/id        :hello
-     :window/title-key :hello.window/title
-     :window/content   (cljfx/instance
-                         (cljfx/create-component
-                           (hello-content-spec)))}))
+  (eb/publish! (:event-bus ui-manager) :window-requests
+    [{:type             :window-open-requested
+      :window/id        :hello
+      :window/title-key :hello.window/title
+      :window/content   (cljfx/instance
+                          (cljfx/create-component
+                            (hello-content-spec)))}]))
 ```
 
 This shows the intended layering:
 
 1. Window identity and lifecycle metadata are `:window/*` keys.
 2. Content is a pure cljfx description produced by a private spec function.
-3. `cljfx/create-component` + `cljfx/instance` materialise the description into a JavaFX Node before it is passed to `show-window!`.
-4. User-facing strings are translation keys (resolved at materialisation time by the i18n layer, per [ADR‑0039](../ADRs/0039-Localisation-Architecture.md)).
+3. `cljfx/create-component` + `cljfx/instance` materialise the description into a JavaFX Node before it is placed in the event.
+4. The event is published to `:window-requests`; the UI Manager subscriber handles Stage creation.
+5. User-facing strings are translation keys (resolved at materialisation time by the i18n layer, per [ADR‑0039](../ADRs/0039-Localisation-Architecture.md)).
 
 The pattern is consistent whether a window is simple or complex. For windows that need imperative wiring — an action handler on a specific button, a focus request after construction — the private spec function may use `ext-on-instance-lifecycle` to attach behaviour at node creation time ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). Section 4 covers this in full.
 
 ### 2.3 What Happens Internally
 
-Calling `show-window!` triggers a concrete, disciplined sequence:
+When `:window-open-requested` arrives at the UI Manager's `:window-requests` subscriber, it calls `show-window!` internally. That triggers a concrete, disciplined sequence:
 
 1. **Singleton behaviour**: if a matching window already exists (as defined by `window-id-match?`), the existing `Stage` is brought to the front and returned.
 2. **Geometry restoration**: if the window participates in persistence (`:window/persist?` not false), any persisted geometry is merged into the spec, overriding default `:x`, `:y`, `:width`, `:height`, and `:scale` when applicable (and also scroll position, if applicable).
@@ -231,8 +233,8 @@ In Ooloi, window creation, showing, hiding, and closing are centralised in the U
 The invariant can be stated precisely ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)):
 
 1. **Never construct `Stage` directly in application code.**
-2. **Never close a window by calling `.close` on a `Stage`.** Always route through `close-window!`.
-3. **All window opening must pass through `show-window!`.**
+2. **Never close a window by calling `.close` on a `Stage`.**
+3. **All window open and close requests are published to `:window-requests` on the frontend event bus.** The UI Manager is the sole performer of the actual lifecycle operations.
 4. **Headless mode must behave identically at the lifecycle level.**
 
 This discipline exists so that:
@@ -250,10 +252,15 @@ When lifecycle control is centralised, the rest of the system can reason about w
 
 This is not a full API reference, but the most commonly used frontend entry points are:
 
-**Window lifecycle**
+**Window lifecycle** — publish to `:window-requests` on the frontend event bus:
 
-* `show-window!`
-* `close-window!`
+```clojure
+(eb/publish! (:event-bus ui-manager) :window-requests
+  [{:type :window-open-requested  :window/id :my-window ...}])
+
+(eb/publish! (:event-bus ui-manager) :window-requests
+  [{:type :window-close-requested :window/id :my-window}])
+```
 
 **Confirmation dialogs**
 
@@ -270,7 +277,7 @@ This is not a full API reference, but the most commonly used frontend entry poin
 
 **Common window spec keys**
 
-The recognised `:window/*` keys consumed by `show-window!`:
+The recognised `:window/*` keys for `:window-open-requested` events:
 
 | Key | Purpose |
 |-----|---------|
@@ -471,7 +478,7 @@ Mouse movement, key presses, window resize events — these originate in JavaFX.
 Semantic mutations do not propagate through UI state. They are sent to the backend through the polymorphic API. The backend processes them and publishes structured events describing what became stale. These are not UI instructions; they are invalidation signals.
 
 **3. Frontend Event Bus.**
-The frontend event bus is a category-based pub/sub mechanism. Window lifecycle events, settings changes, collaboration status changes, and backend invalidations all travel through this bus. The UI Manager is the central mediator — it subscribes to all relevant event categories on behalf of the entire UI layer and dispatches reactions. Individual windows do not subscribe to the event bus directly. No subsystem reaches sideways into another.
+The frontend event bus is a category-based pub/sub mechanism. All frontend coordination travels through it: window lifecycle requests and results, settings changes, app lifecycle signals, collaboration status, and backend invalidations. Application code publishes requests; the UI Manager subscribes, performs the work, and publishes results. No subsystem reaches sideways into another through direct function calls on the UI Manager — the bus is the interface. Individual windows do not subscribe to the event bus directly; the UI Manager mediates all subscriptions on behalf of the UI layer.
 
 The separation is deliberate. Input, semantic mutation, and UI reaction are not collapsed into one mechanism. Each layer speaks in its own vocabulary.
 
@@ -1252,7 +1259,7 @@ Responsiveness emerges from that discipline.
 
 Window creation, closing, geometry persistence, and lifecycle event publication pass through the UI Manager.
 
-Application code does not construct `Stage` directly. It does not close windows by reaching into JavaFX objects. It expresses intent; the lifecycle subsystem performs the structured work.
+Application code does not construct `Stage` directly. It does not close windows by reaching into JavaFX objects. It expresses intent by publishing to `:window-requests` on the frontend event bus; the UI Manager subscribes, performs the structured work, and publishes the result to `:window-lifecycle`.
 
 This centralisation ensures:
 

@@ -107,7 +107,7 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
                               :on-action {:event/type :plugin/save-settings}}]}}
 
 ;; Frontend plugin uses var directly (no gRPC boundary, no serialization)
-;; and passes the spec to show-window! directly or builds content nodes via cljfx
+;; and publishes a :window-open-requested event to :window-requests, or builds content nodes via cljfx
 {:window/id :local-tool
  :window/title-key :tool.palette.title
  :window/content (cljfx/instance
@@ -181,7 +181,7 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 
 ### Content Builder Pattern (Updated 2026-02-19)
 
-UI elements that need custom content — splash screens, About dialogs, piece windows, settings windows — follow the **content builder pattern**. A private content function constructs the content; the public `show-*!` function materialises it and passes it to `show-window!`. The UI Manager handles everything else: Stage creation, theming, registry, platform concerns.
+UI elements that need custom content — splash screens, About dialogs, piece windows, settings windows — follow the **content builder pattern**. A private content function constructs the content; the public `show-*!` function materialises it and publishes a `:window-open-requested` event to `:window-requests`. The UI Manager subscriber handles everything else: Stage creation, theming, registry, platform concerns.
 
 ```clojure
 ;; about.clj — private spec function returns a cljfx description map
@@ -192,17 +192,20 @@ UI elements that need custom content — splash screens, About dialogs, piece wi
                    :on-created (fn [btn]
                                  (.setOnAction btn
                                    (reify EventHandler
-                                     (handle [_ _] (um/close-window! manager :about)))))
+                                     (handle [_ _]
+                                       (eb/publish! (:event-bus manager) :window-requests
+                                         [{:type :window-close-requested :window/id :about}])))))
                    :desc (ofx/ooloi-ok-button {})}]})
 
-(defn show-about! [manager]
-  (um/show-window! manager
-    {:window/id :about
-     :window/content (cljfx/instance (cljfx/create-component (about-content-spec manager)))
-     :window/title-key :window.about.title}))
+(defn show-about! [manager dispatch-fn]
+  (eb/publish! (:event-bus manager) :window-requests
+    [{:type             :window-open-requested
+      :window/id        :about
+      :window/content   (cljfx/instance (cljfx/create-component (about-content-spec manager)))
+      :window/title-key :window.about.title}]))
 
 ;; system.clj — one-line delegation
-show-about-fn (fn [] (about/show-about! mgr))
+show-about-fn (fn [] (about/show-about! mgr dispatch-fn))
 ```
 
 **The contract:**
@@ -212,7 +215,7 @@ show-about-fn (fn [] (about/show-about! mgr))
 - For modules not yet fully migrated: `build-*-content!` constructs JavaFX nodes directly
   and returns `{:root Node, ...}`.
 - The content function never imports Stage, Scene, or StageStyle.
-- The caller passes the materialised Node as `:window/content` to `show-window!`.
+- The materialised Node is placed in `:window/content` in the `:window-open-requested` event.
 - The UI Manager handles Stage creation, theming, registry tracking, and platform behaviour (e.g. `initOwner` on macOS).
 
 This pattern ensures all windows go through the same path regardless of their content complexity.
@@ -356,16 +359,22 @@ This keeps each window module a **self-contained dispatch world**: internal even
 
 **All Windowing Goes Through the UI Manager**
 
-No code outside the UI Manager creates Stage or Scene objects directly. The UI Manager's `show-window!` is the single entry point for all window creation. This ensures consistent theming, registry tracking, platform behaviour (macOS `initOwner` for system menu bar inheritance), and lifecycle management.
+Window lifecycle is event-driven. Application code publishes `:window-open-requested` to the `:window-requests` category on the frontend event bus. The UI Manager subscribes, creates the Stage internally via `show-window!`, and publishes `:window-opened` to `:window-lifecycle`. No application code calls `show-window!` directly.
 
 Content builders produce nodes. The UI Manager produces windows.
 
 ```clojure
-;; ✅ CORRECT — Content builder returns nodes, UI Manager creates window
-(let [{:keys [root label]} (splash/build-splash-content!)]
-  (um/show-window! mgr {:window/id :splash
-                         :window/content root
-                         :window/style :undecorated}))
+;; ✅ CORRECT — publish a request; UI Manager creates window internally
+(eb/publish! event-bus :window-requests
+  [{:type             :window-open-requested
+    :window/id        :splash
+    :window/content   root
+    :window/style     :undecorated}])
+
+;; ❌ WRONG — calling show-window! directly bypasses the event-driven architecture
+(um/show-window! mgr {:window/id :splash
+                       :window/content root
+                       :window/style :undecorated})
 
 ;; ❌ WRONG — Direct Stage creation bypasses all infrastructure
 (let [stage (Stage. StageStyle/UNDECORATED)
@@ -378,21 +387,25 @@ Content builders produce nodes. The UI Manager produces windows.
 
 **macOS Platform Behaviour:** On macOS, `register-window!` automatically calls `.initOwner` on secondary windows, setting the first registered Stage as owner. This ensures secondary windows (About, tool palettes) inherit the system menu bar. Without this, focused secondary windows show a blank menu bar.
 
-**All Window Close Goes Through `close-window!`**
+**All Window Close Is Event-Driven**
 
-No code closes a Stage by calling `.close` directly. The UI Manager's `close-window!` is the single exit point for all window closure. It performs three operations in sequence: persists the window's geometry to disk, closes the Stage, and publishes a `:window-closed` lifecycle event. Bypassing it loses geometry persistence and breaks lifecycle event consumers.
+Application code publishes `:window-close-requested` to `:window-requests`; the UI Manager subscriber calls `close-window!` internally. `close-window!` performs three operations in sequence: persists the window's geometry to disk, closes the Stage, and publishes a `:window-closed` lifecycle event. Bypassing it loses geometry persistence and breaks lifecycle event consumers.
 
-Native close (the window's X button) is intercepted by `onCloseRequest` wiring in `register-window!`, which consumes the JavaFX event and delegates to `close-window!`. Programmatic close (OK/Cancel buttons, quit handlers) calls `close-window!` directly. Component shutdown (`halt-key!`) iterates the window registry and calls `close-window!` for each open window.
+Native close (the window's X button) is intercepted by `onCloseRequest` wiring in `register-window!`, which consumes the JavaFX event and delegates to `close-window!` directly — no event bus round-trip for native close. Component shutdown (`halt-key!`) iterates the window registry and calls `close-window!` for each open window.
 
 ```clojure
-;; ✅ CORRECT — route through close-window!
+;; ✅ CORRECT — publish a close request
+(eb/publish! event-bus :window-requests
+  [{:type :window-close-requested :window/id :settings}])
+
+;; ❌ WRONG — calling close-window! directly bypasses the event-driven architecture
 (um/close-window! mgr :settings)
 
-;; ❌ WRONG — bypasses persistence and lifecycle events
+;; ❌ WRONG — bypasses persistence and lifecycle events entirely
 (.close stage)
 ```
 
-**Invariant:** If code calls `.close` on a Stage outside of the windowing infrastructure (`window.clj`), it is violating this invariant.
+**Invariant:** If code calls `.close` on a Stage outside of the windowing infrastructure (`window.clj`), or calls `close-window!` from outside the UI Manager's own event subscriber, it is violating this invariant.
 
 **Theme Application is Automatic**
 
