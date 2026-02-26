@@ -459,7 +459,7 @@ lein i18n :strict true
 
 **Parameters:**
 - `:source-dir` — Directory to scan (default: `"src/main/clojure"`)
-- `:po-file` — Translation catalog path (default: `"resources/i18n/en-GB.po"`)
+- `:po-file` — Translation catalog path (default: `"resources/i18n/en_GB.po"`)
 - `:pattern` — File pattern to match (default: `#"\.clj$"`)
 - `:strict` — Fail on incomplete translations (default: `false`)
 

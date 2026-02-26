@@ -125,8 +125,8 @@ Parameters use named placeholders (`%{filename}`), never positional (`%s`, `%1$d
 
 Localisation files are loaded from two locations:
 
-1. **Bundled canonical locale**: `en-GB.po` ships inside the application JAR, immutable and version-matched
-2. **External directory**: Additional locales and overrides, platform-specific location via `get-platform-directory`
+1. **Bundled locales**: All Ooloi-provided locales ship inside the application JAR, version-matched. Canonical filename format is underscore (`en_GB.po`, `sv_SE.po`). On first run, bundled files are copied to the platform directory so users can customise them.
+2. **External directory**: User-managed locales and overrides, platform-specific location via `get-platform-directory`. Both underscore and dash filenames are accepted here; all are normalised to dash-form keys (`:en-GB`, `:sv-SE`) internally.
 
 ```clojure
 ;; External locale directory
@@ -136,17 +136,19 @@ Localisation files are loaded from two locations:
 ```
 
 ```
-# Bundled in JAR (read-only)
+# Bundled in JAR (read-only, underscore filenames)
 resources/i18n/
-  en-GB.po        ; canonical source
+  en_GB.po        ; canonical source — always present
+  sv_SE.po        ; Swedish (example)
+  de_DE.po        ; German (example)
+  ...             ; all Ooloi-provided locales
 
 # External (user-managed, platform-specific)
 # Windows: %APPDATA%/Ooloi/i18n/
 # Unix/macOS: ~/.ooloi/i18n/
-  sv.po           ; Swedish
-  de.po           ; German
-  en-US.po        ; American English
-  en-GB.po        ; optional override of bundled canonical
+  en_GB.po        ; user override of bundled canonical (presence prevents sync overwrite)
+  sv_SE.po        ; user override or community locale
+  my_locale.po    ; any additional locale
 ```
 
 **Canonical locale:** The canonical source language is UK English (`en-GB`), not generic "en". This is the baseline for all translations and the fallback when a key is missing in other locales. American English (`en-US`) is a separate translation like any other, differing in spelling (colour/color, localisation/localization), punctuation conventions, and occasional terminology.
@@ -158,24 +160,34 @@ resources/i18n/
 - Community-contributed locales can be distributed independently
 - Translators can test updates without rebuild cycles
 - The localisation layer survives forward UI evolution
-- External `en-GB.po` can override bundled version for testing or customisation
+- External `en_GB.po` can override bundled version for testing or customisation
 
 ### Runtime Loading and Caching
 
-**Bundled canonical locale:**
+**Bundled locales:**
 
-The canonical `en-GB.po` ships in the JAR and is parsed at runtime. During application startup, this happens via `init-locales!`. In development mode, it's lazy-loaded on the first `tr` call.
+All Ooloi-provided locales ship in the JAR. At application startup (`init-locales!`) they are discovered via Java NIO `FileSystems/newFileSystem`, which handles both `file:` (development) and `jar:` (packaged) URI schemes uniformly — no manifest or hardcoded list required. In development mode, `en_GB.po` is lazy-loaded on the first `tr` call.
 
-**External locales:**
+**Startup load sequence (`init-locales!`):**
 
-At application startup (`init-locales!`):
+1. Discover all `.po` files in the bundled `resources/i18n/` classpath directory via NIO scan
+2. Load each bundled locale into `catalogs`
+3. Sync: for each bundled file, copy it to the platform directory if the file is absent — never overwrite an existing file (presence alone protects user modifications)
+4. Scan the platform-specific directory for external `.po` files
+5. Load each external locale (platform overrides bundled for the same key):
+   - If parsing succeeds: add to `catalogs` (overwriting any bundled entry for that key)
+   - If malformed: log error, skip locale, continue (falls back to `:en-GB` at runtime)
+6. Keep all successfully parsed catalogs in memory for instant locale switching
 
-1. Parse bundled `en-GB.po` from JAR resources
-2. Scan platform-specific directory for external `.po` files
-3. Parse each found external locale:
-   - If parsing succeeds: add to loaded catalogs
-   - If malformed: log error, skip locale, continue (locale falls back to en-GB at runtime)
-4. Keep all successfully parsed catalogs in memory for instant locale switching
+**Return value:**
+
+```clojure
+{:loaded        #{:en-GB :sv-SE ...}   ; all successfully loaded locale keys
+ :bundled       #{:en-GB :sv-SE ...}   ; locales discovered from JAR resources
+ :external      #{:sv-SE ...}          ; locales loaded from platform directory
+ :notifications [{:type :warning       ; deferred UI notifications (e.g. duplicate files)
+                  :message "..."}]}
+```
 
 Parsing is fast enough for startup, and keeping all catalogs in memory enables instant locale switching.
 
@@ -339,8 +351,8 @@ Plugins ship their own PO files in a dedicated directory within the plugin distr
 my-plugin/
   plugin.edn
   i18n/
-    en-GB.po
-    sv.po
+    en_GB.po
+    sv_SE.po
 ```
 
 Plugin translation catalogs are namespaced by plugin identifier. No collision with core keys or other plugins is possible:
@@ -369,7 +381,7 @@ Build-time verification operates in two modes depending on context:
 
 **Normal Mode** (development, `lein i18n`):
 - Extracts all `tr` keys and `tr-declare` keys from source
-- Auto-adds missing keys to `en-GB.po`:
+- Auto-adds missing keys to `en_GB.po`:
   - Keys with `tr-declare` defaults: fully populated (msgid and msgstr from default text)
   - Keys from bare `tr` calls only: `[TODO: Translation needed]` placeholder as msgstr
 - Warns about TODO entries and orphaned keys
@@ -390,8 +402,8 @@ Developers run `lein i18n` during active development as new UI strings are added
 At build time (strict mode):
 
 1. Extract all `tr` keys and `tr-declare` keys from frontend source
-2. Parse `en-GB.po` and extract all `msgctxt` values
-3. Assert: the union of extracted + declared keys matches `en-GB.po` exactly
+2. Parse `en_GB.po` and extract all `msgctxt` values
+3. Assert: the union of extracted + declared keys matches `en_GB.po` exactly
 4. Assert: no TODO placeholders remain in catalog
 
 Build fails if the canonical UK English catalog is incomplete or contains TODO entries. This prevents shipping UI elements without complete English translations.
@@ -512,9 +524,9 @@ This architecture requires several distinct capabilities. The implementation str
 - Two patterns: `(tr :keyword)` for direct usage, `(tr-declare {...})` for indirect keys
 - Non-literal `tr` arguments silently skipped (tolerance for data-driven infrastructure)
 - Non-literal `tr-declare` arguments are errors (map must be a literal)
-- Union of extracted + declared keys verified against `en-GB.po`
+- Union of extracted + declared keys verified against `en_GB.po`
 - Declared defaults used as both `msgid` and `msgstr` when auto-adding missing entries
-- Build-time completeness check: all keys exist in `en-GB.po`
+- Build-time completeness check: all keys exist in `en_GB.po`
 
 ### Locale Loading: Direct Parsing
 
@@ -559,7 +571,7 @@ This architecture requires several distinct capabilities. The implementation str
 **Implementation** (`shared/src/main/clojure/ooloi/shared/i18n/verify.clj`):
 - Parse source with Clojure reader (not regex)
 - Extract literal keywords (reject computed keys)
-- Compare against `en-GB.po` msgctxt values
+- Compare against `en_GB.po` msgctxt values
 - Auto-add mode: append missing keys (tr-declare defaults as msgstr, TODO for bare tr keys)
 - Strict mode: fail on missing keys or TODO entries
 - Colored terminal output (ANSI codes)
