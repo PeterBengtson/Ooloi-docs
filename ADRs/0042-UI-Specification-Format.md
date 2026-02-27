@@ -558,6 +558,55 @@ All UI styling in Ooloi must work identically in dark and light mode without cod
 
 **Plugin implication:** A backend plugin that includes `:style-class ["title-2" "accent"]` in its cljfx spec will render correctly on any Ooloi frontend regardless of the active theme. The string values are stable AtlantaFX API — they don't change between themes.
 
+#### The setAll() Rule — Include Base Classes
+
+**cljfx's `:style-class` calls `getStyleClass().setAll()`**, which replaces the *entire* default style class list. It does not add to the defaults — it replaces them.
+
+JavaFX controls ship with default style classes that AtlantaFX uses as CSS selectors for border and background rendering. When you specify `:style-class` in a cljfx spec, those defaults are gone unless you include them explicitly.
+
+**Controls where this matters most:**
+
+| Control | JavaFX defaults | AtlantaFX border CSS selector |
+|---------|-----------------|-------------------------------|
+| `ComboBox` | `["combo-box" "combo-box-base"]` | `.combo-box-base` |
+| `TextField` | `["text-input" "text-field"]` | `.text-input` |
+| `TextArea` | `["text-input" "text-area"]` | `.text-input` |
+| `Button` | `["button"]` | `.button` |
+
+**Wrong and correct:**
+
+```clojure
+;; ❌ WRONG — strips "combo-box-base"; control renders without visible border
+{:fx/type :combo-box
+ :style-class ["combo-box" Styles/DENSE]}
+
+;; ✅ CORRECT — includes all three: both defaults plus DENSE
+{:fx/type :combo-box
+ :style-class ["combo-box" "combo-box-base" Styles/DENSE]}
+
+;; ❌ WRONG — strips "text-input"; control renders without visible border
+{:fx/type :text-field
+ :style-class ["text-field" Styles/DENSE]}
+
+;; ✅ CORRECT — includes all three: both defaults plus DENSE
+{:fx/type :text-field
+ :style-class ["text-input" "text-field" Styles/DENSE]}
+```
+
+**To check the defaults for any control:** look in the cljfx jar source (e.g. `cljfx/fx/combo_box.clj`) for the `:style-class` property's `:default` value. That is the list you must reproduce when specifying `:style-class`.
+
+**Safer alternative** — use `:on-created` to *add* to the existing list instead of replacing it:
+
+```clojure
+{:fx/type ext-on-instance-lifecycle
+ :desc {:fx/type :combo-box ...}
+ :on-created (fn [node] (.add (.getStyleClass node) Styles/DENSE))}
+```
+
+This leaves the JavaFX defaults intact and appends your additions. It is the safest approach when you only need to add one or two classes.
+
+**Consequence of stripping base classes:** AtlantaFX simulates control borders using multi-stop `-fx-background-color` layers — the outermost stop is the border paint, the inner stop is the fill. The border-rendering CSS rule is anchored to the base selector (e.g. `.combo-box-base`). Without that class on the node, the rule never fires and the control appears as plain text on the background with no visible border.
+
 #### AtlantaFX Style Class Reference
 
 The [`Styles`](https://mkpaz.github.io/atlantafx/apidocs/atlantafx.base/atlantafx/base/theme/Styles.html) class in `atlantafx.base.theme` provides these constants. Each is a `public static final String` that evaluates to the CSS class name shown.

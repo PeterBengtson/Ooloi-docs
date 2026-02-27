@@ -461,6 +461,25 @@ After initialisation, `cljfx/mount-renderer` keeps the renderer watching the ato
 * **Module-internal events** (navigation, selection, drag-and-drop reactions, backend data updates) are handled entirely within the window module.
 * **Application-level commands** (quit, show another window) bubble out through an injected `dispatch-fn` to `system.clj`'s action handlers. The `dispatch-fn` is injected by the caller — the window module holds no direct reference to application state or action tables. This keeps each window module independently testable.
 
+### 4.5 Style Classes — The setAll() Trap
+
+cljfx maps `:style-class` to `Node.getStyleClass().setAll(...)`. **setAll replaces the entire style class list** — it does not append. JavaFX controls set their own defaults in their constructors, including base-class names inherited from their superclass hierarchy. AtlantaFX's CSS targets those base-class selectors for borders and backgrounds. Strip a base class and the control renders without visible borders — it looks like a plain label.
+
+The two controls most commonly affected in settings and form UIs:
+
+| Control | ❌ Dangerous | ✅ Correct |
+|---------|-------------|-----------|
+| `ComboBox` | `["combo-box" "dense"]` | `["combo-box" "combo-box-base" "dense"]` |
+| `TextField` | `["text-field" "dense"]` | `["text-input" "text-field" "dense"]` |
+
+AtlantaFX's border and background CSS for `ComboBox` is on `.combo-box-base`; for `TextField` it is on `.text-input`. Strip either and the control becomes invisible against the window surface.
+
+**The rule:** Before writing a custom `:style-class` list, look up the cljfx default for that node type. Defaults are declared in the cljfx source as `:default` on the `:style-class` prop (e.g. `cljfx.fx.combo-box`, `cljfx.fx.text-field`). Every class in the default must appear in your custom list.
+
+**The alternative:** If you only need to add a utility class such as `Styles/DENSE`, avoid `:style-class` entirely. Use `ext-on-instance-lifecycle :on-created` to call `.add` on the existing style class list — this appends without disturbing the defaults.
+
+**CSS child selectors on themed parent nodes.** Adding a custom class to a `TitledPane` — for example `"setting-tile"` — means that CSS child selectors now match TitledPane's internal structure. `.setting-tile > .content` matches the collapsible body pane. Setting any solid background colour on that pane (including `-color-bg-subtle`) can make all controls nested inside it appear borderless, because AtlantaFX simulates borders via multi-stop `-fx-background-color` layers whose outer stop blends into the parent surface. Use `transparent` for TitledPane content backgrounds when controls are placed inside.
+
 ---
 
 ## 5. Event Architecture
