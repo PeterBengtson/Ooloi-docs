@@ -29,6 +29,7 @@
 10. [Settings System](#10-settings-system)
 11. [Collaboration and Transport Switching](#11-collaboration-and-transport-switching)
 12. [Testing Model](#12-testing-model)
+    - [12.5 Test Isolation Infrastructure](#125-test-isolation-infrastructure)
 13. [Architectural Invariants](#13-architectural-invariants)
 14. [Concluding Perspective](#14-concluding-perspective)
 
@@ -1231,6 +1232,30 @@ Many of these are enforced structurally (through centralised entry points and bu
 The goal is not to achieve exhaustive UI automation. It is to make architectural drift difficult.
 
 When structure is clear, testing becomes calmer. You test pure functions where possible, integration points where necessary, and invariants continuously.
+
+### 12.5 Test Isolation Infrastructure
+
+Frontend tests that touch app settings, the platform directory, locale, or JavaFX stages share a common isolation namespace: `frontend/test/clojure/util/frontend.clj` (namespace `util.frontend`). Requiring it initialises JavaFX automatically — no explicit init call needed.
+
+The namespace exposes a layered set of isolation macros. The correct entry point for most tests is `with-test-config`:
+
+```clojure
+(with-test-config {:ui/theme :nord-dark}
+  ;; platform dir → temp, settings atoms saved/restored, locale saved/restored
+  ;; load-defaults returns all registry defaults merged with the override map
+  ...)
+```
+
+Pass `{}` to use all registry defaults with no overrides. The override map is merged onto `(default-settings)`, which derives defaults from the live registry — so new settings added via `def-app-setting` appear automatically in every test without changes to test setup.
+
+Additional macros for specific situations:
+
+- **`with-event-bus`** — wrap inside `with-test-config` when the test calls `set-app-setting!` and needs the `:setting-changed` event to actually publish
+- **`with-zero-animation-times`** — for notification lifecycle tests; sets all animation durations to zero so state transitions complete instantly
+- **`with-stage`** — creates a JavaFX Stage on the JAT for lightweight tests that need a real Stage but not a full UI Manager
+- **Visual testing modes** (`OOLOI_UI_VISUAL`, `OOLOI_UI_VISUAL_INTERACTIVE`) — show real windows during test runs for screenshot capture or manual inspection; call `(visual-pause)` at inspection points (no-op in headless mode)
+
+Full API documentation and decision rules are in [UI_ARCHITECTURE.md §13](../research/UI_ARCHITECTURE.md).
 
 ---
 

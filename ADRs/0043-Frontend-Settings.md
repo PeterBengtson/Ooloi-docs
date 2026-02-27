@@ -5,6 +5,7 @@
 Accepted - February 12, 2026
 Updated - February 13, 2026 (Defaults declared in def-app-setting; event bus integration)
 Updated - February 16, 2026 (Settings window implemented; code references added)
+Updated - February 27, 2026 (Testing section: with-test-config, default-settings, with-event-bus)
 
 ## Table of Contents
 - [Context](#context)
@@ -21,6 +22,7 @@ Updated - February 16, 2026 (Settings window implemented; code references added)
   - [Settings Window](#settings-window)
 - [Rationale](#rationale)
 - [Implementation](#implementation)
+- [Testing Settings-Dependent Code](#testing-settings-dependent-code)
 - [Consequences](#consequences)
 - [Alternatives Considered](#alternatives-considered)
 - [Related ADRs](#related-adrs)
@@ -274,6 +276,42 @@ Default values are declared in `def-app-setting` and extracted into `shared/reso
 
 The Settings window (`app_settings_window.clj`) consumes the registry to generate UI controls automatically, following the content builder pattern (ADR-0042). `system.clj` maps the `:ui/show-app-settings` action handler to a one-line delegation to `show-app-settings!`.
 
+## Testing Settings-Dependent Code
+
+Tests that exercise code reading or writing app settings must isolate three categories of global state: the platform directory, the settings atoms, and the locale. The `util.frontend` test namespace provides the standard toolkit.
+
+### `with-test-config` — the Primary Wrapper
+
+```clojure
+(with-test-config {:ui/theme :nord-dark}
+  (let [mgr (ig/init-key :ooloi.frontend.components/ui-manager {...})]
+    (tr/set-locale! :en-GB)
+    ...))
+```
+
+Pass a settings override map merged onto `(default-settings)`. Pass `{}` to use all registry defaults. `with-test-config` redirects the platform directory to a temp location, snapshots and restores settings atoms, rebinds `load-defaults` to return the controlled map, and saves/restores `tr/current-locale`. This is the correct wrapper for any test that creates a UI Manager or calls `get-app-setting` / `set-app-setting!`.
+
+### `default-settings` — Registry-Derived Defaults
+
+```clojure
+(th/default-settings)  ; => {:ui/theme :nord-dark, ...all registered settings at defaults}
+```
+
+Returns a map of every registered setting at its declared default, derived from the live registry. When a new `def-app-setting` is added, `default-settings` picks it up automatically. Always use `(merge (th/default-settings) overrides)` rather than hand-writing a settings map — hand-written maps silently omit new settings, causing nil-reference failures in production code that reads them. The correct response when a test breaks because a new setting was added is to ensure `default-settings` is used, not to add nil-guards to production code.
+
+### `with-event-bus` — Tests That Publish Setting Events
+
+`set-app-setting!` publishes a `:setting-changed` event only when the new value differs from the stored value, and only when an event bus has been wired in via `init-event-bus!`. Tests that exercise this event path must use `with-event-bus`:
+
+```clojure
+(with-test-config {}
+  (with-event-bus
+    (set-app-setting! :ui/theme :nord-light)  ; triggers :setting-changed event
+    ...))
+```
+
+Tests that only call `get-app-setting` do not need `with-event-bus`.
+
 ## Consequences
 
 ### Positive
@@ -375,3 +413,4 @@ Require `load-app-settings!` call in system.clj startup sequence.
 - `frontend/src/main/clojure/ooloi/frontend/ui/theme.clj` — Theme module consuming settings
 - `shared/src/main/clojure/ooloi/shared/platform.clj` — Platform-specific directory paths
 - `frontend/src/main/clojure/ooloi/frontend/ui/persistence.clj` — Existing EDN persistence pattern
+- `frontend/test/clojure/util/frontend.clj` — Test isolation infrastructure: `with-test-config`, `default-settings`, `with-event-bus`
