@@ -77,7 +77,7 @@ We establish **backend-authoritative rendering with terminal frontend execution*
 5. **GPU-Accelerated Rendering:** GPU acceleration via Skija (or equivalent technology) is **required for production performance**. Complex orchestral scores (30,000+ objects) require GPU vector rendering to achieve 60fps scrolling targets. Software rasterization fallback exists for error recovery only (GPU driver failure).
 
 6. **Component Boundaries:**
-   - cljfx: Windows, dialogs, menus, input handlers (does NOT draw music)
+   - cljfx: Windows, menus, input handlers (does NOT draw music)
    - Skija: GPU-accelerated drawing execution (does NOT compute layout)
    - Event Router: Protocol adapter for backend events (ADR-0031)
    - Rendering Data Manager: VPD-indexed paintlist storage (ADR-0031)
@@ -149,7 +149,7 @@ We establish **backend-authoritative rendering with terminal frontend execution*
 │                               ↓                                 │
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │  cljfx UI Shell (Windowing Only - ADR-0022)                │ │
-│  │  - Windows, dialogs, palettes, menus                       │ │
+│  │  - Windows, palettes, menus                                 │ │
 │  │  - Input handlers (mouse, keyboard)                        │ │
 │  │  - Provides viewport/node for Skija rendering              │ │
 │  │  - Does NOT compute or draw music                          │ │
@@ -352,14 +352,14 @@ This layer implements the required execution path: Skija `Picture` objects recor
 
 #### 5. cljfx UI Shell
 
-cljfx is used for windowing, dialogs, menus, palettes, and input handling. It provides JavaFX nodes ("viewports") into which Skija renders.
+cljfx is used for windowing, menus, palettes, and input handling. It provides JavaFX nodes ("viewports") into which Skija renders.
 
 **Important:** The exact JavaFX embedding strategy for Skija is an implementation detail. Any "surface → image → drawImage" approach should be considered provisional and not asserted as final.
 
 **cljfx responsibilities:**
 - Window management and UI chrome
 - Input events (mouse/keyboard) and tool state
-- Dialogs, settings, palettes, menus
+- Settings, palettes, menus
 - Providing the JavaFX rendering node
 
 **cljfx does not:**
@@ -498,7 +498,7 @@ Performance depends on:
 1. Event Router with category aggregation (full implementation)
 2. Rendering Data Manager (data structure + operations, mock paintlist data for testing)
 3. Fetch Coordinator (threading model + priority queues, mock backend calls for testing)
-4. cljfx UI shell (windows, dialogs, menus, palettes - **no music notation rendering**)
+4. cljfx UI shell (windows, menus, palettes - **no music notation rendering**)
 5. Threading model validation (Event Router → bus → UI Manager → RDM/FC coordination)
 
 **Note:** This phase builds event/cache infrastructure and UI chrome without rendering music. RDM and FC use **mock paintlist data** to validate threading model and async coordination. Real paintlist API integration and GPU-accelerated rendering are Phase 2. This separation validates the event-driven architecture before adding GPU complexity.
@@ -627,7 +627,7 @@ Performance depends on:
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Frontend components (Event Router, RDM, Fetch Coordinator)
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) - Closed semantic model this preserves
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - State authority; this document addresses rendering authority
-- [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Format for UI elements (windows, dialogs) that cljfx renders
+- [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Format for UI elements (windows) that cljfx renders
 
 ## Notes
 

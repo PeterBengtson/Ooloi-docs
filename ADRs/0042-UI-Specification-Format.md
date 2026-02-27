@@ -34,21 +34,21 @@
 
 ### Problem Statement
 
-Ooloi needs a format for specifying UI elements (windows, dialogs, notifications) that:
+Ooloi needs a format for specifying UI elements (windows, notifications) that:
 
 1. **Works across boundaries** - Backend and backend plugins must be able to define UI that frontend renders
 2. **Supports lifecycle management** - Windows need automatic persistence, event handling, cleanup
 3. **Enables plugin independence** - Backend plugins shouldn't need frontend-specific code
 4. **Serializes over gRPC** - UI specs from backend/backend plugins must cross network boundary
 5. **Integrates with cljfx** - Must work naturally with cljfx's declarative UI approach (backend and frontend plugins)
-6. **Handles diverse types** - Persistent windows, transient dialogs, auto-dismiss notifications
+6. **Handles diverse types** - Persistent windows, auto-dismiss notifications
 7. **Supports local plugins** - Frontend plugins can use direct callbacks without serialization
 
 ### Requirements
 
 **Functional Requirements:**
 - Window lifecycle management (create, track state, save on close, restore on reopen, cleanup)
-- Type differentiation (persistent windows, modal/non-modal dialogs, notifications, custom components)
+- Type differentiation (persistent windows, notifications, custom components)
 - Backend plugin support (define UI in backend/plugin code, serialize over gRPC, no frontend dependency)
 - Frontend plugin support (define UI with direct cljfx, use callback functions or symbolic handlers)
 - Event integration (symbolic handlers for serialization, direct functions for local plugins)
@@ -90,7 +90,7 @@ Per ADR-0039, all user-facing strings use translation keys (`:window/title-key`,
 
 UI specifications are **pure Clojure maps** conforming to cljfx structure, augmented with `:window/` namespace-qualified metadata for lifecycle management.
 
-**Implementation Note (Updated 2026-01-28)**: Initial windowing system (Issue #5) does not implement backend-described dialogs. Backend plugins use piece settings (ADR-0016) with auto-generated UI via `SRV/get-settings-ui-metadata`. Frontend provides all custom dialogs for operations. Backend-described dialog capability (examples below) represents architectural design for future extensibility if needed.
+**Implementation Note (Updated 2026-01-28)**: Initial windowing system (Issue #5) does not implement backend-described dialogs. Backend plugins use piece settings (ADR-0016) with auto-generated UI via `SRV/get-settings-ui-metadata`. Frontend provides all custom windows for operations. Backend-described dialog capability (examples below) represents architectural design for future extensibility if needed.
 
 ```clojure
 ;; Backend plugin sends this over gRPC (symbolic event handlers)
@@ -127,7 +127,7 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 
 **`:window/persist?`** (boolean, default true)
 - Whether to save/restore window geometry (position, size) across sessions
-- Persistent (default): main windows, tool palettes, dialogs
+- Persistent (default): main windows, tool palettes
 - Non-persistent: splash screen (`:window/persist? false`), notifications (no Stage)
 
 **`:window/type`** (keyword, optional)
@@ -148,7 +148,7 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 
 **`:window/style`** (keyword, optional)
 - JavaFX StageStyle: `:decorated` (default), `:undecorated`, `:transparent`, `:utility`
-- Example: `:undecorated` for splash screen and About dialog
+- Example: `:undecorated` for splash screen and About window
 
 **`:window/menu-bar`** (JavaFX MenuBar, optional)
 - Pre-built MenuBar instance to attach to the window's VBox root
@@ -181,7 +181,7 @@ UI specifications are **pure Clojure maps** conforming to cljfx structure, augme
 
 ### Content Builder Pattern (Updated 2026-02-19)
 
-UI elements that need custom content — splash screens, About dialogs, piece windows, settings windows — follow the **content builder pattern**. A private content function constructs the content; the public `show-*!` function materialises it and publishes a `:window-open-requested` event to `:window-requests`. The UI Manager subscriber handles everything else: Stage creation, theming, registry, platform concerns.
+UI elements that need custom content — splash screens, About windows, piece windows, settings windows — follow the **content builder pattern**. A private content function constructs the content; the public `show-*!` function materialises it and publishes a `:window-open-requested` event to `:window-requests`. The UI Manager subscriber handles everything else: Stage creation, theming, registry, platform concerns.
 
 ```clojure
 ;; about.clj — private spec function returns a cljfx description map
@@ -358,7 +358,7 @@ This keeps each window module a **self-contained dispatch world**: internal even
 
 **Use `cljfx/create-component` + `cljfx/instance` once** (no renderer) only for `show-confirmation!`, which materialises a blocking cljfx `:alert` spec and returns synchronously via `.showAndWait`. Confirmation dialogs are not full windows — they bypass `show-window!` entirely and have no ongoing lifecycle.
 
-**Locale reactivity pattern.** Windows subscribe to `:app-settings` events on the event bus while open. On `:setting-changed` for `:ui/locale`, they post `(fx/run-later! #(swap! *state identity))` to the JAT. The UI Manager's subscriber (registered at startup, before any window opens) calls `tr/set-locale!` first; the window's `swap!` is queued immediately after. The renderer re-evaluates the spec after the locale is already updated. The `:app-settings` subscription is torn down in the same lifecycle handler that unmounts the renderer on window close.
+**Locale reactivity pattern.** Windows call `(ui-manager/register-renderer! manager window-id *state)` in their `:window-opened` lifecycle handler, passing their private state atom to the UI Manager's window registry. When the UI Manager receives a `:setting-changed` event for `:ui/locale`, it calls `tr/set-locale!` synchronously on the event bus thread, then posts `(fx/run-later! ...)` to the JAT to call `(swap! *state identity)` on every registered renderer atom. The renderer re-evaluates the spec after the locale is already updated. Windows do not subscribe to `:app-settings` directly — locale reactivity is centralised in the UI Manager. The `:window-closed` branch of the `:window-lifecycle` handler calls `cljfx/unmount-renderer`.
 
 ### Architectural Invariants
 
@@ -414,7 +414,7 @@ Native close (the window's X button) is intercepted by `onCloseRequest` wiring i
 
 **Theme Application is Automatic**
 
-The window manager infrastructure automatically applies the configured UI theme (AtlantaFX) to all windows, dialogs, and notifications. Developers never specify theme details in UI specifications.
+The window manager infrastructure automatically applies the configured UI theme (AtlantaFX) to all windows and notifications. Developers never specify theme details in UI specifications.
 
 **Invariant:** Theme selection is infrastructure, not specification data.
 
@@ -770,7 +770,7 @@ This is the general pattern: **style classes** name the variant, **CSS tokens** 
 | De-emphasised text | `Styles/TEXT_MUTED` | Placeholder/hint text |
 | Combined heading + muted | `[Styles/TITLE_2 Styles/TEXT_MUTED]` | "Temporary Piece Window" label |
 
-**Form controls** (settings dialog, input validation):
+**Form controls** (settings window, input validation):
 
 | Purpose | Style class | Usage |
 |---------|-------------|-------|
@@ -778,15 +778,15 @@ This is the general pattern: **style classes** name the variant, **CSS tokens** 
 | Invalid input | `Styles/DANGER` | Added dynamically when validation fails |
 | Valid input (restore) | Remove `Styles/DANGER` | Removed dynamically when input becomes valid |
 
-**Dialogs** (About, Settings):
+**Windows** (About, Settings):
 
 | Purpose | Approach | Notes |
 |---------|----------|-------|
-| Dialog title bar | `Styles/TITLE_3` or `Styles/TITLE_4` | Depending on dialog size |
+| Window title bar | `Styles/TITLE_3` or `Styles/TITLE_4` | Depending on window size |
 | OK / Cancel buttons | Standard Button (no extra class) | AtlantaFX default styling is sufficient |
 | Action buttons | `Styles/ACCENT` | For primary action emphasis |
 
-**Plugin guidelines:** Plugins should use the same patterns. A plugin notification uses `:style-class (into ["notification"] [(get type->severity type)])`. A plugin dialog heading uses `:style-class ["title-3"]`. The string values (not the Java constants) travel over gRPC — `"title-3"` and `Styles/TITLE_3` are the same string at runtime.
+**Plugin guidelines:** Plugins should use the same patterns. A plugin notification uses `:style-class (into ["notification"] [(get type->severity type)])`. A plugin window heading uses `:style-class ["title-3"]`. The string values (not the Java constants) travel over gRPC — `"title-3"` and `Styles/TITLE_3` are the same string at runtime.
 
 #### Documented Exceptions
 
@@ -794,7 +794,7 @@ Two narrow cases permit literal colour values:
 
 1. **Pre-theme rendering (splash screen).** The splash renders before AtlantaFX themes are loaded. It uses hardcoded CSS strings for branding colours that are constant regardless of theme: `:style "-fx-background-color: #1a1a2e;"` for the background, `:style "-fx-text-fill: white; ..."` for the progress label, and `:color "#000000cc"` for the drop shadow effect. These are cljfx spec properties, not Java API calls — but the colour values themselves are intentionally non-adaptive.
 
-2. **Theme-aware transparency overlays.** The About dialog's translucent background implements both light and dark appearances directly using `rgba()` values that are chosen per-theme at construction time. This is legitimate because transparency blending over arbitrary content cannot be expressed as a single semantic token — the overlay must know the target luminance.
+2. **Theme-aware transparency overlays.** The About window's translucent background implements both light and dark appearances directly using `rgba()` values that are chosen per-theme at construction time. This is legitimate because transparency blending over arbitrary content cannot be expressed as a single semantic token — the overlay must know the target luminance.
 
 #### Font Handling
 
@@ -848,7 +848,7 @@ A small pure rendering function transforms each descriptor into a cljfx menu-ite
  :on-action {:event/type :ui/connect-dialog}}
 ```
 
-The menu bar itself is also pure data. A function assembles descriptors into a cljfx MenuBar spec, and the result is rendered like any other cljfx component. This is the same pure-map-to-cljfx pattern used for windows and dialogs.
+The menu bar itself is also pure data. A function assembles descriptors into a cljfx MenuBar spec, and the result is rendered like any other cljfx component. This is the same pure-map-to-cljfx pattern used for windows.
 
 **Accelerators** in Ooloi always use `:mods [:shortcut ...]` — never hardcoded `:meta` or `:control`. The `:shortcut` modifier resolves to Cmd on macOS and Ctrl on other platforms at the JavaFX/cljfx level.
 
@@ -1155,7 +1155,7 @@ Frontend plugins reference Clojure vars directly — no serialization needed:
 ## Related ADRs
 
 - **ADR-0018:** API gRPC Interface and Events - Establishes event structure pattern (pure maps)
-- **ADR-0038:** Backend-Authoritative Rendering - Defines cljfx responsibilities ("Windows, dialogs, menus, input handlers")
+- **ADR-0038:** Backend-Authoritative Rendering - Defines cljfx responsibilities ("Windows, menus, input handlers")
 - **ADR-0039:** Localisation Architecture - Requires all UI strings use translation keys
 - **ADR-0003:** Plugins - Plugin architecture requirements
-- **ADR-0043:** Frontend Settings - Application preferences system with registry-driven Settings dialog
+- **ADR-0043:** Frontend Settings - Application preferences system with registry-driven Settings window

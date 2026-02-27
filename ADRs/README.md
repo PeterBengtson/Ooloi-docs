@@ -123,7 +123,7 @@ Executing rendering decisions and handling user interaction.
 - **[0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**: Backend-authoritative rendering with terminal frontend execution and GPU-accelerated vector rendering
 - **[0039-Localisation-Architecture](0039-Localisation-Architecture.md)**: Frontend-only localisation with PO files, single translation API, and build-time verification
 - **[0042-UI-Specification-Format](0042-UI-Specification-Format.md)**: Pure cljfx maps with namespace-qualified keys for UI specifications; plugin-friendly format with gRPC serialization and window lifecycle management
-- **[0043-Frontend-Settings](0043-Frontend-Settings.md)**: Global application settings with atom-based storage, EDN persistence, translated choice labels, and registry-driven Settings dialog
+- **[0043-Frontend-Settings](0043-Frontend-Settings.md)**: Global application settings with atom-based storage, EDN persistence, translated choice labels, and registry-driven Settings window
 
 ## Audio Architecture
 

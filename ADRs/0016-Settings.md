@@ -265,7 +265,7 @@ Key implementation aspects:
 7. **Data Integrity**: Invalid settings prevented at write time with clear error messages
 8. **Declarative Constraints**: Validation requirements explicit and co-located with definitions
 9. **Reduced Boilerplate**: Eliminated separate validation functions and :around methods
-10. **Collaborative Awareness**: When a piece setting changes, the backend emits a piece-setting-changed event via the backend event router (ADR-0031). The frontend reacts only when a piece settings dialog is open — refreshing stale values so a collaborating user does not work on outdated settings. Visual consequences of piece setting changes (e.g. re-rendering after beam thickness changes) are handled separately by the backend's own cache-invalidation events, not by the settings event.
+10. **Collaborative Awareness**: When a piece setting changes, the backend emits a piece-setting-changed event via the backend event router (ADR-0031). The frontend reacts only when a piece settings window is open — refreshing stale values so a collaborating user does not work on outdated settings. Visual consequences of piece setting changes (e.g. re-rendering after beam thickness changes) are handled separately by the backend's own cache-invalidation events, not by the settings event.
 
 ### Negative
 

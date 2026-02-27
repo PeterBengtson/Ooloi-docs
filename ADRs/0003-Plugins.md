@@ -198,7 +198,7 @@ Backend plugins store configuration as piece settings (ADR-0016):
 - Settings persist with pieces (sharing, version control)
 - Automatic undo/redo support
 - Collaboration-friendly (settings shared across clients)
-- Unified settings dialog (core + plugin settings together)
+- Unified Settings window (core + plugin settings together)
 
 ### Frontend Plugin Settings
 
@@ -213,20 +213,20 @@ Frontend plugins use local settings files:
 - No need to serialize/share UI customizations
 - Simpler implementation for local-only settings
 
-### Dialog Responsibility
+### UI Responsibility
 
-Frontend provides all dialogs:
-- **Core operations**: Key signatures, time signatures (frontend code)
-- **Backend operations**: Import/export parameters (frontend code)
-- **Settings dialogs**: Auto-generated from metadata
+Frontend provides all UI surfaces:
+- **Core operations**: Key signatures, time signatures (frontend windows)
+- **Backend operations**: Import/export parameters (frontend windows)
+- **Settings window**: Auto-generated from metadata
 
 Backend plugins expose:
 - Settings schema (via `defsetting`)
 - API operations (via polymorphic API)
-- No UI/dialog descriptions
+- No UI descriptions
 
 **Future Extensibility:**
-Custom backend-described dialogs may be added if plugins require UI beyond settings and standard operations. Initial implementation focuses on settings-based configuration which covers the majority of plugin needs.
+Custom backend-described windows may be added if plugins require UI beyond settings and standard operations. Initial implementation focuses on settings-based configuration which covers the majority of plugin needs.
 
 ## Notes
 
@@ -249,4 +249,4 @@ Custom backend-described dialogs may be added if plugins require UI beyond setti
 - [ADR-0016: Settings](0016-Settings.md) - Universal entity settings architecture used for backend plugin configuration
 - [ADR-0027: Plugin-Based Audio Architecture](0027-Plugin-Based-Audio-Architecture.md) - Audio/MIDI processing as plugins rather than core features
 - [ADR-0041: OVID](0041-Ooloi-Virtual-Instrument-Definition-OVID.md) - Virtual instrument definition as plugin resources
-- [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Format for plugins to define UI (dialogs, preferences) without frontend dependencies
+- [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Format for plugins to define UI (windows, preferences) without frontend dependencies

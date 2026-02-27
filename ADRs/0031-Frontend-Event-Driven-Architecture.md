@@ -114,7 +114,7 @@ Three event layers serve distinct purposes: the frontend event bus (Integrant co
 
 #### 1. Frontend Event Bus (`ooloi.frontend.event-bus`)
 
-Category-based pub/sub for all frontend event delivery, backed by a shared Claypoole thread pool. Both frontend components and the backend Event Router publish to this bus — it is the single event delivery mechanism for all frontend code. The UI Manager subscribes to event categories and dispatches reactions; individual windows and components do not subscribe directly.
+Category-based pub/sub for all frontend event delivery, backed by a shared Claypoole thread pool. Both frontend components and the backend Event Router publish to this bus — it is the single event delivery mechanism for all frontend code. The UI Manager subscribes to event categories and dispatches reactions; windows subscribe to `:window-lifecycle` for their own lifecycle management (registering and unmounting their reactive renderer).
 
 **Interface:**
 
@@ -143,7 +143,7 @@ Category-based pub/sub for all frontend event delivery, backed by a shared Clayp
 |----------|--------|-----------|
 | `:app-lifecycle` | `:app-ready`, `:app-shutting-down` | `start-app!`, shutdown handler |
 | `:window-lifecycle` | `:window-opened`, `:window-closed`, `:window-hidden`, `:window-state-persisted` | `show-window!`, `close-window!`, `persist-stage-geometry!` |
-| `:settings` | `:setting-changed` | `set-app-setting!` (ADR-0043) |
+| `:app-settings` | `:setting-changed` | `set-app-setting!` (ADR-0043) |
 
 Categories are arbitrary keywords — any component can define new ones.
 
@@ -153,7 +153,7 @@ The Event Router (Layer 3) publishes backend event batches directly to the front
 
 **Coordination Pattern:**
 
-The UI Manager subscribes to event categories and dispatches appropriately. Individual windows and components do not subscribe to the event bus directly — the UI Manager is the single point of event wiring.
+The UI Manager subscribes to event categories and dispatches appropriately. Windows subscribe to `:window-lifecycle` for their own lifecycle management — the `:window-opened` branch calls `register-renderer!` on the UI Manager; the `:window-closed` branch unmounts the renderer. Settings-driven reactivity (theme, locale) is mediated entirely by the UI Manager through `:app-settings` subscriptions and the renderer registry.
 
 **Threading Model for Reactions:**
 
@@ -513,7 +513,7 @@ Events received by frontend are **pre-validated** and guaranteed to have:
 
 **Frontend Event Router does NOT need to re-validate** - backend guarantees correctness.
 
-**Frontend-originated events** (`:app-lifecycle`, `:window-lifecycle`, `:settings`) are maps with at minimum `:type` and `:timestamp`. Subscribers for these categories know their specific event shapes. The `:type` and `:timestamp` fields are a convention for frontend events, not a bus-wide contract — backend events happen to share these fields because the backend validation guarantees them, but this is coincidence of design rather than a universal bus requirement.
+**Frontend-originated events** (`:app-lifecycle`, `:window-lifecycle`, `:app-settings`) are maps with at minimum `:type` and `:timestamp`. Subscribers for these categories know their specific event shapes. The `:type` and `:timestamp` fields are a convention for frontend events, not a bus-wide contract — backend events happen to share these fields because the backend validation guarantees them, but this is coincidence of design rather than a universal bus requirement.
 
 ### Event Type Taxonomy and Category Derivation
 
@@ -1039,7 +1039,7 @@ None - all implementation questions resolved.
 - **ADR-0017: Integrant Component Lifecycle** - Event Router and event bus are Integrant components. Event Router depends on gRPC clients and event bus. Manages subscription lifecycle. Proper cleanup on shutdown.
 - **ADR-0018: API-gRPC Interface Generation** - Event streams defined in ADR-0018. Two event categories: Server events, Piece events. Event Router subscribes to both streams.
 - **ADR-0032: Flow Mode** - Modal keyboard input integrates with JavaFX event system. Keyboard events processed immediately, modal state changes trigger backend updates via gRPC, invalidation events refresh display.
-- **ADR-0043: Frontend Settings** - Frontend app settings publish `:setting-changed` events on the frontend event bus via the `:settings` category. Theme changes flow through the event bus to the UI Manager.
+- **ADR-0043: Frontend Settings** - Frontend app settings publish `:setting-changed` events on the frontend event bus via the `:app-settings` category. Theme and locale changes flow through the event bus to the UI Manager.
 
 ## Related Guides
 

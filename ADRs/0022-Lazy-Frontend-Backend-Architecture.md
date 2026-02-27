@@ -307,11 +307,11 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 - **Cache isolation**: Each pane manages independent cache state for its visual content
 - **Coordinated updates**: Related panes coordinate updates while maintaining independence
 
-**Modal Dialog Integration**:
-- **Lazy data loading**: Dialogs request only necessary data for their specific editing context
-- **Event subscription**: Dialogs subscribe to events affecting their displayed elements
-- **VPD-scoped operation**: Dialog operations use VPD addressing for backend modifications
-- **State synchronization**: Dialog content stays synchronized with backend changes
+**Modal Window Integration**:
+- **Lazy data loading**: Windows request only necessary data for their specific editing context
+- **Event subscription**: Windows subscribe to events affecting their displayed elements
+- **VPD-scoped operation**: Window operations use VPD addressing for backend modifications
+- **State synchronization**: Window content stays synchronized with backend changes
 
 **Context Menu Architecture**:
 - **VPD-based options**: Menu options determined by VPD type of clicked elements

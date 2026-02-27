@@ -87,13 +87,13 @@ If anything, this increases the frontend's architectural importance. It must rem
 
 There is a further reason for this discipline that is easy to overlook: **plugins are first‑class citizens in Ooloi.**
 
-A backend plugin — running in the server process, potentially across a network — must be able to declare that it has an associated window, dialog, settings panel, or toolbar contribution. It must be able to describe the contents of that UI, its validation rules, its localisation keys, and its event subscriptions. And it must do all of this without ever touching a JavaFX object.
+A backend plugin — running in the server process, potentially across a network — must be able to declare that it has an associated window, settings panel, or toolbar contribution. It must be able to describe the contents of that UI, its validation rules, its localisation keys, and its event subscriptions. And it must do all of this without ever touching a JavaFX object.
 
 This is why UI structure is expressed as pure data (cljfx specs, setting declarations, command descriptors, localisation keys). Data can travel across the wire. Data can be validated, composed, and projected by infrastructure that the plugin author never sees. An imperative widget API cannot do any of this safely.
 
 The same principle ripples through the entire frontend:
 
-* A plugin declares settings via `def-app-setting` — they appear automatically in the settings dialog, validated and localised.
+* A plugin declares settings via `def-app-setting` — they appear automatically in the Settings window, validated and localised.
 * A plugin declares commands via data descriptors — they appear in menus with correct keyboard shortcuts and localisation.
 * A plugin declares event subscriptions by category — they receive events through the same bus as core code.
 * A plugin describes a window as a cljfx spec — it is materialised, lifecycle‑managed, and geometry‑persisted by the same UI Manager.
@@ -125,7 +125,7 @@ There are no hardcoded user-facing strings in the frontend. This is not a stylis
 
 Every visible string is declared and resolved through translation keys.
 
-In many places keys appear *indirectly* (e.g. dialog specs, command descriptors, notification specs). To keep build-time verification strict even when static analysis cannot “see” the eventual `tr` call site, the frontend uses `tr-declare` — a no-op key declaration function consumed by the verification tooling.
+In many places keys appear *indirectly* (e.g. window specs, command descriptors, notification specs). To keep build-time verification strict even when static analysis cannot “see” the eventual `tr` call site, the frontend uses `tr-declare` — a no-op key declaration function consumed by the verification tooling.
 
 ```clojure
 (tr-declare
@@ -328,7 +328,7 @@ JavaFX enforces a single UI thread. By keeping specification pure and deferring 
 The backend produces authoritative paintlists. The frontend turns those into GPU pictures. Because UI description and rendering preparation are separated from semantic authority, the frontend can aggressively cache, batch, parallelise, and discard derived state without risking semantic drift. If all frontend state is dropped and reconstructed from backend data, the visible result must be identical. The spec → materialisation model reinforces that guarantee.
 
 **Plugin compatibility.**
-Plugins operate at the same declarative level as core code. They contribute specs, commands, settings, and UI fragments as data. They do not receive privileged access to mutable widget graphs. This keeps extension boundaries clean. A plugin can describe what it wants; the frontend infrastructure decides how and when that description becomes concrete JavaFX objects. Crucially, because specs are pure data, a backend plugin running in a remote server process can describe a window or dialog to the frontend across the wire — the spec is serialised, transmitted, and materialised without the plugin ever importing a JavaFX class. An imperative widget API would make this impossible. The declarative model is therefore not a stylistic choice; it is the structural foundation of Ooloi's plugin architecture.
+Plugins operate at the same declarative level as core code. They contribute specs, commands, settings, and UI fragments as data. They do not receive privileged access to mutable widget graphs. This keeps extension boundaries clean. A plugin can describe what it wants; the frontend infrastructure decides how and when that description becomes concrete JavaFX objects. Crucially, because specs are pure data, a backend plugin running in a remote server process can describe a window to the frontend across the wire — the spec is serialised, transmitted, and materialised without the plugin ever importing a JavaFX class. An imperative widget API would make this impossible. The declarative model is therefore not a stylistic choice; it is the structural foundation of Ooloi's plugin architecture.
 
 **Transport independence.**
 Whether the backend runs in‑process, over gRPC to a local server, or across a network to a collaboration host ([ADR‑0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md)), the frontend’s responsibility is the same: render what it receives, express user intent as API calls, and react to invalidation events. Because semantic authority is never embedded in widget state, switching transport modes does not require architectural reinterpretation.
@@ -499,7 +499,7 @@ Mouse movement, key presses, window resize events — these originate in JavaFX.
 Semantic mutations do not propagate through UI state. They are sent to the backend through the polymorphic API. The backend processes them and publishes structured events describing what became stale. These are not UI instructions; they are invalidation signals.
 
 **3. Frontend Event Bus.**
-The frontend event bus is a category-based pub/sub mechanism. All frontend coordination travels through it: window lifecycle requests and results, settings changes, app lifecycle signals, collaboration status, and backend invalidations. Application code publishes requests; the UI Manager subscribes, performs the work, and publishes results. No subsystem reaches sideways into another through direct function calls on the UI Manager — the bus is the interface. Window modules subscribe to the categories they own: `:window-lifecycle` to unmount their renderer on close, and `:app-settings` to react to settings changes such as locale — posting `(fx/run-later! #(swap! *state identity))` so the renderer re-evaluates the spec after the UI Manager has already applied the change.
+The frontend event bus is a category-based pub/sub mechanism. All frontend coordination travels through it: window lifecycle requests and results, settings changes, app lifecycle signals, collaboration status, and backend invalidations. Application code publishes requests; the UI Manager subscribes, performs the work, and publishes results. No subsystem reaches sideways into another through direct function calls on the UI Manager — the bus is the interface. Window modules subscribe to `:window-lifecycle` only: the `:window-opened` branch calls `register-renderer!` on the UI Manager, registering the window's private `*state` atom; the `:window-closed` branch unmounts the renderer. Settings-driven reactivity — locale changes in particular — is mediated entirely by the UI Manager, which calls `tr/set-locale!` synchronously then posts `(fx/run-later! ...)` to `swap!` all registered renderer atoms. Windows do not subscribe to `:app-settings` directly.
 
 The separation is deliberate. Input, semantic mutation, and UI reaction are not collapsed into one mechanism. Each layer speaks in its own vocabulary.
 
@@ -860,7 +860,7 @@ Localisation is part of the frontend's structural discipline.
 
 The rule is simple and strict: **no hardcoded user-facing strings**. Every visible string is represented by a translation key and resolved through the localisation subsystem ([ADR‑0039](../ADRs/0039-Localisation-Architecture.md)).
 
-This is not primarily about translating the UI later. It is about keeping the UI describable, verifiable, and composable — especially once plugins and generated UI (such as the settings dialog) enter the picture.
+This is not primarily about translating the UI later. It is about keeping the UI describable, verifiable, and composable — especially once plugins and generated UI (such as the Settings window) enter the picture.
 
 ### 9.1 Translation API: `tr` and `tr-declare`
 
@@ -894,14 +894,14 @@ Localisation keys show up in several places that matter architecturally.
 **Window titles.**
 Window specs carry `:window/title-key`. The window subsystem resolves it through `tr` when building the JavaFX stage.
 
-**Dialog titles and button labels.**
-Dialogs follow the same principle: the dialog subsystem resolves `:window/title-key`, and button helpers resolve OK/Cancel keys consistently (with declared defaults).
+**Window titles and button labels.**
+Windows follow the same principle: the window subsystem resolves `:window/title-key` for the title, and button helpers resolve OK/Cancel keys consistently (with declared defaults).
 
 **Notifications and status UI.**
 Notifications accept either raw text or a `:text-key`. When a key is provided, it is resolved through `tr` and combined with any dynamic details.
 
-**Generated UI (settings dialog).**
-The settings dialog is derived from the settings registry ([ADR‑0043](../ADRs/0043-Frontend-Settings.md)). That registry carries localisation keys for category names, setting descriptions, and choice labels. Because the UI is generated, key discipline is what prevents "surprise English" from leaking into the application.
+**Generated UI (Settings window).**
+The Settings window is derived from the settings registry ([ADR‑0043](../ADRs/0043-Frontend-Settings.md)). That registry carries localisation keys for category names, setting descriptions, and choice labels. Because the UI is generated, key discipline is what prevents "surprise English" from leaking into the application.
 
 The essential idea is that every string has a stable identity, whether translated immediately or not.
 
@@ -1000,31 +1000,31 @@ First, defaults are structural, not implicit. The system always knows what the b
 
 Second, validation is explicit. A setting can define strict validation (reject invalid values), permissive modes, or transformation logic. Invalid state is not allowed to drift silently into the application.
 
-Third, all settings are registered in a central registry. This registry is what allows automatic dialog generation (see below), uniform persistence, and event publication when settings change.
+Third, all settings are registered in a central registry. This registry is what allows automatic Settings window generation (see below), uniform persistence, and event publication when settings change.
 
 The frontend reads settings through a small API (`get-app-setting`, etc.) rather than directly touching storage. Mutation flows through a controlled path so that validation and event publication happen consistently.
 
-### 10.2 Automatic Settings Dialog
+### 10.2 Automatic Settings Window
 
-Because settings are declared structurally, the settings dialog does not need to be manually assembled field by field.
+Because settings are declared structurally, the Settings window does not need to be manually assembled field by field.
 
 Instead:
 
 * Settings are grouped by category.
-* Categories map to tabs in the dialog.
+* Categories map to tabs in the window.
 * Choice maps become ComboBoxes.
 * Boolean settings become checkboxes.
 * Text and validated settings become TextFields.
 
 The settings window (`settings_window.clj`) follows the content builder pattern ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). `show-settings!` manages lifecycle through the UI Manager; `show-window!` ensures the window is a singleton — opening it twice brings the existing instance to the front. Internally, the window is a TabPane with one tab per settings category namespace, each tab holding a ScrollPane of setting rows. Controls derive from registry metadata: a `:choices` entry becomes a ComboBox inside an AtlantaFX Tile; a validator-equipped text setting becomes a TextField that commits on Enter or focus loss. Each field has a per-field reset button; a "Reset All to Defaults" button at the bottom resets every setting in the active tab category after confirmation.
 
-The result is a dialog that is consistent by construction:
+The result is a window that is consistent by construction:
 
 * Every visible string is a localisation key (Section 9).
 * Validation logic lives with the setting definition.
 * New settings appear automatically when declared.
 
-There is no duplication between "settings storage" and "settings UI." The dialog is a projection of the registry.
+There is no duplication between "settings storage" and "settings UI." The window is a projection of the registry.
 
 ### 10.3 Settings Events and Live Updates
 
@@ -1189,7 +1189,7 @@ Because UI structure is expressed as data (cljfx specs), most builder functions 
 
 You can:
 
-* Construct a window or dialog spec.
+* Construct a window spec.
 * Inspect its structure.
 * Assert the presence of required `:window/*` keys.
 * Verify that translation keys are used instead of literals.
@@ -1206,11 +1206,11 @@ Integration tests operate at the boundary between pure description and materiali
 These tests:
 
 * Cross the JAT boundary intentionally.
-* Materialise real stages or dialogs.
+* Materialise real stages.
 * Simulate user interaction where necessary.
 * Verify event publication and lifecycle wiring.
 
-Because lifecycle entry points are centralised (`show-window!`, `close-window!`, dialog helpers), integration testing can focus on those choke points rather than attempting to observe arbitrary widget state.
+Because lifecycle entry points are centralised (`show-window!`, `close-window!`, `show-confirmation!`), integration testing can focus on those choke points rather than attempting to observe arbitrary widget state.
 
 The explicit boundaries make integration testing narrower and more predictable.
 

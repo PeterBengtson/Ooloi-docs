@@ -4,7 +4,7 @@
 
 Accepted - February 12, 2026
 Updated - February 13, 2026 (Defaults declared in def-app-setting; event bus integration)
-Updated - February 16, 2026 (Settings dialog implemented; code references added)
+Updated - February 16, 2026 (Settings window implemented; code references added)
 
 ## Table of Contents
 - [Context](#context)
@@ -18,7 +18,7 @@ Updated - February 16, 2026 (Settings dialog implemented; code references added)
   - [Storage](#storage)
   - [API](#api)
   - [Settings Registry](#settings-registry)
-  - [Settings Dialog](#settings-dialog)
+  - [Settings Window](#settings-window)
 - [Rationale](#rationale)
 - [Implementation](#implementation)
 - [Consequences](#consequences)
@@ -44,7 +44,7 @@ These two systems are fundamentally different:
 | **Mechanism** | Multimethods, VPD dispatch, STM | Atom, write-through to disk |
 | **Validation** | Set or predicate | Set with tr-keyed choice labels, or predicate |
 | **API** | Generated `get-<name>` / `set-<name>` per setting | Generic `get-app-setting` / `set-app-setting!` |
-| **UI integration** | None (backend) | Choices map with translated labels for Settings dialog |
+| **UI integration** | None (backend) | Choices map with translated labels for Settings window |
 
 ### Requirements
 
@@ -52,7 +52,7 @@ These two systems are fundamentally different:
 2. **Defaults**: Ship default values as a generated classpath resource, always available
 3. **Validation**: Prevent invalid values at write time (enumerated choices or predicate)
 4. **Translation**: Setting names, descriptions, and choice labels must be translatable ([ADR-0039](0039-Localisation-Architecture.md))
-5. **Introspection**: A registry of all settings enables automatic Settings dialog generation
+5. **Introspection**: A registry of all settings enables automatic Settings window generation
 6. **Simplicity**: No component machinery — settings are global state, an atom is the honest representation
 7. **Write-through**: Every change persists immediately — settings change rarely, I/O cost is negligible
 
@@ -62,7 +62,7 @@ These two systems are fundamentally different:
 
 Frontend settings use a `defonce` atom holding a map of namespaced keywords to values. Settings are lazy-loaded on first access: defaults from a generated classpath resource, overridden by the user's settings file (if it exists). Every change writes the full map to disk immediately and publishes a `:setting-changed` event on the frontend event bus ([ADR-0031](0031-Frontend-Event-Driven-Architecture.md)).
 
-A settings registry (separate from the settings atom) holds metadata about each setting: default value, validator, and choice labels. Default values are declared in `def-app-setting` alongside validation rules. A `lein frontend-settings` build task generates the defaults resource file from these declarations — the generated file is the runtime artifact, not a hand-maintained source of truth. This registry enables the Settings dialog to enumerate settings by category and render appropriate controls.
+A settings registry (separate from the settings atom) holds metadata about each setting: default value, validator, and choice labels. Default values are declared in `def-app-setting` alongside validation rules. A `lein frontend-settings` build task generates the defaults resource file from these declarations — the generated file is the runtime artifact, not a hand-maintained source of truth. This registry enables the Settings window to enumerate settings by category and render appropriate controls.
 
 ### Setting Definitions
 
@@ -85,13 +85,13 @@ Settings use namespaced keywords with the namespace as category:
 - `:ui/theme` — category `:ui`, setting `:theme`
 - `:editor/auto-save` — category `:editor`, setting `:auto-save`
 
-Categories map to tabs in the Settings dialog.
+Categories map to tabs in the Settings window.
 
 ### Validation Architecture
 
 Two validation modes, mirroring [ADR-0016](0016-Settings.md)'s pattern:
 
-**Choices map** — for enumerated values. The map keys are the valid values; the map values are `tr` keys for display labels. Validation is automatic (`contains?` on keys). The Settings dialog renders a dropdown.
+**Choices map** — for enumerated values. The map keys are the valid values; the map values are `tr` keys for display labels. Validation is automatic (`contains?` on keys). The Settings window renders a dropdown.
 
 ```clojure
 (def-app-setting :ui/theme
@@ -100,7 +100,7 @@ Two validation modes, mirroring [ADR-0016](0016-Settings.md)'s pattern:
              :nord-light :setting.ui.theme.nord-light}})
 ```
 
-**Validator function** — for open-ended values. A predicate function that returns truthy for valid values. Validator-based settings include an optional `:control` key that declares the UI control type for the Settings dialog:
+**Validator function** — for open-ended values. A predicate function that returns truthy for valid values. Validator-based settings include an optional `:control` key that declares the UI control type for the Settings window:
 
 ```clojure
 (def-app-setting :user/email
@@ -170,7 +170,7 @@ All keys must appear as literals in `tr-declare` — no computed keys ([ADR-0039
 
 ### API
 
-Module: `frontend/src/main/clojure/ooloi/frontend/ui/app_settings.clj`
+Module: `frontend/src/main/clojure/ooloi/frontend/app_settings.clj`
 
 ```clojure
 ;; Read a setting (lazy-loads on first access)
@@ -186,7 +186,7 @@ Module: `frontend/src/main/clojure/ooloi/frontend/ui/app_settings.clj`
              :nord-light :setting.ui.theme.nord-light}})
 ```
 
-**Event integration:** Every `set-app-setting!` call publishes a `{:type :setting-changed :key <key> :old-value <old> :new-value <new> :timestamp <ms>}` event to the `:settings` category on the frontend event bus ([ADR-0031](0031-Frontend-Event-Driven-Architecture.md)). The UI Manager subscribes to this category and dispatches reactions — e.g. a theme change triggers `apply-theme-to-all!`.
+**Event integration:** Every `set-app-setting!` call publishes a `{:type :setting-changed :key <key> :old-value <old> :new-value <new> :timestamp <ms>}` event to the `:app-settings` category on the frontend event bus ([ADR-0031](0031-Frontend-Event-Driven-Architecture.md)). The UI Manager subscribes to this category and dispatches reactions — e.g. a theme change triggers `apply-theme-to-all!`, a locale change calls `tr/set-locale!` then refreshes all registered renderer atoms.
 
 **Lazy loading:** Settings are loaded on first `get-app-setting` or `set-app-setting!` call, not at an explicit startup point. This eliminates ordering dependencies in the startup sequence. The load itself is a pure EDN file read with no dependency on i18n or other infrastructure — so even if `:ui/language` is an app setting, the i18n system can safely call `get-app-setting` during `set-locale!` without circular dependencies.
 
@@ -213,14 +213,14 @@ A `defonce` atom holding metadata for all registered settings, including default
 Every `def-app-setting` call populates the registry with the default value, validation rules, and UI metadata. Since defaults and validation come from the same declaration, they cannot diverge.
 
 The registry enables:
-- **Settings dialog generation**: enumerate all settings, group by category (keyword namespace), render appropriate controls (dropdown for choices, declared control type for validators)
+- **Settings window generation**: enumerate all settings, group by category (keyword namespace), render appropriate controls (dropdown for choices, declared control type for validators)
 - **Validation**: `set-app-setting!` looks up the validator/choices from the registry
-- **Reset to default**: the Settings dialog reads the `:default` from the registry
+- **Reset to default**: the Settings window reads the `:default` from the registry
 - **Defaults resource generation**: `lein frontend-settings` extracts `:default` values from the registry to produce the classpath resource
 
-### Settings Dialog
+### Settings Window
 
-The settings registry provides everything needed to generate a Settings dialog:
+The settings registry provides everything needed to generate a Settings window:
 
 - **Tabs**: one per category (`:ui`, `:editor`, etc.), labels via `tr` with convention `:setting-category.<category>` (e.g. `(tr :setting-category.ui)`)
 - **Controls**: deterministic mapping from registry metadata:
@@ -234,7 +234,7 @@ The settings registry provides everything needed to generate a Settings dialog:
 - **Choice labels**: `(tr :setting.ui.theme.nord-dark)` → "Dark"
 - **Validation feedback**: immediate validation on input change
 
-The Settings dialog is implemented in `settings_dialog.clj`, consuming the registry to generate the UI automatically. It follows the content builder pattern (ADR-0042): `build-settings-content!` (private) constructs a TabPane with one tab per category, and `show-settings!` (public) handles lifecycle via the UI Manager. Each tab contains a ScrollPane of setting rows — `Tile` + `ComboBox` for choices, `Tile` + `TextField` for validator-based settings — each with a per-field reset button. A unified bottom bar provides Reset All Defaults (scoped to the active tab's category) and OK.
+The Settings window is implemented in `app_settings_window.clj` (`frontend/src/main/clojure/ooloi/frontend/ui/app/app_settings_window.clj`), consuming the registry to generate the UI automatically. It follows the content builder pattern (ADR-0042): `build-settings-content!` (private) constructs a TabPane with one tab per category, and `show-app-settings!` (public) handles lifecycle via the UI Manager. Each tab contains a ScrollPane of setting rows — `Tile` + `ComboBox` for choices, `Tile` + `TextField` for validator-based settings — each with a per-field reset button. A unified bottom bar provides Reset All Defaults (scoped to the active tab's category) and OK.
 
 ## Rationale
 
@@ -264,7 +264,7 @@ The `setting.<category>.<name>` convention enables systematic key derivation whi
 
 ## Implementation
 
-The frontend settings system is implemented in `frontend/src/main/clojure/ooloi/frontend/ui/app_settings.clj` with:
+The frontend settings system is implemented in `frontend/src/main/clojure/ooloi/frontend/app_settings.clj` with:
 
 - `def-app-setting` — registers setting metadata (default, choices/validator) in the registry
 - `get-app-setting` — reads from settings atom; lazy-loads on first call
@@ -272,7 +272,7 @@ The frontend settings system is implemented in `frontend/src/main/clojure/ooloi/
 
 Default values are declared in `def-app-setting` and extracted into `shared/resources/app-settings/settings.edn` by the `lein frontend-settings` build task. User settings are stored in the platform-specific directory via `platform/get-platform-directory "Ooloi" "app-settings"`.
 
-The Settings dialog (`settings_dialog.clj`) consumes the registry to generate UI controls automatically, following the content builder pattern (ADR-0042). `system.clj` maps the `:ui/open-settings` action handler to a one-line delegation to `show-settings!`.
+The Settings window (`app_settings_window.clj`) consumes the registry to generate UI controls automatically, following the content builder pattern (ADR-0042). `system.clj` maps the `:ui/show-app-settings` action handler to a one-line delegation to `show-app-settings!`.
 
 ## Consequences
 
@@ -280,7 +280,7 @@ The Settings dialog (`settings_dialog.clj`) consumes the registry to generate UI
 
 1. **Simple and honest**: Global state in an atom — no unnecessary machinery
 2. **Persistent**: Settings survive restarts via write-through EDN
-3. **Introspectable**: Registry enables automatic Settings dialog generation
+3. **Introspectable**: Registry enables automatic Settings window generation
 4. **Translatable**: Full i18n integration for names, descriptions, and choice labels
 5. **Validated**: Invalid values prevented at write time
 6. **Consistent**: Validation patterns mirror [ADR-0016](0016-Settings.md) (set/predicate)
@@ -360,17 +360,17 @@ Require `load-app-settings!` call in system.clj startup sequence.
 - [ADR-0016: Settings](0016-Settings.md) — Backend per-piece entity settings; validation pattern (set/predicate) borrowed here
 - [ADR-0039: Localisation Architecture](0039-Localisation-Architecture.md) — Translation integration, `tr`/`tr-declare` API, literal key constraint
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) — Frontend event bus; `set-app-setting!` publishes `:setting-changed` events
-- [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) — Dialog/window patterns for Settings dialog implementation
+- [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) — Window patterns for Settings window implementation
 
 ## Related Guides
 
 - [ADR-0044: MIDI Input Library and Boundary Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture.md) — Device selection persistence via `def-app-setting` is cited in ADR-0044 as a consequence of the MIDI input architecture
-- [MIDI in Ooloi](../guides/MIDI_IN_OOLOI.md) — MIDI device selection is stored as `:midi/input-device-id` in the frontend settings system; the settings dialog auto-generates a dropdown populated with currently available physical input devices
+- [MIDI in Ooloi](../guides/MIDI_IN_OOLOI.md) — MIDI device selection is stored as `:midi/input-device-id` in the frontend settings system; the Settings window auto-generates a dropdown populated with currently available physical input devices
 
 ## Code References
 
-- `frontend/src/main/clojure/ooloi/frontend/ui/app_settings.clj` — Settings system implementation
-- `frontend/src/main/clojure/ooloi/frontend/ui/settings_dialog.clj` — Settings dialog (content builder pattern, ADR-0042)
+- `frontend/src/main/clojure/ooloi/frontend/app_settings.clj` — Settings system implementation
+- `frontend/src/main/clojure/ooloi/frontend/ui/app/app_settings_window.clj` — Settings window (content builder pattern, ADR-0042)
 - `shared/resources/app-settings/defaults.edn` — Generated defaults resource (produced by `lein frontend-settings`)
 - `frontend/src/main/clojure/ooloi/frontend/ui/theme.clj` — Theme module consuming settings
 - `shared/src/main/clojure/ooloi/shared/platform.clj` — Platform-specific directory paths

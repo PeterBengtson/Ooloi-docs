@@ -135,7 +135,7 @@ startup.
 
 The selected device is stored as a frontend app setting — `:midi/input-device-id` —
 under the settings system described in [ADR-0043](ADRs/0043-Frontend-Settings.md).
-The settings dialog auto-generates a dropdown populated with currently available
+The Settings window auto-generates a dropdown populated with currently available
 physical input devices. Virtual and loopback ports are excluded by heuristic (names
 containing "Virtual", "Through", "IAC", "Bus", and similar markers). When only one
 unambiguous physical device is present and no preference has been saved, it is
