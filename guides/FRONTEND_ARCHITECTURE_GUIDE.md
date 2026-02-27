@@ -381,9 +381,14 @@ cljfx supports functions as `:fx/type` values. Each Ooloi custom component funct
              :text    (tr text-key)
              :min-width 90.0)))
 
-;; Usage — keyword-only spec, serialisable over gRPC
+;; Non-reactive: :text-key resolved at materialisation (for gRPC plugins, static content)
 {:fx/type ooloi-button
- :text-key :piece-window.piece-settings-button}
+ :text-key :common.save}
+
+;; Reactive: :raw-text (tr key) resolved at spec-construction time (for locale-sensitive windows)
+{:fx/type ooloi-button
+ :raw-text (tr :piece-window.piece-settings-button)
+ :on-action {:ooloi/event :ui/show-piece-settings}}
 ```
 
 Resolution happens at render time on the frontend, where the locale is known. The spec author — whether frontend code or a backend plugin — writes `:text-key :some.key`. The infrastructure calls `tr` at materialisation.
@@ -408,7 +413,7 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-menu-item` | `:text-key` | `:menu-item` |
 | `ooloi-menu` | `:text-key` | `:menu` |
 | `ooloi-command-item` | `:descriptor`, `:state` | `:menu-item` with resolved text and `:disable` |
-| `ooloi-notification` | `:text-key`, `:type`, `:icon`, `:opacity` | AtlantaFX `Notification` node |
+| `ooloi-notification` | `:text-key`, `:raw-text`, `:type`, `:icon`, `:opacity`, `:min-height` | AtlantaFX `Notification` node |
 
 **Composite components** encode Ooloi's layout conventions, not just atomic elements:
 
@@ -448,7 +453,7 @@ These two responsibilities never overlap.
   Stage → window-registry
 ```
 
-Each call to `piece-window-content` allocates a fresh, independent state atom. This means any number of piece windows can be open simultaneously — each has fully isolated state, its own renderer, and its own lifecycle. When the window closes, a one-shot `:window-lifecycle` subscriber calls `cljfx/unmount-renderer`, releasing the atom watch.
+Each call to `piece-window-content` allocates a fresh, independent state atom. This means any number of piece windows can be open simultaneously — each has fully isolated state, its own renderer, and its own lifecycle. A `:window-lifecycle` subscriber handles two events: on `:window-opened`, it calls `ui-manager/register-renderer!` to opt the window into locale and theme reactivity; on `:window-closed`, it calls `cljfx/unmount-renderer`, releasing the atom watch.
 
 The renderer is created with two configurations:
 

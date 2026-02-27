@@ -220,7 +220,7 @@ show-about-fn (fn [] (about/show-about! mgr dispatch-fn))
 
 This pattern ensures all windows go through the same path regardless of their content complexity.
 
-### Custom cljfx Component Functions (Updated 2026-02-19)
+### Custom cljfx Component Functions (Updated 2026-02-27)
 
 cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to define a library of custom component functions in `ooloi.frontend.ui.core.cljfx`. Each function:
 
