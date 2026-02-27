@@ -441,7 +441,7 @@ The window manager infrastructure automatically applies the configured UI theme 
 - `build-window!` in `window.clj` calls `(theme/apply-theme!)` when constructing each
   Stage — theme is applied as a global JavaFX user agent stylesheet, so all Scenes
   receive it automatically
-- Theme changes propagate to all open windows via `apply-theme-to-all!` in the UI Manager
+- Theme changes propagate to all open windows via `apply-theme-to-all!` in the UI Manager, which also calls `refresh-menu-text!` to update dynamic menu items (e.g. "Switch to Light Mode")
 
 **Benefits:**
 - Visual consistency enforced by architecture
