@@ -595,15 +595,7 @@ JavaFX controls ship with default style classes that AtlantaFX uses as CSS selec
 
 **To check the defaults for any control:** look in the cljfx jar source (e.g. `cljfx/fx/combo_box.clj`) for the `:style-class` property's `:default` value. That is the list you must reproduce when specifying `:style-class`.
 
-**Safer alternative** — use `:on-created` to *add* to the existing list instead of replacing it:
-
-```clojure
-{:fx/type ext-on-instance-lifecycle
- :desc {:fx/type :combo-box ...}
- :on-created (fn [node] (.add (.getStyleClass node) Styles/DENSE))}
-```
-
-This leaves the JavaFX defaults intact and appends your additions. It is the safest approach when you only need to add one or two classes.
+**Tempting shortcut — do not use:** using `ext-on-instance-lifecycle :on-created` to call `.add` on the style class list sidesteps the need to know the defaults, but it breaks the pure-data spec paradigm. The result is no longer serialisable over gRPC, no longer testable without JavaFX, and is inconsistent with ADR-0042's core requirement. There is one correct approach: write the complete `:style-class` list in the spec.
 
 **Consequence of stripping base classes:** AtlantaFX simulates control borders using multi-stop `-fx-background-color` layers — the outermost stop is the border paint, the inner stop is the fill. The border-rendering CSS rule is anchored to the base selector (e.g. `.combo-box-base`). Without that class on the node, the rule never fires and the control appears as plain text on the background with no visible border.
 
