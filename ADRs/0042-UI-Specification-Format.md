@@ -238,9 +238,14 @@ cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to 
              :text (tr text-key)
              :min-width 90.0)))
 
-;; Usage — keywords, no tr calls, serialisable over gRPC
+;; Non-reactive usage — no tr calls at call site, serialisable over gRPC
 {:fx/type ooloi-button
- :text-key :piece-window.piece-settings-button}
+ :text-key :common.save}
+
+;; Reactive renderer usage — tr at call site so cljfx sees changed props on locale change;
+;; identical :text-key props would cause cljfx to skip re-invoking ooloi-button
+{:fx/type ooloi-button
+ :raw-text (tr :piece-window.piece-settings-button)}
 
 ;; Composite component — encapsulates layout convention
 {:fx/type ooloi-button-bar
@@ -264,7 +269,7 @@ cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to 
 
 The complete component inventory is in the `ooloi.frontend.ui.core.cljfx` namespace.
 
-### Per-Window Reactive Renderer (Updated 2026-02-19)
+### Per-Window Reactive Renderer (Updated 2026-02-27)
 
 Windows with rich, stateful content use a **per-window cljfx renderer** alongside the standard `show-window!` boundary. The renderer manages the **content** node reactively; the UI Manager manages the **Stage**. These two responsibilities are absolute and never overlap.
 
@@ -330,7 +335,7 @@ Map event flow:
 3. The renderer is called once with the initial state. `cljfx/mount-renderer` then keeps it watching the atom.
 4. `cljfx/instance` extracts the JavaFX Node. This is passed as `:window/content` in the `:window-open-requested` event.
 5. The renderer continues managing the Node reactively after the window opens — `swap!`ing the state atom diffs and patches the live scene graph without Stage recreation.
-6. A one-shot `:window-lifecycle` subscriber calls `cljfx/unmount-renderer` when `:window-closed` fires for the window's id, releasing the atom watch.
+6. A `:window-lifecycle` subscriber handles two events for the window's id: `:window-opened` calls `(ui-manager/register-renderer! manager window-id *state)` to enrol the atom in locale/theme reactivity; `:window-closed` calls `cljfx/unmount-renderer` to release the atom watch and unsubscribes the handler.
 
 Because each call to `piece-window-content` allocates a fresh atom and renderer, any number of piece windows can be open simultaneously with fully isolated state.
 
