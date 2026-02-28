@@ -267,6 +267,16 @@ cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to 
   => (contains {:style-class ["accent"] :disable false}))
 ```
 
+**One-method principle:** Application code never uses raw `:fx/type :combo-box`, `:text-field`, or bare `:button` directly. Every control type has a corresponding formatter. This means the `:style-class` setAll() complexity (see below) is contained in exactly one place — the formatter function — and call sites cannot accidentally strip a base class.
+
+Three formatters exist specifically for dense form controls:
+
+| Formatter | Encapsulates |
+|-----------|--------------|
+| `ooloi-dense-combo-box` | `["combo-box" "combo-box-base" Styles/DENSE]` style-class set |
+| `ooloi-dense-text-field` | `["text-input" "text-field" Styles/DENSE]` style-class set |
+| `ooloi-icon-button` | `ext-instance-factory` wrapping `FontIcon` + `["button" Styles/FLAT]` |
+
 The complete component inventory is in the `ooloi.frontend.ui.core.cljfx` namespace.
 
 ### Per-Window Reactive Renderer (Updated 2026-02-27)
@@ -602,6 +612,8 @@ JavaFX controls ship with default style classes that AtlantaFX uses as CSS selec
 
 **Tempting shortcut — do not use:** using `ext-on-instance-lifecycle :on-created` to call `.add` on the style class list sidesteps the need to know the defaults, but it breaks the pure-data spec paradigm. The result is no longer serialisable over gRPC, no longer testable without JavaFX, and is inconsistent with ADR-0042's core requirement. There is one correct approach: write the complete `:style-class` list in the spec.
 
+**Formatter functions eliminate the risk entirely.** The `ooloi-dense-combo-box` and `ooloi-dense-text-field` formatters in `ooloi.frontend.ui.core.cljfx` embed the correct `:style-class` list internally. Application code that uses these formatters as `:fx/type` values cannot accidentally strip a base class — the formatter enforces the correct set unconditionally.
+
 **Consequence of stripping base classes:** AtlantaFX simulates control borders using multi-stop `-fx-background-color` layers — the outermost stop is the border paint, the inner stop is the fill. The border-rendering CSS rule is anchored to the base selector (e.g. `.combo-box-base`). Without that class on the node, the rule never fires and the control appears as plain text on the background with no visible border.
 
 #### AtlantaFX Style Class Reference
@@ -842,12 +854,12 @@ Menu items in Ooloi are defined as **command descriptors** — pure maps that ea
  :on-action {:event/type :ui/connect-dialog}}      ; What happens when selected
 ```
 
-A small pure rendering function transforms each descriptor into a cljfx menu-item map. At render time, it applies the `:enabled?` predicate against current UI state to produce a concrete `:disable` boolean, and keeps `:text-key` unresolved (the frontend's i18n layer resolves translation keys to strings, consistent with ADR-0039):
+A small pure rendering function transforms each descriptor into a cljfx menu-item map. At render time, it applies the `:enabled?` predicate against current UI state to produce a concrete `:disable` boolean, and resolves `:text-key` to `:text` via `tr` (consistent with ADR-0039 — no translation keys in a materialised cljfx map):
 
 ```clojure
 ;; What the rendering function produces from the descriptor above
 {:fx/type :menu-item
- :text-key :menu.file.connect
+ :text "Connect to server…"      ; resolved from :menu.file.connect via tr
  :accelerator {:key :O :mods [:shortcut :shift]}
  :disable true   ; result of (not ((:enabled? cmd) current-state))
  :on-action {:event/type :ui/connect-dialog}}
