@@ -3,7 +3,7 @@
 **Status:** ACCEPTED
 **Date:** 2025-10-15
 **Implemented:** 2026-01-26
-**Updated:** 2026-02-13 (Frontend event bus as Integrant component, Event Router as pure pipeline, nomenclature clarification)
+**Updated:** 2026-02-13 (Frontend event bus as Integrant component, Event Router as pure pipeline, nomenclature clarification); 2026-02-28 (Added :piece-structure and :piece-settings event categories for Steps 4 and 6 of the development sequence)
 
 ---
 
@@ -585,6 +585,36 @@ The Event Router derives routing categories from backend event types. This mappi
 
 ---
 
+**Piece Structure** (`:piece-structure` category):
+```clojure
+:piece-structure-changed  ; Structural metadata changed: musicians, instruments,
+                          ; layouts, staff participation, piece title
+```
+
+**Required fields**: `:piece-id` (string), `:timestamp` (number)
+**Payload fields**: none — clients fetch current structure via `get-piece-structure`
+**Subscriber reaction**: Piece window calls `(SRV/get-piece-structure piece-id)`, places
+result into `*piece-state` via `swap!`. The cljfx renderer repopulates Musicians and
+Layouts panes reactively. No paintlist impact; no Fetch Coordinator involvement.
+
+---
+
+**Piece Settings** (`:piece-settings` category):
+```clojure
+:piece-setting-changed  ; A defsetting value changed on the backend
+```
+
+**Required fields**: `:piece-id` (string), `:timestamp` (number)
+**Payload fields**: `:setting-key` (keyword), `:old-value`, `:new-value`
+**Note**: The `:piece-setting-changed` event **never triggers paintlist fetching**. Graphical
+consequences of setting changes travel independently as `:piece-invalidation` events (→
+`:cache-invalidation`). The two event types are architecturally separate and must never be
+conflated.
+**Subscriber reaction**: Piece settings window (if open for this piece-id) refreshes the
+control for `:setting-key` using `:new-value`. No Fetch Coordinator involvement.
+
+---
+
 #### Category Derivation Logic
 
 ```clojure
@@ -613,6 +643,12 @@ The Event Router derives routing categories from backend event types. This mappi
      :server-status
      :server-client-connected
      :server-client-disconnected) :system
+
+    ;; Piece structure
+    :piece-structure-changed :piece-structure
+
+    ;; Piece settings
+    :piece-setting-changed :piece-settings
 
     ;; Everything else defaults to notification
     :notification))

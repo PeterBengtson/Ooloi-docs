@@ -217,6 +217,18 @@ All event types must follow naming pattern enforced by `validate-event-structure
 - `:server-info` - Informational message
 - `:client-registration-confirmed` - Client registration successful
 
+**Piece Structure Events**:
+- `:piece-structure-changed` — Structural metadata changed: musicians, instruments, layouts,
+  staff participation, or piece title. Carries no payload beyond `:piece-id` and
+  `:timestamp`; clients fetch current structure via `get-piece-structure`. Valid under the
+  `piece-` prefix naming rule.
+
+**Piece Settings Events**:
+- `:piece-setting-changed` — A `defsetting` value changed. Carries `:piece-id`,
+  `:setting-key`, `:old-value`, `:new-value`, `:timestamp`. Graphical consequences travel
+  separately as `:piece-invalidation`. The two event types must never be conflated. Valid
+  under the `piece-` prefix naming rule.
+
 ### Event Lifecycle and Processing
 
 **Event Creation** (Server-side):
