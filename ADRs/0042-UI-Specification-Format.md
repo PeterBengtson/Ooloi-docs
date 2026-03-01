@@ -12,9 +12,9 @@
 - [Decision](#decision)
   - [Approach](#approach)
   - [Metadata Keys](#metadata-keys)
-  - [Content Builder Pattern](#content-builder-pattern-updated-2026-02-19)
-  - [Custom cljfx Component Functions](#custom-cljfx-component-functions-updated-2026-02-19)
-  - [Per-Window Reactive Renderer](#per-window-reactive-renderer-updated-2026-02-19)
+  - [Content Builder Pattern](#content-builder-pattern)
+  - [Custom cljfx Component Functions](#custom-cljfx-component-functions)
+  - [Per-Window Reactive Renderer](#per-window-reactive-renderer)
   - [Architectural Invariants](#architectural-invariants)
   - [Theme-Independent Styling](#theme-independent-styling)
   - [Command Descriptors (Menu Specialisation)](#command-descriptors-menu-specialisation)
@@ -178,7 +178,7 @@ Backend plugins currently use piece settings (ADR-0016) with auto-generated UI v
 - Spec authors must use `:window/title-key` for all titles — all user-facing strings must be localisable per ADR-0039
 - No production code should pass hardcoded strings via `:title`; all window titles go through `tr-declare` + `:window/title-key`
 
-### Content Builder Pattern (Updated 2026-02-19)
+### Content Builder Pattern
 
 UI elements that need custom content — splash screens, About windows, piece windows, settings windows — follow the **content builder pattern**. A private content function constructs the content; the public `show-*!` function materialises it and publishes a `:window-open-requested` event to `:window-requests`. The UI Manager subscriber handles everything else: Stage creation, theming, registry, platform concerns.
 
@@ -217,7 +217,7 @@ show-about-fn (fn [] (about/show-about! mgr dispatch-fn))
 
 This pattern ensures all windows go through the same path regardless of their content complexity.
 
-### Custom cljfx Component Functions (Updated 2026-02-27)
+### Custom cljfx Component Functions
 
 cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to define a library of custom component functions in `ooloi.frontend.ui.core.cljfx`. Each function:
 
@@ -276,7 +276,7 @@ Three formatters exist specifically for dense form controls:
 
 The complete component inventory is in the `ooloi.frontend.ui.core.cljfx` namespace.
 
-### Per-Window Reactive Renderer (Updated 2026-02-27)
+### Per-Window Reactive Renderer
 
 Windows with rich, stateful content use a **per-window cljfx renderer** alongside the standard `show-window!` boundary. The renderer manages the **content** node reactively; the UI Manager manages the **Stage**. These two responsibilities are absolute and never overlap.
 
@@ -919,7 +919,7 @@ The menu bar itself is also pure data. A function assembles descriptors into a c
   
 ### Window Manager Integration
 
-**Implementation Note (Updated 2026-02-17)**: The actual implementation uses an atom + lock architecture for thread-safe persistence. Window geometry is persisted on close (immediate), move, and resize (debounced 250ms) — not just on shutdown. An in-memory atom is the source of truth; disk writes are serialized via a lock. `show-window!` restores persisted geometry on open. Windows with `:window/persist? false` (e.g. splash screen) skip both persistence and restore.
+The implementation uses an atom + lock architecture for thread-safe persistence. Window geometry is persisted on close (immediate), move, and resize (debounced 250ms) — not just on shutdown. An in-memory atom is the source of truth; disk writes are serialized via a lock. `show-window!` restores persisted geometry on open. Windows with `:window/persist? false` (e.g. splash screen) skip both persistence and restore.
 
 ```clojure
 ;; show-window! restores persisted geometry (when :window/persist? is true, the default)

@@ -52,7 +52,7 @@ Remote developers need a **single, consistent mental model** based on VPDs, whil
 
 We will implement **unified Clojure-aware gRPC architecture with server-to-client event notifications** using the following approach:
 
-### 1. Unified Protobuf Schema (Updated 2025)
+### 1. Unified Protobuf Schema
 
 **Paradigm Shift**: Replace complex API introspection with a **unified Clojure-aware protobuf schema**:
 - **Unified OoloiValue message** handles all Clojure data types (ratios, keywords, maps, vectors, sets)
