@@ -981,6 +981,25 @@ A few habits make localisation frictionless:
 
 Once you work this way for a little while, it becomes natural. The benefit is that UI composition remains clean, build verification remains strict, and the system can generate UI without accidentally hardcoding language.
 
+### 9.8 Locale Reactivity and the Renderer Boundary
+
+When the locale changes, `tr` immediately returns strings from the new catalog. The UI does not update itself automatically — something must cause each renderer to re-evaluate its spec function.
+
+The UI Manager is that something. When it receives a `:setting-changed` event for `:ui/locale`, it calls `tr/set-locale!` synchronously on the event bus thread, then posts `(fx/run-later! ...)` to the JavaFX Application Thread to call `(swap! *state identity)` on every renderer atom held in the window registry. The `swap! identity` changes nothing in the atom — it triggers the renderer to re-evaluate the spec function with the same state. The spec function calls `tr` for every visible string; those calls now return the new locale's text. cljfx diffs the new spec against the current scene graph and patches only what changed.
+
+**The locale change cascade in sequence:**
+
+1. User changes locale in the Settings window.
+2. UI Manager receives `:setting-changed {:key :ui/locale}`.
+3. `tr/set-locale!` is called — the active catalog is switched.
+4. Menu bar item texts are refreshed via `refresh-dynamic-items!`, using `::menu-name-key` and `::static-text-key` properties stored on JavaFX menu nodes.
+5. macOS application menu items are refreshed if running on macOS.
+6. `(fx/run-later! (fn [] (swap! *state identity)))` is posted for every registered renderer atom.
+7. Each renderer re-evaluates, calling `tr` per visible string. cljfx patches only changed labels.
+8. Stage titles are refreshed from `:window/title-key` stored in the window registry.
+
+**The renderer spec is the locale-reactivity boundary.** Only content the renderer re-evaluates on `swap!` gets updated. Content built by one-time `cljfx/create-component` + `cljfx/instance` at window creation time — without `cljfx/mount-renderer` watching it — is constructed once and never revisited. This is the correct choice for truly static content (confirmation dialogs, the splash screen). For any window with locale-sensitive strings, all visible content must be returned by the spec function that the renderer's `:middleware` evaluates. Button labels, section headings, and field prompts built outside the renderer spec will silently display the locale active at window-open time and will not respond to locale changes.
+
 ---
 
 ## 10. Settings System
@@ -1376,6 +1395,18 @@ The reason is architectural, not cosmetic. UI specifications are pure data that 
 AtlantaFX follows the GitHub Primer semantic colour model. Tokens describe purpose, not appearance: `-color-fg-muted` is "de-emphasised foreground text," not "medium grey." The same token resolves to different concrete values in dark and light mode automatically.
 
 Two narrow exceptions exist: pre-theme rendering (the splash screen, which displays before any AtlantaFX stylesheet is loaded) and theme-aware transparency overlays whose blending cannot be expressed as a single semantic token. Both are documented explicitly and not imitable by general UI code.
+
+### 13.10 Renderer Spec Is the Locale-Reactivity Boundary
+
+All locale-sensitive content — button labels, section headings, field prompts, window subtitles — must live inside the renderer spec.
+
+The locale change cascade (`swap! *state identity` on all registered renderer atoms) only updates content that the renderer re-evaluates. Content materialised once by `cljfx/create-component` + `cljfx/instance` at window creation time is built once and never revisited. It silently displays the locale that was active when the window opened.
+
+**Invariant:** If a window module uses a standalone `cljfx/create-component` call at window-creation time for content that contains user-visible strings, those strings will not update on locale change.
+
+The correct model: the renderer's `:middleware` function returns a spec that includes all visible content. `cljfx/instance @(renderer @*state)` extracts the initial JavaFX Node. `cljfx/mount-renderer` keeps the renderer watching the atom. All subsequent re-renders flow through the same spec function.
+
+One-time materialisation (`cljfx/create-component` + `cljfx/instance` without a mounted renderer) is reserved for `show-confirmation!` — a blocking modal that returns synchronously via `.showAndWait` and has no ongoing lifecycle. No other window uses it.
 
 ---
 

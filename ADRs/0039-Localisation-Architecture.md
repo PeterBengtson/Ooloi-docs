@@ -204,7 +204,20 @@ Locale loading and selection are separate:
 (set-locale! (platform/get-os-locale)) ; Auto-select based on OS
 ```
 
-**Locale switching:** Switching locales is instant (all catalogs pre-loaded). UI updates occur through JavaFX property bindings—text properties bound to observable locale state automatically re-render visible strings when the locale changes. No manual re-render coordination required.
+**Locale switching:** Switching locales is instant (all catalogs pre-loaded). UI updates are driven by the UI Manager: on a locale change it calls `tr/set-locale!` synchronously (switching the active catalog), then posts `(fx/run-later! ...)` to the JavaFX Application Thread to call `(swap! *state identity)` on every registered renderer atom. The renderer re-evaluates its spec function — which calls `tr` for every visible string — producing updated labels in the new locale. Windows register their private state atoms via `ui-manager/register-renderer!` in their `:window-opened` lifecycle handler and do not subscribe to locale changes directly.
+
+**Locale change cascade (in sequence):**
+
+1. User changes locale via the Settings window.
+2. UI Manager receives `:setting-changed {:key :ui/locale}`.
+3. `tr/set-locale!` is called — the active catalog is switched. All subsequent `tr` calls return new-locale text.
+4. Menu bar item texts are refreshed via `refresh-dynamic-items!`, using `::menu-name-key` and `::static-text-key` properties stored on JavaFX menu nodes at construction time.
+5. macOS application menu items (About, Preferences, Quit) are refreshed if running on macOS.
+6. `(fx/run-later! (fn [] (swap! *state identity)))` is posted for every registered renderer atom.
+7. Each renderer re-evaluates its spec function, calling `tr` per visible string. cljfx diffs and patches only changed nodes.
+8. Stage titles stored as `:window/title-key` in the window registry are refreshed via `(tr title-key)`.
+
+**Renderer spec is the locale-reactivity boundary.** Only content the renderer re-evaluates on `swap!` gets updated. Content built by one-time `cljfx/create-component` + `cljfx/instance` at window creation time without a mounted renderer is constructed once and never revisited. See [ADR-0042](0042-UI-Specification-Format.md) for the invariant.
 
 **In-memory format:**
 

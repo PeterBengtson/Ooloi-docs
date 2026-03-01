@@ -210,10 +210,8 @@ show-about-fn (fn [] (about/show-about! mgr dispatch-fn))
 
 **The contract:**
 - The content function is private (`defn-`). The public API is `show-*!`.
-- For cljfx-based modules: a private `*-spec` function returns a cljfx description map;
-  `show-*!` materialises it via `cljfx/create-component` + `cljfx/instance`.
-- For modules not yet fully migrated: `build-*-content!` constructs JavaFX nodes directly
-  and returns `{:root Node, ...}`.
+- A private `*-spec` function returns a cljfx description map; `show-*!` materialises it
+  via `cljfx/create-component` + `cljfx/instance`.
 - The content function never imports Stage, Scene, or StageStyle.
 - The materialised Node is placed in `:window/content` in the `:window-open-requested` event.
 - The UI Manager handles Stage creation, theming, registry tracking, and platform behaviour (e.g. `initOwner` on macOS).
@@ -375,6 +373,8 @@ This keeps each window module a **self-contained dispatch world**: internal even
 
 **Locale reactivity pattern.** Windows call `(ui-manager/register-renderer! manager window-id *state)` in their `:window-opened` lifecycle handler, passing their private state atom to the UI Manager's window registry. When the UI Manager receives a `:setting-changed` event for `:ui/locale`, it calls `tr/set-locale!` synchronously on the event bus thread, then posts `(fx/run-later! ...)` to the JAT to call `(swap! *state identity)` on every registered renderer atom. The renderer re-evaluates the spec after the locale is already updated. Windows do not subscribe to `:app-settings` directly — locale reactivity is centralised in the UI Manager. The `:window-closed` branch of the `:window-lifecycle` handler calls `cljfx/unmount-renderer`.
 
+**Renderer spec is the locale-reactivity boundary.** Only content inside the renderer spec updates when the locale changes. One-time materialisation (`cljfx/create-component` + `cljfx/instance` without `cljfx/mount-renderer`) produces content constructed once and never re-evaluated again. For a window to be locale-reactive, all its visible content — button labels, headings, field prompts — must be returned by the spec function that the renderer's `:middleware` evaluates on each render cycle. Content built outside the renderer spec silently retains the locale active at window-open time.
+
 ### Architectural Invariants
 
 **All Windowing Goes Through the UI Manager**
@@ -463,6 +463,14 @@ The window manager infrastructure automatically applies the configured UI theme 
 - Plugins don't need theme knowledge
 - Theme changes don't require spec updates
 - Separation of concerns (specification vs presentation)
+
+**All Window Content Must Live Inside the Renderer Spec**
+
+The locale change cascade (`swap! *state identity` on all registered renderer atoms) only updates content that the renderer re-evaluates on each pass. Content materialised once by standalone `cljfx/create-component` + `cljfx/instance` at window creation time — without `cljfx/mount-renderer` watching it — is built once and never revisited.
+
+**Invariant:** If a window module builds any user-visible content via a standalone `cljfx/create-component` call outside the renderer, that content will not update on locale change. It will silently display the locale that was active when the window opened.
+
+The correct model: the renderer's `:middleware` function returns a complete spec that includes all visible content. `cljfx/instance @(renderer @*state)` extracts the initial JavaFX Node; `cljfx/mount-renderer` keeps the renderer watching the atom. All subsequent re-renders flow through the same spec function.
 
 **Threading: JavaFX Application Thread Required**
 
