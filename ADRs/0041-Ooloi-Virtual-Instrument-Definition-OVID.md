@@ -33,6 +33,7 @@
   - [Missing Articulations](#missing-articulations)
   - [Missing Instruments](#missing-instruments)
   - [Cross-Library Consistency](#cross-library-consistency)
+- [DAW Templates and MIDI Mockups](#daw-templates-and-midi-mockups)
 - [Integration Points](#integration-points)
   - [ADR-0027: Plugin-Based Audio Architecture](#adr-0027-plugin-based-audio-architecture)
   - [ADR-0003: Plugin Architecture](#adr-0003-plugin-architecture)
@@ -744,6 +745,24 @@ Library manifests and fallback chains address instrument-level absence. A score 
 ### Cross-Library Consistency
 
 Calibration data normalises loudness and timing. A project using Spitfire strings with Vienna brass produces balanced, rhythmically aligned playback without manual adjustment.
+
+## DAW Templates and MIDI Mockups
+
+Composers who work with orchestral sample libraries face a workflow problem that exists entirely outside the notation program: producing quality playback requires either a *DAW template* or a *MIDI mockup*, both of which represent significant parallel effort.
+
+**DAW templates** are pre-configured DAW sessions containing a full virtual instrument setup — one track per instrument, each loaded with an appropriate sample library, expression maps configured, routing established, faders balanced, reverb sends in place. Creating a professional template takes days; maintaining it across library updates requires ongoing attention. The conventional path to quality playback from a notation program is to export MIDI and import it into the template session.
+
+**MIDI mockups** are the product of this process: a DAW rendering of a score through sample libraries, produced to give clients, producers, or collaborators an audio preview that sounds close to a final orchestral recording. The mockup requires all the same template infrastructure, plus the active work of routing the notation program's MIDI output into it.
+
+**NotePerformer** (Wallander Instruments) is the conventional in-notation alternative. Integrated as a plugin into Sibelius, Finale, Dorico, and other notation programs, it eliminates the need for a separate DAW session by buffering approximately one second of score ahead of the playback cursor. This look-ahead allows the engine to choose appropriate articulations, dynamics, and transitions based on upcoming context — compensating for the fundamental limitation of MIDI-driven notation playback, which is forward-blind at the point of note output. NotePerformer's synthesis engine produces usable orchestral sound without per-instrument configuration, at the cost of a license fee and the fixed sonic signature of its internal sounds.
+
+**OVID renders both approaches unnecessary.** Because Ooloi's playback engine has complete access to the score — not a real-time MIDI stream — it has full musical context at all times. There is no fundamental need for look-ahead: articulation selection, phrasing, and dynamic shaping can consider any context window the playback engine chooses to examine, because the entire score is the data. The MIDI stream's forward-blindness is a property of the medium; OVID does not use the medium.
+
+More concretely: the output of OVID-driven playback through a quality sample library *is* the MIDI mockup. No separate DAW session. No template to build and maintain. No export-to-MIDI-and-import cycle. A composer writes notation; playback through OVID-controlled instruments produces the orchestral rendering directly, using the same professional libraries they would otherwise load in a DAW template. The result is either a polished client preview or, with post-processing, a final deliverable — depending on the production context.
+
+Future humanisation plugins will add the interpretive layer that separates a live performance from a mechanically correct rendering: tempo micro-variation, rubato, ensemble timing spread, expressive dynamic shaping. OVID establishes the stable control foundation those plugins require.
+
+---
 
 ## Integration Points
 
