@@ -236,7 +236,7 @@ The settings registry provides everything needed to generate a Settings window:
 - **Choice labels**: `(tr :setting.ui.theme.nord-dark)` → "Dark"
 - **Validation feedback**: immediate validation on input change
 
-The Settings window is implemented in `app_settings_window.clj` (`frontend/src/main/clojure/ooloi/frontend/ui/app/app_settings_window.clj`), consuming the registry to generate the UI automatically. It follows the content builder pattern (ADR-0042): `build-settings-content!` (private) constructs a TabPane with one tab per category, and `show-app-settings!` (public) handles lifecycle via the UI Manager. Each tab contains a ScrollPane of setting rows — `Tile` + `ComboBox` for choices, `Tile` + `TextField` for validator-based settings — each with a per-field reset button. A unified bottom bar provides Reset All Defaults (scoped to the active tab's category) and OK.
+The Settings window is implemented in `app_settings_window.clj` (`frontend/src/main/clojure/ooloi/frontend/ui/app/app_settings_window.clj`), consuming the registry to generate the UI automatically. It follows the content builder pattern (ADR-0042): a private `build-full-content-spec` returns a cljfx description map for the complete window content (tab pane + button bar), and `show-app-settings!` (public) handles lifecycle via the UI Manager. Each tab contains a ScrollPane of setting rows — `Tile` + `ComboBox` for choices, `Tile` + `TextField` for validator-based settings — each with a per-field reset button. A unified bottom bar provides Reset All Defaults (scoped to the active tab's category) and OK.
 
 ## Rationale
 
