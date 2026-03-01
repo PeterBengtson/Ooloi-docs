@@ -90,11 +90,10 @@ Per ADR-0039, all user-facing strings use translation keys (`:window/title-key`,
 
 UI specifications are **pure Clojure maps** conforming to cljfx structure, augmented with `:window/` namespace-qualified metadata for lifecycle management.
 
-**Implementation Note (Updated 2026-01-28)**: Initial windowing system (Issue #5) does not implement backend-described dialogs. Backend plugins use piece settings (ADR-0016) with auto-generated UI via `SRV/get-settings-ui-metadata`. Frontend provides all custom windows for operations. Backend-described dialog capability (examples below) represents architectural design for future extensibility if needed.
+Backend plugins currently use piece settings (ADR-0016) with auto-generated UI via `SRV/get-settings-ui-metadata`. Frontend provides all custom windows. Backend-described dialog capability via gRPC is an extensibility point for future use:
 
 ```clojure
-;; Backend plugin sends this over gRPC (symbolic event handlers)
-;; NOTE: Future capability - not implemented in initial windowing system.
+;; Backend plugin sending a window spec over gRPC (future extensibility)
 ;; Custom ooloi components referenced by qualified symbol (resolved on the frontend).
 {:window/id :plugin-config
  :window/persist? true
