@@ -37,12 +37,8 @@ a hardware synthesiser, or to route into a DAW — a plugin can provide it. The 
 system does not, because the core system's playback requirements are already better
 served by direct host control.
 
-This also means that MIDI mockups — orchestral renderings produced by routing a
-notation program's MIDI output through a DAW template loaded with sample libraries —
-are not part of the Ooloi workflow. OVID-driven playback produces equivalent results
-directly from the score, without a separate DAW session or template to maintain.
-[ADR-0041](ADRs/0041-Ooloi-Virtual-Instrument-Definition-OVID.md) explains this in
-detail, including how it compares to NotePerformer and DAW template workflows.
+For how this approach relates to MIDI mockups and DAW template workflows, see
+[ADR-0041](ADRs/0041-Ooloi-Virtual-Instrument-Definition-OVID.md).
 
 ---
 
