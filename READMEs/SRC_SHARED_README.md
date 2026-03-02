@@ -1,20 +1,52 @@
 # Ooloi Shared Source Directory
 
-This directory contains the **complete Ooloi system** - all data models, business logic, API functions, operations, traits, and interfaces used by both frontend and backend.
+This is the developer reference for the Ooloi shared library — the core of the system that both
+frontend and backend build on. It covers architecture, data models, namespace organisation, code
+conventions, invariants, and testing. Whether you are working on shared models, backend operations,
+or tracing a production code path, this is the starting point.
 
 ## Table of Contents
 
+- [Project Architecture](#project-architecture)
 - [Directory Structure](#directory-structure)
   - [Key Directories](#key-directories)
 - [Data Model](#data-model)
-- [Namespace Organization: How to Import](#namespace-organization-how-to-import)
+- [Core Data Flow](#core-data-flow)
+- [Namespace Organisation: How to Import](#namespace-organisation-how-to-import)
   - [Quick Start](#quick-start)
   - [Most Important Namespaces](#most-important-namespaces)
   - [Frontend and Backend Usage](#frontend-and-backend-usage)
   - [Decision Tree: Which Namespace to Use?](#decision-tree-which-namespace-to-use)
+- [Architectural Invariants](#architectural-invariants)
+- [Adding New Multimethods](#adding-new-multimethods)
 - [Unified gRPC Architecture](#unified-grpc-architecture)
+- [Code Conventions](#code-conventions)
+- [Testing Infrastructure](#testing-infrastructure)
+- [Build & Test Commands](#build--test-commands)
 - [Deeper Topics](#deeper-topics)
-- [Coding Conventions](#coding-conventions)
+
+## Project Architecture
+
+Ooloi is a three-project repository:
+
+```
+Ooloi/
+├── shared/     # Core models, traits, interfaces, predicates — consumed by both backend and frontend
+├── backend/    # Server, piece management, complex operations
+└── frontend/   # UI components, rendering, user interaction
+```
+
+**The shared project is the core library.** It contains the complete Ooloi data model, all
+multimethods, predicates, and operations. Both backend and frontend are consumers — they add
+capabilities on top of what shared defines, but the shared code is where all musical and visual
+data structures live.
+
+**Combined app entry point**: `shared/src/app/clojure/ooloi/shared/system.clj` is the production
+entry point for the combined desktop application. It orchestrates startup, wires all action handlers
+(windows, menus, lifecycle events), and connects all component events.
+`frontend/src/main/clojure/ooloi/frontend/system.clj` is the frontend-only system used primarily
+for testing — it does not wire action handlers or UI lifecycle. When tracing production code paths
+for windows, menus, and startup, always look in `shared/system.clj` first.
 
 ## Directory Structure
 
@@ -27,7 +59,7 @@ shared/src/main/clojure/ooloi/shared/
 ├── interfaces.clj            ; Shared multimethod interface contracts
 ├── platform.clj              ; Platform-specific utilities (JVM, native, etc.)
 ├── predicates.clj            ; Shared predicate functions (musical?, visual?, etc.)
-├── srv_client.clj            ; Server/client utilities for testing
+├── srv_client.clj            ; gRPC server/client utilities for combined system testing
 ├── grpc/                     ; gRPC infrastructure
 │   ├── conversion.clj        ; Clojure ↔ Protocol Buffer conversion
 │   └── ...                   ; gRPC client/server components
@@ -82,12 +114,13 @@ shared/src/main/clojure/ooloi/shared/
     └── transposable.clj      ; Transposition behavior trait
 ```
 
-**⚡ CRITICAL**: This IS the complete Ooloi system. Frontend and backend are consumers that use this unified data model and API - no separate representations exist.
+**⚡ CRITICAL**: This IS the complete Ooloi system. Frontend and backend are consumers that use
+this unified data model and API — no separate representations exist.
 
 ### Key Directories
 
 **Core System Files:**
-- `core.clj` - Combined application entry point
+- `core.clj` - Complete system namespace; assembles and re-exports the whole system
 - `hierarchy.clj` - Shared type hierarchy and dispatch values
 - `interfaces.clj` - Complete multimethod interface definitions
 - `predicates.clj` - All type checking functions
@@ -105,13 +138,14 @@ shared/src/main/clojure/ooloi/shared/
   - All other operations used by both frontend and backend
 
 **System Infrastructure:**
-- `proto_conversion.clj` - gRPC conversion utilities
+- `grpc/conversion.clj` - gRPC conversion utilities
 - `specs/generators.clj` - Test data generation for all models
 - `traits/` - All behavioral mixins used across the system
 
 ## Data Model
 
-Ooloi uses the following unified tree structure for all musical elements (used identically by frontend and backend):
+Ooloi uses the following unified tree structure for all musical elements (used identically by
+frontend and backend):
 
 ```
 Piece
@@ -130,13 +164,45 @@ Piece
                     └── curves
 ```
 
-The entire structure is always a pure tree, making serialization and deserialization straightforward. Cross-references are implemented as ID references, not pointers. IDs are lazily assigned to objects as needed.
+The entire structure is always a pure tree, making serialization and deserialization
+straightforward. Cross-references are implemented as ID references, not pointers. IDs are lazily
+assigned to objects as needed.
 
-**Model-specific operations**: Each model file contains the most basic operations for that model, such as adding and deleting nested items. More complex or abstract operations (formatting, traversal) are placed in the `ops/` directory.
+**Model-specific operations**: Each model file contains the most basic operations for that model,
+such as adding and deleting nested items. More complex or abstract operations (formatting,
+traversal) are placed in the `ops/` directory.
 
-## Namespace Organization: How to Import
+## Core Data Flow
 
-Ooloi's shared system provides a carefully structured namespace organization for the complete system used by both frontend and backend.
+The shared system files have a strict dependency ordering that must never be violated:
+
+```
+predicates.clj → interfaces.clj → models/*.clj → core.clj → api.clj
+```
+
+Each layer may only depend on layers to its left:
+
+- `predicates.clj` — pure predicate functions, no model dependencies
+- `interfaces.clj` — multimethod declarations using predicates for dispatch; no model implementations
+- `models/*.clj` — data structures and model-specific implementations; may use interfaces and predicates
+- `core.clj` — assembles the complete system; imports and re-exports everything
+- `api.clj` — public API surface for external consumers
+
+**The key constraint**: Files that import `interfaces` or `predicates` directly cannot also import
+`core`. Importing `core` would create a circular dependency because `core` imports everything,
+including the very files that imported it. This constraint applies to all architecture-sensitive
+files — `predicates.clj`, `interfaces.clj`, and any model file use selective imports from specific
+namespaces, not `core :refer :all`.
+
+**PieceRefResolver protocol**: In shared contexts, the `PieceRefResolver` protocol requires an
+explicit `[ooloi.shared.ops.piece-ref]` require. Without it, the protocol functions exist but
+implementations may not be loaded, causing runtime failures. Add this require explicitly in any
+shared-layer namespace that resolves piece references.
+
+## Namespace Organisation: How to Import
+
+Ooloi's shared system provides a carefully structured namespace organisation for the complete system
+used by both frontend and backend.
 
 ### Quick Start
 
@@ -152,7 +218,12 @@ This gives you access to:
 - **All predicates**: `pitch?`, `chord?`, `measure?` (raw items), plus `pitch??`, `chord??`, `measure??` (timewalk tuples)
 - **All multimethods**: `get-duration`, `add-item`, `set-name`, etc.
 
-**Why this works**: The shared `core` namespace IS the complete Ooloi system used identically by frontend and backend.
+**Why this works**: The shared `core` namespace IS the complete Ooloi system used identically by
+frontend and backend.
+
+The 10% that uses selective imports are architecture-constrained files (`predicates.clj`,
+`interfaces.clj`, model files) — they cannot use `core :refer :all` without creating circular
+dependencies (see [Core Data Flow](#core-data-flow)).
 
 **Alternative selective imports (for specific use cases):**
 
@@ -193,9 +264,9 @@ This gives you access to:
             [ooloi.shared.predicates :as p]))                         ; Same as backend
 
 ;; Creates identical objects to backend
-(def my-pitch (create-pitch "C4" "1/4"))  ; Same function, same Pitch record
-(p/pitch? my-pitch)                       ; Same predicate as backend
-(i/get-duration my-pitch)                 ; Same interface as backend
+(def my-pitch (create-pitch :note "C4" :duration 1/4))  ; Same function, same Pitch record
+(p/pitch? my-pitch)                                     ; Same predicate as backend
+(i/get-duration my-pitch)                               ; Same interface as backend
 ```
 
 **Backend Consumer Pattern:**
@@ -206,12 +277,13 @@ This gives you access to:
             [ooloi.shared.predicates :as p]))                         ; SAME as frontend
 
 ;; Creates identical objects to frontend
-(def my-pitch (create-pitch "C4" "1/4"))  ; SAME function, SAME Pitch record
+(def my-pitch (create-pitch :note "C4" :duration 1/4))  ; SAME function, SAME Pitch record
 (p/pitch? my-pitch)                       ; SAME predicate as frontend
 (i/get-duration my-pitch)                 ; SAME interface as frontend
 ```
 
-**Key Point**: Frontend and backend use identical imports and functions. No separate representations exist.
+**Key Point**: Frontend and backend use identical imports and functions. No separate
+representations exist.
 
 ### Decision Tree: Which Namespace to Use?
 
@@ -230,6 +302,54 @@ This gives you access to:
 5. **Are you frontend or backend?**
    → **Doesn't matter** - use the same shared namespaces!
 
+## Architectural Invariants
+
+These constraints must never be violated. They exist to maintain correctness, performance, and
+testability across the system.
+
+### VPD Addressing
+Vector Path Descriptors (VPDs) are the primary addressing mechanism for musical elements. Always
+use precise `boundary-vpd` scope to limit the work a traversal does — never traverse the entire
+piece tree when a narrower scope is correct. Broad traversals cause unnecessary work and make
+behaviour harder to reason about.
+
+### STM Transactions
+All piece mutations must use `dosync` blocks for ACID compliance. Ooloi uses Clojure's Software
+Transactional Memory for concurrent piece management. Never mutate piece state outside a `dosync`
+block — partial updates will corrupt piece state and produce non-deterministic behaviour.
+
+### Timewalk Results
+Every item returned from a timewalk is a `[item vpd position]` tuple. Always use the helper
+functions `item`, `position`, and `vpd` to destructure timewalk results — never destructure by
+position directly, as the tuple structure may evolve and helpers provide stable access. The
+double-question-mark predicates (`pitch??`, `chord??`, etc.) operate on these tuples.
+
+### Multimethod Dispatch
+Never add a `:type` parameter or any other magic dispatch parameter to a multimethod for test
+convenience. Dispatch must reflect real semantic distinctions in the domain. Test-driven dispatch
+hacks leak into production and obscure what the multimethod is actually selecting on.
+
+### Production Code Purity
+- Never create test-specific function variants (e.g., `create-real-foo` / `create-test-foo`).
+  Tests must exercise production code through production code paths.
+- Never adapt production code to accommodate broken test setups. When a test fails because a mock
+  is incomplete or a test assumption is wrong, fix the test — never add nil-guards, fallbacks, or
+  alternate code paths to production to make the test pass.
+
+## Adding New Multimethods
+
+When adding a new operation to the Ooloi API, follow this four-step procedure in order:
+
+1. **Define in `interfaces.clj`** with proper `:vpd-category` metadata. The metadata ensures VPD
+   integration is automatic.
+2. **Export through `core.clj`** in alphabetical order among the existing exports.
+3. **Export through `api.clj`** in alphabetical order among the existing exports.
+4. **Add implementations in appropriate model files** — each model file contains the
+   implementations specific to that type.
+
+VPD integration is automatic once the `:vpd-category` metadata is correct. Alphabetical ordering
+in steps 2 and 3 is enforced by convention to make the exports easy to scan and update.
+
 ## Unified gRPC Architecture
 
 The shared system provides the complete gRPC infrastructure for frontend-backend communication:
@@ -243,19 +363,157 @@ The shared system provides the complete gRPC infrastructure for frontend-backend
 ```
 SHARED (Complete Ooloi System)
 ├── Frontend Local Usage
-│   (create-pitch "C4" "1/4")           ← SAME function as backend
-│   (pitch? some-pitch)                ← SAME predicate as backend
+│   (create-pitch :note "C4" :duration 1/4)  ← SAME function as backend
+│   (pitch? some-pitch)                      ← SAME predicate as backend
 │
 ├── Frontend Remote Usage (via gRPC)
 │   Frontend ──gRPC──→ Backend ──delegates──→ SAME shared functions
-│   (grpc-call :create-pitch {...})     ← Returns SAME Pitch record
+│   (grpc-call :create-pitch {...})          ← Returns SAME Pitch record
 │
 └── Backend Usage
-    (create-pitch "C4" "1/4")           ← IDENTICAL to frontend
+    (create-pitch :note "C4" :duration 1/4)  ← IDENTICAL to frontend
     (pitch? some-pitch)                ← IDENTICAL to frontend
 
 ⚡ KEY: Same data structures, same functions, same everything!
 ```
+
+## Code Conventions
+
+### Copyright Header
+
+All new source files begin with the following header, placed before the namespace declaration
+with one blank line after:
+
+```clojure
+;; Copyright © 2024-2026 Peter Bengtson
+;;
+;; This Source Code Form is subject to the terms of the Mozilla Public License, v2.0.
+;; If a copy of the MPL was not distributed with this file, you can obtain one at http://mozilla.org/MPL/2.0/.
+
+(ns ooloi.example.namespace
+  ...)
+```
+
+### Defrecord Documentation
+
+Document `defrecord` types in the **namespace docstring**, not as comments. Comments are invisible
+to documentation generators (Codox); namespace docstrings appear in generated API docs. Include a
+"Record Structure" section with field descriptions. See `time_signature.clj` and
+`key_signature.clj` as reference examples.
+
+### Namespace Import Strategy
+
+- **90% of code**: Use `[ooloi.shared.models.core :refer :all]` — this gives access to all
+  constructors, predicates, and multimethods in one import.
+- **Architecture-constrained files** (`predicates.clj`, `interfaces.clj`, model files): Use
+  selective imports from specific namespaces. These files cannot use `core :refer :all` without
+  creating circular dependencies (see [Core Data Flow](#core-data-flow)).
+
+### Code Comments
+
+- **Functional comments**: Explain non-obvious logic liberally.
+- **No test-reference comments**: Never add comments like `; For Test 40` in production code.
+  Tests and production code are separate concerns.
+- **No temporary comments**: Remove any comments added as implementation scaffolding once the
+  implementation is complete.
+
+### Methodical Multimethods
+
+Use Methodical (`m/defmulti` and `m/defmethod`) for defining and implementing multimethods — not
+core Clojure's `defmulti`/`defmethod`. Methodical provides better composability and tooling.
+
+### Specter
+
+Using Specter for nested data structure updates is highly encouraged. Specter transforms that
+would otherwise require deeply nested `update-in` calls are clearer and less error-prone with
+Specter navigators.
+
+### Shared Behaviors
+
+Define shared behaviors (traits, mixins) in `models/core.clj`. Implement model-specific behaviors
+in individual model files. Use docstrings everywhere for collaborative development.
+
+## Testing Infrastructure
+
+Ooloi provides two test helper namespaces with macros that handle all lifecycle boilerplate.
+**Never use raw `CountDownLatch` + `fx/run-later!` + `.await` patterns** — use
+`run-on-fx-thread!` instead.
+
+### `util.frontend` — JavaFX test helpers
+
+Used in `frontend/test/` and `shared/test/app/` (system integration tests).
+
+```clojure
+(require '[util.frontend :as th])
+```
+
+| Macro / Function | Purpose |
+|---|---|
+| `run-on-fx-thread! f` | Runs `f` on the JavaFX thread, blocks until complete, returns the value. Replaces all `CountDownLatch` + `fx/run-later!` + `.await` patterns. |
+| `with-test-config {overrides}` | Combines platform directory isolation, settings isolation, and locale isolation. Controls `load-defaults` via the overrides map. |
+| `with-event-bus` | Creates a live event bus for the duration of body. Required when calling `set-app-setting!` with a value that differs from the stored value. |
+| `with-isolated-platform-directory` | Redirects all platform directory access to a temp directory. Included inside `with-test-config`. |
+| `with-restored-settings` | Saves and restores settings atoms across the body. Included inside `with-test-config`. |
+| `default-settings` | Returns all registry settings at their defaults. Use as base for `load-defaults` mocks. |
+| `with-zero-animation-times` | Sets all animation durations to zero for lifecycle tests. |
+
+**Double FX flush** (macOS deferred setup): use two sequential calls — `(th/run-on-fx-thread! (fn [])) (th/run-on-fx-thread! (fn []))`. Never nest `run-on-fx-thread!` calls — that deadlocks.
+
+### `util.server` — gRPC and server test helpers
+
+Used in `shared/test/` and `backend/test/`.
+
+```clojure
+(require '[util.server :refer :all])
+```
+
+| Macro / Function | Purpose |
+|---|---|
+| `with-server [s]` / `with-server [s :in-process]` | Starts server, runs body, stops server. Default 100ms startup delay. |
+| `with-clients s [[c1 "id1"] [c2 "id2"]]` | Creates and registers multiple clients with automatic cleanup. Clients inherit TLS settings from server. |
+| `with-srv-client c` | Binds client to `SRV/*` dynamic context so all `SRV/` calls use it automatically. |
+| `with-system [sys {}]` | Full backend Integrant system with automatic halt. |
+| `with-combined-system [sys]` | All 9 application components, in-process gRPC transport, headless UI. Use for combined system integration tests. |
+
+**Typical patterns:**
+
+```clojure
+;; FX thread — render a spec and inspect the result
+(let [root (th/run-on-fx-thread!
+             #(cljfx/instance (cljfx/create-component (build-spec))))
+  (instance? TabPane root) => true)
+
+;; Settings isolation
+(th/with-test-config {:ui/theme :nord-dark}
+  (th/with-event-bus
+    (settings/get-app-setting :ui/theme) => :nord-dark))
+
+;; gRPC client/server
+(with-server [s :in-process]
+  (with-clients s [[c "test-user"]]
+    (with-srv-client c
+      (SRV/create-rest :duration 1/4))))
+```
+
+## Build & Test Commands
+
+All lein commands require the correct working directory — always `cd` to the project root before
+running lein. Running lein from the wrong directory produces `LOAD FAILURE` errors that resemble
+compilation bugs.
+
+```bash
+# Shared project (run from shared/)
+cd /path/to/Ooloi/shared && lein midje    # All shared tests
+cd /path/to/Ooloi/shared && lein build
+
+# Backend project (run from backend/)
+cd /path/to/Ooloi/backend && lein midje   # All backend tests
+cd /path/to/Ooloi/backend && lein build
+cd /path/to/Ooloi/backend && lein codox   # Generate API documentation
+cd /path/to/Ooloi/backend && lein coverage # Coverage report
+```
+
+All three test suites (shared, backend, frontend) must pass for project success.
 
 ## Deeper Topics
 
@@ -282,12 +540,3 @@ For detailed information on specific architectural topics, see these guides:
   - STM-based piece management
   - Concurrency patterns
   - Thread-safety guarantees
-
-## Coding Conventions
-
-- Use Methodical (`m/defmulti` and `m/defmethod`) for defining and implementing multimethods.
-- Using Specter is highly encouraged for nested data structure updates.
-- Define shared behaviors in `models/core.clj`.
-- Implement model-specific behaviors in individual model files.
-- Use docstrings everywhere for collaborative development.
-- **Unified development**: Write code that works identically in frontend and backend.
