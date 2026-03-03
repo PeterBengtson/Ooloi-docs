@@ -624,6 +624,8 @@ Its presence is intentional. When you see `fx/run-later!`, you know two things i
 
 There are no hidden crossings. No implicit UI mutations from worker pools. No accidental background writes into scene graphs. The bridge is explicit.
 
+All public functions that must run on the JAT enforce this at runtime using `fx/assert-fx-thread!`. A call from a background thread throws an `AssertionError` immediately, making violations visible at the point of the call rather than at a later scene graph mutation.
+
 This design has a psychological benefit as well as a technical one: it keeps developers aware of when they are touching real UI state. The JAT is not a background detail. It is a boundary with meaning.
 
 ### 6.2 What Never Runs on the JAT
