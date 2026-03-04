@@ -46,7 +46,7 @@ The frontend must be **terminal** - the end of the pipeline that consumes backen
 ### Performance Requirements
 
 - Complex orchestral scores
-- Smooth scrolling (target 60fps)
+- Smooth, fluid scrolling (the pipeline maximises GPU throughput to achieve scrolling that *feels* smooth; no specific frame rate is required or guaranteed)
 - Low latency for visible edits (target <150ms p95)
 - Memory efficiency (viewport-proportional, not score-proportional)
 - Lazy loading (no downloads until layout windows open)
@@ -74,7 +74,7 @@ We establish **backend-authoritative rendering with terminal frontend execution*
 
 4. **Litmus Test Enforcement:** Discarding all frontend rendering state and regenerating from backend paintlists must produce identical output. If not, architectural closure is broken.
 
-5. **GPU-Accelerated Rendering:** GPU acceleration via Skija (or equivalent technology) is **required for production performance**. Complex orchestral scores (30,000+ objects) require GPU vector rendering to achieve 60fps scrolling targets. Software rasterization fallback exists for error recovery only (GPU driver failure).
+5. **GPU-Accelerated Rendering:** GPU acceleration via Skija (or equivalent technology) is **required for production performance**. Complex orchestral scores (30,000+ objects) require GPU vector rendering for smooth scrolling at scale. Software rasterization fallback exists for error recovery only (GPU driver failure).
 
 6. **Component Boundaries:**
    - cljfx: Windows, menus, input handlers (does NOT draw music)
@@ -348,7 +348,7 @@ This layer implements the required execution path: Skija `Picture` objects recor
 - Derived strictly from paintlists (one-time recording per paintlist)
 - Must be invalidated when paintlist changes
 - GPU context is long-lived; never created per render call
-- Picture recording mechanism is required for 60fps performance; individual Picture cache entries are evictable (regeneration cost: one-time recording from local paintlist)
+- Picture recording mechanism is required for smooth high-throughput rendering; individual Picture cache entries are evictable (regeneration cost: one-time recording from local paintlist)
 
 #### 5. cljfx UI Shell
 
@@ -413,7 +413,7 @@ On reconnect:
 #### Level 2: Skija Pictures (Required Execution Artifacts, Cached for Replay)
 
 - Skija `Picture` objects are GPU command buffers derived from paintlists.
-- Picture recording/replay is the required execution path for 60fps with complex scores.
+- Picture recording/replay is the required execution path for smooth rendering with complex scores.
 - Individual cache entries may be evicted under memory pressure; correctness unaffected (regeneration: one-time recording from local paintlist).
 - Must be invalidated when Level 1 paintlist changes.
 - Litmus test: regenerate all Pictures from paintlists → identical output.
@@ -480,7 +480,7 @@ Together these rules ensure that **Level 2 is always derived from a valid Level 
 
 All numeric targets in this document are hypotheses and must be validated by profiling on real hardware:
 
-- Steady-state scrolling target: 60fps (16ms/frame)
+- Steady-state scrolling target: smooth and fluid (60fps is the architectural ceiling the pipeline aims for; the meaningful measure is perceived smoothness, not the frame count)
 - Visible collaborative edit target: <150ms p95
 - Scroll-triggered fetch target: <100ms p95 (where network allows)
 - Reconnection recovery target: <500ms for viewport refetch
@@ -514,9 +514,9 @@ Performance depends on:
 3. Picture cache with strict invalidation on paintlist update
 4. JavaFX/Skija viewport integration
 5. Correctness validation against reference renderings
-6. Performance profiling to validate 60fps target with complex scores
+6. Performance profiling to validate frame-rate targets with complex scores
 
-**Note:** GPU acceleration is **vital** in this phase. Skija Pictures (GPU command buffers) are recorded from paintlists once, then replayed every frame. This is essential for 60fps with 30,000+ objects - you cannot re-parse paintlists and issue draw commands every frame.
+**Note:** GPU acceleration is **vital** in this phase. Skija Pictures (GPU command buffers) are recorded from paintlists once, then replayed every frame. This is essential for smooth rendering with 30,000+ objects - you cannot re-parse paintlists and issue draw commands every frame.
 
 #### Phase 3: Production Optimization
 
@@ -556,13 +556,13 @@ Performance depends on:
 
 **Authoritative Paintlists (Level 1):** Stores backend truth. Can be discarded and refetched without correctness issues. This is the data cache containing vector drawing instructions.
 
-**GPU Command Buffers (Level 2):** Skija Pictures record paintlists as GPU command buffers for fast replay. Essential for performance - cannot re-parse 30,000 objects and issue draw commands every frame at 60fps. Must be strictly derived from Level 1 and invalidated when paintlists change.
+**GPU Command Buffers (Level 2):** Skija Pictures record paintlists as GPU command buffers for fast replay. Essential for performance - cannot re-parse 30,000 objects and issue draw commands every frame at any smooth frame rate. Must be strictly derived from Level 1 and invalidated when paintlists change.
 
 **Separation of Concerns:** Data cache (paintlists) separate from execution cache (Pictures). Paintlists authoritative and immutable. Pictures regenerable from paintlists. Different eviction policies: paintlists accumulate until memory pressure, Pictures can be evicted aggressively (regeneration cost is one-time recording from local paintlist).
 
 ### Why GPU Acceleration is Required
 
-**Performance Requirements:** Complex orchestral scores with 30,000+ simultaneous objects cannot achieve 60fps scrolling with CPU-only vector rasterization. Modern orchestral notation requires parallel GPU execution for acceptable user experience.
+**Performance Requirements:** Complex orchestral scores with 30,000+ simultaneous objects cannot achieve smooth scrolling with CPU-only vector rasterization. Modern orchestral notation requires parallel GPU execution for acceptable user experience.
 
 **Vector Rendering Efficiency:** GPUs excel at parallel vector path rendering. Bezier curve rasterization, glyph rendering, and anti-aliasing benefit massively from GPU compute. Software rasterization would require frame budgets exceeding 100ms for complex viewports.
 
@@ -586,7 +586,7 @@ Performance depends on:
 
 6. **Simplicity:** Terminal execution eliminates feedback loops and refinement complexity.
 
-7. **Performance via GPU Acceleration:** GPU-accelerated vector rendering enables smooth 60fps scrolling through complex orchestral scores (30,000+ objects). Correctness is defined by paintlist fidelity (litmus test) independent of GPU technology choice; production rendering mode requires GPU acceleration.
+7. **Performance via GPU Acceleration:** GPU-accelerated vector rendering enables smooth scrolling through complex orchestral scores (30,000+ objects). Correctness is defined by paintlist fidelity (litmus test) independent of GPU technology choice; production rendering mode requires GPU acceleration.
 
 ### Trade-offs
 
@@ -635,7 +635,7 @@ This ADR establishes the rendering boundary as an architectural invariant. Backe
 
 The litmus test (discard frontend state, regenerate from backend → identical output) is the enforcement mechanism. Any proposed optimization that fails this test violates architectural closure and must be rejected.
 
-GPU acceleration via Skija Pictures (GPU command buffers) is **required** for production performance with complex orchestral scores. Paintlists are recorded once into Pictures, then Pictures are replayed every frame. This is essential - you cannot re-parse and re-issue draw commands for 30,000 objects at 60fps.
+GPU acceleration via Skija Pictures (GPU command buffers) is **required** for production performance with complex orchestral scores. Paintlists are recorded once into Pictures, then Pictures are replayed every frame. This is essential - you cannot re-parse and re-issue draw commands for 30,000 objects at any acceptable frame rate.
 
 Skija is Ooloi's committed GPU rendering API. Skija internally uses platform-appropriate GPU backends (Metal on macOS, Vulkan on Linux/Windows, OpenGL as fallback) - this is handled transparently by Skija. Backend paintlists are rendering-library-agnostic and describe vector drawing instructions independently of the rendering technology. Software rasterization exists only for error recovery (GPU driver failure), not production use.
 
