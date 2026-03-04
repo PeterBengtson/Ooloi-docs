@@ -276,6 +276,8 @@ Three formatters exist specifically for dense form controls:
 
 The complete component inventory is in the `ooloi.frontend.ui.core.cljfx` namespace.
 
+**`ooloi-dense-combo-box` uses a custom lifecycle, not the `:combo-box` keyword.** The standard cljfx ComboBox lifecycle has no `:prop-order`, so `advance-composite-component` iterates its ~17 inherited props in hash-set order — non-deterministic. When both `:items` and `:value` change simultaneously (as they do on every locale switch), hash ordering may apply `:value` first. JavaFX's SelectionModel then fails to match the new value against the old items list, clears the selection, and the ComboBox shows blank. The custom lifecycle adds `:prop-order {:items 0 :value 1}`, guaranteeing `:items` is applied first on every advance. This is why the one-method principle matters here beyond style-class safety: the formatter enforces the correct lifecycle, not just the correct CSS classes.
+
 ### Per-Window Reactive Renderer
 
 Windows with rich, stateful content use a **per-window cljfx renderer** alongside the standard `show-window!` boundary. The renderer manages the **content** node reactively; the UI Manager manages the **Stage**. These two responsibilities are absolute and never overlap.

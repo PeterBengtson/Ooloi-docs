@@ -1288,6 +1288,27 @@ Additional macros for specific situations:
 
 Full API documentation and decision rules are in [UI_ARCHITECTURE.md §13](../research/UI_ARCHITECTURE.md).
 
+#### Mocking `tr` in Tests: Multi-Arity Recursion Trap
+
+When testing locale-sensitive rendering, you may need `tr` to return controlled strings for specific keys. `with-redefs` on `tr/tr` works, but has a non-obvious trap: `tr`'s 1-arity body calls the 2-arity **through the var**:
+
+```clojure
+([key] (tr key {}))   ; var lookup — affected by with-redefs
+```
+
+If you use `(tr k)` or `(original-tr k)` as a fallback, the 1-arity re-enters the redefed function → **stack overflow**. This applies even when `original-tr` is captured beforehand, because calling it with one argument still hits the 1-arity.
+
+**Always call the 2-arity directly:**
+
+```clojure
+(let [original-tr tr/tr]
+  (with-redefs [tr/tr (fn [k & args]
+                        (case k
+                          :my.specific.key "Controlled string"
+                          (original-tr k (or (first args) {}))))]  ; ← 2-arity, safe
+    ...))
+```
+
 ---
 
 ## 13. Architectural Invariants
