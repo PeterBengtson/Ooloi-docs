@@ -1268,16 +1268,23 @@ When structure is clear, testing becomes calmer. You test pure functions where p
 
 Frontend tests that touch app settings, the platform directory, locale, or JavaFX stages share a common isolation namespace: `frontend/test/clojure/util/frontend.clj` (namespace `util.frontend`). Requiring it initialises JavaFX automatically — no explicit init call needed.
 
-The namespace exposes a layered set of isolation macros. The correct entry point for most tests is `with-test-config`:
+The namespace exposes a layered set of isolation macros. For any test that needs a UI Manager, the standard setup is `with-ui-manager`, optionally combined with `with-test-config` for settings/locale isolation:
 
 ```clojure
-(with-test-config {:ui/theme :nord-dark}
-  ;; platform dir → temp, settings atoms saved/restored, locale saved/restored
-  ;; load-defaults returns all registry defaults merged with the override map
+;; UI Manager only — no settings isolation needed
+(th/with-ui-manager [mgr]
   ...)
+
+;; Settings isolation + UI Manager
+(with-test-config {:ui/theme :nord-dark}
+  (th/with-ui-manager [mgr]
+    (tr/set-locale! :en-GB)   ; must set after UI Manager init
+    ...))
 ```
 
-Pass `{}` to use all registry defaults with no overrides. The override map is merged onto `(default-settings)`, which derives defaults from the live registry — so new settings added via `def-app-setting` appear automatically in every test without changes to test setup.
+`with-ui-manager` creates a thread pool, event bus, and UI Manager; flushes outstanding JAT callbacks; then halts everything in the correct order. It prevents `RejectedExecutionException` teardown races from `run-later!` callbacks that fire after the pool is terminated. Access the event bus via `(:event-bus mgr)`. **Never write manual `ig/init-key`/`ig/halt-key!` boilerplate for UI Manager tests.**
+
+`with-test-config` handles settings isolation. Pass `{}` to use all registry defaults with no overrides. The override map is merged onto `(default-settings)`, which derives defaults from the live registry — so new settings added via `def-app-setting` appear automatically in every test without changes to test setup.
 
 Additional macros for specific situations:
 
