@@ -437,7 +437,7 @@ in individual model files. Use docstrings everywhere for collaborative developme
 
 Ooloi provides two test helper namespaces with macros that handle all lifecycle boilerplate.
 **Never use raw `CountDownLatch` + `fx/run-later!` + `.await` patterns** — use
-`run-on-fx-thread!` instead.
+`run-on-fx-thread-sync!` instead.
 
 ### `util.frontend` — JavaFX test helpers
 
@@ -449,7 +449,7 @@ Used in `frontend/test/` and `shared/test/app/` (system integration tests).
 
 | Macro / Function | Purpose |
 |---|---|
-| `run-on-fx-thread! f` | Runs `f` on the JavaFX thread, blocks until complete, returns the value. Replaces all `CountDownLatch` + `fx/run-later!` + `.await` patterns. |
+| `run-on-fx-thread-sync! f` | Runs `f` on the JavaFX thread, blocks until complete, returns the value. Replaces all `CountDownLatch` + `fx/run-later!` + `.await` patterns. |
 | `with-test-config {overrides}` | Combines platform directory isolation, settings isolation, and locale isolation. Controls `load-defaults` via the overrides map. |
 | `with-event-bus` | Creates a live event bus for the duration of body. Required when calling `set-app-setting!` with a value that differs from the stored value. |
 | `with-isolated-platform-directory` | Redirects all platform directory access to a temp directory. Included inside `with-test-config`. |
@@ -457,7 +457,7 @@ Used in `frontend/test/` and `shared/test/app/` (system integration tests).
 | `default-settings` | Returns all registry settings at their defaults. Use as base for `load-defaults` mocks. |
 | `with-zero-animation-times` | Sets all animation durations to zero for lifecycle tests. |
 
-**Double FX flush** (macOS deferred setup): use two sequential calls — `(th/run-on-fx-thread! (fn [])) (th/run-on-fx-thread! (fn []))`. Never nest `run-on-fx-thread!` calls — that deadlocks.
+**Double FX flush** (macOS deferred setup): use two sequential calls — `(th/run-on-fx-thread-sync! (fn [])) (th/run-on-fx-thread-sync! (fn []))`. Never nest `run-on-fx-thread-sync!` calls — that deadlocks.
 
 ### `util.server` — gRPC and server test helpers
 
@@ -479,7 +479,7 @@ Used in `shared/test/` and `backend/test/`.
 
 ```clojure
 ;; FX thread — render a spec and inspect the result
-(let [root (th/run-on-fx-thread!
+(let [root (th/run-on-fx-thread-sync!
              #(cljfx/instance (cljfx/create-component (build-spec))))
   (instance? TabPane root) => true)
 
