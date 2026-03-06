@@ -1295,6 +1295,29 @@ Additional macros for specific situations:
 
 Full API documentation and decision rules are in [UI_ARCHITECTURE.md §13](../research/UI_ARCHITECTURE.md).
 
+#### Testing Wired Component Behaviour Without a Stage
+
+When a test needs to verify production event listener behaviour wired into a component tree by a builder function — validation logic, CSS class changes, settings commits — the test does not need a Stage, Scene, or OS-level window focus:
+
+```clojure
+(th/with-test-config {}
+  (let [root (th/run-on-fx-thread-sync!
+               #(cljfx/instance (cljfx/create-component (build-settings-content-spec))))
+        tf   (find-text-field root)
+        btn  (find-button root)]
+    (with-redefs [settings/set-app-setting! (fn [k v & _] ...)]
+      (th/run-on-fx-thread-sync!
+        #(do (.setText tf "value")
+             (#'app-settings-window/commit-text-field! :setting/key tf btn))))
+    ...))
+```
+
+`cljfx/create-component` + `cljfx/instance` on the JAT materialises the full node tree with all production listeners attached. Private production functions are callable directly via `(#'ns/fn ...)`.
+
+**`Node.focusedProperty` cannot be driven in tests.** In test processes initialised via `Platform/startup`, the OS never grants focus to a Stage — `requestFocus()` has no effect and `focusedProperty` ChangeListeners never fire regardless. Code in a focus-loss listener must be tested by calling the listener's target function directly. Do not attempt to simulate OS focus transfer.
+
+**Shutdown race — JAT flush before pool halt.** `run-later!` callbacks queued during `show-window!` or `attach-notification-widget!` may still be pending on the JAT when the pool is halted, causing `RejectedExecutionException`. Drain the JAT queue with a no-op `run-on-fx-thread-sync!` before halting the pool. `with-ui-manager` performs this automatically. Never write manual pool/bus/manager boilerplate in tests.
+
 #### Mocking `tr` in Tests: Multi-Arity Recursion Trap
 
 When testing locale-sensitive rendering, you may need `tr` to return controlled strings for specific keys. `with-redefs` on `tr/tr` works, but has a non-obvious trap: `tr`'s 1-arity body calls the 2-arity **through the var**:
