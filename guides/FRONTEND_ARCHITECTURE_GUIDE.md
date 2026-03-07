@@ -607,7 +607,7 @@ The event system therefore acts as connective tissue. It keeps subsystems decoup
 
 ## 6. The JAT Boundary
 
-JavaFX has a simple rule: all UI object creation and mutation must happen on a single thread — the JavaFX Application Thread (JAT).
+JavaFX has a simple rule: all UI object creation and mutation must happen on a single thread — the JavaFX Application Thread (JAT). **This applies to reads as well as writes.** On macOS, reading scene graph properties from a non-JAT thread is often tolerated; on Windows it reliably returns stale or nil data. Any code that traverses or inspects a live scene graph — including test code — must do so on the JAT.
 
 Ooloi does not fight this rule. It makes it visible.
 
@@ -1246,6 +1246,8 @@ Because lifecycle entry points are centralised (`show-window!`, `close-window!`,
 
 The explicit boundaries make integration testing narrower and more predictable.
 
+**Cross-platform scene graph traversal.** When an integration test navigates a live scene graph (for example, walking VBox → MenuBar → Menu → MenuItem to find and fire a menu item), all of that traversal must happen inside `run-on-fx-thread-sync!`. This is not a convenience — it is a correctness requirement. On Windows, scene graph reads from the test thread return stale or nil data and produce NPE. The fix is always to move the traversal onto the JAT, never to add nil-guards in production code. When matching menu items by text, use `(tr/tr :translation-key)` rather than a hardcoded English string: `start-app!` sets the locale to the machine locale, so hardcoded strings break on non-English machines.
+
 ### 12.4 Invariants as Tests
 
 Some of the most important guarantees in the frontend are architectural invariants rather than behavioural details.
@@ -1317,6 +1319,74 @@ When a test needs to verify production event listener behaviour wired into a com
 **`Node.focusedProperty` cannot be driven in tests.** In test processes initialised via `Platform/startup`, the OS never grants focus to a Stage — `requestFocus()` has no effect and `focusedProperty` ChangeListeners never fire regardless. Code in a focus-loss listener must be tested by calling the listener's target function directly. Do not attempt to simulate OS focus transfer.
 
 **Shutdown race — JAT flush before pool halt.** `run-later!` callbacks queued during `show-window!` or `attach-notification-widget!` may still be pending on the JAT when the pool is halted, causing `RejectedExecutionException`. Drain the JAT queue with a no-op `run-on-fx-thread-sync!` before halting the pool. `with-ui-manager` performs this automatically. Never write manual pool/bus/manager boilerplate in tests.
+
+#### Combined System Tests (`start-app!`)
+
+Tests in `shared/test/app/clojure/ooloi/shared/system_test.clj` exercise the full combined application lifecycle via `start-app!`. These differ from `with-ui-manager` and `with-combined-system` tests in one critical way: **`start-app!` returns before the piece window is registered**. The startup sequence — splash display, startup work, splash fade-out, piece window open — is fully asynchronous. Halting the system before the piece window is registered causes `register-window!` to run against an already-terminated pool, wiring focus-change `ChangeListener`s that throw `RejectedExecutionException` into every subsequent test.
+
+**Five rules for all `start-app!` tests:**
+
+1. **Always wrap with `with-test-config {}`** — prevents platform directory contamination and settings atom bleed between tests.
+
+2. **Always wrap with `with-zero-animation-times`** — splash fade-out is ~2 seconds by default. Without this, any test that halts before the animation completes leaves the piece window unregistered at halt time.
+
+3. **Wait for piece window registration before halting** — use a promise subscribed to `:window-lifecycle`. The `:window-opened :untitled-piece` event fires *after* `register-window!` completes, guaranteeing no pending listener registration exists when `ig/halt!` runs:
+
+   ```clojure
+   (let [mgr    (:ooloi.frontend.components/ui-manager sys)
+         bus    (:ooloi.frontend.components/event-bus sys)
+         opened (promise)
+         _      (eb/subscribe! bus :window-lifecycle
+                              (fn [events]
+                                (when (some #(= (:window/id %) :untitled-piece) events)
+                                  (deliver opened true))))
+         _      (when (get @(:window-registry mgr) :untitled-piece)
+                  (deliver opened true))]
+     (deref opened 5000 nil))
+   ```
+
+4. **Double flush before `ig/halt!`** — two sequential `(th/run-on-fx-thread-sync! (fn []))` calls. When a window is explicitly closed before system halt, one flush drains the close callbacks; a second flush drains any callbacks those callbacks enqueued.
+
+5. **Platform guard for macOS-specific features** — tests that read `@(:macos-menu-items mgr)` must be wrapped in `(when (platform/macos?) (fact ...))`. This atom is populated by NSMenuFX and is only available on actual macOS. Mocking `platform/macos?` with `with-redefs` makes the system *behave* as if on macOS but does not populate the NSMenuFX atoms. Tests for Linux and Windows embedded menu bars do not need a guard — they access standard JavaFX structures and run correctly on any platform.
+
+A complete `start-app!` test skeleton:
+
+```clojure
+(th/with-zero-animation-times
+  (th/with-test-config {}
+    (with-redefs [platform/macos?   (constantly true)
+                  platform/windows? (constantly false)
+                  platform/linux?   (constantly false)]
+      (let [sys (system/start-app! (system/combined-config))]
+        (try
+          ;; Wait for piece window to be fully registered before assertions or halt
+          (let [mgr    (:ooloi.frontend.components/ui-manager sys)
+                bus    (:ooloi.frontend.components/event-bus sys)
+                opened (promise)
+                _      (eb/subscribe! bus :window-lifecycle
+                                     (fn [events]
+                                       (when (some #(= (:window/id %) :untitled-piece) events)
+                                         (deliver opened true))))
+                _      (when (get @(:window-registry mgr) :untitled-piece)
+                         (deliver opened true))]
+            (deref opened 5000 nil))
+          ;; ... assertions ...
+          (finally
+            (th/run-on-fx-thread-sync! (fn []))   ; first flush
+            (th/run-on-fx-thread-sync! (fn []))   ; second flush
+            (ig/halt! sys)))))))
+```
+
+If a test explicitly closes a window before halt, close it on the JAT first, then apply both flushes:
+
+```clojure
+(finally
+  (let [mgr (:ooloi.frontend.components/ui-manager sys)]
+    (th/run-on-fx-thread-sync! #(um/close-window! mgr :app-settings)))
+  (th/run-on-fx-thread-sync! (fn []))
+  (th/run-on-fx-thread-sync! (fn []))
+  (ig/halt! sys))
+```
 
 #### Mocking `tr` in Tests: Multi-Arity Recursion Trap
 
