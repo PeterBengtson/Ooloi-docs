@@ -452,8 +452,6 @@ Used in `frontend/test/` and `shared/test/app/` (system integration tests).
 | `run-on-fx-thread-sync! f` | Runs `f` on the JavaFX thread, blocks until complete, returns the value. Replaces all `CountDownLatch` + `fx/run-later!` + `.await` patterns. |
 | `with-test-config {overrides}` | Combines platform directory isolation, settings isolation, and locale isolation. Controls `load-defaults` via the overrides map. |
 | `with-event-bus` | Creates a live event bus for the duration of body. Required when calling `set-app-setting!` with a value that differs from the stored value. |
-| `with-isolated-platform-directory` | Redirects all platform directory access to a temp directory. Included inside `with-test-config`. |
-| `with-restored-settings` | Saves and restores settings atoms across the body. Included inside `with-test-config`. |
 | `default-settings` | Returns all registry settings at their defaults. Use as base for `load-defaults` mocks. |
 | `with-zero-animation-times` | Sets all animation durations to zero for lifecycle tests. |
 
