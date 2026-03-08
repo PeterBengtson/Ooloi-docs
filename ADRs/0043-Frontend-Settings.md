@@ -6,6 +6,7 @@ Accepted - February 12, 2026
 Updated - February 13, 2026 (Defaults declared in def-app-setting; event bus integration)
 Updated - February 16, 2026 (Settings window implemented; code references added)
 Updated - February 27, 2026 (Testing section: with-test-config, default-settings, with-event-bus)
+Updated - March 8, 2026 (Testing section: with-ui-manager replaces ig/init-key in primary example)
 
 ## Table of Contents
 - [Context](#context)
@@ -284,12 +285,12 @@ Tests that exercise code reading or writing app settings must isolate three cate
 
 ```clojure
 (with-test-config {:ui/theme :nord-dark}
-  (let [mgr (ig/init-key :ooloi.frontend.components/ui-manager {...})]
-    (tr/set-locale! :en-GB)
+  (th/with-ui-manager [mgr]
+    (tr/set-locale! :en-GB)   ; must set after UI Manager init — it reads OS locale on init
     ...))
 ```
 
-Pass a settings override map merged onto `(default-settings)`. Pass `{}` to use all registry defaults. `with-test-config` redirects the platform directory to a temp location, snapshots and restores settings atoms, rebinds `load-defaults` to return the controlled map, and saves/restores `tr/current-locale`. This is the correct wrapper for any test that creates a UI Manager or calls `get-app-setting` / `set-app-setting!`.
+Pass a settings override map merged onto `(default-settings)`. Pass `{}` to use all registry defaults. `with-test-config` redirects the platform directory to a temp location, snapshots and restores settings atoms, rebinds `load-defaults` to return the controlled map, and saves/restores `tr/current-locale`. Combine with `with-ui-manager` for any test that also needs a UI Manager — never use raw `ig/init-key`/`ig/halt-key!` boilerplate.
 
 ### `default-settings` — Registry-Derived Defaults
 
