@@ -492,7 +492,7 @@ The frontend event bus carries heterogeneous event shapes — each category defi
 
 ```clojure
 {:type :piece-invalidation        ; Required keyword, validated by backend
- :timestamp 1729800000000000000   ; Required nanosecond timestamp (auto-added)
+ :timestamp 1729800000000000      ; Required epoch-µs timestamp (auto-added)
  :piece-id "symphony-123"         ; Required for piece-* events (validated)
  :vpd [:layouts 0 :page-views 2 :system-views 1 :staff-views 0 :measure-views 47]
  :message "Human readable text"   ; Optional string
@@ -505,7 +505,7 @@ The frontend event bus carries heterogeneous event shapes — each category defi
 Events received by frontend are **pre-validated** and guaranteed to have:
 - `:type` field exists and is a keyword
 - `:type` matches pattern: `server-*`, `client-*`, `piece-*`, `collaboration-*`, or contains `/`
-- `:timestamp` field exists and is a number (nanoseconds, added by `send-*-event`)
+- `:timestamp` field exists and is a number (epoch µs, added by `send-*-event`)
 - `:piece-id` field exists and is a string (for piece-* and collaboration-* events)
 - All field names are keywords (kebab-case)
 - `:message` is a string if present
