@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -100,115 +100,90 @@ The three-tier approach aligns perfectly with existing architectural boundaries:
 
 ## Implementation Approach
 
-### Backend Implementation
+### Tier 2: Frontend Implementation
+
+The Tier 2 undo/redo module (`ooloi.frontend.undo_redo`) owns two module-level atoms — an
+undo stack and a redo stack — each holding a vector of stack entries. Stack entries mirror
+the `:setting-changed` event payload: `{:key, :old-value, :new-value, :timestamp}`. The stack is
+capped at 50 entries; oldest entries are dropped when the cap is reached.
+
+The module subscribes to the `:app-settings` event bus category via `wire-undo-redo!`. On
+each `:setting-changed` event, it calls `record-setting-change!` — unless the event carries
+`:sender :undo-redo`, which marks an undo/redo-triggered replay and must not push to the
+stack (feedback loop prevention).
+
+`undo!` pops the top entry from the undo stack, calls `set-app-setting!` with the
+`:old-value` and `{:sender :undo-redo}`, and pushes the entry onto the redo stack. `redo!`
+does the inverse. Both are no-ops on an empty stack.
+
+The undo and redo menu items use `text-key` functions that derive the setting name from the
+top stack entry: `:ui/theme` → `:setting.ui.theme.name` via the convention
+`(keyword (str "setting." (namespace k) "." (name k) ".name"))`. When the stack is empty,
+the item falls back to the static `:menu.edit.undo` / `:menu.edit.redo` key. Both items are
+enabled only when their respective stacks are non-empty.
+
+On macOS the system menu bar is built imperatively once via `build-menu-item!`. When the
+undo or redo stack transitions across zero (empty ↔ non-empty), the specific `MenuItem`
+objects are updated directly via `.setDisable()`. This surgical pattern is the correct
+approach for enablement state; the existing `refresh-menu-text!` rebuild-all pattern
+remains appropriate for text changes that affect many items simultaneously (locale and theme
+changes).
+
+Action handlers `:ui/undo` and `:ui/redo` are registered in `system.clj` and delegate to
+`undo-redo/undo!` and `undo-redo/redo!`. The stacks are not persisted — they reset on
+application restart.
+
 ```clojure
-;; Extend existing STM-based piece management with descriptive messages
-(defrecord UndoRedoEntry [previous-content current-content description timestamp])
-(defrecord PieceState [content undo-stack redo-stack])
+;; ooloi.frontend.undo_redo — module structure
 
-(defn record-piece-change 
-  "Records a piece change with descriptive message for undo/redo display"
-  [piece-ref new-content description]
-  (dosync
-    (let [current-state @piece-ref
-          old-content (:content current-state)
-          undo-entry (->UndoRedoEntry old-content new-content description (System/currentTimeMillis))]
-      (alter piece-ref 
-             #(-> %
-                  (assoc :content new-content)
-                  (update :undo-stack conj undo-entry)
-                  (assoc :redo-stack []))))))
+(def ^:private max-stack-depth 50)
+(def ^:private undo-stack (atom []))
+(def ^:private redo-stack (atom []))
 
-(defn undo-piece-change [piece-ref]
-  (dosync
-    (let [current-state @piece-ref
-          last-change (peek (:undo-stack current-state))]
-      (when last-change
-        (alter piece-ref 
-               #(-> %
-                    (assoc :content (:previous-content last-change))
-                    (update :undo-stack pop)
-                    (update :redo-stack conj last-change)))))))
+(defn can-undo? [] (boolean (seq @undo-stack)))
+(defn can-redo? [] (boolean (seq @redo-stack)))
 
-;; Broadcast undo operations with descriptions to all connected clients
-(defn broadcast-undo [piece-id description]
-  (doseq [client (get-connected-clients piece-id)]
-    (send-undo-notification client piece-id description)))
+(defn record-setting-change! [{:keys [key old-value new-value timestamp]}]
+  (swap! undo-stack #(vec (take-last max-stack-depth (conj % {:key key :old-value old-value :new-value new-value :timestamp timestamp}))))
+  (reset! redo-stack []))
+
+(defn undo! []
+  (when-let [entry (peek @undo-stack)]
+    (swap! undo-stack pop)
+    (swap! redo-stack conj entry)
+    (settings/set-app-setting! (:key entry) (:old-value entry) {:sender :undo-redo})))
+
+(defn redo! []
+  (when-let [entry (peek @redo-stack)]
+    (swap! redo-stack pop)
+    (swap! undo-stack conj entry)
+    (settings/set-app-setting! (:key entry) (:new-value entry) {:sender :undo-redo})))
+
+(defn wire-undo-redo! [event-bus]
+  (eb/subscribe! event-bus :app-settings
+    (fn [events]
+      (doseq [{:keys [type sender] :as event} events]
+        (when (and (= type :setting-changed)
+                   (not= sender :undo-redo))
+          (record-setting-change! event))))))
 ```
 
-### Frontend Implementation
-```clojure
-;; Local UI undo/redo stack with descriptions
-(defrecord UIUndoEntry [previous-state current-state description timestamp])
-(defrecord UIState [theme layout zoom-level panels undo-stack redo-stack])
+### Tier 1: Backend Implementation _(provisional — not yet implemented)_
 
-(defn unified-undo []
-  "Single undo function that handles both UI and piece changes with descriptions"
-  (cond
-    (recent-ui-change?) 
-    (let [last-ui-change (peek (:undo-stack @ui-state-atom))]
-      (when last-ui-change
-        (show-status-message (str "Undo " (:description last-ui-change)))
-        (undo-ui-change)))
-    
-    (recent-piece-change?) 
-    (let [last-piece-change (get-last-piece-change)]
-      (when last-piece-change
-        (show-status-message (str "Undo " (:description last-piece-change)))
-        (send-undo-request-to-backend)))
-    
-    :else (no-op)))
+Tier 1 covers piece undo/redo. The backend piece management infrastructure (STM-based piece
+refs, piece-manager component) will be extended with per-piece undo/redo stacks when Tier 1
+is implemented. The gRPC protocol will be extended with `UndoPieceChange` and
+`RedoPieceChange` operations at that time.
 
-;; UI state management with descriptive messages
-(defn record-ui-change [old-state new-state description]
-  (let [undo-entry (->UIUndoEntry old-state new-state description (System/currentTimeMillis))]
-    (swap! ui-state-atom 
-           #(-> %
-                (merge new-state)
-                (update :undo-stack conj undo-entry)
-                (assoc :redo-stack [])))))
+The unified undo routing logic — routing to Tier 2 or Tier 1 based on which change was most
+recent — will be designed when Tier 1 is implemented and the timestamp-based recency
+comparison can be properly specified against the actual backend architecture.
 
-;; Menu generation for undo/redo items
-(defn generate-undo-menu []
-  (let [ui-undo (peek (:undo-stack @ui-state-atom))
-        piece-undo (get-last-piece-change)]
-    (cond
-      (and ui-undo piece-undo)
-      (if (> (:timestamp ui-undo) (:timestamp piece-undo))
-        (str "Undo " (:description ui-undo))
-        (str "Undo " (:description piece-undo)))
-      
-      ui-undo (str "Undo " (:description ui-undo))
-      piece-undo (str "Undo " (:description piece-undo))
-      :else "Undo")))
-```
+### gRPC Extensions _(provisional — Tier 1)_
 
-### gRPC Service Extensions
-```protobuf
-service OoloiService {
-  // Existing piece operations...
-  
-  // Undo/redo operations with descriptive messages
-  rpc UndoPieceChange(UndoRequest) returns (UndoRedoResponse);
-  rpc RedoPieceChange(RedoRequest) returns (UndoRedoResponse);
-  
-  // Real-time streaming for collaborative updates including undo/redo descriptions
-  rpc StreamPieceUpdates(StreamRequest) returns (stream PieceUpdate);
-}
-
-message UndoRedoResponse {
-  PieceUpdateResponse piece_update = 1;
-  string description = 2;  // e.g., "Add Note", "Change Key Signature"
-  int64 timestamp = 3;
-}
-
-message PieceUpdate {
-  string piece_id = 1;
-  bytes piece_data = 2;
-  string change_description = 3;  // Description of what changed for collaborative awareness
-  string user_id = 4;            // Who made the change
-}
-```
+`UndoPieceChange` and `RedoPieceChange` RPCs will be added to the gRPC service definition
+when Tier 1 is implemented. The exact message shapes will be specified at that time based on
+the piece management architecture as it stands.
 
 ## Consequences
 
@@ -277,6 +252,8 @@ message PieceUpdate {
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model enabling collaborative undo/redo
 - [ADR-0009: Collaboration](0009-Collaboration.md) - Collaborative editing context requiring coordinated undo/redo
 - [ADR-0016: Settings](0016-Settings.md) - Settings architecture implementing piece-specific configuration identified in this analysis
+- [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Event bus providing the `:app-settings` category that Tier 2 subscribes to
+- [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) - `set-app-setting!` and the `:setting-changed` event that Tier 2 accumulates
 
 ### Technical Considerations
 - STM performance characteristics (100,000+ transactions/second on modest hardware)
