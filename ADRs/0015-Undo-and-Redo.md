@@ -122,12 +122,19 @@ top stack entry: `:ui/theme` → `:setting.ui.theme.name` via the convention
 the item falls back to the static `:menu.edit.undo` / `:menu.edit.redo` key. Both items are
 enabled only when their respective stacks are non-empty.
 
-On macOS the system menu bar is built imperatively once via `build-menu-item!`. When the
-undo or redo stack transitions across zero (empty ↔ non-empty), the specific `MenuItem`
-objects are updated directly via `.setDisable()`. This surgical pattern is the correct
-approach for enablement state; the existing `refresh-menu-text!` rebuild-all pattern
-remains appropriate for text changes that affect many items simultaneously (locale and theme
-changes).
+The menu bar is built imperatively once via `build-menu-item!`. Each menu item stores its
+`enabled?` predicate in the item's JavaFX `::dynamic-enabled?` property at build time.
+`refresh-dynamic-items!` in `menus.clj` then updates both text (via `::dynamic-text-key`)
+and enabled state (via `::dynamic-enabled?`) on every refresh call. The `enabled?` predicates
+for undo and redo read directly from the atoms — `(fn [_] (undo-redo/can-undo?))` and
+`(fn [_] (undo-redo/can-redo?))` — ignoring the state parameter, exactly as `text-key` does.
+This means the correct enabled state is produced on every refresh regardless of which caller
+triggered it (undo/redo stack change, locale change, theme change).
+
+`wire-undo-redo!` accepts an optional `on-change` callback. In `start-app!` this is wired
+as `(fn [] (fx/run-later! #(um/refresh-menu-text! mgr)))`. After every stack mutation,
+`undo!`, `redo!`, and `record-setting-change!` call this callback, which queues a menu
+refresh on the JavaFX Application Thread.
 
 Action handlers `:ui/undo` and `:ui/redo` are registered in `system.clj` and delegate to
 `undo-redo/undo!` and `undo-redo/redo!`. The stacks are not persisted — they reset on
@@ -139,33 +146,42 @@ application restart.
 (def ^:private max-stack-depth 50)
 (def ^:private undo-stack (atom []))
 (def ^:private redo-stack (atom []))
+(def ^:private on-change-callback (atom nil))
 
 (defn can-undo? [] (boolean (seq @undo-stack)))
 (defn can-redo? [] (boolean (seq @redo-stack)))
+(defn top-undo-key [] (:key (peek @undo-stack)))
+(defn top-redo-key [] (:key (peek @redo-stack)))
 
 (defn record-setting-change! [{:keys [key old-value new-value timestamp]}]
   (swap! undo-stack #(vec (take-last max-stack-depth (conj % {:key key :old-value old-value :new-value new-value :timestamp timestamp}))))
-  (reset! redo-stack []))
+  (reset! redo-stack [])
+  (when-let [cb @on-change-callback] (cb)))
 
 (defn undo! []
   (when-let [entry (peek @undo-stack)]
     (swap! undo-stack pop)
     (swap! redo-stack conj entry)
-    (settings/set-app-setting! (:key entry) (:old-value entry) {:sender :undo-redo})))
+    (settings/set-app-setting! (:key entry) (:old-value entry) {:sender :undo-redo})
+    (when-let [cb @on-change-callback] (cb))))
 
 (defn redo! []
   (when-let [entry (peek @redo-stack)]
     (swap! redo-stack pop)
     (swap! undo-stack conj entry)
-    (settings/set-app-setting! (:key entry) (:new-value entry) {:sender :undo-redo})))
+    (settings/set-app-setting! (:key entry) (:new-value entry) {:sender :undo-redo})
+    (when-let [cb @on-change-callback] (cb))))
 
-(defn wire-undo-redo! [event-bus]
-  (eb/subscribe! event-bus :app-settings
-    (fn [events]
-      (doseq [{:keys [type sender] :as event} events]
-        (when (and (= type :setting-changed)
-                   (not= sender :undo-redo))
-          (record-setting-change! event))))))
+(defn wire-undo-redo!
+  ([event-bus] (wire-undo-redo! event-bus nil))
+  ([event-bus on-change]
+   (reset! on-change-callback on-change)
+   (eb/subscribe! event-bus :app-settings
+     (fn [events]
+       (doseq [{:keys [type sender] :as event} events]
+         (when (and (= type :setting-changed)
+                    (not= sender :undo-redo))
+           (record-setting-change! event)))))))
 ```
 
 ### Tier 1: Backend Implementation _(provisional — not yet implemented)_
