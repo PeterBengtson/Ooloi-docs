@@ -580,6 +580,15 @@ a backend concern.
 | Flute | treble | — | |
 | Alto Flute in G | treble | Perfect fourth below written | |
 | Bass Flute in C | treble | Octave below written | |
+| Shakuhachi | treble | — | Japanese end-blown bamboo flute |
+
+**Ocarinas**
+
+| Instrument | Clef(s) | Transposition | Notes |
+|---|---|---|---|
+| Soprano Ocarina in C | treble | — | |
+| Alto Ocarina in C | treble | — | |
+| Bass Ocarina in C | treble | — | |
 
 **Double reeds**
 
@@ -637,6 +646,14 @@ All saxophones use treble clef and are non-transposing in terms of fingering (sa
 |---|---|---|---|
 | Bassoon | bass; tenor | — | |
 | Contrabassoon | bass | Octave below written | |
+
+**Bagpipes**
+
+| Instrument | Clef(s) | Transposition | Notes |
+|---|---|---|---|
+| Great Highland Bagpipe | treble | Major second below written | Chanter written in B♭ key signature |
+| Uilleann Pipes | treble | — | Irish bellows-blown pipes; D chanter |
+| Northumbrian Smallpipes | treble | — | English bellows-blown smallpipes |
 
 #### Brass (`:family :brass`)
 
@@ -703,6 +720,16 @@ bass clef transposition is expressed as `:clef-overrides {:bass {...}}`.
 | Bass Tuba | bass | — | |
 | Contrabass Tuba | bass | — | |
 
+**Band and Cornet Family**
+
+| Instrument | Clef(s) | Transposition | Notes |
+|---|---|---|---|
+| Soprano Cornet in E♭ | treble | Minor third above written | Leads the brass band |
+| Flugelhorn in B♭ | treble | Major second below written | Conical-bore; warmer tone than trumpet |
+| Alto Horn in E♭ | treble | Major sixth below written | Tenor Horn (British); Althorn (German/Austrian) |
+| Baritone Horn in B♭ | treble; bass | treble: major ninth below written; bass: concert pitch | Narrower bore than euphonium |
+| Ophicleide | bass | — | 19th-century keyed brass; precursor to the tuba; Mendelssohn, Berlioz, early Verdi |
+
 #### Timpani (`:family :percussion`)
 
 | Instrument | Clef(s) | Notes |
@@ -721,6 +748,12 @@ bass clef transposition is expressed as `:clef-overrides {:bass {...}}`.
 | Tubular Bells | treble | — | Chimes / Röhrenglocken |
 | Crotales | treble | Two octaves above written | Antique Cymbals |
 | Crotale | treble | Two octaves above written | Single instrument, specific pitch |
+| Glass Harmonica | treble; bass | — | Glass armonica; 1–2 staves |
+| Soprano Steel Pan | treble | — | Tenor pan; highest register |
+| Alto Steel Pan | treble | — | Double tenor |
+| Tenor Steel Pan | treble | — | |
+| Baritone Steel Pan | treble | — | Guitar pan |
+| Bass Steel Pan | bass | — | |
 
 #### Unpitched Percussion (`:family :percussion`)
 
@@ -772,12 +805,20 @@ bass clef transposition is expressed as `:clef-overrides {:bass {...}}`.
 | Instrument | Staves | Transposition | Notes |
 |---|---|---|---|
 | Piano | 2 | — | |
+| Electric Piano | 1–2 | — | Rhodes, Wurlitzer, and similar; concert pitch |
 | Organ (2 staves) | 2 | — | Manuals only |
 | Organ (3 staves) | 3 | — | Two manuals + pedal |
+| Hammond Organ | 2–3 | — | Two manuals; optional bass pedal stave |
 | Harpsichord | 2 | — | Both 1- and 2-manual instruments notated on 2 staves |
 | Celesta | 2 | Two octaves above written | |
 | Harmonium | 1–2 | — | Reed organ |
 | Accordion | 1 | — | |
+| Bandoneon | 2 | — | Argentine tango; grand staff |
+| Concertina (English) | 1 | — | Bisonoric; same note in/out |
+| Concertina (Anglo) | 1 | — | Unisonoric; different notes in/out |
+| Melodica | 1 | — | Blow organ / pianica |
+| Chromatic Harmonica | 1 | — | Button-operated chromatic scale |
+| Diatonic Harmonica | 1 | — | Key specified per piece |
 | Ondes Martenot | 1 | — | Electronic monophonic; keyboard or ribbon controller |
 | Theremin | 1 | — | Electronic; no physical contact; continuous pitch |
 | Synthesizer | 1–2 | — | Keyboard-based; concert pitch |
@@ -799,6 +840,20 @@ bass clef transposition is expressed as `:clef-overrides {:bass {...}}`.
 | Electric Bass Guitar (5-string) | 1 | Octave below written | Extended lower range |
 | Electric Bass Guitar (6-string) | 1 | Octave below written | Extended upper and lower range |
 | Mandolin | 1 | — | |
+| Ukulele | 1 | — | |
+| Zither | 2 | — | Austrian/Bavarian; melody + accompaniment staves |
+| Cimbalom | 2 | — | Hungarian hammered dulcimer; concert pitch |
+| Koto | 2 | — | Japanese 13-string zither; grand staff |
+| Shamisen | 1 | — | Japanese 3-string lute |
+| Balalaika Prima | 1 | — | Soprano range |
+| Balalaika Sekunda | 1 | — | Alto range |
+| Balalaika Alto | 1 | — | |
+| Balalaika Bass | 1 | — | |
+| Balalaika Contrabass | 1 | Octave below written | |
+| Domra Piccolo | 1 | — | |
+| Domra Soprano | 1 | — | |
+| Domra Alto | 1 | — | |
+| Domra Bass | 1 | — | |
 
 #### Choirs (`:family :voice`)
 
