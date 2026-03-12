@@ -136,6 +136,7 @@ created. Each staff entry has the following shape:
 | `:short-name` | string | if multiple staves | Abbreviated name used in score brackets and subsequent systems, e.g. `"RH"`. Omitted for single-staff instruments. |
 | `:concert-pitch` | map | always | Clef specification when the score is displayed at concert pitch |
 | `:written-pitch` | map | always | Clef specification when the score displays written (transposed) pitch |
+| `:aux-clef-ranges` | map | if multiple clefs used | Auxiliary clefs and the pitch ranges in which the notation engine will prefer them over the default; see below |
 
 Each clef specification map:
 
@@ -148,6 +149,19 @@ be present regardless.
 
 **Clef keywords**: `:treble`, `:treble-8vb`, `:bass`, `:tenor`, `:alto`, `:soprano`,
 `:mezzo-soprano`, `:baritone`, `:percussion`.
+
+**`:aux-clef-ranges`** is a map from clef keyword to a `{:low <pitch> :high <pitch>}` range, using
+Ooloi's string-based pitch representation ([ADR-0026](0026-Pitch-Representation-and-Operations.md)).
+The bounds are inclusive and soft: they give the notation engine the information it needs to reason
+about automatic clef selection, not hard cut-offs. When a passage falls within a clef's range, the
+engine prefers that clef over the default. Only auxiliary clefs — those other than the
+`:default-clef` — are listed; the default clef is implicitly preferred for everything else.
+
+```clojure
+;; Violoncello: bass clef default; tenor for middle-high passages; treble for high passages
+:aux-clef-ranges {:tenor  {:low "C3" :high "B4"}
+                  :treble {:low "C5" :high "C7"}}
+```
 
 #### Clef-Dependent Transposition
 
