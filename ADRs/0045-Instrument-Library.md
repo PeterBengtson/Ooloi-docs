@@ -67,6 +67,11 @@ The Instrument Library is an Integrant component with two internal members:
   separate concern of surfacing conflicting full-replace operations to callers. Note: the atom
   holds only `:version` and `:instruments`; the `:excluded` set (see Persistence below) is a
   file-level concern and is not carried in the running atom.
+- **bundle ID set** — the set of all `:id` values present in the bundled EDN, retained in memory
+  for the lifetime of the component. Used at write time to compute the updated `:excluded` set:
+  `excluded = (bundle-ids − ids-present-in-new-instruments) ∪ existing-excluded`. This ensures
+  that when a client submits a new instruments vector with bundle entries absent, those `:id`s are
+  automatically tombstoned without any explicit deletion signal in the API.
 - **writer agent** — receives persist tasks asynchronously so that write operations return
   immediately without blocking on disk I/O.
 
@@ -442,9 +447,12 @@ next startup. Previously deleted bundle instruments are not re-inserted — the 
 acts as a permanent tombstone. User-added instruments (whose `:id`s are not in the bundle) are
 never affected by merging.
 
-When a user deletes a bundle instrument, its `:id` is added to `:excluded` and the file is
-persisted. When a user deletes an instrument they added themselves, the entry is simply removed
-from `:instruments`; nothing is added to `:excluded`.
+The frontend sends no explicit deletion signal. Deletions are implicit: the frontend submits a
+new instruments vector with the deleted entry absent. On each successful `set-instrument-library`,
+the backend computes the updated excluded set — bundle IDs absent from the new instruments vector
+are added to the existing excluded set — and dispatches both the instruments and the updated
+excluded set to the writer agent. The frontend never sees or manages `:excluded`; it is entirely
+a backend persistence concern.
 
 #### Woodwinds (`:family :woodwind`)
 
