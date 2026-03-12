@@ -717,7 +717,7 @@ bass clef transposition is expressed as `:clef-overrides {:bass {...}}`.
 | Glockenspiel | treble | Two octaves above written | |
 | Xylophone | treble | Octave above written | |
 | Marimba | bass; treble | — | |
-| Vibraphone | treble | — | |
+| Vibraphone | treble | — | 1–2 staves |
 | Tubular Bells | treble | — | Chimes / Röhrenglocken |
 | Crotales | treble | Two octaves above written | Antique Cymbals |
 | Crotale | treble | Two octaves above written | Single instrument, specific pitch |
@@ -774,8 +774,7 @@ bass clef transposition is expressed as `:clef-overrides {:bass {...}}`.
 | Piano | 2 | — | |
 | Organ (2 staves) | 2 | — | Manuals only |
 | Organ (3 staves) | 3 | — | Two manuals + pedal |
-| Harpsichord (1 manual) | 2 | — | |
-| Harpsichord (2 manuals) | 2 | — | Two-manual instrument |
+| Harpsichord | 2 | — | Both 1- and 2-manual instruments notated on 2 staves |
 | Celesta | 2 | Two octaves above written | |
 | Harmonium | 1–2 | — | Reed organ |
 | Accordion | 1 | — | |
