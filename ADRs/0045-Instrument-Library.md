@@ -376,8 +376,37 @@ must be declared with `tr-declare`; no computed keys. All seven keys must be add
 locale file in `resources/i18n/`.
 
 Selecting a language shows only templates whose `:language` value matches. Selecting **Other**
-shows templates whose `:language` value is not one of `:it`, `:de`, `:fr`, `:en`. A "show all"
-option must also be available — when selected, no filtering on language is applied.
+shows templates whose `:language` value is not one of `:it`, `:de`, `:fr`, `:en`. Selecting
+**All** removes language filtering entirely.
+
+**The language filter selection is an app setting**, not ephemeral window state. It is declared
+with `def-app-setting` per [ADR-0043](0043-Frontend-Settings.md):
+
+```clojure
+(def-app-setting :instrument-library/language-filter
+  {:default :all
+   :choices {:all   :instrument-library.language.all
+             :it    :instrument-library.language.italian
+             :de    :instrument-library.language.german
+             :fr    :instrument-library.language.french
+             :en    :instrument-library.language.english
+             :other :instrument-library.language.other}})
+```
+
+The undo menu displays the setting name via the standard convention:
+`:instrument-library/language-filter` → `:setting.instrument-library.language-filter.name`.
+This key must be added to all locale files.
+
+Consequences:
+
+- The selected language persists across application restarts.
+- Changing the filter calls `set-app-setting!`, which publishes a `:setting-changed` event to
+  the `:app-settings` bus category. The undo/redo module records this automatically — no extra
+  wiring is needed.
+- The Settings window may surface `:instrument-library/language-filter` as an editable
+  preference. If it does, changing the setting there updates the IL window's dropdown
+  immediately, because the IL window subscribes to `:setting-changed` events on the
+  `:app-settings` category and re-renders when this key changes.
 
 #### Search
 
