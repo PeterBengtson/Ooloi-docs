@@ -118,7 +118,7 @@ Each instrument template is a map with the following fields:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `:id` | keyword | always | Unique identifier for this template entry. Convention: `:instrument-key-language`, e.g. `:bb-clarinet-it`. Must be unique across the entire instrument vector. |
+| `:id` | keyword | always | Unique identifier for this template entry. Convention: `:instrument-name-language`, where the instrument name segment must include the transposition key for any instrument that exists in multiple keys or notation variants, e.g. `:horn-f-it`, `:horn-d-it`, `:bass-clarinet-french-it`, `:bass-clarinet-german-it`. Non-transposing instruments or instruments with a single unique transposition may omit the key: `:flute-en`, `:bb-clarinet-it`. Must be unique across the entire instrument vector. |
 | `:sort-order` | integer | always | Controls display order within a `:family` group. Bundled entries use multiples of 1000 (score order: `1000`, `2000`, `3000`, …). Drag-to-reorder assigns the midpoint between neighbours; if adjacent integers leave no midpoint, the frontend renumbers the entire family at 1000-spacing before persisting. User-added instruments default to `(max sort-order in family) + 1000`. |
 | `:name` | string | always | Full display name, e.g. `"Clarinetto in Si♭"` |
 | `:short-name` | string | always | Abbreviated name for score labels, e.g. `"Cl."` |
@@ -193,7 +193,7 @@ lanes defined in [ADR-0026](0026-Pitch-Representation-and-Operations.md):
 
 ;; Transposing — Lane 2 (fluid keywords)
 ;; Bass Clarinet: bass clef at concert pitch; treble (French) or bass (German) when transposing
-{:id :bass-clarinet-it :language :it
+{:id :bass-clarinet-french-it :language :it
  :name "Clarinetto basso in Si♭" :short-name "Cl. b."
  :family :woodwind :transposing? true
  :sounding->written [:up :major :ninth]
@@ -201,7 +201,7 @@ lanes defined in [ADR-0026](0026-Pitch-Representation-and-Operations.md):
  :staves [{:concert-pitch {:default-clef :bass   :clefs [:bass :tenor]}
            :written-pitch  {:default-clef :treble :clefs [:treble :bass]}}]}
 
-{:id :horn-it :language :it
+{:id :horn-f-it :language :it
  :name "Corno in Fa" :short-name "Cor."
  :family :brass :transposing? true
  :sounding->written [:up :perfect :fifth]
