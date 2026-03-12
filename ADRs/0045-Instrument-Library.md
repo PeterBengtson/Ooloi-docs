@@ -617,6 +617,20 @@ interval and default clef. Both variants must be present.
 | Contrabass Clarinet — French notation | `:treble` | Two octaves + major second below written |
 | Contrabass Clarinet — German notation | `:bass` | Major ninth below written |
 
+**Saxophones**
+
+All saxophones use treble clef and are non-transposing in terms of fingering (same fingering = same written note), but transpose against concert pitch.
+
+| Instrument | Clef(s) | Transposition | Notes |
+|---|---|---|---|
+| Sopranino Saxophone in E♭ | treble | Minor third above written | Rare; used in some military and chamber music |
+| Soprano Saxophone in B♭ | treble | Major second below written | |
+| Alto Saxophone in E♭ | treble | Major sixth below written | |
+| Tenor Saxophone in B♭ | treble | Major ninth below written | |
+| Baritone Saxophone in E♭ | treble | Major thirteenth below written | |
+| Bass Saxophone in B♭ | treble | Two octaves + major second below written | Rare; mainly 19th-century band repertoire |
+| Contrabass Saxophone in E♭ | treble | Two octaves + major sixth below written | Extremely rare |
+
 **Bassoons**
 
 | Instrument | Clef(s) | Transposition | Notes |
