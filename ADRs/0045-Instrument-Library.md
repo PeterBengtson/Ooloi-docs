@@ -659,12 +659,14 @@ bass clef transposition is expressed as `:clef-overrides {:bass {...}}`.
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
 | Trumpet in C | treble | — | Modern standard |
-| Trumpet in D | treble | Major second above written | |
-| Trumpet in E♭ | treble | Minor third above written | |
-| Trumpet in E | treble | Major third above written | |
-| Trumpet in F | treble | Perfect fourth above written | |
-| Trumpet in G | treble | Perfect fifth above written | |
+| Trumpet in D | treble | Major second above written | Baroque clarino register |
+| Trumpet in E♭ | treble | Minor third above written | Baroque clarino; also modern piccolo variant |
+| Trumpet in E | treble | Major third above written | Baroque clarino register |
+| Trumpet in F (orchestral) | treble | Perfect fifth below written | 19th-century low orchestral instrument; same fundamental as horn in F; Mahler, Berg, Schoenberg, Webern |
+| Piccolo Trumpet in F | treble | Perfect fourth above written | High register; Baroque clarino variant |
+| Trumpet in G | treble | Perfect fifth above written | Baroque clarino register |
 | Trumpet in A | treble | Minor third below written | Standard alternative to B♭ trumpet in sharp keys |
+| Piccolo Trumpet in A | treble | Major sixth above written | High register; Baroque clarino variant |
 | Trumpet in B♭ | treble | Major second below written | Modern standard |
 | Piccolo Trumpet in B♭ | treble | Major second below written | High register; one octave above standard B♭ |
 | Cornet in B♭ | treble | Major second below written | Separate entry from trumpet |
