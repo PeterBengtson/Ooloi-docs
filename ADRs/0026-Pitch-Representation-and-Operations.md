@@ -519,9 +519,9 @@ Includes global caching and hot-path memoization. Performance scales well for in
  :sounding->written [:up :major :ninth]     ; M2 + octave
  :written->sounding [:down :major :ninth]}
 
-{:name "Quarter-tone Trumpet"
- :sounding->written [:chromatic 6 :cents 50]    
- :written->sounding [:chromatic -6 :cents -50]}
+{:name "Quarter-tone Trumpet in B♭"
+ :sounding->written [:chromatic 2 :cents 50]
+ :written->sounding [:chromatic -2 :cents -50]}
 ```
 
 These vectors are applied as `(apply make-transposer params)`.
