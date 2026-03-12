@@ -608,6 +608,7 @@ a backend concern.
 | Clarinet in C | treble | — | |
 | Clarinet in B♭ | treble | Major second below written | |
 | Clarinet in A | treble | Minor third below written | |
+| Alto Clarinet in E♭ | treble; bass | Major sixth below written | Standard American concert band instrument |
 | Basset Horn in F | treble | Perfect fifth below written | |
 | Bass Clarinet — French notation | treble | Major ninth below written | See notation variants below |
 | Bass Clarinet — German notation | bass | Major second below written | See notation variants below |
@@ -728,6 +729,10 @@ bass clef transposition is expressed as `:clef-overrides {:bass {...}}`.
 | Flugelhorn in B♭ | treble | Major second below written | Conical-bore; warmer tone than trumpet |
 | Alto Horn in E♭ | treble | Major sixth below written | Tenor Horn (British); Althorn (German/Austrian) |
 | Baritone Horn in B♭ | treble; bass | treble: major ninth below written; bass: concert pitch | Narrower bore than euphonium |
+| Mellophone | treble | Perfect fifth below written | Band substitute for horn; F instrument |
+| Sousaphone | bass; treble | bass: concert pitch; treble: major ninth below written | B♭ instrument; upright bell; marching and concert band bass |
+| Bombardon in E♭ | bass; treble | bass: concert pitch; treble: major sixth below written | E♭ bass in British brass band |
+| Bombardon in B♭ | bass; treble | bass: concert pitch; treble: major ninth below written | B♭ bass; Berg's Wozzeck; British brass band |
 | Ophicleide | bass | — | 19th-century keyed brass; precursor to the tuba; Mendelssohn, Berlioz, early Verdi |
 
 #### Timpani (`:family :percussion`)
