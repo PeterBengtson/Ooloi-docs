@@ -731,6 +731,7 @@ appear in two-, three-, and four-part divisi configurations.
 | Harmonium | 1–2 | — | Reed organ |
 | Accordion | 1 | — | |
 | Ondes Martenot | 1 | — | Electronic monophonic; keyboard or ribbon controller |
+| Theremin | 1 | — | Electronic; no physical contact; continuous pitch |
 | Harp | 2 | — | Double-action |
 | Guitar | 1 | Octave below written | Classical guitar |
 | Electric Guitar | 1 | — | Lead / rhythm |
