@@ -122,6 +122,8 @@ Each instrument template is a map with the following fields:
 | `:transposing?` | boolean | always | `true` for transposing instruments |
 | `:sounding->written` | vector | if transposing | Transposer args: sounding pitch → written pitch |
 | `:written->sounding` | vector | if transposing | Transposer args: written pitch → sounding pitch |
+| `:range` | map | optional | Professional/full range: `{:low <pitch> :high <pitch>}`. Notes outside this range are coloured red in the frontend as a range warning. Uses ADR-0026 pitch strings. |
+| `:amateur-range` | map | optional | Non-professional range: `{:low <pitch> :high <pitch>}`. Notes outside this range but within `:range` are coloured yellow. Absent means no amateur range distinction. |
 | `:staves` | vector | always | One entry per staff; defines clefs for each display context |
 | `:clef-overrides` | map | if clef-dependent transposition | Clef-to-transposition overrides for clefs whose transposition deviates from the instrument's top-level `:sounding->written`/`:written->sounding`; see **Clef-Dependent Transposition** below |
 
@@ -248,6 +250,8 @@ as the fallback:
  :family :brass :transposing? true
  :sounding->written [:up :perfect :fifth]
  :written->sounding [:down :perfect :fifth]
+ :range        {:low "B1" :high "F5"}
+ :amateur-range {:low "E2" :high "C5"}
  :staves [{:concert-pitch {:default-clef :bass}
            :written-pitch  {:default-clef :treble}}]}
 
