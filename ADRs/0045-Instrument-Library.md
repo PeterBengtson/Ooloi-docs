@@ -501,7 +501,7 @@ which must be reflected in the `:default-clef` and `:clefs` fields of the EDN te
 | Bass Clarinet — French notation | `:treble` | — | Sounds a major ninth below written (written C5 → B♭3) | French, Belgian, some British editions |
 | Bass Clarinet — German notation | `:bass` | `:tenor` | Sounds a major second below written (written C4 → B♭3) | German, Austrian, some American editions |
 | Contrabass Clarinet — French notation | `:treble` | — | Sounds two octaves + major second below written | French/modern editions |
-| Contrabass Clarinet — German notation | `:bass` | `:tenor` | Sounds a major second below written (two octaves lower register than equivalent French notation) | Older German editions |
+| Contrabass Clarinet — German notation | `:bass` | `:tenor` | Sounds a major ninth below written (one octave + major second; bass clef absorbs one octave of the total displacement) | Older German editions |
 
 Both variants must be present. Composers specify which convention they follow; importing a part
 into a different convention requires re-transposition.
@@ -571,7 +571,7 @@ Example IDs: `:violin-section-it`, `:violin-solo-it`, `:violin-div2-it`, `:violi
 
 #### Percussion (`:family :percussion`)
 
-**Timpani**: Orchestral Timpani (single drum, pitched); Timpani Set (4 drums, 4 staves).
+**Timpani**: Orchestral Timpani (single drum, pitched); Timpani Set (4 drums, single staff).
 
 **Mallet — pitched**: Glockenspiel; Xylophone; Marimba; Vibraphone; Tubular Bells (Chimes /
 Röhrenglocken); Crotales (Antique Cymbals); Crotale (single, specific pitch).
@@ -628,7 +628,7 @@ a group of players on a single staff. The SATB template has four staves; SSAATTB
 | Template | Staves | Description |
 |---|---|---|
 | SATB Choir | 4 | Standard mixed chorus (S, A, T, B) |
-| SSAATTBB Choir | 8 | Eight-part single chorus (2S, 2A, 2T, 2B); Monteverdi's *Vespro della Beata Vergine*, Mahler's Eighth |
+| SSAATTBB Choir | 8 | Eight-part single chorus (2S, 2A, 2T, 2B); Mahler's Eighth and Renaissance/Baroque polychoral repertoire |
 | SA Choir | 2 | Women's or children's two-part chorus |
 | SSAA Choir | 4 | Two soprano parts + two alto parts |
 | TTBB Choir | 4 | Two tenor parts + two bass parts |
@@ -703,7 +703,7 @@ sequenceDiagram
     participant UI as Library Window
     participant FE as Frontend<br/>(*library atom)
     participant SRV as SRV/ gRPC
-    participant BE as Backend<br/>(library atom)
+    participant BE as Backend
     participant FS as EDN File
 
     UI->>FE: user saves change
@@ -733,7 +733,7 @@ both windows update without any special coordination.
 sequenceDiagram
     participant WA as Window (Client A)
     participant FA as Frontend A<br/>(*library)
-    participant BE as Backend<br/>(library atom)
+    participant BE as Backend
     participant FB as Frontend B<br/>(*library)
     participant WB as Window (Client B)
 
@@ -765,7 +765,7 @@ receives a conflict response, incorporates the current library, and retries succ
 ```mermaid
 sequenceDiagram
     participant FA as Frontend A
-    participant BE as Backend<br/>(library atom)
+    participant BE as Backend
     participant FB as Frontend B
 
     Note over FA,FB: Both hold version=42
@@ -920,7 +920,3 @@ the protocol is correct regardless of timing, which is what matters.
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) — event bus; `:instrument-library` category must be added to `derive-category`
 - [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) — role-based permissions; host/guest write access model
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) — backend authority; frontend caches, never owns
-
-### GitHub
-
-- Issue [#186](https://github.com/PeterBengtson/Ooloi/issues/186) — Instrument Library: Backend, Window, and API Integration
