@@ -568,19 +568,6 @@ a backend concern.
 | Flute | treble | — | |
 | Alto Flute in G | treble | Perfect fourth below written | |
 | Bass Flute in C | treble | Octave below written | |
-| Traverso | treble | — | Baroque transverse flute |
-
-**Recorders**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Garklein Recorder in C | treble | — | Sopranissimo |
-| Sopranino Recorder in F | treble | — | |
-| Soprano Recorder in C | treble | — | Descant |
-| Alto Recorder in F | treble | — | Treble |
-| Tenor Recorder in C | treble | — | |
-| Bass Recorder in F | treble | — | |
-| Contrabass Recorder in C | treble | — | |
 
 **Double reeds**
 
@@ -589,7 +576,6 @@ a backend concern.
 | Oboe | treble | — | |
 | Oboe d'amore in A | treble | Minor third below written | |
 | English Horn in F | treble | Perfect fifth below written | Cor anglais |
-| Oboe da caccia in F | treble | Perfect fifth below written | Curved-body Baroque oboe; distinct from English horn |
 | Bass Oboe | bass; tenor | — | |
 | Heckelphone | treble | Octave below written | |
 
@@ -606,7 +592,6 @@ a backend concern.
 | Bass Clarinet — German notation | bass | Major second below written | See notation variants below |
 | Contrabass Clarinet — French notation | treble | Two octaves + major second below written | |
 | Contrabass Clarinet — German notation | bass | Major ninth below written | Bass clef absorbs one octave |
-| Chalumeau | treble | — | Baroque predecessor to the clarinet |
 
 **Notation variants for Bass Clarinet and Contrabass Clarinet**
 
@@ -690,6 +675,132 @@ bass clef transposition is expressed as `:clef-overrides {:bass {...}}`.
 | Bass Tuba | bass | — | |
 | Contrabass Tuba | bass | — | |
 
+#### Timpani (`:family :percussion`)
+
+| Instrument | Clef(s) | Notes |
+|---|---|---|
+| Timpani | percussion | Standard orchestral timpani; single staff |
+| Timpano piccolo | percussion | Small timpani; higher pitch range |
+
+#### Pitched Percussion (`:family :percussion`)
+
+| Instrument | Clef(s) | Transposition | Notes |
+|---|---|---|---|
+| Glockenspiel | treble | Two octaves above written | |
+| Xylophone | treble | Octave above written | |
+| Marimba | bass; treble | — | |
+| Vibraphone | treble | — | |
+| Tubular Bells | treble | — | Chimes / Röhrenglocken |
+| Crotales | treble | Two octaves above written | Antique Cymbals |
+| Crotale | treble | Two octaves above written | Single instrument, specific pitch |
+
+#### Unpitched Percussion (`:family :percussion`)
+
+**Drums**
+
+| Instrument | Notes |
+|---|---|
+| Bass Drum | |
+| Snare Drum | Side Drum |
+| Tenor Drum | |
+| Military Drum | |
+| Tom-tom | |
+
+**Cymbals and gongs**
+
+| Instrument | Notes |
+|---|---|
+| Crash Cymbals | |
+| Suspended Cymbal | |
+| Chinese Cymbal | |
+| Tam-tam | |
+
+**Small and hand percussion**
+
+| Instrument | Notes |
+|---|---|
+| Triangle | |
+| Tambourine | |
+| Castanets | |
+| Claves | |
+| Wood Block | |
+| Temple Blocks | |
+| Guiro | |
+| Maracas | |
+| Rute | Birch-switch bundle |
+
+#### Special Effects (`:family :other`)
+
+| Instrument | Notes |
+|---|---|
+| Wind Machine | Windmaschine / Machine à vent; rotating ribbed cylinder |
+| Thunder Machine | Donnermaschine / Machine à tonnerre; large drum or metal sheet |
+| Cowbells | Herdenglocken / Cloches de vache; multiple pitched cowbells |
+| Whip | Peitsche / Fouet; two flat boards |
+| Ratchet | Ratsche / Crécelle; notched rotating wheel |
+
+#### Keyboards (`:family :keyboard`)
+
+| Instrument | Staves | Transposition | Notes |
+|---|---|---|---|
+| Piano | 2 | — | |
+| Organ (2 staves) | 2 | — | Manuals only |
+| Organ (3 staves) | 3 | — | Two manuals + pedal |
+| Harpsichord (1 manual) | 2 | — | |
+| Harpsichord (2 manuals) | 2 | — | Two-manual instrument |
+| Celesta | 2 | Two octaves above written | |
+| Harmonium | 1–2 | — | Reed organ |
+| Accordion | 1 | — | |
+| Ondes Martenot | 1 | — | Electronic monophonic; keyboard or ribbon controller |
+| Theremin | 1 | — | Electronic; no physical contact; continuous pitch |
+| Synthesizer | 1–2 | — | Keyboard-based; concert pitch |
+
+#### Harp (`:family :keyboard`)
+
+| Instrument | Staves | Transposition | Notes |
+|---|---|---|---|
+| Harp | 2 | — | Double-action |
+
+#### Plucked Strings (`:family :keyboard`)
+
+| Instrument | Staves | Transposition | Notes |
+|---|---|---|---|
+| Guitar | 1 | Octave below written | Classical guitar |
+| Electric Guitar | 1 | — | Lead / rhythm |
+| Electric Guitar (7-string) | 1 | — | Extended range |
+| Electric Bass Guitar | 1 | Octave below written | 4-string |
+| Electric Bass Guitar (5-string) | 1 | Octave below written | Extended lower range |
+| Electric Bass Guitar (6-string) | 1 | Octave below written | Extended upper and lower range |
+| Mandolin | 1 | — | |
+
+#### Choirs (`:family :voice`)
+
+Choirs are single instruments in the Ooloi model — a choir is a group of singers on a unified
+set of staves, exactly as a string section is a group of players on a single staff.
+
+| Template | Staves | Notes |
+|---|---|---|
+| SATB Choir | 4 | Standard mixed chorus |
+| SSAATTBB Choir | 8 | Eight-part single chorus (2S, 2A, 2T, 2B) |
+| SA Choir | 2 | Women's or children's two-part |
+| SSAA Choir | 4 | Two soprano + two alto parts |
+| TTBB Choir | 4 | Two tenor + two bass parts |
+| Knabenchor | 2 | Boys' choir (SS) |
+
+#### Solo Voices (`:family :voice`)
+
+| Voice | Clef(s) | Notes |
+|---|---|---|
+| Soprano | treble | |
+| Mezzo-Soprano | treble | |
+| Contralto | treble | |
+| Counter-tenor | treble | |
+| Tenor | treble | Sounds octave below written |
+| Baritone | bass | |
+| Bass-Baritone | bass | |
+| Bass | bass | |
+| Basso profondo | bass | Lowest bass voice |
+
 #### Strings (`:family :strings`)
 
 String instruments appear in **section** and **solo** variants. Section instruments additionally
@@ -730,129 +841,32 @@ appear in two-, three-, and four-part divisi configurations.
 | Double Bass div. 4 | 4 |
 | Double Bass div. 6 | 6 |
 
-#### Percussion (`:family :percussion`)
+#### Early Instruments
 
-**Timpani**
+Early instruments carry their correct `:family` value — viols are `:strings`, sackbuts are
+`:brass`, traverso and chalumeau are `:woodwind`, clavichord and lautenwerk are `:keyboard`.
+This section is a documentation grouping only; there is no `:early` or `:historical` family
+keyword.
 
-| Instrument | Clef(s) | Notes |
-|---|---|---|
-| Timpani | percussion | Standard orchestral timpani; single staff |
-| Timpano piccolo | percussion | Small timpani; higher pitch range |
-
-**Mallet — pitched**
+**Recorders**
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Glockenspiel | treble | Two octaves above written | |
-| Xylophone | treble | Octave above written | |
-| Marimba | bass; treble | — | |
-| Vibraphone | treble | — | |
-| Tubular Bells | treble | — | Chimes / Röhrenglocken |
-| Crotales | treble | Two octaves above written | Antique Cymbals |
-| Crotale | treble | Two octaves above written | Single instrument, specific pitch |
+| Garklein Recorder in C | treble | — | Sopranissimo |
+| Sopranino Recorder in F | treble | — | |
+| Soprano Recorder in C | treble | — | Descant |
+| Alto Recorder in F | treble | — | Treble |
+| Tenor Recorder in C | treble | — | |
+| Bass Recorder in F | treble | — | |
+| Contrabass Recorder in C | treble | — | |
 
-**Unpitched drums**
+**Baroque woodwinds**
 
-| Instrument | Notes |
-|---|---|
-| Bass Drum | |
-| Snare Drum | Side Drum |
-| Tenor Drum | |
-| Military Drum | |
-| Tom-tom | |
-
-**Cymbals and gongs**
-
-| Instrument | Notes |
-|---|---|
-| Crash Cymbals | |
-| Suspended Cymbal | |
-| Chinese Cymbal | |
-| Tam-tam | |
-
-**Small and hand percussion**
-
-| Instrument | Notes |
-|---|---|
-| Triangle | |
-| Tambourine | |
-| Castanets | |
-| Claves | |
-| Wood Block | |
-| Temple Blocks | |
-| Guiro | |
-| Maracas | |
-| Rute | Birch-switch bundle |
-
-**Special-effect instruments** (`:family :other`)
-
-| Instrument | Notes |
-|---|---|
-| Wind Machine | Windmaschine / Machine à vent; rotating ribbed cylinder |
-| Thunder Machine | Donnermaschine / Machine à tonnerre; large drum or metal sheet |
-| Cowbells | Herdenglocken / Cloches de vache; multiple pitched cowbells |
-| Whip | Peitsche / Fouet; two flat boards |
-| Ratchet | Ratsche / Crécelle; notched rotating wheel |
-
-#### Keyboards and Plucked (`:family :keyboard`)
-
-| Instrument | Staves | Transposition | Notes |
-|---|---|---|---|
-| Piano | 2 | — | |
-| Organ (2 staves) | 2 | — | Manuals only |
-| Organ (3 staves) | 3 | — | Two manuals + pedal |
-| Harpsichord (1 manual) | 2 | — | |
-| Harpsichord (2 manuals) | 2 | — | Two-manual instrument |
-| Celesta | 2 | Two octaves above written | |
-| Harmonium | 1–2 | — | Reed organ |
-| Accordion | 1 | — | |
-| Ondes Martenot | 1 | — | Electronic monophonic; keyboard or ribbon controller |
-| Theremin | 1 | — | Electronic; no physical contact; continuous pitch |
-| Harp | 2 | — | Double-action |
-| Guitar | 1 | Octave below written | Classical guitar |
-| Electric Guitar | 1 | — | Lead / rhythm |
-| Electric Guitar (7-string) | 1 | — | Extended range |
-| Electric Bass Guitar | 1 | Octave below written | 4-string |
-| Electric Bass Guitar (5-string) | 1 | Octave below written | Extended lower range |
-| Electric Bass Guitar (6-string) | 1 | Octave below written | Extended upper and lower range |
-| Synthesizer | 1–2 | — | Keyboard-based; concert pitch |
-| Mandolin | 1 | — | |
-
-#### Voices and Choirs
-
-**Solo voices** (`:family :voice`)
-
-| Voice | Clef(s) | Notes |
-|---|---|---|
-| Soprano | treble | |
-| Mezzo-Soprano | treble | |
-| Contralto | treble | |
-| Counter-tenor | treble | |
-| Tenor | treble | Sounds octave below written |
-| Baritone | bass | |
-| Bass-Baritone | bass | |
-| Bass | bass | |
-| Basso profondo | bass | Lowest bass voice |
-
-**Choirs** (`:family :voice`)
-
-Choirs are single instruments in the Ooloi model — a choir is a group of singers on a unified
-set of staves, exactly as a string section is a group of players on a single staff.
-
-| Template | Staves | Notes |
-|---|---|---|
-| SATB Choir | 4 | Standard mixed chorus |
-| SSAATTBB Choir | 8 | Eight-part single chorus (2S, 2A, 2T, 2B) |
-| SA Choir | 2 | Women's or children's two-part |
-| SSAA Choir | 4 | Two soprano + two alto parts |
-| TTBB Choir | 4 | Two tenor + two bass parts |
-| Knabenchor | 2 | Boys' choir (SS) |
-
-#### Historical Instruments
-
-Historical instruments carry their correct `:family` value — viols are `:strings`, sackbuts
-are `:brass`, traverso and chalumeau are `:woodwind`, clavichord and lautenwerk are `:keyboard`.
-This section is a documentation grouping only; there is no `:historical` family keyword.
+| Instrument | Family | Clef(s) | Transposition | Notes |
+|---|---|---|---|---|
+| Traverso | `:woodwind` | treble | — | Baroque transverse flute |
+| Oboe da caccia in F | `:woodwind` | treble | Perfect fifth below written | Curved-body Baroque oboe; distinct from English horn |
+| Chalumeau | `:woodwind` | treble | — | Baroque predecessor to the clarinet |
 
 **Renaissance and early Baroque winds**
 
