@@ -401,8 +401,10 @@ collapsible section: Woodwinds ▶, Brass ▶, Strings ▶, Keyboard ▶, Percus
 Other ▶. Instrument names are rendered as rich text to display real ♭ (U+266D), ♮ (U+266E),
 and ♯ (U+266F).
 
-Owner-only editing controls (add, remove, reorder, rename templates) appear only when the current
-client has write permission, per [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md).
+Editing controls (add, remove, reorder, rename templates) appear only when the current client has
+write permission. In a standalone session the local user always has write permission. In a
+collaborative session, guests have write permission only if the host has granted it. See
+[ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md).
 
 ### Default Library Contents
 
