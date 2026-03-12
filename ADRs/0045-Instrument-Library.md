@@ -119,6 +119,7 @@ Each instrument template is a map with the following fields:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `:id` | keyword | always | Unique identifier for this template entry. Convention: `:instrument-key-language`, e.g. `:bb-clarinet-it`. Must be unique across the entire instrument vector. |
+| `:sort-order` | integer | always | Controls display order within a `:family` group. Bundled entries use multiples of 1000 (score order: `1000`, `2000`, `3000`, …). Drag-to-reorder assigns the midpoint between neighbours; if adjacent integers leave no midpoint, the frontend renumbers the entire family at 1000-spacing before persisting. User-added instruments default to `(max sort-order in family) + 1000`. |
 | `:name` | string | always | Full display name, e.g. `"Clarinetto in Si♭"` |
 | `:short-name` | string | always | Abbreviated name for score labels, e.g. `"Cl."` |
 | `:language` | keyword | always | Language of the name fields; see supported values below |
@@ -398,8 +399,14 @@ entries that match the language selection and entries that match the search stri
 
 Instruments passing both filters are displayed grouped by `:family`, with each family in a
 collapsible section: Woodwinds ▶, Brass ▶, Strings ▶, Keyboard ▶, Percussion ▶, Voice ▶,
-Other ▶. Instrument names are rendered as rich text to display real ♭ (U+266D), ♮ (U+266E),
-and ♯ (U+266F).
+Other ▶. Within each family, instruments are sorted ascending by `:sort-order`. Instrument names
+are rendered as rich text to display real ♭ (U+266D), ♮ (U+266E), and ♯ (U+266F).
+
+Drag-to-reorder is available to clients with write permission. Dropping instrument A between
+instruments B and C assigns A a new `:sort-order` of `(sort-order(B) + sort-order(C)) / 2`. If
+B and C are already adjacent integers, the frontend renumbers the entire family at 1000-spacing
+before computing the midpoint. The reordered instruments vector is then submitted via
+`set-instrument-library`.
 
 Editing controls (add, remove, reorder, rename templates) appear only when the current client has
 write permission. In a standalone session the local user always has write permission. In a
@@ -441,7 +448,8 @@ file as follows:
    excluded set.
 2. For each bundle entry, insert it into the instruments vector unless its `:id` is already
    present in `:instruments` (user has modified or renamed it) or its `:id` appears in
-   `:excluded` (user has deleted it).
+   `:excluded` (user has deleted it). Newly inserted bundle entries carry their own `:sort-order`
+   and will therefore appear at the correct position within the family when the window renders.
 3. The merged result becomes the initial atom state.
 
 This means application updates that ship new bundle instruments deliver them automatically on
