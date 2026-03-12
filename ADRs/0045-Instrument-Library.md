@@ -123,6 +123,7 @@ Each instrument template is a map with the following fields:
 | `:sounding->written` | vector | if transposing | Transposer args: sounding pitch → written pitch |
 | `:written->sounding` | vector | if transposing | Transposer args: written pitch → sounding pitch |
 | `:staves` | vector | always | One entry per staff; defines clefs for each display context |
+| `:clef-overrides` | map | if clef-dependent transposition | Clef-to-transposition overrides for clefs whose transposition deviates from the instrument's top-level `:sounding->written`/`:written->sounding`; see **Clef-Dependent Transposition** below |
 
 #### Staff Specifications
 
@@ -141,7 +142,6 @@ Each clef specification map:
 | Field | Type | Description |
 |---|---|---|
 | `:default-clef` | keyword | The clef assigned to this staff by default |
-| `:clefs` | vector | All clefs permissible for this staff |
 
 For non-transposing instruments `:concert-pitch` and `:written-pitch` are identical. Both keys must
 be present regardless.
@@ -149,33 +149,65 @@ be present regardless.
 **Clef keywords**: `:treble`, `:treble-8vb`, `:bass`, `:tenor`, `:alto`, `:soprano`,
 `:mezzo-soprano`, `:baritone`, `:percussion`.
 
+#### Clef-Dependent Transposition
+
+Most transposing instruments apply the same transposition regardless of which clef is active. For
+these, `:sounding->written` and `:written->sounding` are sufficient and no override is needed.
+
+Some instruments deviate: the same clef symbol carries a different transposition depending on
+notation convention. Historical natural horns are the canonical case — a Horn in D in treble clef
+sounds a minor seventh below written, but in bass clef (*old notation*) the same horn sounds a
+major second *above* written. Both clefs may appear on the same staff; the transposition switches
+with the clef.
+
+The `:clef-overrides` field captures these deviations. It is a map from clef keyword to a
+transposition specification, using the same `:sounding->written` / `:written->sounding` structure
+as the top-level fields:
+
+```clojure
+:clef-overrides {:bass {:sounding->written [:down :major :second]
+                        :written->sounding [:up :major :second]}}
+```
+
+When the active clef matches a key in `:clef-overrides`, the override transposition is used instead
+of the top-level values. All other clefs use the top-level transposition. Absence of the field
+means no overrides apply.
+
+`:clef-overrides` is a general mechanism that applies to any instrument using multiple clefs where
+one or more clefs deviate from the instrument's standard transposition — whether because an
+alternative octave is implied, or because an old notation convention associates a clef with a
+different interval. Historical natural horns are the canonical example, but the mechanism is not
+limited to them.
+
 Transposition vectors are passed directly to `make-transposer` via `apply`, using any of the three
-lanes defined in [ADR-0026](0026-Pitch-Representation-and-Operations.md):
+lanes defined in [ADR-0026](0026-Pitch-Representation-and-Operations.md). At the call site,
+the active clef is checked against `:clef-overrides` first; the top-level transposition is used
+as the fallback:
 
 ```clojure
 ;; Non-transposing, single staff — Italian and English copies
 {:id :piccolo-it :language :it
  :name "Flauto piccolo" :short-name "Fl. picc."
  :family :woodwind :transposing? false
- :staves [{:concert-pitch {:default-clef :treble :clefs [:treble]}
-           :written-pitch  {:default-clef :treble :clefs [:treble]}}]}
+ :staves [{:concert-pitch {:default-clef :treble}
+           :written-pitch  {:default-clef :treble}}]}
 
 {:id :piccolo-en :language :en
  :name "Piccolo" :short-name "Picc."
  :family :woodwind :transposing? false
- :staves [{:concert-pitch {:default-clef :treble :clefs [:treble]}
-           :written-pitch  {:default-clef :treble :clefs [:treble]}}]}
+ :staves [{:concert-pitch {:default-clef :treble}
+           :written-pitch  {:default-clef :treble}}]}
 
 ;; Non-transposing, two staves — Italian copy
 {:id :piano-it :language :it
  :name "Pianoforte" :short-name "Pf."
  :family :keyboard :transposing? false
  :staves [{:name "Mano destra" :short-name "M.d."
-           :concert-pitch {:default-clef :treble :clefs [:treble :bass]}
-           :written-pitch  {:default-clef :treble :clefs [:treble :bass]}}
+           :concert-pitch {:default-clef :treble}
+           :written-pitch  {:default-clef :treble}}
           {:name "Mano sinistra" :short-name "M.s."
-           :concert-pitch {:default-clef :bass :clefs [:bass :treble]}
-           :written-pitch  {:default-clef :bass :clefs [:bass :treble]}}]}
+           :concert-pitch {:default-clef :bass}
+           :written-pitch  {:default-clef :bass}}]}
 
 ;; Transposing, single staff — Lane 1 (interval string)
 {:id :bb-clarinet-it :language :it
@@ -183,8 +215,8 @@ lanes defined in [ADR-0026](0026-Pitch-Representation-and-Operations.md):
  :family :woodwind :transposing? true
  :sounding->written [:interval "M2+"]
  :written->sounding [:interval "M2-"]
- :staves [{:concert-pitch {:default-clef :treble :clefs [:treble]}
-           :written-pitch  {:default-clef :treble :clefs [:treble]}}]}
+ :staves [{:concert-pitch {:default-clef :treble}
+           :written-pitch  {:default-clef :treble}}]}
 
 ;; Transposing — Lane 2 (fluid keywords)
 ;; Bass Clarinet: bass clef at concert pitch; treble (French) or bass (German) when transposing
@@ -193,16 +225,29 @@ lanes defined in [ADR-0026](0026-Pitch-Representation-and-Operations.md):
  :family :woodwind :transposing? true
  :sounding->written [:up :major :ninth]
  :written->sounding [:down :major :ninth]
- :staves [{:concert-pitch {:default-clef :bass   :clefs [:bass :tenor]}
-           :written-pitch  {:default-clef :treble :clefs [:treble :bass]}}]}
+ :staves [{:concert-pitch {:default-clef :bass}
+           :written-pitch  {:default-clef :treble}}]}
 
+;; Modern Horn in F — no :clef-overrides; bass clef uses the same P5 transposition as treble
 {:id :horn-f-it :language :it
  :name "Corno in Fa" :short-name "Cor."
  :family :brass :transposing? true
  :sounding->written [:up :perfect :fifth]
  :written->sounding [:down :perfect :fifth]
- :staves [{:concert-pitch {:default-clef :bass   :clefs [:treble :bass]}
-           :written-pitch  {:default-clef :treble :clefs [:treble]}}]}
+ :staves [{:concert-pitch {:default-clef :bass}
+           :written-pitch  {:default-clef :treble}}]}
+
+;; Historical Horn in D — :clef-overrides supplies the old-notation bass clef transposition
+;; Treble: sounds minor 7th below written. Bass (old notation): sounds major 2nd above written.
+{:id :horn-d-it :language :it
+ :name "Corno in Re" :short-name "Cor."
+ :family :brass :transposing? true
+ :sounding->written [:up :minor :seventh]
+ :written->sounding [:down :minor :seventh]
+ :clef-overrides {:bass {:sounding->written [:down :major :second]
+                         :written->sounding [:up :major :second]}}
+ :staves [{:concert-pitch {:default-clef :bass}
+           :written-pitch  {:default-clef :treble}}]}
 
 ;; Transposing — Lane 3 (chromatic with cents)
 {:id :quartertone-tpt-en :language :en
@@ -210,8 +255,8 @@ lanes defined in [ADR-0026](0026-Pitch-Representation-and-Operations.md):
  :family :brass :transposing? true
  :sounding->written [:chromatic 6 :cents 50]
  :written->sounding [:chromatic -6 :cents -50]
- :staves [{:concert-pitch {:default-clef :treble :clefs [:treble]}
-           :written-pitch  {:default-clef :treble :clefs [:treble]}}]}
+ :staves [{:concert-pitch {:default-clef :treble}
+           :written-pitch  {:default-clef :treble}}]}
 ```
 
 No functions are stored in the EDN or in the library atom. Transposer functions are constructed at
@@ -504,6 +549,7 @@ a backend concern.
 | Piccolo | treble | Octave above written | |
 | Flute | treble | — | |
 | Alto Flute in G | treble | Perfect fourth below written | |
+| Bass Flute in C | treble | Octave below written | |
 | Traverso | treble | — | Baroque transverse flute |
 
 **Recorders**
@@ -539,9 +585,9 @@ a backend concern.
 | Clarinet in A | treble | Minor third below written | |
 | Basset Horn in F | treble | Perfect fifth below written | |
 | Bass Clarinet — French notation | treble | Major ninth below written | See notation variants below |
-| Bass Clarinet — German notation | bass; treble | Major second below written | See notation variants below |
+| Bass Clarinet — German notation | bass | Major second below written | See notation variants below |
 | Contrabass Clarinet — French notation | treble | Two octaves + major second below written | |
-| Contrabass Clarinet — German notation | bass; treble | Major ninth below written | Bass clef absorbs one octave |
+| Contrabass Clarinet — German notation | bass | Major ninth below written | Bass clef absorbs one octave |
 | Chalumeau | treble | — | Baroque predecessor to the clarinet |
 
 **Notation variants for Bass Clarinet and Contrabass Clarinet**
@@ -549,12 +595,12 @@ a backend concern.
 Two professional notations coexist in the published literature, differing in transposition
 interval and default clef. Both variants must be present.
 
-| Variant | Default clef | Alternative clefs | Transposition |
-|---|---|---|---|
-| Bass Clarinet — French notation | `:treble` | — | Major ninth below written |
-| Bass Clarinet — German notation | `:bass` | `:treble` | Major second below written |
-| Contrabass Clarinet — French notation | `:treble` | — | Two octaves + major second below written |
-| Contrabass Clarinet — German notation | `:bass` | `:treble` | Major ninth below written |
+| Variant | Default clef | Transposition |
+|---|---|---|
+| Bass Clarinet — French notation | `:treble` | Major ninth below written |
+| Bass Clarinet — German notation | `:bass` | Major second below written |
+| Contrabass Clarinet — French notation | `:treble` | Two octaves + major second below written |
+| Contrabass Clarinet — German notation | `:bass` | Major ninth below written |
 
 **Bassoons**
 
@@ -565,21 +611,33 @@ interval and default clef. Both variants must be present.
 
 #### Brass (`:family :brass`)
 
-**Horns**
+**Modern Horns**
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Horn in C | treble; bass | Octave below written (treble) / concert pitch (bass) | |
-| Horn in D | treble | Minor seventh below written | |
-| Horn in E♭ | treble | Minor sixth below written | |
-| Horn in E | treble | Major sixth below written | |
-| Horn in F | treble | Perfect fifth below written | Modern standard |
-| Horn in G | treble | Perfect fourth below written | |
-| Horn in A | treble | Minor third below written | |
-| Horn in B♭ alto | treble | Major second below written | |
-| Horn in B♭ basso | treble | Minor ninth below written | |
+| Horn in F | treble; bass | Perfect fifth below written | Modern standard; bass clef uses same transposition as treble |
 | Wagner Tuba in B♭ | treble | Major second below written | Tenortuba; played by horn players |
 | Wagner Tuba in F | treble | Perfect fifth below written | Basstuba; played by horn players |
+
+**Historical Horns (Old Notation)**
+
+Natural horns in various keys appear in Classical and Romantic scores. The bass clef follows
+*old notation*: the written note sounds one octave higher than under modern convention, which
+is equivalent to adding an octave to the treble transposition. Treble and bass clef therefore
+yield different transposition intervals for the same instrument. In the EDN template, the treble
+clef transposition is the instrument's top-level `:sounding->written`/`:written->sounding`; the
+bass clef transposition is expressed as `:clef-overrides {:bass {...}}`.
+
+| Instrument | Treble clef | Bass clef (old notation) |
+|---|---|---|
+| Horn in C | Octave below written | Concert pitch |
+| Horn in D | Minor 7th below written | Major 2nd above written |
+| Horn in E♭ | Minor 6th below written | Major 3rd above written |
+| Horn in E | Major 6th below written | Minor 3rd above written |
+| Horn in G | Perfect 4th below written | Perfect 5th above written |
+| Horn in A | Minor 3rd below written | Major 6th above written |
+| Horn in B♭ alto | Major 2nd below written | Minor 7th above written |
+| Horn in B♭ basso | Minor 9th below written | Minor 2nd below written |
 
 **Trumpets**
 
@@ -595,7 +653,7 @@ interval and default clef. Both variants must be present.
 | Trumpet in B♭ | treble | Major second below written | Modern standard |
 | Piccolo Trumpet in B♭ | treble | Major second below written | High register; one octave above standard B♭ |
 | Cornet in B♭ | treble | Major second below written | Separate entry from trumpet |
-| Bass Trumpet in C | bass; tenor | — | |
+| Bass Trumpet in C | treble; bass; tenor | treble: octave below written; bass/tenor: concert pitch | Treble clef notation (trumpet players) transposes an octave; bass/tenor clef (trombone players) is at concert pitch |
 
 **Trombones**
 
@@ -610,7 +668,7 @@ interval and default clef. Both variants must be present.
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Euphonium / Tenor Tuba in B♭ | bass; treble | Major second below written (treble clef) | |
+| Euphonium / Tenor Tuba in B♭ | bass; treble | treble: major ninth below written; bass: concert pitch | British brass band treble clef notation transposes a major ninth; orchestral bass clef is at concert pitch |
 | Bass Tuba | bass | — | |
 | Contrabass Tuba | bass | — | |
 
