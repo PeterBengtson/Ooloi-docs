@@ -229,6 +229,13 @@ All event types must follow naming pattern enforced by `validate-event-structure
   separately as `:piece-invalidation`. The two event types must never be conflated. Valid
   under the `piece-` prefix naming rule.
 
+**Library Events**:
+- `:instrument-library-changed` — The server-side Instrument Library was modified by any
+  client. Carries only `:timestamp`; no payload. Clients fetch current library state via
+  `get-instrument-library`. This establishes the invalidate-only event pattern that
+  `:piece-structure-changed` follows. See [ADR-0045](0045-Instrument-Library.md) for the
+  full event architecture and frontend caching model.
+
 ### Event Lifecycle and Processing
 
 **Event Creation** (Server-side):
@@ -643,6 +650,7 @@ rpc CollaborateOnPiece(stream CollaborationInput) returns (stream CollaborationO
 - [ADR-0024: gRPC Concurrency and Flow Control Architecture](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Flow control architecture for event streaming performance
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Frontend event routing and subscription management using the event streaming infrastructure defined here
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Operations-only API architecture this implements
+- [ADR-0045: Instrument Library](0045-Instrument-Library.md) - First non-piece backend entity using this event infrastructure; introduces `:instrument-library-changed` event type and `get-instrument-library`/`set-instrument-library` as `^{:api true}` non-VPD operations
 - [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Uses event validation pattern (pure maps with runtime validation) for UI specifications
 
 ### Technical Documentation

@@ -3,7 +3,7 @@
 **Status:** ACCEPTED
 **Date:** 2025-10-15
 **Implemented:** 2026-01-26
-**Updated:** 2026-02-13 (Frontend event bus as Integrant component, Event Router as pure pipeline, nomenclature clarification); 2026-02-28 (Added :piece-structure and :piece-settings event categories for Steps 4 and 6 of the development sequence)
+**Updated:** 2026-02-13 (Frontend event bus as Integrant component, Event Router as pure pipeline, nomenclature clarification); 2026-02-28 (Added :piece-structure and :piece-settings event categories for Steps 4 and 6 of the development sequence); 2026-03-12 (Added :instrument-library category for the Instrument Library component — ADR-0045)
 
 ---
 
@@ -615,6 +615,23 @@ control for `:setting-key` using `:new-value`. No Fetch Coordinator involvement.
 
 ---
 
+**Instrument Library** (`:instrument-library` category):
+```clojure
+:instrument-library-changed  ; The global instrument library was modified
+```
+
+**Required fields**: `:timestamp` (number)
+**Payload fields**: none — clients fetch current library via `(SRV/get-instrument-library)`
+**Note**: This event is global (not scoped to a piece). It carries no payload; the
+invalidate-only design keeps event payload size fixed and avoids partial-state delivery.
+**Subscriber reaction**: If the Instrument Library window is open, the frontend calls
+`get-instrument-library` immediately and resets `*instrument-library`. If the window is
+closed, `*instrument-library` is set to `nil` (staleness marker); the fetch is deferred
+until the window next opens. See [ADR-0045](0045-Instrument-Library.md) for the full lazy
+caching model.
+
+---
+
 #### Category Derivation Logic
 
 ```clojure
@@ -649,6 +666,9 @@ control for `:setting-key` using `:new-value`. No Fetch Coordinator involvement.
 
     ;; Piece settings
     :piece-setting-changed :piece-settings
+
+    ;; Instrument library (global singleton — not piece-scoped)
+    :instrument-library-changed :instrument-library
 
     ;; Everything else defaults to notification
     :notification))
@@ -1076,6 +1096,7 @@ None - all implementation questions resolved.
 - **ADR-0018: API-gRPC Interface Generation** - Event streams defined in ADR-0018. Two event categories: Server events, Piece events. Event Router subscribes to both streams.
 - **ADR-0032: Flow Mode** - Modal keyboard input integrates with JavaFX event system. Keyboard events processed immediately, modal state changes trigger backend updates via gRPC, invalidation events refresh display.
 - **ADR-0043: Frontend Settings** - Frontend app settings publish `:setting-changed` events on the frontend event bus via the `:app-settings` category. Theme and locale changes flow through the event bus to the UI Manager.
+- **ADR-0045: Instrument Library** - Introduces the `:instrument-library` event category and `:instrument-library-changed` backend event type. First global (non-piece-scoped) event in the system; establishes the invalidate-only pattern for singleton shared state.
 
 ## Related Guides
 

@@ -457,6 +457,7 @@ Based on network realities, the architecture supports three deployment tiers wit
 - [ADR-0019: In-Process gRPC Transport](0019-In-Process-gRPC-Transport-Optimization.md) - In-process transport for local performance
 - [ADR-0020: TLS Infrastructure](0020-TLS-Infrastructure-and-Deployment-Architecture.md) - Security foundation for network transport
 - [ADR-0021: Authentication](0021-Authentication.md) - JWT-based authentication supporting email identity
+- [ADR-0045: Instrument Library](0045-Instrument-Library.md) - First non-piece entity using this permission model; host has unconditional write access, guests are read-only by default, write access requires explicit grant; enforced by `create-api-authentication-interceptor`
 
 ### Technical References
 

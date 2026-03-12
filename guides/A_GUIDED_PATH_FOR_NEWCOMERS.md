@@ -174,7 +174,7 @@ The 36-microsecond roundtrip figure. In combined deployments, gRPC transport is 
 
 The complete data synchronisation model. Three layers: events tell clients which local objects are stale; gRPC requests provide fresh data when needed; local shared API provides fast access to cached data. The key insight: invalidation events contain only structural addresses (VPD regions), not content. The frontend knows *that* something has changed and *where*, then requests fresh data on demand. This is lazy evaluation applied to distributed state.
 
-> **What you should understand at the end of Phase 5:** That frontend and backend share one data model with no conversion overhead. That gRPC is the communication mechanism but carries no overhead in combined deployments. That event-driven invalidation is how collaborative consistency is maintained without polling.
+> **What you should understand at the end of Phase 5:** That frontend and backend share one data model with no conversion overhead. That gRPC is the communication mechanism but carries no overhead in combined deployments. That event-driven invalidation is how collaborative consistency is maintained without polling. The first concrete production application of this pattern to a global singleton (rather than piece data) is the Instrument Library — covered in Phase 9.
 
 ---
 
@@ -294,6 +294,8 @@ These documents are not required for understanding Ooloi's architecture. They pr
 **[ADR-0036: Collaborative Sessions and Hybrid Transport](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md)** — How a standalone application transitions dynamically to host or guest mode without restart. The precondition that all pieces must be closed before backend switching, which eliminates race conditions entirely without requiring epoch-tagging mechanisms.
 
 **[ADR-0040: Single Authority State Model](../ADRs/0040-Single-Authority-State-Model.md)** — The formal statement of state ownership rules across the system.
+
+**[ADR-0045: Instrument Library](../ADRs/0045-Instrument-Library.md)** — The first non-piece singleton in the architecture: a server-side instrument template registry with optimistic locking, lazy frontend caching, and invalidate-only event synchronisation. Concrete proof that the single-authority model scales beyond piece data to any global state. The bundled default library covers the full orchestral repertoire from Bach to Messiaen, together with the mechanisms for users to extend it permanently with instruments of their own.
 
 **[ADR-0030: MusicXML](../ADRs/0030-MusicXML.md)** — Import and export as a first-class plugin, preserving musical meaning rather than graphical approximation.
 
