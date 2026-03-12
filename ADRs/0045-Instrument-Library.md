@@ -201,16 +201,27 @@ the active clef is checked against `:clef-overrides` first; the top-level transp
 as the fallback:
 
 ```clojure
-;; Non-transposing, single staff — Italian and English copies
+;; Non-transposing, single staff — Italian copy
+{:id :flute-it :language :it
+ :name "Flauto" :short-name "Fl."
+ :family :woodwind :transposing? false
+ :staves [{:concert-pitch {:default-clef :treble}
+           :written-pitch  {:default-clef :treble}}]}
+
+;; Transposing, single staff — Italian and English copies (sounds octave above written)
 {:id :piccolo-it :language :it
  :name "Flauto piccolo" :short-name "Fl. picc."
- :family :woodwind :transposing? false
+ :family :woodwind :transposing? true
+ :sounding->written [:down :perfect :octave]
+ :written->sounding [:up :perfect :octave]
  :staves [{:concert-pitch {:default-clef :treble}
            :written-pitch  {:default-clef :treble}}]}
 
 {:id :piccolo-en :language :en
  :name "Piccolo" :short-name "Picc."
- :family :woodwind :transposing? false
+ :family :woodwind :transposing? true
+ :sounding->written [:down :perfect :octave]
+ :written->sounding [:up :perfect :octave]
  :staves [{:concert-pitch {:default-clef :treble}
            :written-pitch  {:default-clef :treble}}]}
 
@@ -268,11 +279,12 @@ as the fallback:
            :written-pitch  {:default-clef :treble}}]}
 
 ;; Transposing — Lane 3 (chromatic with cents)
-{:id :quartertone-tpt-en :language :en
- :name "Quarter-tone Trumpet" :short-name "Tpt."
+;; Quarter-tone Bb Trumpet: pitched a quarter tone flat of Bb — sounds M2 + 50¢ below written
+{:id :quartertone-bb-tpt-en :language :en
+ :name "Quarter-tone Trumpet in B♭" :short-name "Tpt."
  :family :brass :transposing? true
- :sounding->written [:chromatic 6 :cents 50]
- :written->sounding [:chromatic -6 :cents -50]
+ :sounding->written [:chromatic 2 :cents 50]
+ :written->sounding [:chromatic -2 :cents -50]
  :staves [{:concert-pitch {:default-clef :treble}
            :written-pitch  {:default-clef :treble}}]}
 ```
@@ -652,7 +664,7 @@ bass clef transposition is expressed as `:clef-overrides {:bass {...}}`.
 | Trumpet in E | treble | Major third above written | |
 | Trumpet in F | treble | Perfect fourth above written | |
 | Trumpet in G | treble | Perfect fifth above written | |
-| Trumpet in A | treble | Major sixth above written | |
+| Trumpet in A | treble | Minor third below written | Standard alternative to B♭ trumpet in sharp keys |
 | Trumpet in B♭ | treble | Major second below written | Modern standard |
 | Piccolo Trumpet in B♭ | treble | Major second below written | High register; one octave above standard B♭ |
 | Cornet in B♭ | treble | Major second below written | Separate entry from trumpet |
