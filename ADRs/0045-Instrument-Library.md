@@ -64,7 +64,9 @@ The Instrument Library is an Integrant component with two internal members:
   the library is a single container; no coordination with other refs is required. The atom's CAS
   semantics ensure that the version check and state replacement inside `swap!` are atomic — no
   concurrent writer can observe a partial update. Optimistic locking (see below) handles the
-  separate concern of surfacing conflicting full-replace operations to callers.
+  separate concern of surfacing conflicting full-replace operations to callers. Note: the atom
+  holds only `:version` and `:instruments`; the `:excluded` set (see Persistence below) is a
+  file-level concern and is not carried in the running atom.
 - **writer agent** — receives persist tasks asynchronously so that write operations return
   immediately without blocking on disk I/O.
 
@@ -111,6 +113,7 @@ Each instrument template is a map with the following fields:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
+| `:id` | keyword | always | Unique identifier for this template entry. Convention: `:instrument-key-language`, e.g. `:bb-clarinet-it`. Must be unique across the entire instrument vector. |
 | `:name` | string | always | Full display name, e.g. `"Clarinetto in Si♭"` |
 | `:short-name` | string | always | Abbreviated name for score labels, e.g. `"Cl."` |
 | `:language` | keyword | always | Language of the name fields; see supported values below |
@@ -360,9 +363,10 @@ A dropdown control filters the visible entries by `:language`. The options are:
 | French | `:instrument-library.language.french` | `"French"` |
 | English | `:instrument-library.language.english` | `"English"` |
 | Other | `:instrument-library.language.other` | `"Other"` |
+| All (show all) | `:instrument-library.language.all` | `"All"` |
 
 Options are translated via `(tr key)` per [ADR-0039](0039-Localisation-Architecture.md). Keys
-must be declared with `tr-declare`; no computed keys. All six keys must be added to every `.po`
+must be declared with `tr-declare`; no computed keys. All seven keys must be added to every `.po`
 locale file in `resources/i18n/`.
 
 Selecting a language shows only templates whose `:language` value matches. Selecting **Other**
@@ -410,8 +414,37 @@ fewer copies. Every copy has a distinct `:id` (e.g. `:bb-clarinet-it`, `:bb-clar
 The bundled library is a starting point, not a closed set. Any instrument not listed here —
 whether a historical reconstruction, a microtonal variant, a folk instrument, or a newly
 invented sound source — can be added by the user at any time through the Instrument Library
-window and is saved permanently to the user's library file. The bundled defaults are never
-overwritten by application updates; user additions and modifications persist across versions.
+window and is saved permanently to the user's library file.
+
+**Persistence format.** The user's library file is an EDN map with three keys:
+
+```clojure
+{:version   <integer>
+ :instruments [<template> ...]
+ :excluded  #{<keyword> ...}}
+```
+
+`:excluded` is a set of bundle `:id`s the user has explicitly deleted. It exists to make
+deletion permanent across application updates.
+
+**Merge-on-load.** At component initialisation, the backend merges the bundle with the user
+file as follows:
+
+1. Load the user file if it exists; otherwise start from an empty instruments vector and empty
+   excluded set.
+2. For each bundle entry, insert it into the instruments vector unless its `:id` is already
+   present in `:instruments` (user has modified or renamed it) or its `:id` appears in
+   `:excluded` (user has deleted it).
+3. The merged result becomes the initial atom state.
+
+This means application updates that ship new bundle instruments deliver them automatically on
+next startup. Previously deleted bundle instruments are not re-inserted — the excluded set
+acts as a permanent tombstone. User-added instruments (whose `:id`s are not in the bundle) are
+never affected by merging.
+
+When a user deletes a bundle instrument, its `:id` is added to `:excluded` and the file is
+persisted. When a user deletes an instrument they added themselves, the entry is simply removed
+from `:instruments`; nothing is added to `:excluded`.
 
 #### Woodwinds (`:family :woodwind`)
 
@@ -583,7 +616,11 @@ a group of players on a single staff. The SATB template has four staves; SSAATTB
 | TTBB Choir | 4 | Two tenor parts + two bass parts |
 | Knabenchor | 2 | Boys' choir (SS); required by Mahler's Eighth (*Selige Knaben*), Bach cantatas, and sacred repertoire |
 
-#### Historical Instruments (`:family :historical`)
+#### Historical Instruments
+
+Historical instruments carry their correct `:family` value — viols are `:strings`, sackbuts
+are `:brass`, traverso and chalumeau are `:woodwind`, clavichord and lautenwerk are `:keyboard`.
+This section is a documentation grouping only; there is no `:historical` family keyword.
 
 **Renaissance and early Baroque winds**:
 - **Cornett (Zink / Zinke / Cornetto)**: Hybrid wind instrument; cup mouthpiece on a finger-hole
