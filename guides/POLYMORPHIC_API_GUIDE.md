@@ -15,6 +15,7 @@
 - [The Canonical Example: VPD vs Object Dispatch](#the-canonical-example-vpd-vs-object-dispatch)
 - [Basic Polymorphic Operations](#basic-polymorphic-operations)
 - [Cross-References](#cross-references)
+- [Non-VPD Singleton API Functions](#non-vpd-singleton-api-functions)
 - [Summary](#summary)
 - [Related Documentation](#related-documentation)
 
@@ -872,6 +873,81 @@ The ultimate demonstration of the polymorphic API's power:
 - **VPD system**: See [ADR-0008: VPDs](../ADRs/0008-VPDs.md) for the architectural decision behind Vector Path Descriptors used throughout the polymorphic API
 - **gRPC compatibility**: See [ADR-0002: gRPC](../ADRs/0002-gRPC.md) for why VPD serialization enables frontend-backend communication
 - **Language foundations**: See [ADR-0000: Clojure](../ADRs/0000-Clojure.md) for the language choice enabling multimethod polymorphism
+
+## Non-VPD Singleton API Functions
+
+Not all `^{:api true}` functions navigate piece hierarchies. Some operate on singleton backend components — resources that exist once per server process rather than once per piece. The Instrument Library, for example, is a single shared collection; there is no VPD path because there is no piece to navigate.
+
+These functions follow a distinct pattern from VPD operations.
+
+### Declaration
+
+In `interfaces.clj`, declare the function with `^{:api true}` but **without** `:vpd-category`. The dispatch function returns a fixed keyword (not derived from the first argument):
+
+```clojure
+(m/defmulti ^{:api true} get-instrument-library
+  "Returns the current instrument library: {:version n :instruments [...]}"
+  (fn [] :instrument-library))
+
+(m/defmulti ^{:api true} set-instrument-library
+  "Replaces the instrument library under optimistic locking."
+  (fn [expected-version new-instruments] :instrument-library))
+```
+
+No `:vpd-category` means the VPD wrapper machinery is not applied. No automatic `dosync`, no piece resolution. The function receives and returns exactly what you declare.
+
+### Implementation
+
+Implement in a `shared/ops/` namespace. Because shared code cannot require backend namespaces directly, component state is reached via `resolve` on a `^:dynamic` var defined in the gRPC server:
+
+```clojure
+(m/defmethod i/get-instrument-library :instrument-library []
+  (if-let [component (some-> (resolve 'ooloi.backend.grpc.server/*instrument-library-component*)
+                             deref)]
+    {:version    (:version @(:library component))
+     :instruments (:instruments @(:library component))}
+    (throw (ex-info "Instrument library component not available"
+                    {:type :no-component}))))
+```
+
+The `^:dynamic` var lives in `grpc/server.clj` alongside `*server-component*` and is bound per-request by the universal `execute-method` handler:
+
+```clojure
+;; In grpc/server.clj
+(def ^:dynamic *instrument-library-component* nil)
+
+;; In the request handler
+(binding [*server-component*              server-component
+          *instrument-library-component*  instrument-library-component]
+  (execute-method request response-observer server-component))
+```
+
+The Integrant gRPC server component receives the instrument library component as a dependency and passes it into the binding.
+
+### Frontend Usage
+
+The frontend calls these functions identically to VPD operations — through the `SRV/*` namespace, with no protobuf changes:
+
+```clojure
+(require '[ooloi.frontend.server :as SRV])
+
+(SRV/get-instrument-library)
+(SRV/set-instrument-library expected-version new-instruments)
+```
+
+### When to Use This Pattern
+
+Use a non-VPD singleton API function when:
+
+- The operation targets a singleton backend component (not a piece)
+- There is no VPD path because there is no musical hierarchy to navigate
+- The function needs to be accessible from the frontend via `SRV/*`
+
+Use a VPD operation when the target lives inside a piece. Use a direct `ops/` function call (no `^{:api true}`) when the operation is internal to the backend and never called from the frontend.
+
+### Canonical Precedent
+
+`subscribe-to-piece-events` and `unsubscribe-from-piece-events` in `shared/ops/event_subscription.clj` establish this pattern. Both are declared `^{:api true}` without `:vpd-category` in `interfaces.clj` and access `*server-component*` via `resolve`.
 
 ## Summary
 
