@@ -298,6 +298,46 @@ as the fallback:
 No functions are stored in the EDN or in the library atom. Transposer functions are constructed at
 the call site: `(apply make-transposer (:sounding->written template))`.
 
+#### Template Instantiation — Unified `:transposition` on the Defrecord
+
+Templates store transposition data as flat keys (`:transposing?`, `:sounding->written`,
+`:written->sounding`, `:clef-overrides`) because templates are plain EDN maps — flat is readable
+and ergonomic for hand-authored data.
+
+When a template is instantiated into an `Instrument` defrecord (at musician assignment time), all
+transposition-related fields are gathered into a single unified `:transposition` map on the
+defrecord. This prevents impossible states: separate fields would allow `:clef-overrides` on a
+non-transposing instrument, or a missing base transposition with overrides present. The unified
+map makes these structurally impossible.
+
+The `:transposition` field on the `Instrument` defrecord takes one of these shapes:
+
+```clojure
+;; Non-transposing instrument:
+:transposition nil
+
+;; Transposing, no clef overrides:
+:transposition {:sounding->written [:up :perfect :fifth]
+                :written->sounding [:down :perfect :fifth]}
+
+;; Transposing with clef-dependent overrides (e.g. Horn in D):
+:transposition {:sounding->written [:up :minor :seventh]
+                :written->sounding [:down :minor :seventh]
+                :clef-overrides {:bass {:sounding->written [:down :major :second]
+                                        :written->sounding [:up :major :second]}}}
+```
+
+At the call site, the notation engine resolves the correct transposition for a given clef:
+
+```clojure
+(defn transposition-for-clef [transposition clef]
+  (or (get-in transposition [:clef-overrides clef])
+      transposition))
+```
+
+One field in, one answer out. `(nil? (:transposition instrument))` definitively answers "is this
+instrument transposing?" — no additional checks needed.
+
 #### Instrument Names and Language
 
 Instrument names are plain strings. The library has no localisation infrastructure — there is no
