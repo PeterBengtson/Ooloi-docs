@@ -372,17 +372,26 @@ The frontend maintains a single atom `*instrument-library`. Its value is one of:
 
 **`nil` is the staleness marker.** No separate flag is needed. The atom starts as `nil`.
 
-**When `:instrument-library-changed` arrives and the window is open**: call
-`SRV/get-instrument-library` immediately, `reset!` the atom with the response. cljfx diffs the
+All gRPC calls are dispatched on the shared Claypoole thread pool (`cp/future`) — never on the
+JAT. When the response arrives (still on the Claypoole thread), atom state is updated directly
+(`reset!`). Any subsequent scene-graph mutation is delivered to the JAT via `fx/run-later!`.
+This is the standard frontend threading rhythm: compute off-thread, materialise on-thread.
+
+**When `:instrument-library-changed` arrives and the window is open**: `cp/future` calls
+`SRV/get-instrument-library`, `reset!`s the atom with the response. cljfx diffs the
 instrument vector and updates only changed items.
 
 **When `:instrument-library-changed` arrives and the window is closed**: `reset!` the atom to
 `nil`. No network call is made. The data will be fetched when the window opens.
 
-**When the window opens**: check `(nil? @*instrument-library)`. If nil, call
-`SRV/get-instrument-library` off the JAT (no blocking work on the JavaFX Application Thread) and
-`reset!` the atom when the response arrives, then render. If not nil, render immediately from
-the cached value.
+**When the window opens**: check `(nil? @*instrument-library)`. If nil, `cp/future` calls
+`SRV/get-instrument-library`, `reset!`s the atom when the response arrives, then renders.
+If not nil, render immediately from the cached value.
+
+**When the user saves edits**: `cp/future` calls `SRV/set-instrument-library` with the
+expected version and new instruments vector. The response (success, conflict, or duplicate-IDs)
+is handled on the Claypoole thread; any UI feedback (conflict dialog, error display) is
+delivered to the JAT via `fx/run-later!`.
 
 This means a client that never opens the Instrument Library window pays no fetch cost at all, even
 if the library is modified repeatedly by other clients during the session. The cost is deferred
@@ -551,9 +560,11 @@ window and is saved permanently to the user's library file.
  :excluded  #{<keyword> ...}}
 ```
 
-`:excluded` is a set of instrument `:id`s that the user has deleted. It exists to make
-deletion permanent across application updates: bundle entries in `:excluded` are not
-re-inserted by merge-on-load.
+`:excluded` is a set of **bundle** instrument `:id`s that the user has deleted. It exists to
+make deletion permanent across application updates: bundle entries in `:excluded` are not
+re-inserted by merge-on-load. Only bundle-format IDs (`:instrument-key-language`) are added
+to `:excluded`; user-created UUID IDs (`:instrument-<UUID>`) are never added, because they
+cannot match a bundle entry and would accumulate as dead weight.
 
 **Merge-on-load.** At component initialisation, the backend merges the bundle with the user
 file as follows:
@@ -574,11 +585,13 @@ never affected by merging.
 
 The frontend sends no explicit deletion signal. Deletions are implicit: the frontend submits a
 new instruments vector with the deleted entry absent. On each successful `set-instrument-library`,
-the backend computes the updated excluded set: any `:id` present in the previous instruments
-vector but absent from the new one is added to the existing excluded set. The updated atom state
-— incremented version, new instruments vector, and updated excluded set — is then dispatched to
-the writer agent for persistence. The frontend never sees or manages `:excluded`; it is entirely
-a backend concern.
+the backend computes the updated excluded set: any **bundle-format** `:id` present in the
+previous instruments vector but absent from the new one is added to the existing excluded set.
+User-created instruments (UUID-format `:id`s) are excluded from this computation — they can
+never collide with bundle entries and would otherwise accumulate as tombstones that never match
+anything. The updated atom state — incremented version, new instruments vector, and updated
+excluded set — is then dispatched to the writer agent for persistence. The frontend never sees
+or manages `:excluded`; it is entirely a backend concern.
 
 #### Woodwinds (`:family :woodwind`)
 
