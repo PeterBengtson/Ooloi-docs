@@ -97,11 +97,17 @@ Returns one of:
 ```clojure
 {:ok true  :version <new-version>}                                  ; success
 {:conflict true :version <current-version> :instruments <current>}  ; version mismatch
+{:error :duplicate-ids :ids #{...}}                                 ; duplicate :id values in submitted vector
 ```
 On success: increments the version counter, dispatches persistence to the writer agent, and
 broadcasts `:instrument-library-changed` to all subscribed clients.
 On conflict: returns the current library unchanged. The caller reapplies its pending change on top
 of the returned state and retries.
+On duplicate IDs: rejects the write without modifying state and returns the set of conflicting
+`:id` values. The backend validates that every `:id` in the submitted instruments vector is unique
+before accepting any write. Duplicate IDs would cause semantic corruption in the tombstone
+mechanism, merge-on-load, and conflict-retry logic — all of which key on `:id` identity. This
+check is O(n) and the library is bounded in size; the cost is negligible.
 
 These are the only two API functions. All editing logic — add, remove, reorder, rename — lives
 entirely in the frontend and is expressed as a transformation of the instrument vector before
