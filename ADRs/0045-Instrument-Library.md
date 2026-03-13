@@ -941,7 +941,8 @@ appear in two-, three-, and four-part divisi configurations.
 #### Early Instruments
 
 Early instruments carry their correct `:family` value — viols are `:strings`, sackbuts are
-`:brass`, traverso and chalumeau are `:woodwind`, clavichord and lautenwerk are `:keyboard`.
+`:brass`, traverso and chalumeau are `:woodwind`, clavichord and lautenwerk are `:keyboard`,
+lute, theorbo, and chitarrone are `:plucked`.
 This section is a documentation grouping only; there is no `:early` or `:historical` family
 keyword.
 
@@ -1000,12 +1001,12 @@ keyword.
 
 **Baroque keyboards and plucked**
 
-| Instrument | Staves | Transposition | Notes |
-|---|---|---|---|
-| Clavichord | 2 | — | |
-| Lute | 1 | Octave below written | Various configurations |
-| Theorbo / Chitarrone | 1 | — | Long-neck continuo lute |
-| Lautenwerk | 2 | — | Harpsichord with gut strings |
+| Instrument | Family | Staves | Transposition | Notes |
+|---|---|---|---|---|
+| Clavichord | `:keyboard` | 2 | — | |
+| Lute | `:plucked` | 1 | Octave below written | Various configurations |
+| Theorbo / Chitarrone | `:plucked` | 1 | — | Long-neck continuo lute |
+| Lautenwerk | `:keyboard` | 2 | — | Harpsichord with gut strings |
 
 ---
 
