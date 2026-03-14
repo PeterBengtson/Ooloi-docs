@@ -104,7 +104,7 @@ The shared project includes `system.clj` and `app.clj` (in `src/app/clojure`) fo
 **Combined System Components (11 total):**
 - **Shared**: thread-pool
 - **Frontend (early)**: event-bus, ui-manager — start before backend so the splash screen exists to report backend startup progress
-- **Backend**: piece-manager, grpc-server, http-server, cache-daemon, instrument-library
+- **Backend**: piece-manager, grpc-server, http-server, cache-daemon, instrument-library — all defined in the backend project and wired here in the combined config
 - **Frontend (late)**: grpc-clients, event-router, fetch-coordinator — connect to backend after it is running
 
 **Dependency graph** (each component depends on those listed in brackets):

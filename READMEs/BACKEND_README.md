@@ -62,10 +62,18 @@ The backend is a sophisticated server application using **Integrant dependency i
 │Hash-Cons │  │  Client  │  │  Endpoints   │
 │Optimize  │  │  Comms   │  │& Monitoring  │
 └──────────┘  └──────────┘  └──────────────┘
+
+┌──────────────────────────────────────────────────────┐
+│            Instrument Library Component              │
+│   (Server-side instrument template registry,        │
+│    bundled library + user extensions, optimistic    │
+│    locking, invalidate-only event synchronisation)  │
+└──────────────────────────────────────────────────────┘
 ```
 
 **Component Dependencies:**
 - **Application Core** → **Piece Manager** → **{Cache Daemon, gRPC Server}** → **HTTP Server**
+- **Instrument Library** starts independently (no dependency on Piece Manager)
 - Cache Daemon, gRPC Server can start in parallel after Piece Manager
 - HTTP Server depends on gRPC Server for health monitoring integration
 - Configuration flows from CLI/environment through all components
@@ -98,6 +106,13 @@ The backend is a sophisticated server application using **Integrant dependency i
 - **STM-safe operations** using proper transaction semantics for cache modifications
 - **Automatic operation** requires no manual intervention once started
 
+#### Instrument Library Component
+- **Server-side instrument template registry** with the complete bundled default library (full orchestral repertoire from Bach to Messiaen)
+- **Optimistic locking** for safe concurrent updates — writes carry a version; stale-version writes return a conflict
+- **User extensions** — persistent user instruments are merged with the bundled library on load
+- **Invalidate-only synchronisation** — broadcasts `:instrument-library-changed` events to all connected clients after successful writes; clients re-fetch on demand
+- **First global singleton** in the architecture — establishes the pattern for non-piece shared state (see ADR-0045)
+
 #### Application Core
 - **CLI argument parsing** with comprehensive validation
 - **Error handling** with specific exit codes for operational tooling
@@ -118,7 +133,8 @@ backend/
 │   │   ├── piece_manager.clj        ; STM-based piece storage and management
 │   │   ├── grpc_server.clj          ; gRPC server component
 │   │   ├── http_server.clj          ; HTTP health/statistics server component
-│   │   └── cache_daemon.clj         ; Hash-consing optimization daemon
+│   │   ├── cache_daemon.clj         ; Hash-consing optimization daemon
+│   │   └── instrument_library.clj   ; Instrument template registry component
 │   ├── grpc/                        ; gRPC server implementation
 │   │   ├── server.clj               ; Universal ExecuteMethod endpoint
 │   │   └── stats.clj                ; Server statistics collection
