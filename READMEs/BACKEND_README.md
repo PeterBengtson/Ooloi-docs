@@ -423,9 +423,19 @@ The backend provides comprehensive monitoring capabilities for production deploy
 
 **Component Health Status:**
 - Each component reports its health status (healthy/unhealthy)
-- System-wide health aggregates component statuses  
+- System-wide health aggregates component statuses
 - Failed components can be isolated or restarted individually
 - Built-in gRPC health service for component coordination
+
+**⚠️ Health Reporting Requirement for New Components:**
+`get-system-health` in `backend/system.clj` iterates every value in the Integrant system map. For map-type components, it checks `(:status component) = :running`. Any map-type component whose `init-key` does **not** return `:status :running` will be reported as `:unhealthy`, making the entire system health `:unhealthy` with no error or warning — health checks simply fail silently.
+
+Every new backend component's `init-key` must include `:status :running` in its return map:
+```clojure
+(defmethod ig/init-key :ooloi.backend.components/my-component [_ _]
+  {:my-data (atom initial-state)
+   :status  :running})   ; required — without this, get-system-health reports :unhealthy
+```
 
 **Application Lifecycle:**
 - **Startup**: Components initialize in dependency order
