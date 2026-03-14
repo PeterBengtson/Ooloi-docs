@@ -101,10 +101,10 @@ See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) f
 
 The shared project includes `system.clj` and `app.clj` (in `src/app/clojure`) for combined deployment, composing all backend and frontend components into a single JVM process.
 
-**Combined System Components (10 total):**
+**Combined System Components (11 total):**
 - **Shared**: thread-pool
 - **Frontend (early)**: event-bus, ui-manager — start before backend so the splash screen exists to report backend startup progress
-- **Backend**: piece-manager, grpc-server, http-server, cache-daemon
+- **Backend**: piece-manager, grpc-server, http-server, cache-daemon, instrument-library
 - **Frontend (late)**: grpc-clients, event-router, fetch-coordinator — connect to backend after it is running
 
 **Dependency graph** (each component depends on those listed in brackets):
@@ -116,6 +116,7 @@ piece-manager                                    [ui-manager]
 grpc-clients        (in-process transport)       [ui-manager]
 grpc-server                                      [piece-manager]
 cache-daemon                                     [piece-manager]
+instrument-library                               [ui-manager]
 event-router                                     [grpc-clients, event-bus]
 fetch-coordinator                                [thread-pool, grpc-clients]
 http-server                                      [grpc-server]
@@ -645,6 +646,7 @@ Remember to run tests (`lein midje`) before packaging to ensure everything is wo
 - **[Polymorphic API Guide](/guides/POLYMORPHIC_API_GUIDE.md)** - Type system foundations underlying the shared model architecture
 - **[Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Server architecture built on shared model contracts
 - **[gRPC Communication and Flow Control](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - How shared types enable network serialization
+- **[Integrant Components Guide](/guides/INTEGRANT_COMPONENTS.md)** - Component lifecycle, the three-project wiring asymmetry, combined system dependency graph, startup sequence, and the full testing macro reference
 
 ### Technical Documentation
 - **[ADR-0023: Shared Model Contracts](/ADRs/0023-Shared-Model-Contracts.md)** - Multi-project architecture decisions

@@ -1297,6 +1297,8 @@ Additional macros for specific situations:
 
 Full API documentation and decision rules are in [UI_ARCHITECTURE.md §13](../research/UI_ARCHITECTURE.md).
 
+For the complete treatment of Integrant lifecycle, the `with-combined-system` macro, and how Integrant components are wired across all three projects, see the [INTEGRANT_COMPONENTS.md](INTEGRANT_COMPONENTS.md) guide.
+
 #### Testing Wired Component Behaviour Without a Stage
 
 When a test needs to verify production event listener behaviour wired into a component tree by a builder function — validation logic, CSS class changes, settings commits — the test does not need a Stage, Scene, or OS-level window focus:

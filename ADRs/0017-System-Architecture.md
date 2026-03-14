@@ -117,3 +117,4 @@ We will use **Integrant for component lifecycle management** combined with **str
 - [ADR-0002: gRPC Communication](0002-gRPC.md) - gRPC components managed by this system architecture
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model that remains unaffected by component architecture
 - [Integrant Documentation](https://github.com/weavejester/integrant)
+- [Guide: INTEGRANT_COMPONENTS.md](../guides/INTEGRANT_COMPONENTS.md) - Practical guide to wiring new components, the three-project asymmetry, testing macros, and invariants

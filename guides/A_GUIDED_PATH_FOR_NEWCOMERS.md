@@ -299,6 +299,8 @@ These documents are not required for understanding Ooloi's architecture. They pr
 
 **[ADR-0030: MusicXML](../ADRs/0030-MusicXML.md)** — Import and export as a first-class plugin, preserving musical meaning rather than graphical approximation.
 
+**[Guide: INTEGRANT_COMPONENTS.md](INTEGRANT_COMPONENTS.md)** — Integrant component lifecycle, the three-project wiring asymmetry, the combined system dependency graph, startup sequence, component wiring checklist (including two unintuitive requirements), and the full testing macro reference. Essential reading before adding any new component to the system.
+
 **[Guide: ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** — STM edge cases, commutative operations, coordination under load.
 
 **[Guide: PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** — Asynchronous save and load via Clojure agents, multiple I/O backends.
