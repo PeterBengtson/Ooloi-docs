@@ -15,6 +15,7 @@ The three gateway guides listed in that document — TIMEWALKING_GUIDE, POLYMORP
 | Guide | Ooloi Concepts | Clojure Concepts |
 |-------|----------------|------------------|
 | **🔵 [FRONTEND_ARCHITECTURE_GUIDE.md](FRONTEND_ARCHITECTURE_GUIDE.md)** | Window lifecycle, event architecture, rendering pipeline, settings, localisation, collaboration | Declarative UI specs, pub/sub events, JAT threading discipline, cljfx |
+| **🟡 [INTEGRANT_COMPONENTS.md](INTEGRANT_COMPONENTS.md)** | Component lifecycle, dependency graph, three-project wiring, combined system startup, testing macros | Integrant dependency injection, `ig/init-key`, `ig/halt-key!`, `ig/build` |
 | **🟢 [MIDI_IN_OOLOI.md](MIDI_IN_OOLOI.md)** | MIDI input subsystem, Flow Mode integration, device management, event bus `:midi` category | `reify`, SPI pattern, `javax.sound.midi` |
 | **🟢 [TIMEWALKING_GUIDE.md](TIMEWALKING_GUIDE.md)** | Temporal coordination, musical traversal | Transducers, lazy sequences, functional composition, threading macros |
 | **🟢 [PIECE_PERSISTENCE_GUIDE.md](PIECE_PERSISTENCE_GUIDE.md)** | Save/load workflows, I/O backends | Agents, asynchronous operations, error handling patterns |
@@ -36,6 +37,9 @@ The three gateway guides listed in that document — TIMEWALKING_GUIDE, POLYMORP
 ### Frontend Architecture
 - **🔵 [FRONTEND_ARCHITECTURE_GUIDE.md](FRONTEND_ARCHITECTURE_GUIDE.md)** - The central architectural gateway: window lifecycle, event system, rendering pipeline, settings, localisation, and collaboration (comprehensive)
 - **🟢 [MIDI_IN_OOLOI.md](MIDI_IN_OOLOI.md)** - MIDI input for note entry, why the core produces no MIDI output, and how events flow to Flow Mode via the frontend event bus (concise)
+
+### System Components & Deployment
+- **🟡 [INTEGRANT_COMPONENTS.md](INTEGRANT_COMPONENTS.md)** - Component lifecycle, the three-project wiring asymmetry, combined system dependency graph, startup sequence, and the full testing macro reference (practical reference)
 
 ### Core Architecture
 - **🟢 [TIMEWALKING_GUIDE.md](TIMEWALKING_GUIDE.md)** - Temporal piece traversal (beginner-friendly)
