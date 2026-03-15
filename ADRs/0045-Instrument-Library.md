@@ -132,6 +132,7 @@ Each instrument template is a map with the following fields:
 | `:amateur-range` | map | optional | Non-professional range: `{:low <pitch> :high <pitch>}`. Notes outside this range but within `:range` are coloured yellow. Absent means no amateur range distinction. |
 | `:staves` | vector | always | One entry per staff; defines clefs for each display context |
 | `:clef-overrides` | map | if clef-dependent transposition | Clef-to-transposition overrides for clefs whose transposition deviates from the instrument's top-level `:sounding->written`/`:written->sounding`; see **Clef-Dependent Transposition** below |
+| `:comment` | string | optional | Explanatory note shown in the Instrument Library window to help the user choose between variants (e.g. `"Old notation"`). Never used in scores — score labels come from `:name` and `:short-name` only. |
 
 #### Staff Specifications
 
