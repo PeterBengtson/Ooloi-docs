@@ -1305,3 +1305,7 @@ the protocol is correct regardless of timing, which is what matters.
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) — event bus; `:instrument-library` category must be added to `derive-category`
 - [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) — role-based permissions; host/guest write access model
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) — backend authority; frontend caches, never owns
+
+### External References
+
+- [Dolmetsch Online — Sounding Ranges and Clefs](https://www.dolmetsch.com/musictheory26.htm) — systematic table of professional and amateur ranges, transposition intervals, and standard clefs for every orchestral instrument; primary reference for instrument data
