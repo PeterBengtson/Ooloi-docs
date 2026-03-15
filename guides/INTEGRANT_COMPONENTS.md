@@ -122,16 +122,18 @@ This is the **primary product** — what end users download and run.
 
 ## 4. The Backend System
 
-When running as a standalone server, the backend starts four components:
+When running as a standalone server, the backend starts five components:
 
 ```
+instrument-library   (no dependencies — starts independently)
+
 piece-manager
-    ├── grpc-server
+    ├── grpc-server  (also depends on instrument-library)
     │       └── http-server
     └── cache-daemon
 ```
 
-`piece-manager` is the root. `grpc-server` and `cache-daemon` both depend on it and can start in parallel after it. `http-server` depends on `grpc-server` for health manager access.
+`instrument-library` has no dependencies and starts independently of `piece-manager`. `grpc-server` depends on both `piece-manager` and `instrument-library`. `cache-daemon` depends only on `piece-manager`. `http-server` depends on `grpc-server` for health manager access.
 
 **Entry point:** `ooloi.backend.system/start-with-config`
 
@@ -172,7 +174,7 @@ FRONTEND LATE  — connect to backend after it is running
   fetch-coordinator                        [thread-pool, grpc-clients]
 ```
 
-The `ui-manager` dependency on backend components is the load-bearing design: it forces backend components to start *after* the UI manager (and thus after the splash screen is showing). Without it, a backend component might init before i18n is ready and crash when it calls `tr`.
+Backend components' dependency on `ui-manager` is the load-bearing design in `combined-config`: it forces them to start *after* the UI manager (and thus after the splash screen is showing and i18n is loaded). Without it, a backend component might init before i18n is ready and crash when it calls `tr`. This dependency exists **only** in `combined-config` — in the standalone backend config (§4), the same components have no frontend dependencies.
 
 **The complete dependency graph as declared in `combined-config`:**
 
@@ -256,13 +258,21 @@ This means:
 
 Every new backend component added to `combined-config` requires all of the following. The first two are genuinely unintuitive and cause failures with no obvious connection to the missing item.
 
-### 1. `ui-manager` dependency — even for non-UI components
+### 1. `ui-manager` dependency in `combined-config` — even for non-UI components
 
-Integrant sorts by the declared dependency graph. Without an explicit `ui-manager` dep, a new backend component has no declared relationship to the UI manager, and Integrant may start it before the UI manager is running. This means `tr` is called before i18n is loaded, producing a NullPointerException with "target is null" deep in the translation machinery. Nothing in the stack trace points to a missing dependency.
+This requirement applies **only in `combined-config`** (§5), not in the backend standalone config (§4). In the standalone backend there is no UI manager, no splash screen, and no i18n loaded at init time — backend components start with no frontend dependencies at all.
+
+In the combined application, the UI manager loads i18n and shows the splash screen. Backend components that call `tr` during init will crash if they start before the UI manager is running. Integrant sorts by the declared dependency graph, so **every backend component in `combined-config` must declare a `ui-manager` dependency** to guarantee it starts after i18n is ready — even if the component itself has nothing to do with the UI. Without this dependency, Integrant may place the component before the UI manager in the topological sort, producing a NullPointerException with "target is null" deep in the translation machinery. Nothing in the stack trace points to a missing dependency.
+
+Note the asymmetry: in `backend-config` the same component may have `{}` (no dependencies), while in `combined-config` it must have `{:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}`. The `init-key` implementation is shared — it is the *config entry* that differs between the two systems.
 
 ```clojure
+;; In combined-config (shared/system.clj) — ui-manager dependency required:
 :ooloi.backend.components/my-component
 {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
+
+;; In backend-config (backend/system.clj) — no frontend dependencies:
+:ooloi.backend.components/my-component {}
 ```
 
 ### 2. `:status :running` in `init-key` return value
@@ -452,7 +462,7 @@ Defaults: `:pool-size 2`, `:ui-mode :headless`. See [Frontend Architecture Guide
 `get-system-health` checks this for every value in the system map. Omitting it produces silent `:unhealthy` health status with no error.
 
 **Backend components in `combined-config` must depend on `ui-manager`.**
-Without it, topological sort may place them before the UI manager, causing `tr` to fail before i18n is loaded.
+Without it, topological sort may place them before the UI manager, causing `tr` to fail before i18n is loaded. This does not apply to the standalone backend config (§4), which has no UI manager.
 
 **`ig/build` does not auto-cleanup on partial failure.**
 If a component throws during init, the partial system (components that started successfully) is in `ex-data` under `:system`. `start-system!` handles this explicitly — it halts the partial system before re-throwing. If you call `ig/build` directly, you must do the same.
@@ -502,6 +512,7 @@ The `start-server` / `stop-server` / `register-client` / `disconnect-client` fun
 
 - [ADR-0017: System Architecture](../ADRs/0017-System-Architecture.md) — the decision to use Integrant and its rationale
 - [ADR-0031: Frontend Event-Driven Architecture](../ADRs/0031-Frontend-Event-Driven-Architecture.md) — full frontend component dependency graph
+- [ADR-0036: Collaborative Sessions and Hybrid Transport](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md) — how the combined app transitions between in-process and network transport
 - [Frontend Architecture Guide](FRONTEND_ARCHITECTURE_GUIDE.md) — frontend testing model, JAT boundary, `with-ui-manager` in depth
 - [gRPC Communication and Flow Control](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md) — two-phase client connection architecture
 - [Combined Application Source README](../shared/src/app/README.md) — component wiring checklist with code examples

@@ -452,7 +452,7 @@ The backend provides comprehensive monitoring capabilities for production deploy
 **Production Monitoring:**
 - **Health Port**: HTTP endpoint for external monitoring tools (load balancers, ops dashboards)
 - **gRPC Health**: Built-in gRPC health service for component coordination
-- **Component Status**: Real-time health reporting for piece manager and gRPC server
+- **Component Status**: Real-time health reporting for all backend components (piece manager, gRPC server, instrument library, etc.)
 - **Resource Monitoring**: Automatic failure detection and isolation
 
 **Production Readiness:**

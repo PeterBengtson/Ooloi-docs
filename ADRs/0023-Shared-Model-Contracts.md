@@ -83,6 +83,7 @@ We will create **Shared Model Contracts** by moving pure data model definitions 
 - STM-based piece management operations
 - VPD operations and timewalk functionality
 - Piece manager component (Integrant lifecycle coordination)
+- Instrument library component (server-side instrument template registry)
 - Persistence and storage operations
 - Network service layer
 
@@ -97,7 +98,7 @@ We will create **Shared Model Contracts** by moving pure data model definitions 
 The architecture has fundamentally shifted to **shared project as the core engine**:
 
 1. **Shared Project = Ooloi Engine**: Contains all domain knowledge, classes, models, STM operations, VPD system, timewalk, interfaces, predicates, and traits
-2. **Backend Project = Server Wrapper**: Thin wrapper providing gRPC server, piece manager component coordination, and persistence layer around the shared engine
+2. **Backend Project = Server Wrapper**: Thin wrapper providing gRPC server, piece manager component coordination, instrument library, and persistence layer around the shared engine
 3. **Frontend Project = UI Wrapper**: Thin wrapper providing user interface and JavaFX rendering around the shared engine
 
 Both backend and frontend are now essentially lightweight adapters that expose the shared engine through different interfaces (network vs. UI).
