@@ -454,6 +454,18 @@ For tests that need a UI manager without the full combined system. Creates a thr
 
 Defaults: `:pool-size 2`, `:ui-mode :headless`. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model) for the full frontend testing model.
 
+**Visual inspection tests** — when a test needs to show a real window on screen (e.g. to verify layout, content, or appearance), pass `:ui-mode :graphical`. In headless mode (the default), `show-window!` builds and registers the Stage but never calls `window/show!`, so nothing appears on screen. Combine with `(visual-pause ms)` and the `OOLOI_UI_VISUAL=true` environment variable:
+
+```clojure
+(th/with-ui-manager [mgr {:ui-mode :graphical}]
+  (th/run-on-fx-thread-sync! #(my-window/show-my-window! mgr))
+  (deref opened 5000 nil) => truthy
+  (th/visual-pause 5000)   ; no-op unless OOLOI_UI_VISUAL=true
+  ...)
+```
+
+Run with: `OOLOI_UI_VISUAL=true lein midje my.namespace`
+
 ---
 
 ## 9. Invariants and Pitfalls

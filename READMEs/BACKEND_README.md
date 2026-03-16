@@ -65,7 +65,7 @@ The backend is a sophisticated server application using **Integrant dependency i
 
 ┌──────────────────────────────────────────────────────┐
 │            Instrument Library Component              │
-│   (Server-side instrument template registry,        │
+│   (Server-side instrument registry,        │
 │    bundled library + user extensions, optimistic    │
 │    locking, invalidate-only event synchronisation)  │
 └──────────────────────────────────────────────────────┘
@@ -107,7 +107,7 @@ The backend is a sophisticated server application using **Integrant dependency i
 - **Automatic operation** requires no manual intervention once started
 
 #### Instrument Library Component
-- **Server-side instrument template registry** with the complete bundled default library (full orchestral repertoire from Bach to Messiaen)
+- **Server-side instrument registry** with the complete bundled default library (full orchestral repertoire from Bach to Messiaen)
 - **Optimistic locking** for safe concurrent updates — writes carry a version; stale-version writes return a conflict
 - **User extensions** — persistent user instruments are merged with the bundled library on load
 - **Invalidate-only synchronisation** — broadcasts `:instrument-library-changed` events to all connected clients after successful writes; clients re-fetch on demand

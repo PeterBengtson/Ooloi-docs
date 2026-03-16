@@ -43,7 +43,7 @@ Most musical software forces musicians to adapt to developer abstractions. Ooloi
         piece (api/add-instrument [:m 0] piece voice-inst)
 
         ;; Add staff with treble clef
-        piece (api/add-staff [:m 0 0] piece (api/create-staff :name "Soprano" :default-clef "G"))
+        piece (api/add-staff [:m 0 0] piece (api/create-staff :name "Soprano" :clefs {:sounding {:default-clef :treble} :written {:default-clef :treble}}))
 
         ;; Add two measures to soprano staff
         piece (api/add-measure [:m 0 0 0] piece (api/create-measure))

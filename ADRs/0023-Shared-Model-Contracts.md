@@ -83,7 +83,7 @@ We will create **Shared Model Contracts** by moving pure data model definitions 
 - STM-based piece management operations
 - VPD operations and timewalk functionality
 - Piece manager component (Integrant lifecycle coordination)
-- Instrument library component (server-side instrument template registry)
+- Instrument library component (server-side instrument registry)
 - Persistence and storage operations
 - Network service layer
 

@@ -295,7 +295,7 @@ These documents are not required for understanding Ooloi's architecture. They pr
 
 **[ADR-0040: Single Authority State Model](../ADRs/0040-Single-Authority-State-Model.md)** — The formal statement of state ownership rules across the system.
 
-**[ADR-0045: Instrument Library](../ADRs/0045-Instrument-Library.md)** — The first non-piece singleton in the architecture: a server-side instrument template registry with optimistic locking, lazy frontend caching, and invalidate-only event synchronisation. Concrete proof that the single-authority model scales beyond piece data to any global state. The bundled default library covers the full orchestral repertoire from Bach to Messiaen, together with the mechanisms for users to extend it permanently with instruments of their own.
+**[ADR-0045: Instrument Library](../ADRs/0045-Instrument-Library.md)** — The first non-piece singleton in the architecture: a server-side instrument registry with optimistic locking, lazy frontend caching, and invalidate-only event synchronisation. Concrete proof that the single-authority model scales beyond piece data to any global state. The bundled default library covers the full orchestral repertoire from Bach to Messiaen, together with the mechanisms for users to extend it permanently with instruments of their own.
 
 **[ADR-0030: MusicXML](../ADRs/0030-MusicXML.md)** — Import and export as a first-class plugin, preserving musical meaning rather than graphical approximation.
 

@@ -35,7 +35,7 @@ Each entity type currently uses defrecord slots that fall into two categories:
 ### Configuration Requirements
 
 The system needs to support configuration attributes across the entity hierarchy:
-- Some attributes are currently direct defrecord slots (`:name`, `:default-clef`, `:num-lines`)
+- Some attributes are currently direct defrecord slots (`:name`, `:clefs`, `:num-lines`)
 - Others use specialized storage (ChangeSets for time signatures)
 - Future needs require a systematic approach for adding new configuration attributes
 - Storage efficiency requires a mechanism for default values and optimization

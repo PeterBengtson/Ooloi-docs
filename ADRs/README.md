@@ -95,7 +95,7 @@ Distributing authority and coordinating state between backend and frontend.
 - **[0025-Server-Statistics-Architecture](0025-Server-Statistics-Architecture.md)**: Comprehensive statistics collection for operational visibility and test validation
 - **[0036-Collaborative-Sessions-and-Hybrid-Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md)**: Hybrid transport architecture enabling dynamic collaboration sessions with role-based permissions and email-based invitations
 - **[0040-Single-Authority-State-Model](0040-Single-Authority-State-Model.md)**: Single-authority state model where pieces exist only on server; operations-only API with capability symmetry but authority asymmetry
-- **[0045-Instrument-Library](0045-Instrument-Library.md)**: Server-side singleton instrument template registry with optimistic locking, lazy frontend caching, event-driven synchronisation, and a bundled library covering the full orchestral repertoire from Bach to Messiaen
+- **[0045-Instrument-Library](0045-Instrument-Library.md)**: Server-side singleton instrument registry with optimistic locking, lazy frontend caching, event-driven synchronisation, and a bundled library covering the full orchestral repertoire from Bach to Messiaen
 
 ## Extensibility & Interoperability
 
