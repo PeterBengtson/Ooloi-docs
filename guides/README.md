@@ -26,6 +26,7 @@ The three gateway guides listed in that document — TIMEWALKING_GUIDE, POLYMORP
 | **🔴 [GRPC_STREAMING_THREADING_GUIDE.md](GRPC_STREAMING_THREADING_GUIDE.md)** | Network transport streaming, backpressure patterns | gRPC threading constraints, HTTP/2 flow control, context propagation |
 | **🔵 [OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** | Server architecture, distributed systems, enterprise patterns | STM-gRPC integration, concurrent state management, functional architecture |
 | **🔴 [ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** | Parallel processing, performance optimization | STM coordination, parallel algorithms, performance tuning |
+| **📖 [INSTRUMENT_LIBRARY_CATALOGUE.md](INSTRUMENT_LIBRARY_CATALOGUE.md)** | Bundled instrument library: all instruments, families, clefs, transpositions | — (reference catalogue) |
 
 ---
 
@@ -55,6 +56,7 @@ The three gateway guides listed in that document — TIMEWALKING_GUIDE, POLYMORP
 
 ### Reference Documentation
 - **🟡 [VPDs.md](VPDs.md)** - Vector Path Descriptors reference (core system knowledge)
+- **📖 [INSTRUMENT_LIBRARY_CATALOGUE.md](INSTRUMENT_LIBRARY_CATALOGUE.md)** - Complete catalogue of bundled instruments: woodwinds, brass, strings, percussion, keyboards, plucked instruments, voices, and early instruments
 
 ---
 

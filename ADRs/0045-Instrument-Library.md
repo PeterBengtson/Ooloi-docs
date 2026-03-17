@@ -40,8 +40,8 @@ The Instrument Library differs from every other data entity in the system:
   It is not scoped to any piece and carries no piece identifier.
 - It holds **`Instrument` records**: the library stores real `Instrument` defrecords containing
   real `Staff` defrecords — the same types used in pieces. When a musician is assigned an instrument,
-  the piece receives a copy of the library record. From that point the piece record and the library
-  entry are independent. Renaming a library entry does not rename instruments already in pieces.
+  the piece receives the library record. From that point the piece and the library are independent —
+  renaming a library entry does not rename instruments already in pieces.
 - It is **collaboratively editable**: in a shared session, the host and any guest granted write
   permission may modify the library simultaneously. Modifications must not silently overwrite each
   other. Instruments must never vanish due to a concurrent write.
@@ -119,7 +119,7 @@ calling `set-instrument-library`.
 
 The library holds real `Instrument` defrecords containing real `Staff` defrecords — the same types
 used in pieces. There is no separate "template" format and no template-to-defrecord conversion.
-Assigning an instrument from the library to a piece copies the record directly.
+Assigning an instrument from the library to a piece uses the library record directly.
 
 #### Instrument Fields
 
@@ -205,11 +205,11 @@ base transposition with overrides present. The unified map makes these structura
 :transposition {:sounding->written [:up :perfect :fifth]
                 :written->sounding [:down :perfect :fifth]}
 
-;; Transposing with clef-dependent overrides (e.g. Horn in D):
-:transposition {:sounding->written [:up :minor :seventh]
-                :written->sounding [:down :minor :seventh]
-                :clef-overrides {:bass {:sounding->written [:down :major :second]
-                                        :written->sounding [:up :major :second]}}}
+;; Transposing with clef-dependent overrides (e.g. Horn in F, old notation):
+:transposition {:sounding->written [:up :perfect :fifth]
+                :written->sounding [:down :perfect :fifth]
+                :clef-overrides {:bass {:sounding->written [:down :perfect :fourth]
+                                        :written->sounding [:up :perfect :fourth]}}}
 ```
 
 `(nil? (:transposition instrument))` definitively answers "is this instrument transposing?" — no
@@ -230,9 +230,9 @@ Most transposing instruments apply the same transposition regardless of which cl
 these, `:sounding->written` and `:written->sounding` inside the `:transposition` map are sufficient.
 
 Some instruments deviate: the same clef symbol carries a different transposition depending on
-notation convention. Historical natural horns are the canonical case — a Horn in D in treble clef
-sounds a minor seventh below written, but in bass clef (*old notation*) the same horn sounds a
-major second *above* written. Both clefs may appear on the same staff; the transposition switches
+notation convention. Historical natural horns are the canonical case — a Horn in F in treble clef
+sounds a perfect fifth below written, but in bass clef (*old notation*) the same horn sounds a
+perfect fourth *above* written. Both clefs may appear on the same staff; the transposition switches
 with the clef. The `:clef-overrides` key within `:transposition` captures these deviations.
 
 No functions are stored in the library atom or in persistence. Transposer functions are constructed
@@ -311,19 +311,21 @@ at the call site: `(apply make-transposer (:sounding->written (:transposition in
              :clefs {:sounding {:default-clef :bass}
                      :written  {:default-clef :treble}})])
 
-;; Historical Horn in D — :clef-overrides for old-notation bass clef transposition
-;; Treble: sounds minor 7th below written. Bass (old notation): sounds major 2nd above written.
+;; Historical Horn in F — :clef-overrides for old-notation bass clef transposition
+;; Treble: sounds P5 below written. Bass (old notation): sounds P4 above written.
 (create-instrument
-  :id :horn-d-it :language :it
-  :name "Corno in Re" :short-name "Cor."
+  :id :horn-f-old-notation-it :language :it
+  :name "Corno in Fa" :short-name "Cor."
   :family :brass
-  :transposition {:sounding->written [:up :minor :seventh]
-                  :written->sounding [:down :minor :seventh]
-                  :clef-overrides {:bass {:sounding->written [:down :major :second]
-                                          :written->sounding [:up :major :second]}}}
+  :comment "Notazione antica"
+  :transposition {:sounding->written [:up :perfect :fifth]
+                  :written->sounding [:down :perfect :fifth]
+                  :clef-overrides {:bass {:sounding->written [:down :perfect :fourth]
+                                          :written->sounding [:up :perfect :fourth]}}}
   :staves [(create-staff
-             :clefs {:sounding {:default-clef :bass}
-                     :written  {:default-clef :treble}})])
+             :clefs {:sounding {:default-clef :treble}
+                     :written  {:default-clef :treble}
+                     :aux-ranges {:bass {:low "B1" :high "E4"}}})])
 
 ;; Transposing — Lane 3 (chromatic with cents)
 ;; Quarter-tone Bb Trumpet: pitched a quarter tone flat of Bb — sounds M2 + 50¢ below written
@@ -602,6 +604,8 @@ window and is saved permanently to the user's library file.
  :excluded  #{<keyword> ...}}
 ```
 
+Both the bundled EDN and the user file store instruments as **plain maps**, not as defrecord tagged literals. `load-bundle` and `load-user-library` construct real Instrument/Staff records from plain maps on load. `persist!` converts records back to plain maps before writing. This keeps EDN files human-readable, avoids coupling the serialization format to Clojure class names, and requires no custom EDN readers for round-trip.
+
 `:excluded` is a set of **bundle** instrument `:id`s that the user has deleted. It exists to
 make deletion permanent across application updates: bundle entries in `:excluded` are not
 re-inserted by merge-on-load. Only bundle-format IDs (`:instrument-key-language`) are added
@@ -635,434 +639,132 @@ anything. The updated atom state — incremented version, new instruments vector
 excluded set — is then dispatched to the writer agent for persistence. The frontend never sees
 or manages `:excluded`; it is entirely a backend concern.
 
-#### Woodwinds (`:family :woodwind`)
-
-**Flutes**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Piccolo | treble | Octave above written | |
-| Flute | treble | — | |
-| Alto Flute in G | treble | Perfect fourth below written | |
-| Bass Flute in C | treble | Octave below written | |
-| Shakuhachi | treble | — | Japanese end-blown bamboo flute |
-
-**Ocarinas**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Soprano Ocarina in C | treble | — | |
-| Alto Ocarina in C | treble | — | |
-| Bass Ocarina in C | treble | — | |
-
-**Double reeds**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Oboe | treble | — | |
-| Oboe d'amore in A | treble | Minor third below written | |
-| English Horn in F | treble | Perfect fifth below written | Cor anglais |
-| Bass Oboe | bass; tenor | — | |
-| Heckelphone | treble | Octave below written | |
-
-**Clarinets**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Sopranino Clarinet in E♭ | treble | Minor third above written | |
-| Clarinet in C | treble | — | |
-| Clarinet in B♭ | treble | Major second below written | |
-| Clarinet in A | treble | Minor third below written | |
-| Alto Clarinet in E♭ | treble; bass | Major sixth below written | Standard American concert band instrument |
-| Basset Horn in F | treble | Perfect fifth below written | |
-| Bass Clarinet — French notation | treble | Major ninth below written | See notation variants below |
-| Bass Clarinet — German notation | bass | Major second below written | See notation variants below |
-| Contrabass Clarinet — French notation | treble | Two octaves + major second below written | |
-| Contrabass Clarinet — German notation | bass | Major ninth below written | Bass clef absorbs one octave |
-
-**Notation variants for Bass Clarinet and Contrabass Clarinet**
-
-Two professional notations coexist in the published literature, differing in transposition
-interval and default clef. Both variants must be present.
-
-| Variant | Default clef | Transposition |
-|---|---|---|
-| Bass Clarinet — French notation | `:treble` | Major ninth below written |
-| Bass Clarinet — German notation | `:bass` | Major second below written |
-| Contrabass Clarinet — French notation | `:treble` | Two octaves + major second below written |
-| Contrabass Clarinet — German notation | `:bass` | Major ninth below written |
-
-**Saxophones**
-
-All saxophones use treble clef and are non-transposing in terms of fingering (same fingering = same written note), but transpose against concert pitch.
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Sopranino Saxophone in E♭ | treble | Minor third above written | Rare; used in some military and chamber music |
-| Soprano Saxophone in B♭ | treble | Major second below written | |
-| Alto Saxophone in E♭ | treble | Major sixth below written | |
-| Tenor Saxophone in B♭ | treble | Major ninth below written | |
-| Baritone Saxophone in E♭ | treble | Major thirteenth below written | |
-| Bass Saxophone in B♭ | treble | Two octaves + major second below written | Rare; mainly 19th-century band repertoire |
-| Contrabass Saxophone in E♭ | treble | Two octaves + major sixth below written | Extremely rare |
-
-**Bassoons**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Bassoon | bass; tenor | — | |
-| Contrabassoon | bass | Octave below written | |
-
-**Bagpipes**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Great Highland Bagpipe | treble | Major second below written | Chanter written in B♭ key signature |
-| Uilleann Pipes | treble | — | Irish bellows-blown pipes; D chanter |
-| Northumbrian Smallpipes | treble | — | English bellows-blown smallpipes |
-
-#### Brass (`:family :brass`)
-
-**Modern Horns**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Horn in F | treble; bass | Perfect fifth below written | Modern standard; bass clef uses same transposition as treble |
-| Wagner Tuba in B♭ | treble | Major second below written | Tenortuba; played by horn players |
-| Wagner Tuba in F | treble | Perfect fifth below written | Basstuba; played by horn players |
-
-**Historical Horns (Old Notation)**
-
-Natural horns in various keys appear in Classical and Romantic scores. The bass clef follows
-*old notation*: the written note sounds one octave higher than under modern convention, which
-is equivalent to adding an octave to the treble transposition. Treble and bass clef therefore
-yield different transposition intervals for the same instrument. In the Instrument record, the
-treble clef transposition is the base `:sounding->written`/`:written->sounding` inside the
-`:transposition` map; the bass clef transposition is expressed as
-`:clef-overrides {:bass {...}}` within that same map.
-
-| Instrument | Treble clef | Bass clef (old notation) |
-|---|---|---|
-| Horn in C | Octave below written | Concert pitch |
-| Horn in D | Minor 7th below written | Major 2nd above written |
-| Horn in E♭ | Minor 6th below written | Major 3rd above written |
-| Horn in E | Major 6th below written | Minor 3rd above written |
-| Horn in G | Perfect 4th below written | Perfect 5th above written |
-| Horn in A | Minor 3rd below written | Major 6th above written |
-| Horn in B♭ alto | Major 2nd below written | Minor 7th above written |
-| Horn in B♭ basso | Minor 9th below written | Minor 2nd below written |
-
-**Trumpets**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Trumpet in C | treble | — | Modern standard |
-| Trumpet in D | treble | Major second above written | Baroque clarino register |
-| Trumpet in E♭ | treble | Minor third above written | Baroque clarino; also modern piccolo variant |
-| Trumpet in E | treble | Major third above written | Baroque clarino register |
-| Trumpet in F (orchestral) | treble | Perfect fifth below written | 19th-century low orchestral instrument; same fundamental as horn in F; Mahler, Berg, Schoenberg, Webern |
-| Piccolo Trumpet in F | treble | Perfect fourth above written | High register; Baroque clarino variant |
-| Trumpet in G | treble | Perfect fifth above written | Baroque clarino register |
-| Trumpet in A | treble | Minor third below written | Standard alternative to B♭ trumpet in sharp keys |
-| Piccolo Trumpet in A | treble | Major sixth above written | High register; Baroque clarino variant |
-| Trumpet in B♭ | treble | Major second below written | Modern standard |
-| Piccolo Trumpet in B♭ | treble | Major second below written | High register; one octave above standard B♭ |
-| Cornet in B♭ | treble | Major second below written | Separate entry from trumpet |
-| Bass Trumpet in C | treble; bass; tenor | treble: octave below written; bass/tenor: concert pitch | Treble clef notation (trumpet players) transposes an octave; bass/tenor clef (trombone players) is at concert pitch |
-
-**Trombones**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Alto Trombone | alto; treble | — | |
-| Tenor Trombone | bass; tenor | — | |
-| Bass Trombone | bass | — | |
-| Contrabass Trombone | bass | — | |
-
-**Tubas**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Euphonium / Tenor Tuba in B♭ | bass; treble | treble: major ninth below written; bass: concert pitch | British brass band treble clef notation transposes a major ninth; orchestral bass clef is at concert pitch |
-| Bass Tuba | bass | — | |
-| Contrabass Tuba | bass | — | |
-
-**Band and Cornet Family**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Soprano Cornet in E♭ | treble | Minor third above written | Leads the brass band |
-| Flugelhorn in B♭ | treble | Major second below written | Conical-bore; warmer tone than trumpet |
-| Alto Horn in E♭ | treble | Major sixth below written | Tenor Horn (British); Althorn (German/Austrian) |
-| Baritone Horn in B♭ | treble; bass | treble: major ninth below written; bass: concert pitch | Narrower bore than euphonium |
-| Mellophone | treble | Perfect fifth below written | Band substitute for horn; F instrument |
-| Sousaphone | bass; treble | bass: concert pitch; treble: major ninth below written | B♭ instrument; upright bell; marching and concert band bass |
-| Bombardon in E♭ | bass; treble | bass: concert pitch; treble: major sixth below written | E♭ bass in British brass band |
-| Bombardon in B♭ | bass; treble | bass: concert pitch; treble: major ninth below written | B♭ bass; Berg's Wozzeck; British brass band |
-| Ophicleide | bass | — | 19th-century keyed brass; precursor to the tuba; Mendelssohn, Berlioz, early Verdi |
-
-#### Timpani (`:family :percussion`)
-
-| Instrument | Clef(s) | Notes |
-|---|---|---|
-| Timpani | percussion | Standard orchestral timpani; single staff |
-| Timpano piccolo | percussion | Small timpani; higher pitch range |
-
-#### Pitched Percussion (`:family :percussion`)
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Glockenspiel | treble | Two octaves above written | |
-| Xylophone | treble | Octave above written | |
-| Marimba | bass; treble | — | |
-| Vibraphone | treble | — | 1–2 staves |
-| Tubular Bells | treble | — | Chimes / Röhrenglocken |
-| Crotales | treble | Two octaves above written | Antique Cymbals |
-| Crotale | treble | Two octaves above written | Single instrument, specific pitch |
-| Glass Harmonica | treble; bass | — | Glass armonica; 1–2 staves |
-| Soprano Steel Pan | treble | — | Tenor pan; highest register |
-| Alto Steel Pan | treble | — | Double tenor |
-| Tenor Steel Pan | treble | — | |
-| Baritone Steel Pan | treble | — | Guitar pan |
-| Bass Steel Pan | bass | — | |
-
-#### Unpitched Percussion (`:family :percussion`)
-
-**Drums**
-
-| Instrument | Notes |
-|---|---|
-| Bass Drum | |
-| Snare Drum | Side Drum |
-| Tenor Drum | |
-| Military Drum | |
-| Tom-tom | |
-
-**Cymbals and gongs**
-
-| Instrument | Notes |
-|---|---|
-| Crash Cymbals | |
-| Suspended Cymbal | |
-| Chinese Cymbal | |
-| Tam-tam | |
-
-**Small and hand percussion**
-
-| Instrument | Notes |
-|---|---|
-| Triangle | |
-| Tambourine | |
-| Castanets | |
-| Claves | |
-| Wood Block | |
-| Temple Blocks | |
-| Guiro | |
-| Maracas | |
-| Rute | Birch-switch bundle |
-
-#### Special Effects (`:family :other`)
-
-| Instrument | Notes |
-|---|---|
-| Wind Machine | Windmaschine / Machine à vent; rotating ribbed cylinder |
-| Thunder Machine | Donnermaschine / Machine à tonnerre; large drum or metal sheet |
-| Cowbells | Herdenglocken / Cloches de vache; multiple pitched cowbells |
-| Whip | Peitsche / Fouet; two flat boards |
-| Ratchet | Ratsche / Crécelle; notched rotating wheel |
-
-#### Keyboards (`:family :keyboard`)
-
-| Instrument | Staves | Transposition | Notes |
-|---|---|---|---|
-| Piano | 2 | — | |
-| Electric Piano | 1–2 | — | Rhodes, Wurlitzer, and similar; concert pitch |
-| Organ (2 staves) | 2 | — | Manuals only |
-| Organ (3 staves) | 3 | — | Two manuals + pedal |
-| Hammond Organ | 2–3 | — | Two manuals; optional bass pedal stave |
-| Harpsichord | 2 | — | Both 1- and 2-manual instruments notated on 2 staves |
-| Celesta | 2 | Two octaves above written | |
-| Harmonium | 1–2 | — | Reed organ |
-| Accordion | 1 | — | |
-| Bandoneon | 2 | — | Argentine tango; grand staff |
-| Concertina (English) | 1 | — | Bisonoric; same note in/out |
-| Concertina (Anglo) | 1 | — | Unisonoric; different notes in/out |
-| Melodica | 1 | — | Blow organ / pianica |
-| Chromatic Harmonica | 1 | — | Button-operated chromatic scale |
-| Diatonic Harmonica | 1 | — | Key specified per piece |
-| Ondes Martenot | 1 | — | Electronic monophonic; keyboard or ribbon controller |
-| Theremin | 1 | — | Electronic; no physical contact; continuous pitch |
-| Synthesizer | 1–2 | — | Keyboard-based; concert pitch |
-
-#### Harp (`:family :plucked`)
-
-| Instrument | Staves | Transposition | Notes |
-|---|---|---|---|
-| Harp | 2 | — | Double-action |
-
-#### Plucked Strings (`:family :plucked`)
-
-| Instrument | Staves | Transposition | Notes |
-|---|---|---|---|
-| Guitar | 1 | Octave below written | Classical guitar |
-| Electric Guitar | 1 | — | Lead / rhythm |
-| Electric Guitar (7-string) | 1 | — | Extended range |
-| Electric Bass Guitar | 1 | Octave below written | 4-string |
-| Electric Bass Guitar (5-string) | 1 | Octave below written | Extended lower range |
-| Electric Bass Guitar (6-string) | 1 | Octave below written | Extended upper and lower range |
-| Mandolin | 1 | — | |
-| Ukulele | 1 | — | |
-| Zither | 2 | — | Austrian/Bavarian; melody + accompaniment staves |
-| Cimbalom | 2 | — | Hungarian hammered dulcimer; concert pitch |
-| Koto | 2 | — | Japanese 13-string zither; grand staff |
-| Shamisen | 1 | — | Japanese 3-string lute |
-| Balalaika Prima | 1 | — | Soprano range |
-| Balalaika Sekunda | 1 | — | Alto range |
-| Balalaika Alto | 1 | — | |
-| Balalaika Bass | 1 | — | |
-| Balalaika Contrabass | 1 | Octave below written | |
-| Domra Piccolo | 1 | — | |
-| Domra Soprano | 1 | — | |
-| Domra Alto | 1 | — | |
-| Domra Bass | 1 | — | |
-
-#### Choirs (`:family :voice`)
-
-Choirs are single instruments in the Ooloi model — a choir is a group of singers on a unified
-set of staves, exactly as a string section is a group of players on a single staff.
-
-| Instrument | Staves | Notes |
-|---|---|---|
-| SATB Choir | 4 | Standard mixed chorus |
-| SSAATTBB Choir | 8 | Eight-part single chorus (2S, 2A, 2T, 2B) |
-| SA Choir | 2 | Women's or children's two-part |
-| SSAA Choir | 4 | Two soprano + two alto parts |
-| TTBB Choir | 4 | Two tenor + two bass parts |
-| Knabenchor | 2 | Boys' choir (SS) |
-
-#### Solo Voices (`:family :voice`)
-
-| Voice | Clef(s) | Notes |
-|---|---|---|
-| Soprano | treble | |
-| Mezzo-Soprano | treble | |
-| Contralto | treble | |
-| Counter-tenor | treble | |
-| Tenor | treble | Sounds octave below written |
-| Baritone | bass | |
-| Bass-Baritone | bass | |
-| Bass | bass | |
-| Basso profondo | bass | Lowest bass voice |
-
-#### Strings (`:family :strings`)
-
-String instruments appear in **section** and **solo** variants. Section instruments additionally
-appear in two-, three-, and four-part divisi configurations.
-
-**Sections and solos**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Violin I | treble | — | Section |
-| Violin II | treble | — | Section |
-| Violin | treble | — | Solo |
-| Viola | alto; treble | — | Section; alto clef default |
-| Viola | alto; treble | — | Solo; alto clef default |
-| Violoncello | bass; tenor; treble | — | Section |
-| Violoncello | bass; tenor; treble | — | Solo |
-| Double Bass | bass; tenor; treble | Octave below written | Section |
-| Double Bass | bass; tenor; treble | Octave below written | Solo |
-
-**Divisi** (section instruments only)
-
-| Instrument | Staves |
-|---|---|
-| Violin div. 2 | 2 |
-| Violin div. 3 | 3 |
-| Violin div. 4 | 4 |
-| Violin div. 6 | 6 |
-| Viola div. 2 | 2 |
-| Viola div. 3 | 3 |
-| Viola div. 4 | 4 |
-| Viola div. 6 | 6 |
-| Violoncello div. 2 | 2 |
-| Violoncello div. 3 | 3 |
-| Violoncello div. 4 | 4 |
-| Violoncello div. 6 | 6 |
-| Double Bass div. 2 | 2 |
-| Double Bass div. 3 | 3 |
-| Double Bass div. 4 | 4 |
-| Double Bass div. 6 | 6 |
-
-#### Early Instruments
-
-Early instruments carry their correct `:family` value — viols are `:strings`, sackbuts are
-`:brass`, traverso and chalumeau are `:woodwind`, clavichord and lautenwerk are `:keyboard`,
-lute, theorbo, and chitarrone are `:plucked`.
-This section is a documentation grouping only; there is no `:early` or `:historical` family
-keyword.
-
-**Recorders**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Garklein Recorder in C | treble | — | Sopranissimo |
-| Sopranino Recorder in F | treble | — | |
-| Soprano Recorder in C | treble | — | Descant |
-| Alto Recorder in F | treble | — | Treble |
-| Tenor Recorder in C | treble | — | |
-| Bass Recorder in F | treble | — | |
-| Contrabass Recorder in C | treble | — | |
-
-**Baroque woodwinds**
-
-| Instrument | Family | Clef(s) | Transposition | Notes |
-|---|---|---|---|---|
-| Traverso | `:woodwind` | treble | — | Baroque transverse flute |
-| Oboe da caccia in F | `:woodwind` | treble | Perfect fifth below written | Curved-body Baroque oboe; distinct from English horn |
-| Chalumeau | `:woodwind` | treble | — | Baroque predecessor to the clarinet |
-
-**Renaissance and early Baroque winds**
-
-| Instrument | Family | Clef(s) | Transposition | Notes |
-|---|---|---|---|---|
-| Cornettino | `:woodwind` | treble | Perfect fourth above written | Sopranino of the cornett family |
-| Treble Cornett | `:woodwind` | treble | — | Standard Zink (Cornetto) |
-| Mute Cornett | `:woodwind` | treble | — | Cornetto muto; integral mouthpiece |
-| Tenor Cornett (Lizard) | `:woodwind` | treble | — | S-curved body |
-| Serpent | `:brass` | bass | — | Bass of the cornett family |
-| Sackbut | `:brass` | bass; tenor | — | Renaissance/Baroque trombone |
-
-**Baroque strings**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Violino piccolo | treble | Minor third above written | Small violin tuned a minor third above standard |
-| Viola d'amore | treble; alto | — | Six or seven strings + sympathetic strings |
-| Violoncello piccolo | bass; tenor; treble | — | Five-string cello |
-| Treble Viol | treble | — | |
-| Tenor Viol | alto | — | |
-| Bass Viol | bass; tenor | — | Viola da gamba |
-| Violone | bass | Octave below written | Baroque string bass |
-
-**Baroque brass**
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Corno da caccia in C | treble | — | Natural hunting horn |
-| Corno da caccia in D | treble | Major second above written | |
-| Corno da caccia in F | treble | Perfect fourth above written | |
-| Corno da caccia in G | treble | Perfect fifth above written | |
-| Tromba da tirarsi | treble | Major second above written | Baroque slide trumpet |
-
-**Baroque keyboards and plucked**
-
-| Instrument | Family | Staves | Transposition | Notes |
-|---|---|---|---|---|
-| Clavichord | `:keyboard` | 2 | — | |
-| Lute | `:plucked` | 1 | Octave below written | Various configurations |
-| Theorbo / Chitarrone | `:plucked` | 1 | — | Long-neck continuo lute |
-| Lautenwerk | `:keyboard` | 2 | — | Harpsichord with gut strings |
+For the complete listing of all bundled instruments — grouped by family with clefs, transpositions,
+and notes — see the [Bundled Instrument Library Catalogue](../guides/INSTRUMENT_LIBRARY_CATALOGUE.md).
+
+The [Examples](#examples) above show `create-instrument` constructor calls demonstrating the three transposer lanes. The following examples show the EDN persistence format — plain maps covering six structural variations:
+
+**Non-transposing instrument** (Flute):
+
+```clojure
+{:id :flute-en
+ :name "Flute" :short-name "Fl."
+ :language :en :family :woodwind
+ :transposition nil
+ :staves [{:clefs {:sounding {:default-clef :treble}
+                   :written  {:default-clef :treble}}}]}
+```
+
+`(nil? (:transposition instrument))` definitively answers "is this instrument transposing?" — no
+additional checks needed.
+
+**Simple transposing instrument** (Clarinet in B♭):
+
+```clojure
+{:id :bb-clarinet-en
+ :name "Clarinet in B♭" :short-name "Cl. in B♭"
+ :language :en :family :woodwind
+ :transposition {:sounding->written [:up :major :second]
+                 :written->sounding [:down :major :second]}
+ :staves [{:clefs {:sounding {:default-clef :treble}
+                   :written  {:default-clef :treble}}}]}
+```
+
+Most transposing instruments apply the same transposition regardless of which clef is active. For
+these, `:sounding->written` and `:written->sounding` inside the `:transposition` map are sufficient.
+
+**Clef-dependent transposition** (Horn in F, old notation):
+
+```clojure
+{:id :horn-f-old-notation-en
+ :name "Horn in F" :short-name "Hn. in F"
+ :language :en :family :brass
+ :comment "Old notation"
+ :transposition {:sounding->written [:up :perfect :fifth]
+                 :written->sounding [:down :perfect :fifth]
+                 :clef-overrides {:bass {:sounding->written [:down :perfect :fourth]
+                                         :written->sounding [:up :perfect :fourth]}}}
+ :range         {:low "B1"  :high "F5"}
+ :amateur-range {:low "C2"  :high "C5"}
+ :staves [{:clefs {:sounding {:default-clef :treble}
+                   :written  {:default-clef :treble}
+                   :aux-ranges {:bass {:low "B1" :high "E4"}}}}]}
+```
+
+Natural horns in Classical and Romantic scores use *old notation* in bass clef: the written note
+sounds one octave higher than under modern convention. Treble and bass clef therefore yield
+different transposition intervals for the same instrument. The Horn in F sounds a perfect fifth
+below written in treble clef but a perfect fourth *above* written in bass clef (old notation). The treble clef
+transposition is the base `:sounding->written`/`:written->sounding`; the bass clef transposition
+is expressed as `:clef-overrides {:bass {...}}`. At the call site, the active clef is checked against
+`:clef-overrides` first; the base transposition is used as the fallback:
+
+```clojure
+(defn transposition-for-clef [transposition clef]
+  (or (get-in transposition [:clef-overrides clef])
+      transposition))
+```
+
+**Multiple auxiliary clefs** (Violoncello):
+
+```clojure
+{:id :violoncello-en
+ :name "Violoncello" :short-name "Vc."
+ :language :en :family :strings
+ :transposition nil
+ :range         {:low "C2"  :high "C6"}
+ :amateur-range {:low "C2"  :high "G5"}
+ :staves [{:clefs {:sounding {:default-clef :bass}
+                   :written  {:default-clef :bass}
+                   :aux-ranges {:tenor  {:low "D4" :high "G5"}
+                                :treble {:low "E5" :high "C6"}}}}]}
+```
+
+The cello's default clef is bass. When a passage rises into the tenor range, the notation engine
+switches to tenor clef; when it goes higher still, to treble clef. The `:aux-ranges` map gives
+the engine the information it needs: tenor clef is preferred for written pitches from D4 to G5,
+treble clef from E5 to C6. The ranges overlap — the engine resolves ambiguity by preferring the
+clef that avoids a clef change (i.e. staying in tenor when the passage briefly touches E5 before
+returning to D4). Only auxiliary clefs appear in `:aux-ranges`; the default clef is implicitly
+preferred for everything below the lowest auxiliary range.
+
+**Sounding and written clefs differ** (Bass Clarinet, French notation):
+
+```clojure
+{:id :bass-clarinet-french-en
+ :name "Bass Clarinet" :short-name "B.Cl."
+ :language :en :family :woodwind
+ :comment "French notation"
+ :transposition {:sounding->written [:up :major :ninth]
+                 :written->sounding [:down :major :ninth]}
+ :staves [{:clefs {:sounding {:default-clef :bass}
+                   :written  {:default-clef :treble}}}]}
+```
+
+The Bass Clarinet in French notation is written in treble clef (transposing a major ninth) but
+sounds in the bass register. The `:sounding` and `:written` maps carry different `:default-clef`
+values so that the display engine knows which clef to show in each mode. The German notation
+variant uses bass clef for both and transposes only a major second.
+
+**Multi-staff instrument** (Piano):
+
+```clojure
+{:id :piano-en
+ :name "Piano" :short-name "Pno."
+ :language :en :family :keyboard
+ :transposition nil
+ :range {:low "A0" :high "C8"}
+ :staves [{:name "Right hand" :short-name "R.H."
+           :clefs {:sounding {:default-clef :treble}
+                   :written  {:default-clef :treble}}}
+          {:name "Left hand" :short-name "L.H."
+           :clefs {:sounding {:default-clef :bass}
+                   :written  {:default-clef :bass}}}]}
+```
+
+Multi-staff instruments declare one staff map per staff in the `:staves` vector. Each staff
+carries its own `:name`, `:short-name`, and `:clefs`. The instrument-level `:range` covers
+the entire instrument; individual staves do not carry separate ranges.
 
 ---
 
@@ -1308,6 +1010,10 @@ the protocol is correct regardless of timing, which is what matters.
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) — event bus; `:instrument-library` category must be added to `derive-category`
 - [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) — role-based permissions; host/guest write access model
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) — backend authority; frontend caches, never owns
+
+### Guides
+
+- [Bundled Instrument Library Catalogue](../guides/INSTRUMENT_LIBRARY_CATALOGUE.md) — complete listing of all bundled instruments with clefs, transpositions, and notes; user-facing reference
 
 ### External References
 
