@@ -565,8 +565,8 @@ entries that match the language selection and entries that match the search stri
 #### Instrument List
 
 Instruments passing both filters are displayed grouped by `:family`, with each family in a
-collapsible section: Woodwinds ▶, Brass ▶, Strings ▶, Keyboard ▶, Plucked ▶, Percussion ▶,
-Voice ▶, Other ▶. Within each family, instruments appear in vector order. Instrument names
+collapsible section in canonical score order: Woodwinds ▶, Brass ▶, Percussion ▶, Other ▶,
+Keyboard ▶, Plucked ▶, Voice ▶, Strings ▶. Within each family, instruments appear in vector order. Instrument names
 are rendered as rich text to display real ♭ (U+266D), ♮ (U+266E), and ♯ (U+266F).
 
 Drag-to-reorder is available to clients with write permission. Reordering moves the element in
