@@ -7,7 +7,8 @@ special-effect instruments, and a selection of historical instruments.
 Each instrument appears in up to four language editions — Italian, German, French, and English —
 with names and abbreviations drawn from standard orchestral tradition. Instruments whose names
 do not vary across these languages carry fewer editions. Every edition is a separate entry
-with its own identity.
+with its own identity. In total the bundled library contains roughly 270 instruments,
+yielding just over 1,000 language-specific library entries.
 
 The bundled library is a starting point, not a closed set. Any instrument not listed here —
 whether a historical reconstruction, a microtonal variant, a folk instrument, or a newly
