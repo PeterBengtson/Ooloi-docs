@@ -450,9 +450,13 @@ For tests that need a UI manager without the full combined system. Creates a thr
 ;; With options
 (th/with-ui-manager [mgr {:pool-size 4 :ui-mode :headless}]
   ...)
+
+;; With extra Integrant config merged into init-key
+(th/with-ui-manager [mgr {:extra-config {:some-key some-value}}]
+  ...)
 ```
 
-Defaults: `:pool-size 2`, `:ui-mode :headless`. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model) for the full frontend testing model.
+Defaults: `:pool-size 2`, `:ui-mode :headless`. `:extra-config` is merged into the `ig/init-key` config map. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model) for the full frontend testing model.
 
 **Visual inspection tests** — when a test needs to show a real window on screen (e.g. to verify layout, content, or appearance), pass `:ui-mode :graphical`. In headless mode (the default), `show-window!` builds and registers the Stage but never calls `window/show!`, so nothing appears on screen. Combine with `(visual-pause ms)` and the `OOLOI_UI_VISUAL=true` environment variable:
 

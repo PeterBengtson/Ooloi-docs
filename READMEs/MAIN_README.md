@@ -85,7 +85,7 @@ Ooloi is licensed under the Mozilla Public License (MPL) 2.0. This means that an
 
 Plugins for Ooloi can be closed-source and proprietary. Developers are free to create and distribute plugins under their own licensing terms. They can create commercial plugins and sell them without any obligation to open-source the plugin code. We are planning a CRM interface via Cryptolens, so plugin developers have full control of installations through flexible license keys.
 
-Copyright © 2024-2025 Peter Bengtson
+Copyright © 2024-2026 Peter Bengtson
 
 ## Contributions
 

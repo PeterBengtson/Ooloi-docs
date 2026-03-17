@@ -2,7 +2,7 @@
 
 This guide exists because the documentation does not naturally sort itself for a first reader.
 
-Architecture Decision Records are numbered chronologically — in the order decisions were made, not in the order a newcomer needs to encounter them. Reading ADR-0001 through ADR-0044 in sequence means confronting sophisticated distributed-systems reasoning before you understand what a `Piece` contains, or encountering the lazy frontend-backend synchronisation architecture before you know what VPDs are. The answer keeps arriving before you have understood the question.
+Architecture Decision Records are numbered chronologically — in the order decisions were made, not in the order a newcomer needs to encounter them. Reading ADR-0001 through ADR-0045 in sequence means confronting sophisticated distributed-systems reasoning before you understand what a `Piece` contains, or encountering the lazy frontend-backend synchronisation architecture before you know what VPDs are. The answer keeps arriving before you have understood the question.
 
 This path reorganises the material by conceptual dependency. Each phase builds the vocabulary the next phase requires. If you follow it, nothing should be opaque when you arrive at it.
 

@@ -435,7 +435,7 @@ in individual model files. Use docstrings everywhere for collaborative developme
 
 ## Testing Infrastructure
 
-Ooloi provides two test helper namespaces with macros that handle all lifecycle boilerplate.
+Ooloi provides four test helper namespaces with macros that handle all lifecycle boilerplate.
 **Never use raw `CountDownLatch` + `fx/run-later!` + `.await` patterns** — use
 `run-on-fx-thread-sync!` instead.
 
@@ -454,8 +454,37 @@ Used in `frontend/test/` and `shared/test/app/` (system integration tests).
 | `with-event-bus` | Creates a live event bus for the duration of body. Required when calling `set-app-setting!` with a value that differs from the stored value. |
 | `default-settings` | Returns all registry settings at their defaults. Use as base for `load-defaults` mocks. |
 | `with-zero-animation-times` | Sets all animation durations to zero for lifecycle tests. |
+| `with-thread-pool [pool]` / `[pool {:size n}]` | Creates a Claypoole thread pool for the duration of body. Defaults to size 2. |
+| `with-ui-manager [mgr]` / `[mgr {:pool-size n :ui-mode mode :extra-config {}}]` | Creates pool + event bus + UI manager; flushes JAT callbacks before halting. Defaults: pool-size 2, ui-mode :headless. |
+| `with-empty-undo-redo` | Clears undo/redo stacks before and after body. Prevents test-to-test leakage. |
+| `with-stage [stage-spec test-fn]` | Lifecycle wrapper for Stage-based visual tests. Handles creation, visual mode, and cleanup. |
 
 **Double FX flush** (macOS deferred setup): use two sequential calls — `(th/run-on-fx-thread-sync! (fn [])) (th/run-on-fx-thread-sync! (fn []))`. Never nest `run-on-fx-thread-sync!` calls — that deadlocks.
+
+### `util.common` — Shared test helpers
+
+Used across all three projects.
+
+```clojure
+(require '[util.common :as tc])
+```
+
+| Macro / Function | Purpose |
+|---|---|
+| `with-saved-atom [atom-expr & body]` | Saves and restores an atom's value around body. Prevents state leakage between tests. |
+
+### `util.instrument-library` — Instrument Library test helpers
+
+Used in shared and backend IL tests.
+
+```clojure
+(require '[util.instrument-library :as il])
+```
+
+| Macro / Function | Purpose |
+|---|---|
+| `with-test-il-dir` | Redirects `platform/get-platform-directory` to a temporary directory, then deletes it. |
+| `with-loaded-test-bundle` | Replaces `load-bundle` with a stable test fixture covering all eight instrument families. |
 
 ### `util.server` — gRPC and server test helpers
 
@@ -471,7 +500,7 @@ Used in `shared/test/` and `backend/test/`.
 | `with-clients s [[c1 "id1"] [c2 "id2"]]` | Creates and registers multiple clients with automatic cleanup. Clients inherit TLS settings from server. |
 | `with-srv-client c` | Binds client to `SRV/*` dynamic context so all `SRV/` calls use it automatically. |
 | `with-system [sys {}]` | Full backend Integrant system with automatic halt. |
-| `with-combined-system [sys]` | All 9 application components, in-process gRPC transport, headless UI. Use for combined system integration tests. |
+| `with-combined-system [sys]` | All 11 application components, in-process gRPC transport, headless UI. Use for combined system integration tests. |
 
 **Typical patterns:**
 
