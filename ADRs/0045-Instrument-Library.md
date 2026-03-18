@@ -496,7 +496,7 @@ foundation is stable.
 The Instrument Library window is a full persistent window managed by the UI Manager
 (`show-instrument-library!`). It has two filtering controls and a grouped instrument list.
 
-The window follows the **mounted renderer pattern** required by the UI Architecture for all persistent windows: the window spec is a function of the current `*instrument-library` atom value and the current locale, evaluated inside the mounted renderer. This ensures that both library updates and locale changes cause a re-render automatically without any explicit listener wiring.
+The window follows the **mounted renderer pattern** required by the UI Architecture for all persistent windows: the window spec is a function of the current `*instrument-library` atom value, the `*il-selection` atom, the current locale, and the `:instrument-library/language-filter` app setting, evaluated inside the mounted renderer. This ensures that library updates, selection changes, locale changes, and language filter changes all cause a re-render automatically without any explicit listener wiring.
 
 #### Language Filter
 
@@ -1058,14 +1058,16 @@ the protocol is correct regardless of timing, which is what matters.
 
 - [ADR-0002: gRPC Communication](0002-gRPC.md) — ExecuteMethod transport for both API functions
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) — concurrency model; library uses atom, not STM ref
+- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) — three-tier undo/redo architecture; IL uses atom-based Tier 1 variant
 - [ADR-0017: System Architecture](0017-System-Architecture.md) — Integrant component lifecycle
 - [ADR-0018: API gRPC Interface and Events](0018-API-gRPC-Interface-and-Events.md) — event type taxonomy; `:instrument-library-changed` must be added
 - [ADR-0021: Authentication](0021-Authentication.md) — JWT-based auth used in collaborative mode
 - [ADR-0026: Pitch Representation and Operations](0026-Pitch-Representation-and-Operations.md) — three-lane `make-transposer` factory; transposition vectors in Instrument records
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) — event bus; `:instrument-library` category must be added to `derive-category`
 - [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) — role-based permissions; host/guest write access model
+- [ADR-0039: Localisation Architecture](0039-Localisation-Architecture.md) — `tr-declare`, `tr` for language filter dropdown labels
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) — backend authority; frontend caches, never owns
-- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) — three-tier undo/redo architecture; IL uses atom-based Tier 1 variant
+- [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) — `def-app-setting` for language filter; undo/redo integration
 
 ### Guides
 
