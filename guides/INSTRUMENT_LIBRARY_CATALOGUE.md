@@ -357,9 +357,9 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Celesta | 2 | Two octaves above written | |
 | Harmonium | 1–2 | — | Reed organ |
 | Accordion | 2 | — | |
-| Bandoneon | 2 | — | Argentine tango; grand staff |
-| Concertina (English) | 1 | — | Bisonoric; same note in/out |
-| Concertina (Anglo) | 1 | — | Unisonoric; different notes in/out |
+| Bandoneon | 2 | — | Bisonoric; Argentine tango; grand staff |
+| Concertina (English) | 1 | — | Unisonoric; same note in/out |
+| Concertina (Anglo) | 1 | — | Bisonoric; different notes in/out |
 | Melodica | 1 | — | Blow organ / pianica |
 | Chromatic Harmonica | 1 | — | Button-operated chromatic scale |
 | Diatonic Harmonica | 1 | — | Key specified per piece |
