@@ -628,6 +628,7 @@ Performance depends on:
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) - Closed semantic model this preserves
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - State authority; this document addresses rendering authority
 - [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Format for UI elements (windows) that cljfx renders
+- [ADR-0046: Reference-Passing In-Process Transport](0046-Reference-Passing-In-Process-Transport.md) - Eliminates conversion overhead for in-process paintlist transfer, enabling the <150ms p95 latency target at orchestral scale
 
 ## Notes
 

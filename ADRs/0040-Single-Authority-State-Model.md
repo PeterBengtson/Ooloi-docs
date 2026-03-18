@@ -327,6 +327,7 @@ Queue operations locally when disconnected, replay on reconnection.
 - **ADR-0036**: Collaborative Sessions and Hybrid Transport — remote connection architecture
 - **ADR-0038**: Backend-Authoritative Rendering — rendering authority; this document addresses state authority
 - **ADR-0045**: Instrument Library — applies this model to a global singleton: the library exists only on the server, the frontend caches and invalidates via event, and no distributed state exists
+- **ADR-0046**: Reference-Passing In-Process Transport — immutability guarantee that makes reference passing safe; serialisation is not what enforces the authority boundary
 
 ## Notes
 

@@ -652,6 +652,7 @@ rpc CollaborateOnPiece(stream CollaborationInput) returns (stream CollaborationO
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Operations-only API architecture this implements
 - [ADR-0045: Instrument Library](0045-Instrument-Library.md) - First non-piece backend entity using this event infrastructure; introduces `:instrument-library-changed` event type and `get-instrument-library`/`set-instrument-library` as `^{:api true}` non-VPD operations
 - [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Uses event validation pattern (pure maps with runtime validation) for UI specifications
+- [ADR-0046: Reference-Passing In-Process Transport](0046-Reference-Passing-In-Process-Transport.md) - Eliminates the Clojure↔protobuf conversion pipeline for in-process transport; handlers work with Clojure data directly
 
 ### Technical Documentation
 - [API Guide](../guides/POLYMORPHIC_API_GUIDE.md) - Complete API usage patterns and VPD integration
