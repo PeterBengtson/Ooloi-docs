@@ -21,6 +21,7 @@
    - [4.3 cljfx Spec Over Java Interop](#43-cljfx-spec-over-java-interop)
    - [4.4 Custom cljfx Component Functions](#44-custom-cljfx-component-functions)
    - [4.5 Per-Window Reactive Renderer](#45-per-window-reactive-renderer)
+   - [4.6 Style Classes — The setAll() Trap](#46-style-classes--the-setall-trap)
 5. [Event Architecture](#5-event-architecture)
 6. [The JAT Boundary](#6-the-jat-boundary)
 7. [Rendering Pipeline](#7-rendering-pipeline)
@@ -292,6 +293,16 @@ The recognised `:window/*` keys for `:window-open-requested` events:
 | `:window/default-position` | Default `{:x n :y n}` if no persisted state exists |
 | `:window/default-size` | Default `{:width n :height n}` if no persisted state exists |
 
+**Event dispatch pipeline keys** — when present, the UI Manager builds a cljfx renderer with a co-effects/effects event dispatch pipeline (see §4.5):
+
+| Key | Purpose |
+|-----|---------|
+| `:window/spec-fn` | Pure function `(state → cljfx-description)` — the renderer's `:middleware` via `wrap-map-desc` |
+| `:window/handler` | Pure function `(event-with-co-effects → effects-map)` — the event handler |
+| `:window/co-effects` | Map of `{key → atom}` — each atom derefed and injected into the event before the handler |
+| `:window/effects` | Map of `{key → atom}` — effect consumers that `reset!` atoms from the handler's return map |
+| `:window/state` | The state atom the renderer watches — `swap!` triggers reactive re-render |
+
 Unknown `:window/*` keys throw at construction time. Non-`:window/*` keys (`:width`, `:height`, etc.) pass through to the Stage directly.
 
 All of these respect localisation ([ADR‑0039](../ADRs/0039-Localisation-Architecture.md)), lifecycle invariants, and JAT constraints.
@@ -470,7 +481,27 @@ After initialisation, `cljfx/mount-renderer` keeps the renderer watching the ato
 * **Module-internal events** (navigation, selection, drag-and-drop reactions, backend data updates) are handled entirely within the window module.
 * **Application-level commands** (quit, show another window) bubble out through an injected `dispatch-fn` to `system.clj`'s action handlers. The `dispatch-fn` is injected by the caller — the window module holds no direct reference to application state or action tables. This keeps each window module independently testable.
 
-### 4.5 Style Classes — The setAll() Trap
+#### Declarative Event Dispatch Pipeline
+
+The UI Manager provides a **declarative event dispatch pipeline** for interactive windows. Rather than manually constructing a renderer and wiring event handlers, a window declares its needs in the `:window-open-requested` event:
+
+```clojure
+(eb/publish! (:event-bus mgr) :window-requests
+  [{:type              :window-open-requested
+    :window/id         :instrument-library
+    :window/spec-fn    instrument-library-spec      ;; state → cljfx description
+    :window/handler    il-event-handler             ;; event → effects map (pure)
+    :window/co-effects {:state *il-state}           ;; atoms derefed into event
+    :window/effects    {:state *il-state}           ;; atoms reset from effects map
+    :window/state      *il-state                    ;; atom the renderer watches
+    :window/title-key  :menu.window.instrument-library}])
+```
+
+The UI Manager composes the handler with `cljfx/wrap-co-effects` and `cljfx/wrap-effects`, creates the renderer, mounts it on the state atom, and extracts the JavaFX Node for `show-window!`. The handler is pure: receives an event map with co-effect values merged in, returns an effects map. No side effects in the handler body.
+
+This is the standard path for all interactive windows going forward. The manual approach (creating the renderer within the window module) remains available for windows that need custom lifecycle management. See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §Event Dispatch Pipeline for the full specification.
+
+### 4.6 Style Classes — The setAll() Trap
 
 cljfx maps `:style-class` to `Node.getStyleClass().setAll(...)`. **setAll replaces the entire style class list** — it does not append. JavaFX controls set their own defaults in their constructors, including base-class names inherited from their superclass hierarchy. AtlantaFX's CSS targets those base-class selectors for borders and backgrounds. Strip a base class and the control renders without visible borders — it looks like a plain label.
 

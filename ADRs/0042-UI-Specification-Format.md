@@ -15,6 +15,7 @@
   - [Content Builder Pattern](#content-builder-pattern)
   - [Custom cljfx Component Functions](#custom-cljfx-component-functions)
   - [Per-Window Reactive Renderer](#per-window-reactive-renderer)
+    - [Event Dispatch Pipeline](#event-dispatch-pipeline)
   - [Architectural Invariants](#architectural-invariants)
   - [Theme-Independent Styling](#theme-independent-styling)
   - [Command Descriptors (Menu Specialisation)](#command-descriptors-menu-specialisation)
@@ -375,6 +376,138 @@ This keeps each window module a **self-contained dispatch world**: internal even
 **Locale reactivity pattern.** Windows call `(ui-manager/register-renderer! manager window-id *state)` in their `:window-opened` lifecycle handler, passing their private state atom to the UI Manager's window registry. When the UI Manager receives a `:setting-changed` event for `:ui/locale`, it calls `tr/set-locale!` synchronously on the event bus thread, then posts `(fx/run-later! ...)` to the JAT to call `(swap! *state identity)` on every registered renderer atom. The renderer re-evaluates the spec after the locale is already updated. Windows do not subscribe to `:app-settings` directly — locale reactivity is centralised in the UI Manager. The `:window-closed` branch of the `:window-lifecycle` handler calls `cljfx/unmount-renderer`.
 
 **Renderer spec is the locale-reactivity boundary.** Only content inside the renderer spec updates when the locale changes. One-time materialisation (`cljfx/create-component` + `cljfx/instance` without `cljfx/mount-renderer`) produces content constructed once and never re-evaluated again. For a window to be locale-reactive, all its visible content — button labels, headings, field prompts — must be returned by the spec function that the renderer's `:middleware` evaluates on each render cycle. Content built outside the renderer spec silently retains the locale active at window-open time.
+
+#### Event Dispatch Pipeline
+
+The UI Manager provides a **declarative event dispatch pipeline** for windows that need to handle user interactions through pure functions. Rather than each window module manually constructing a renderer and wiring event handlers, a window declares its needs in the `:window-open-requested` event and the UI Manager builds the pipeline uniformly.
+
+This is the standard mechanism for all interactive windows — instrument library, piece windows, plugin-contributed windows, and the future Skija rendering layer. It is the first event handling infrastructure in the application; the pattern it establishes is permanent.
+
+##### Architecture
+
+```
+                           :window-open-requested event
+                           ┌──────────────────────────────────────────┐
+                           │  :window/spec-fn    spec-fn              │
+                           │  :window/handler    handler-fn           │
+                           │  :window/co-effects {:state *state}      │
+                           │  :window/effects    {:state *state}      │
+                           │  :window/state      *state               │
+                           └────────────┬─────────────────────────────┘
+                                        │
+                           UI Manager builds pipeline:
+                                        │
+                                        ▼
+  ┌───────────────────────────────────────────────────────────────────┐
+  │                    Composed dispatch function                     │
+  │                                                                   │
+  │   wrap-co-effects ─► deref each atom in :window/co-effects       │
+  │        │              merge values into event map                  │
+  │        ▼                                                          │
+  │   handler-fn ────► pure: event-with-values → effects-map         │
+  │        │              {:state new-value}                           │
+  │        ▼                                                          │
+  │   wrap-effects ──► reset! each atom in :window/effects           │
+  │                    from the corresponding effects-map entry       │
+  └───────────────────────────────────────────────────────────────────┘
+                                        │
+                           cljfx renderer created with:
+                           :middleware       → wrap-map-desc(spec-fn)
+                           :map-event-handler → dispatch function
+                                        │
+                ┌───────────────────────┼───────────────────────┐
+                │                       │                       │
+                ▼                       ▼                       ▼
+  cljfx/mount-renderer       cljfx/instance              show-window!
+  watches *state              extracts Node              Stage → registry
+```
+
+User interaction flow:
+
+```
+  Mouse click / key press
+    │
+    │  cljfx appends :fx/event, calls map-event-handler
+    ▼
+  dispatch function (composed pipeline)
+    │
+    │  1. wrap-co-effects: deref *state → inject values
+    │  2. handler-fn: pure computation → {:state new-value}
+    │  3. wrap-effects: (reset! *state new-value)
+    │
+    │  Atom change triggers:
+    ▼
+  cljfx renderer re-evaluates spec-fn
+    │  diffs old spec vs new spec
+    │  patches only changed JavaFX nodes
+    ▼
+  Updated scene graph (reactive, no Stage recreation)
+```
+
+##### Co-effects and effects
+
+The pipeline separates state reading from state writing, making the handler a pure function.
+
+**The problem:** a handler that derefs atoms to read state and calls `reset!` to write it is impure — it cannot be tested without constructing real atoms, and its dependencies are invisible.
+
+**Co-effects** solve the read side. Instead of the handler derefing `*state` directly, the pipeline derefs it and injects the current value into the event map under a named key. The handler receives `{:event/type :click :state {:selected #{:oboe}}}` — pure data, no atoms.
+
+**Effects** solve the write side. Instead of the handler calling `reset!`, it returns a map describing what should change: `{:state {:selected #{:flute :oboe}}}`. The pipeline reads each key, finds the corresponding atom, and resets it. The handler never touches mutable state.
+
+The result: `(event-map → effects-map)`. Input is data, output is data. The handler is a pure function — testable with ordinary `=` assertions, no JavaFX, no mocking, no threading. This is the same pattern as re-frame (ClojureScript) and the Elm architecture; cljfx provides the composition machinery natively via `wrap-co-effects` and `wrap-effects`.
+
+This pattern carries every form of user interaction in the application — not only mouse clicks, but button actions, keyboard events, text field changes, combo box selections, drag-and-drop, and any other JavaFX callback that cljfx routes through `map-event-handler`: instrument selection, drag-and-drop reordering, piece window navigation, Skija score manipulation, keyboard shortcuts, and plugin-contributed UI actions.
+
+##### Declarative window event keys
+
+In addition to the standard `:window/*` keys (`:window/id`, `:window/title-key`, etc.), the dispatch pipeline introduces five new keys on the `:window-open-requested` event:
+
+| Key | Purpose |
+|-----|---------|
+| `:window/spec-fn` | Pure function `(state → cljfx-description)` — the renderer's `:middleware` via `wrap-map-desc` |
+| `:window/handler` | Pure function `(event-with-co-effects → effects-map)` — the event handler |
+| `:window/co-effects` | Map of `{key → atom}` — each atom is derefed and injected into the event before the handler sees it |
+| `:window/effects` | Map of `{key → atom}` — effect consumers that `reset!` atoms from the handler's return map |
+| `:window/state` | The state atom the renderer watches — `swap!` triggers reactive re-render |
+
+##### How the pipeline works
+
+When the UI Manager's `:window-open-requested` subscriber sees `:window/spec-fn`, it:
+
+1. Composes the handler: `(-> handler-fn (wrap-co-effects producers) (wrap-effects consumers))` — using `cljfx/make-deref-co-effect` for each co-effect atom and `cljfx/make-reset-effect` for each effect atom.
+2. Creates a cljfx renderer with `wrap-map-desc` (from the spec function) and `:fx.opt/map-event-handler` (from the composed dispatch function).
+3. Initial-renders via `@(renderer @*state)` to produce the first component.
+4. Mounts the renderer on the state atom via `cljfx/mount-renderer`.
+5. Extracts the JavaFX Node via `cljfx/instance` and passes it as `:window/content` to `show-window!`.
+
+The handler function is pure: it receives the event map with co-effect values merged in, and returns an effects map describing what state changes should occur. No side effects in the handler body.
+
+```clojure
+;; Handler receives event with co-effect values injected.
+;; Returns effects map — keys correspond to :window/effects entries.
+(fn [{:keys [event/type value]}]
+  (case type
+    :instrument-clicked {:state (assoc value :selected #{(:id event)})}
+    {}))
+```
+
+##### Why this matters
+
+- **Purity.** Handlers are testable without JavaFX — they are pure functions from maps to maps.
+- **Uniformity.** The UI Manager handles all pipeline plumbing; window modules declare intent.
+- **Plugin compatibility.** Event maps are data — serialisable over gRPC. Backend plugins can specify handler behaviour as data maps per the symbolic event handler pattern.
+- **Extensibility.** The same pipeline carries mouse events from the Skija rendering layer, drag-and-drop in the instrument library, and keyboard shortcuts in piece windows. It is the single dispatch mechanism for all user interaction.
+
+##### Materialisation paths
+
+The `:window-open-requested` handler supports four materialisation paths:
+
+1. **`:window/content-spec`** — materialise a cljfx data spec to a Node via `create-component` + `instance`.
+2. **`:window/type`** — look up a registered factory function by type keyword.
+3. **`:window/spec-fn`** — create a full renderer + dispatch pipeline from declarative keys (this section). The standard path for all interactive windows.
+4. **Pass-through** — the event already contains a pre-built `:window/content` Node.
+
+Path 3 is the standard for interactive windows going forward. Paths 1 and 2 support plugin-contributed windows and one-time materialisation. Path 4 is the legacy path for windows that build their own content before publishing.
 
 ### Architectural Invariants
 
