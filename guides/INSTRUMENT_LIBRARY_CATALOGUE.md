@@ -356,7 +356,7 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Harpsichord | 2 | — | Both 1- and 2-manual instruments notated on 2 staves |
 | Celesta | 2 | Two octaves above written | |
 | Harmonium | 1–2 | — | Reed organ |
-| Accordion | 1 | — | |
+| Accordion | 2 | — | |
 | Bandoneon | 2 | — | Argentine tango; grand staff |
 | Concertina (English) | 1 | — | Bisonoric; same note in/out |
 | Concertina (Anglo) | 1 | — | Unisonoric; different notes in/out |
