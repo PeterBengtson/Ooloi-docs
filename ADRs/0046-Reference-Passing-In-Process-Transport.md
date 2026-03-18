@@ -108,18 +108,19 @@ This encapsulates the existing three-layer conversion into the marshaller, remov
 
 The `ServerServiceDefinition` is built manually (not via generated `OoloiServiceImplBase.bindService()`) with `MethodDescriptor<Object, Object>` instances carrying the transport-appropriate marshallers.
 
-Service handlers always receive and return **Clojure data**:
+Service handlers for `ExecuteMethod` and `ExecuteBatch` receive and return **Clojure data**:
 - `ExecuteMethod` handler receives `{:method "..." :params <clojure-value>}`, returns `{:success true :result <clojure-value>}`
 - `ExecuteBatch` handler receives a stream of such maps, returns a single result map
-- `RegisterClient` handler receives client-info as Clojure data, produces a stream of Clojure event maps
 
-The handler implementation is identical regardless of transport. Only the marshaller differs.
+`RegisterClient` remains on the protobuf marshaller path — event streaming is infrequent with small payloads, and the conversion cost is negligible. It can be migrated to reference passing later without architectural change; the same marshaller interface applies.
+
+For the two payload-significant methods, the handler implementation is identical regardless of transport. Only the marshaller differs.
 
 ### Transport-Aware Client Calls
 
 Client code uses `ClientCalls/blockingUnaryCall` (and equivalent async calls) with `MethodDescriptor<Object, Object>` instances carrying the transport-appropriate marshallers, replacing generated stub classes (`OoloiServiceGrpc/newBlockingStub`).
 
-Client code sends and receives **Clojure data** in both transport modes.
+For `ExecuteMethod` and `ExecuteBatch`, client code sends and receives **Clojure data** in both transport modes. `RegisterClient` continues to use protobuf stubs.
 
 ### Statistics Adaptation
 
