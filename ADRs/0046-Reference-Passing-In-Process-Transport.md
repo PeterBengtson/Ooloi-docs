@@ -84,6 +84,8 @@ Reference passing reduces this to effectively zero.
 
 We introduce **transport-specific marshallers** that eliminate the Clojure <-> protobuf conversion for in-process transport while preserving the full conversion pipeline for network transport.
 
+The core idea: gRPC requires every message to pass through a marshaller — an object that converts application data to a stream and back. Currently, the marshallers convert Clojure values to Java protobuf objects (and back), even though for in-process transport those objects are passed by reference and never encoded as bytes. We replace the marshaller with one that wraps the Clojure value directly in a thin stream object. gRPC passes that stream object by reference through its normal machinery — interceptors, context propagation, error handling, everything — and the receiving marshaller unwraps it. The Clojure value arrives untouched. For network transport, a different marshaller performs the full Clojure-to-bytes conversion as before. The handler code is identical in both cases; only the marshaller plugged into the channel differs.
+
 ### Reference-Passing Marshallers
 
 For in-process transport, a `reference-marshaller` implements `MethodDescriptor.Marshaller<Object>`:
