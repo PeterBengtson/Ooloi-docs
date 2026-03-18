@@ -292,3 +292,17 @@ Future enhancements could include:
 - Integration with version control systems for long-term history management
 
 The implementation should monitor performance characteristics in collaborative scenarios and user experience feedback to validate the three-tier approach effectiveness.
+
+### Tier 1 Variant: Atom-Based Editor Windows
+
+Not all backend-managed undo/redo falls under the STM-based Tier 1 mechanism. Editor windows for
+singleton backend resources — the Instrument Library ([ADR-0045](0045-Instrument-Library.md)), and
+potentially future editors for clefs, articulations, and similar catalogues — use atom-based
+optimistic locking rather than STM refs. These resources have no need for multi-ref coordination
+(`dosync`); their concurrency model is a single atom with a version counter and compare-and-swap.
+
+These resources will have their own lightweight undo/redo stacks on the backend, following the same
+version-based concurrency model as the resource itself. The frontend interaction is identical to
+Tier 1: the frontend requests undo/redo from the backend and never maintains its own stack. The
+backend implementation uses atom CAS rather than `dosync`. This is a variant of Tier 1, not a new
+tier.

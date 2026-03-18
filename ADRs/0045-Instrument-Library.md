@@ -16,6 +16,9 @@ Accepted
   - [Event Architecture](#event-architecture)
   - [Authorization](#authorization)
   - [Frontend Window](#frontend-window)
+  - [Selection Model](#selection-model)
+  - [Editing Interactions](#editing-interactions)
+  - [Undo/Redo](#undoredo)
   - [Default Library Contents](#default-library-contents)
 - [Sequence Diagrams](#sequence-diagrams)
   - [Single Client: User Modifies Library](#single-client-user-modifies-library)
@@ -581,6 +584,58 @@ write permission. In a standalone session the local user always has write permis
 collaborative session, guests have write permission only if the host has granted it. See
 [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md).
 
+### Selection Model
+
+Multi-select with standard platform conventions. Selection state is a set of instrument `:id`
+keywords, held in a separate frontend atom (`*il-selection`). The mounted renderer receives a
+derived atom combining `*instrument-library` and `*il-selection` so that both library updates and
+selection changes trigger re-render.
+
+- **Click** selects one instrument, clearing previous selection.
+- **Cmd/Ctrl-click** toggles an instrument in or out of the current selection.
+- **Shift-click** extends selection to a contiguous range within the same family.
+- **Cross-family Cmd/Ctrl-click** works — the selection set can span multiple families.
+- **Select All**: nothing selected → all instruments in all families; one or more instruments
+  selected → all instruments in the families containing selected instruments.
+
+Selection is frontend-only state. It is never sent to the backend and not persisted across window
+close/reopen.
+
+### Editing Interactions
+
+All editing operations apply to the current selection. Write permission is required (see
+[Authorization](#authorization)).
+
+- **Delete**: removes selected instruments from the vector. Always shows a confirmation dialog
+  before mutation; no change on cancel.
+- **Duplicate**: creates copies of selected instruments with new UUID-based `:id` keywords and
+  `" (copy)"` appended to `:name`. Copies are inserted immediately after the originals in vector
+  order within each family.
+- **Reorder (drag)**: moves selected instruments within their family. Relative order of dragged
+  instruments is preserved. Instruments cannot be dragged across families.
+- **Modifier-drag** (Cmd/Ctrl on macOS, Ctrl on other platforms): produces copies at the drop
+  position instead of moving the originals. Same duplication semantics as Duplicate (new UUID `:id`,
+  `" (copy)"` suffix).
+
+All mutations are expressed as transformations of the instrument vector and submitted via
+`set-instrument-library`. See [Optimistic Locking](#optimistic-locking) for conflict handling.
+
+### Undo/Redo
+
+IL editing operations (reorder, delete, duplicate, rename, add) are undoable. Because the IL is a
+backend-managed shared resource using atom-based optimistic locking — not STM refs — its undo/redo
+uses a lightweight backend-managed stack rather than the STM-based Tier 1 mechanism described in
+[ADR-0015](0015-Undo-and-Redo.md). The frontend never maintains an undo stack for IL operations; it
+requests undo/redo from the backend.
+
+This is a Tier 1 variant: same frontend interaction pattern (frontend requests, backend owns the
+stack), different backend implementation (atom CAS, not `dosync`). Other editor windows for
+singleton backend resources (e.g. a future clef catalogue editor) will follow the same pattern. See
+ADR-0015 §Notes for the full rationale.
+
+Implementation follows the general undo/redo system and is staged — this section specifies the end
+state.
+
 ### Default Library Contents
 
 The bundled EDN ships Instrument records covering the full modern symphony orchestra and beyond,
@@ -1010,6 +1065,7 @@ the protocol is correct regardless of timing, which is what matters.
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) — event bus; `:instrument-library` category must be added to `derive-category`
 - [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) — role-based permissions; host/guest write access model
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) — backend authority; frontend caches, never owns
+- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) — three-tier undo/redo architecture; IL uses atom-based Tier 1 variant
 
 ### Guides
 
