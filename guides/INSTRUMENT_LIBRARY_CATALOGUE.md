@@ -43,6 +43,7 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
   - [Pitched Percussion](#pitched-percussion)
   - [Unpitched Percussion](#unpitched-percussion)
 - [Special Effects](#special-effects)
+- [Electronics](#electronics)
 - [Keyboards](#keyboards)
 - [Plucked Instruments](#plucked-instruments)
   - [Harp](#harp)
@@ -247,21 +248,21 @@ and bass clef therefore yield different transposition intervals for the same ins
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Glockenspiel | treble | Two octaves above written | |
-| Xylophone | treble | Octave above written | |
-| Marimba | bass; treble | — | |
-| Vibraphone | treble | — | 1–2 staves |
-| Tubular Bells | treble | — | Chimes / Röhrenglocken |
-| Crotales | treble | Two octaves above written | Antique Cymbals |
-| Crotale | treble | Two octaves above written | Single instrument, specific pitch |
-| Kalimba | treble | — | Thumb piano / mbira; Crumb, Reich |
-| Glass Harmonica | treble; bass | — | Glass armonica; 1–2 staves |
-| Soprano Steel Pan | treble | — | Tenor pan; highest register |
-| Alto Steel Pan | treble | — | Double tenor |
-| Tenor Steel Pan | treble | — | |
-| Baritone Steel Pan | treble | — | Guitar pan |
-| Tuned Gongs | treble; bass | — | Pitched; Puccini, Messiaen, Britten |
-| Bass Steel Pan | bass | — | |
+| Glockenspiel | treble; bass | Two octaves above written | 1–2 staves |
+| Xylophone | treble; bass | Octave above written | 1–2 staves |
+| Marimba | treble; bass | — | 1–2 staves |
+| Vibraphone | treble; bass | — | 1–2 staves |
+| Tubular Bells | treble; bass | — | 1–2 staves; Chimes / Röhrenglocken |
+| Crotales | treble; bass | Two octaves above written | 1–2 staves; Antique Cymbals |
+| Crotale | treble; bass | Two octaves above written | 1–2 staves; single instrument, specific pitch |
+| Kalimba | treble; bass | — | 1–2 staves; Thumb piano / mbira; Crumb, Reich |
+| Glass Harmonica | treble; bass | — | 1–2 staves; Glass armonica |
+| Soprano Steel Pan | treble; bass | — | 1–2 staves; Tenor pan; highest register |
+| Alto Steel Pan | treble; bass | — | 1–2 staves; Double tenor |
+| Tenor Steel Pan | treble; bass | — | 1–2 staves |
+| Baritone Steel Pan | treble; bass | — | 1–2 staves; Guitar pan |
+| Tuned Gongs | treble; bass | — | 1–2 staves; Pitched; Puccini, Messiaen, Britten |
+| Bass Steel Pan | treble; bass | — | 1–2 staves |
 
 ### Unpitched Percussion
 
@@ -341,6 +342,15 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Ratchet | Ratsche / Crécelle; notched rotating wheel |
 | Anvil | Verdi, Wagner |
 | Siren | Varèse, Ligeti |
+
+---
+
+## Electronics
+
+| Instrument | Staff lines | Notes |
+|---|---|---|
+| Electronics | 0 | Electroacoustic; no staff lines |
+| Tape | 0 | Fixed-media playback; no staff lines |
 
 ---
 
@@ -425,6 +435,7 @@ single staff.
 | Instrument | Staves | Notes |
 |---|---|---|
 | SATB Choir | 4 | Standard mixed chorus |
+| SATB Choir (grand staff) | 2 | SA on treble staff, TB on bass staff |
 | SSAATTBB Choir | 8 | Eight-part single chorus (2S, 2A, 2T, 2B) |
 | SA Choir | 2 | Women's or children's two-part |
 | SSAA Choir | 4 | Two soprano + two alto parts |
@@ -444,6 +455,7 @@ single staff.
 | Bass-Baritone | bass | |
 | Bass | bass | |
 | Basso profondo | bass | Lowest bass voice |
+| Voice | treble | No gender or age specification |
 | Narrator | — | Sprechstimme; Schoenberg, Walton, melodrama tradition |
 
 ---
