@@ -114,7 +114,7 @@ The plugin will use the existing VPD API to build/traverse Ooloi structures, req
 
 **Bidirectional workflow:** Roundtrip fidelity (import → modify → export with semantic preservation) allows users to evaluate Ooloi with existing catalogs. Files can be exported again for use in other software.
 
-**Technical outcome:** MusicXML import drives feature implementation. The semantic IR architecture simplifies export generation. Imported scores provide real-world validation material.
+**Technical outcome:** MusicXML import drives feature implementation. Ooloi's semantic internal representation makes export generation straightforward. Imported scores provide real-world validation material.
 
 **Development Infrastructure**: MusicXML import provides development infrastructure benefits:
 - Test data: Import scores from IMSLP/MuseScore.com for testing
@@ -130,12 +130,12 @@ No general XML framework. No invented layout beyond preserving explicit hints. N
 
 ## Architecture Overview
 
-The plugin follows a three-stage pipeline:
+The plugin converts directly between MusicXML and Ooloi data structures — no intermediate representation is needed because Ooloi's internal model is already semantic.
 
-**Import:** MusicXML file → Normalized IR → Ooloi structures via VPD API calls
-**Export:** Ooloi structures → Normalized IR → MusicXML file
+**Import:** MusicXML file → vendor-specific repair → Ooloi structures via VPD API calls
+**Export:** Ooloi structures → MusicXML file via timewalk traversal
 
-The intermediate representation (IR) normalizes MusicXML into a consistent internal form before conversion, handling vendor variations and spec deviations.
+Vendor variations and spec deviations are handled by composable repair functions applied to the parsed MusicXML before conversion to Ooloi structures.
 
 ## Plugin Implementation
 
