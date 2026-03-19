@@ -251,18 +251,18 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Glockenspiel | treble | Two octaves above written | 1 stave |
 | Xylophone | treble | Octave above written | 1 stave |
 | Marimba | treble; bass | — | 1–2 staves |
-| Vibraphone | treble; bass | — | 1–2 staves |
-| Tubular Bells | treble; bass | — | 1–2 staves; Chimes / Röhrenglocken |
-| Crotales | treble; bass | Two octaves above written | 1–2 staves; Antique Cymbals |
-| Crotale | treble; bass | Two octaves above written | 1–2 staves; single instrument, specific pitch |
-| Kalimba | treble; bass | — | 1–2 staves; Thumb piano / mbira; Crumb, Reich |
-| Glass Harmonica | treble; bass | — | 1–2 staves; Glass armonica |
-| Soprano Steel Pan | treble; bass | — | 1–2 staves; Tenor pan; highest register |
-| Alto Steel Pan | treble; bass | — | 1–2 staves; Double tenor |
-| Tenor Steel Pan | treble; bass | — | 1–2 staves |
-| Baritone Steel Pan | treble; bass | — | 1–2 staves; Guitar pan |
+| Vibraphone | treble | — | 1 stave |
+| Tubular Bells | treble | — | 1 stave; Chimes / Röhrenglocken |
+| Crotales | treble | Two octaves above written | 1 stave; Antique Cymbals |
+| Crotale | treble | Two octaves above written | 1 stave; single instrument, specific pitch |
+| Kalimba | treble | — | 1 stave; Thumb piano / mbira; Crumb, Reich |
+| Glass Harmonica | treble | — | 1 stave; Glass armonica |
+| Soprano Steel Pan | treble | — | 1 stave; Tenor pan; highest register |
+| Alto Steel Pan | treble | — | 1 stave; Double tenor |
+| Tenor Steel Pan | treble | — | 1 stave |
+| Baritone Steel Pan | treble | — | 1 stave; Guitar pan |
 | Tuned Gongs | treble; bass | — | 1–2 staves; Pitched; Puccini, Messiaen, Britten |
-| Bass Steel Pan | treble; bass | — | 1–2 staves |
+| Bass Steel Pan | bass | — | 1 stave |
 
 ### Unpitched Percussion
 
