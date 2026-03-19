@@ -435,6 +435,19 @@ For testing the full combined application — all 11 components, in-process tran
 
 `with-combined-system` forces `:in-process` transport (no port binding) and `:headless` UI mode (no visual output). Tests that need network transport or a visible UI must start components individually.
 
+**Domain event subscriptions are NOT wired by `with-combined-system`.** The macro calls `start-system!` (Integrant init only), not `start-app!` (which adds post-init wiring). Tests that need the full backend-event → frontend-handler pipeline — e.g. backend broadcasts `:instrument-library-changed` → event router → aggregator → event bus → `handle-library-changed!` → re-fetch — must call `wire-domain-subscriptions!` explicitly:
+
+```clojure
+(with-combined-system [sys]
+  (system/wire-domain-subscriptions! sys)
+  ;; Now backend events reach frontend handlers through production wiring
+  ...)
+```
+
+`wire-domain-subscriptions!` is defined in `shared/src/app/clojure/ooloi/shared/system.clj`. Production gets this wiring from `start-app!`, which calls it before `event-client/register-with-server`. The function is deliberately separate so tests can opt in without dragging in splash screens, menu bars, and piece window creation.
+
+**Aggregator queue requirement:** every category returned by `derive-category` (in `frontend/event_router/core.clj`) must have a corresponding queue in the aggregator (`frontend/event_router/aggregator.clj`). Missing queues cause events to be silently dropped — `add-event` uses `when-let` on the queue lookup. When adding a new event category, update both files.
+
 **Async synchronisation note:** after `register-with-server`, allow 100ms before reading server registry state — gRPC connections are established asynchronously.
 
 ### `with-ui-manager`
