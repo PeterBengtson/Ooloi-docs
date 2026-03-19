@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Implemented
 
 ## Table of Contents
 
@@ -227,8 +227,8 @@ ADR-0019 eliminated TCP/IP overhead by switching to `InProcessTransport`. This A
 
 ### Positive
 
-- **Near-zero conversion overhead** for in-process API calls — estimated reduction from ~18ms warm to ~7ms warm for the instrument library payload
-- **Cold-start improvement** — eliminates JIT compilation of conversion code, reducing first-call latency significantly
+- **90x speedup for in-process API calls** — measured 0.20ms/call warm (1000-iteration benchmark) vs 18ms/call before, for the instrument library payload (80 KiB equivalent). Cold start: 20ms single-shot vs 400ms before.
+- **Cold-start improvement** — eliminates JIT compilation of conversion code. First-call latency reduced from ~400ms to ~20ms.
 - **Paintlist transfer readiness** — enables the <150ms p95 target for viewport paintlist fetches at orchestral scale
 - **Architectural consistency** — same gRPC programming model, same interceptors, same error handling, same streaming
 - **Handler simplification** — service handlers work exclusively with Clojure data, eliminating protobuf-specific code from handler logic
