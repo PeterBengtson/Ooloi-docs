@@ -275,6 +275,16 @@ Each phase can be committed and tested independently. Phases 1-2 are pure additi
 
 **The `.proto` file is unchanged.** The protobuf schema remains the network wire format contract. Reference passing is a transport optimisation that does not alter the schema or the network protocol. A network client connecting to a network server sees no difference.
 
+## Implementation Notes
+
+Discoveries from Phases 1–2 implementation that affect subsequent phases.
+
+**ReferenceInputStream uses a ConcurrentHashMap registry, not a field.** Clojure cannot subclass concrete Java classes (`InputStream`) with instance fields via `deftype`. The implementation uses a `proxy` of `InputStream` with the carried value stored in a `ConcurrentHashMap` keyed by the stream's identity. `extract-reference-value` removes the entry atomically via `.remove()`. `.close()` also removes the entry to prevent leaks. This is functionally equivalent to the field-based approach described in the Decision section but uses indirection.
+
+**Wire marshallers are per-message-type, not singular.** The Decision section describes "a `clojure-wire-marshaller`", but the implementation requires separate request and response wire marshallers. `OoloiRequest` and `OoloiResponse` are different protobuf types with different `parseFrom` methods and different Clojure↔protobuf conversion logic. The implementation provides `request-wire-marshaller` and `response-wire-marshaller`, each encapsulating the full pipeline for its type.
+
+**MethodDescriptor instance identity is a gRPC constraint.** `ServerServiceDefinition.Builder.build()` requires that each `MethodDescriptor` passed to `.addMethod()` is the **same object instance** as the corresponding descriptor in the `ServiceDescriptor`. Creating descriptors with identical names but as separate instances causes `IllegalStateException: "Bound method not same instance as method in service descriptor"`. The service builder creates each descriptor once and shares the instance between the `ServiceDescriptor` and `.addMethod()` calls. The descriptor factory functions in `transport.clj` remain available for client-side use but are not used by the service builder.
+
 ## Related ADRs
 
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) — three-deployment architecture requiring transport flexibility
