@@ -126,10 +126,10 @@ For `ExecuteMethod` and `ExecuteBatch`, client code sends and receives **Clojure
 
 ### Statistics Adaptation
 
-Byte-size statistics (`.getSerializedSize()`) are meaningful only for network transport. For in-process:
+Byte-size statistics are meaningful only for network transport. For in-process:
 - Call count and duration continue to be tracked
 - Byte-size fields report zero (there are no bytes)
-- The statistics snapshot includes a transport-mode indicator
+- No new statistics fields are introduced — the same counters are used for both transports
 
 ## Architecture
 
@@ -260,7 +260,7 @@ The optimisation targets **`ExecuteMethod` (unary) and `ExecuteBatch` (client st
 2. **Service definition builder** — manual `ServerServiceDefinition` construction with Clojure-native handlers. New namespace in `shared/`. Parallel to existing generated service, not replacing it yet.
 3. **Server integration** — wire `start-grpc-server` to use the new service definition. Transport type selects marshallers. Existing `execute-unified-method` refactored to separate handler logic from protobuf conversion.
 4. **Client integration** — replace generated stubs with `ClientCalls` using transport-appropriate descriptors. `execute-method` in `api_client.clj` sends/receives Clojure data directly.
-5. **Statistics adaptation** — guard `.getSerializedSize()` calls, add transport-mode indicator.
+5. **Statistics adaptation** — guard `.getSerializedSize()` calls; byte-size fields report zero for in-process, correct values for network.
 6. **Test infrastructure** — update test macros, add object-identity assertions for in-process, verify network path unchanged.
 
 Each phase can be committed and tested independently. Phases 1-2 are pure additions with zero risk to existing functionality.
@@ -277,13 +277,21 @@ Each phase can be committed and tested independently. Phases 1-2 are pure additi
 
 ## Implementation Notes
 
-Discoveries from Phases 1–2 implementation that affect subsequent phases.
+Discoveries from implementation that affect the specification or clarify implementation choices.
 
 **ReferenceInputStream uses a ConcurrentHashMap registry, not a field.** Clojure cannot subclass concrete Java classes (`InputStream`) with instance fields via `deftype`. The implementation uses a `proxy` of `InputStream` with the carried value stored in a `ConcurrentHashMap` keyed by the stream's identity. `extract-reference-value` removes the entry atomically via `.remove()`. `.close()` also removes the entry to prevent leaks. This is functionally equivalent to the field-based approach described in the Decision section but uses indirection.
 
 **Wire marshallers are per-message-type, not singular.** The Decision section describes "a `clojure-wire-marshaller`", but the implementation requires separate request and response wire marshallers. `OoloiRequest` and `OoloiResponse` are different protobuf types with different `parseFrom` methods and different Clojure↔protobuf conversion logic. The implementation provides `request-wire-marshaller` and `response-wire-marshaller`, each encapsulating the full pipeline for its type.
 
 **MethodDescriptor instance identity is a gRPC constraint.** `ServerServiceDefinition.Builder.build()` requires that each `MethodDescriptor` passed to `.addMethod()` is the **same object instance** as the corresponding descriptor in the `ServiceDescriptor`. Creating descriptors with identical names but as separate instances causes `IllegalStateException: "Bound method not same instance as method in service descriptor"`. The service builder creates each descriptor once and shares the instance between the `ServiceDescriptor` and `.addMethod()` calls. The descriptor factory functions in `transport.clj` remain available for client-side use but are not used by the service builder.
+
+**Server handlers receive Clojure maps directly.** The handler refactoring is clean: `handle-execute-method` and `handle-execute-batch` receive and return Clojure maps regardless of transport. The protobuf conversion that was previously in the handler code is now encapsulated entirely within the wire marshaller. Handler code has no `import` of any protobuf class.
+
+**Response byte tracking uses a closure baked into the marshaller.** The wire response marshaller's `stream()` method already computes `(.toByteArray proto-obj)` — the byte count is available at that point with zero additional work. A callback `(fn [byte-count])` is passed to the marshaller factory at service creation time and called during `stream()`. This avoids per-call overhead: no dynamic vars, no thread-locals, no extra conversion. For in-process transport, there is no callback — reference marshallers have no bytes to report. The callback is threaded through `build-service-definition` → descriptor factories → `create-wire-marshaller`.
+
+**Request byte tracking uses Clojure metadata.** The wire request marshaller's `parse()` method attaches `::serialized-size` metadata to the returned Clojure map after parsing. The handler reads this via `transport/request-serialized-size`, which returns 0 when no metadata is present (in-process path). This is zero-overhead for the in-process path and negligible for the network path (metadata attachment is a single `with-meta` call on the already-parsed map).
+
+**Error injection point moves from bridge to handler.** With reference-passing marshallers, `protobuf-bridge/protobuf-object->internal-map` is no longer in the handler code path — it is encapsulated within the wire marshaller. The correct error injection point is `resolve-api-var`, which is in the handler path for both transports. This ensures error categorisation exercises the same code path regardless of transport mode.
 
 ## Related ADRs
 
