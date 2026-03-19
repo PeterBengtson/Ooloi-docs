@@ -248,8 +248,8 @@ and bass clef therefore yield different transposition intervals for the same ins
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Glockenspiel | treble; bass | Two octaves above written | 1–2 staves |
-| Xylophone | treble; bass | Octave above written | 1–2 staves |
+| Glockenspiel | treble | Two octaves above written | 1 stave |
+| Xylophone | treble | Octave above written | 1 stave |
 | Marimba | treble; bass | — | 1–2 staves |
 | Vibraphone | treble; bass | — | 1–2 staves |
 | Tubular Bells | treble; bass | — | 1–2 staves; Chimes / Röhrenglocken |

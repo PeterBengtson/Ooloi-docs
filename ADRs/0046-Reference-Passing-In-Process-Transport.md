@@ -227,7 +227,7 @@ ADR-0019 eliminated TCP/IP overhead by switching to `InProcessTransport`. This A
 
 ### Positive
 
-- **90x speedup for in-process API calls** — measured 0.20ms/call warm (1000-iteration benchmark) vs 18ms/call before, for the instrument library payload (80 KiB equivalent). Cold start: 20ms single-shot vs 400ms before.
+- **500x speedup for in-process API calls** — measured 34.9µs/call average after JIT warmup (1000-call run in production app, Grafana-verified) vs 18ms/call before, for the instrument library payload (80 KiB equivalent). Pre-JIT warm: 0.20ms/call (90x). Cold start: 20ms single-shot vs 400ms before.
 - **Cold-start improvement** — eliminates JIT compilation of conversion code. First-call latency reduced from ~400ms to ~20ms.
 - **Paintlist transfer readiness** — enables the <150ms p95 target for viewport paintlist fetches at orchestral scale
 - **Architectural consistency** — same gRPC programming model, same interceptors, same error handling, same streaming
