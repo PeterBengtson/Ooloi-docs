@@ -29,6 +29,7 @@
     - [Multi-User Properties](#multi-user-properties)
     - [Undo Routing — Sequence Diagram](#undo-routing--sequence-diagram)
     - [Description Localisation](#description-localisation)
+    - [Clock Skew Mitigation](#clock-skew-mitigation)
 - [Consequences](#consequences)
 - [Alternatives Considered](#alternatives-considered)
 - [References](#references)
@@ -742,6 +743,87 @@ The fetched description is cached in the backend timestamp cache until the next
 the existing setting-name convention applies (`:ui/theme` → `:setting.ui.theme.name`).
 When no undo is available, the item falls back to the static `:menu.edit.undo` key.
 
+#### Clock Skew Mitigation
+
+The routing algorithm compares timestamps from two different clocks: the client's local
+clock (Tier 2 entries stamped with `time/epoch-usec` on the client machine) and the server's
+clock (Tier 1 entries stamped with `time/epoch-usec` on the server machine). If these clocks
+disagree, the comparison is biased — a server clock that runs ahead makes backend actions
+appear more recent than they are, and vice versa.
+
+The mitigation computes a per-connection clock offset at registration time and applies it
+to all subsequent timestamp comparisons, normalising backend timestamps to the client's
+clock frame. This eliminates clock skew as a routing factor, reducing the residual error
+to the one-way network delay — which is negligible for all practical deployments.
+
+**Offset computation.** The server includes its current `epoch-usec` timestamp in the
+`:client-registration-confirmed` event as a `:server-timestamp` field. The client records
+its own `epoch-usec` at the moment it receives the confirmation and computes:
+
+```
+offset = server-timestamp - client-timestamp
+```
+
+This offset is stored as an immutable per-connection value on the gRPC client component.
+It is computed once and never updated — clock drift during a single editing session is
+negligible.
+
+**Offset application.** The routing algorithm adjusts all backend timestamps before
+comparing them with local timestamps:
+
+```
+adjusted-backend-ts = backend-ts - offset
+```
+
+This converts server time to the client's clock frame. The comparison then uses
+`adjusted-backend-ts` in place of the raw `backend-ts` everywhere: undo routing (highest
+timestamp wins), redo routing (lowest timestamp wins), and menu display (which entry is
+the winning candidate).
+
+**Residual error.** The offset includes the one-way network delay: `offset = skew - delay`.
+This means the adjustment slightly under-corrects by the one-way delay. The residual error
+by transport type:
+
+| Transport | One-way delay | Residual error |
+|---|---|---|
+| In-process (combined desktop app) | ~0 | ~0 |
+| LAN / same machine | < 1ms | < 1ms |
+| WAN (remote server) | 5–50ms | 5–50ms |
+
+Human actions are separated by hundreds of milliseconds to seconds. A 50ms residual error
+in the worst case (WAN with high latency) cannot cause a wrong routing decision in practice.
+For the combined desktop application — the primary deployment model — the offset and
+residual are both effectively zero.
+
+**Backward compatibility.** If the server does not include `:server-timestamp` in the
+confirmation event (older server version), the offset defaults to zero. This is today's
+behaviour — no clock adjustment. The feature degrades gracefully.
+
+**Confirmation event extension:**
+
+```clojure
+;; Extended confirmation event (server side)
+{:type             :client-registration-confirmed
+ :client-id        "client-42"
+ :message          "Registration successful"
+ :server-timestamp 1711023456789012}    ;; epoch microseconds — NEW
+
+;; Client side (on receiving confirmation):
+(let [offset (if-let [server-ts (:server-timestamp event)]
+               (- server-ts (time/epoch-usec))
+               0)]                       ;; default: no adjustment
+  (reset! clock-offset-atom offset))
+```
+
+**Why not rely on NTP?** NTP synchronisation is helpful but neither guaranteed nor
+sufficient. Ooloi cannot assume or enforce NTP configuration on user machines — VMs,
+containers, and misconfigured desktops can be minutes or even hours off. Without the
+offset, a 5-minute clock skew means every Cmd+Z for 5 minutes routes to the wrong tier
+(whichever clock is ahead always "wins"). This is not an edge case to tolerate — it is a
+correctness failure that breaks the user experience silently. The connection-time offset
+handles any skew magnitude, from 10ms residual after NTP to 5 minutes on an unsynchronised
+machine, with no dependency on external infrastructure.
+
 ## Consequences
 
 ### Positive
@@ -753,6 +835,7 @@ When no undo is available, the item falls back to the static `:menu.edit.undo` k
 5. **Clean architectural separation**: Backend owns all backend undo stacks and descriptions; frontend owns local undo entries and the routing logic. The backend cache is a frontend-side timestamp cache, not a violation of the frontend-backend boundary.
 6. **Collaborative by default**: Shared per-resource stacks mean any client can undo the most recent operation. No per-user history complexity.
 7. **Honest user experience**: Single Cmd+Z with descriptive labels. The menu always shows what will actually happen — never a stale prediction. In single-user mode, this is identical to any desktop application.
+8. **Clock skew resilience**: Per-connection clock offset computed at registration time normalises server timestamps to the client's clock frame. Handles arbitrary clock differences (even minutes) with residual error bounded by one-way network delay. No dependency on NTP or external time synchronisation.
 
 ### Negative
 
