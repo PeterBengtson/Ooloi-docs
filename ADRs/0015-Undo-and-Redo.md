@@ -90,7 +90,7 @@ We will implement a **three-tier undo/redo architecture** that separates concern
 - **Distribution**: Lightweight `:undo-state-changed` notifications (timestamps only) broadcast to subscribed clients via gRPC streaming; descriptions fetched lazily on demand
 
 ### Tier 2: Frontend UI Undo/Redo (Local)
-- **Scope**: Client-specific UI state (themes, panel arrangements, zoom levels, selection state)
+- **Scope**: Client-specific UI state (themes, panel arrangements, zoom levels)
 - **Implementation**: Simple local undo/redo stack per frontend client
 - **Coordination**: No coordination needed - purely local to each client
 - **Storage**: Frontend client memory (not persisted)
@@ -105,7 +105,7 @@ We will implement a **three-tier undo/redo architecture** that separates concern
 ### Unified User Experience
 - **Single Undo/Redo Interface**: Frontend presents one undo/redo button to users
 - **Timestamp-Based Routing**: Frontend compares local stack timestamps with backend notification timestamps; the most recent action wins
-- **Always Truthful Menu**: The undo/redo menu item always shows what will actually happen — never a stale prediction
+- **Consistent Menu**: The undo/redo menu item always reflects what Cmd+Z will actually do at the moment it is pressed — the menu and the action use the same cached state, so they always agree
 - **Descriptive Messages**: Undo/redo operations display clear descriptions like "Undo Add Note", "Redo Change Key Signature" rather than generic "Undo"/"Redo"
 
 ## Rationale
@@ -334,14 +334,17 @@ regardless of the resource type:
     (fn [] (restore-instruments! il-atom new-instruments (inc old-version)))))
 
 ;; Piece — STM-based, dosync transactions
-;; Inside any piece mutation, after successful STM commit:
-(let [before @piece-ref]
-  (dosync (alter piece-ref apply-mutation args))
-  (let [after @piece-ref]
-    (undo/push-undo! undo-mgr piece-id
-      description-key description-params          ;; e.g. :piece.undo/add-note {:pitch "C4" :measure 3}
-      (fn [] (dosync (ref-set piece-ref before)))
-      (fn [] (dosync (ref-set piece-ref after))))))
+;; Capture before inside dosync (in-transaction read is consistent with alter).
+;; push-undo! is called outside dosync to avoid side effects in a retrying transaction.
+(let [[before after]
+      (dosync
+        (let [before @piece-ref]
+          (alter piece-ref apply-mutation args)
+          [before @piece-ref]))]
+  (undo/push-undo! undo-mgr piece-id
+    description-key description-params            ;; e.g. :piece.undo/add-note {:pitch "C4" :measure 3}
+    (fn [] (dosync (ref-set piece-ref before)))
+    (fn [] (dosync (ref-set piece-ref after)))))
 ```
 
 The `description-key` and `description-params` are translation keys for the menu display.
@@ -458,14 +461,14 @@ sequenceDiagram
 
     Note over A,E: Client A deletes "Flute"
     A->>IL: set-instrument-library (without Flute)
-    IL->>UM: push-undo!(:il, :il.undo/delete, undo-fn, redo-fn)
+    IL->>UM: push-undo!(:instrument-library, :il.undo/delete, undo-fn, redo-fn)
     UM->>E: :undo-state-changed {undo-ts: 100, redo-ts: nil}
     E->>A: Timestamp cache: undo-ts=100, stale
     E->>B: Timestamp cache: undo-ts=100, stale
 
     Note over A,E: Client B opens Edit menu → needs description
-    B->>UM: SRV/get-undo-description(:instrument-library)
-    UM-->>B: {:undo {:description-key :il.undo/delete, :description-params {:names "Flute"}}}
+    B->>UM: SRV/get-undo-description(:instrument-library, nil)
+    UM-->>B: {:undo {:description-key :il.undo/delete-instruments, :description-params {:names "Flute"}}}
     Note over B: Menu shows "Undo: Delete Instruments (Flute)"
 
     Note over A,E: Client B undoes Client A's deletion
@@ -523,8 +526,9 @@ changed*; the fetch says *what it looks like*.
 The frontend presents a single Undo/Redo interface to the user. Routing uses **timestamp
 comparison** across separate data structures — the local undo/redo stacks and a per-resource
 backend timestamp cache — to determine whether to undo locally or via the backend. The
-entry with the most recent timestamp is what Cmd+Z will undo. The menu always shows what
-will actually happen.
+entry with the most recent timestamp is what Cmd+Z will undo. The menu and the routing
+use the same cached state, so they always agree — the menu reflects what Cmd+Z will
+actually do at the moment it is pressed.
 
 #### Frontend Undo State — Separate Stacks
 
@@ -649,10 +653,12 @@ In collaborative mode, the shared per-resource backend stacks introduce inherent
 limitations. These are properties of shared undo stacks — the price of determinism and
 consistency:
 
-1. **The menu always tells the truth.** When the `:undo-state-changed` notification arrives
-   (whether from the user's own action or another client's), the backend cache updates. The
-   menu shows whichever entry has the highest timestamp — always what Cmd+Z will actually do.
-   The user is never surprised.
+1. **The menu and the action always agree.** When the `:undo-state-changed` notification
+   arrives (whether from the user's own action or another client's), the backend cache
+   updates and the menu refreshes. Between notifications, the menu may not reflect the
+   absolute latest server state — but the routing algorithm reads from the same cache, so
+   pressing Cmd+Z always does what the menu says it will do. The user is never surprised
+   by the *action*; the menu may briefly lag behind remote mutations.
 
 2. **Other clients' actions appear in the undo chain.** When Client B mutates a resource,
    Client A receives the notification with a timestamp that may be higher than Client A's
@@ -717,6 +723,13 @@ closures. The push notification does not carry them — descriptions are fetched
 `:description-params` map allows interpolation via the `%{param}` convention established
 in ADR-0039.
 
+**Menu text during fetch.** While the description fetch is in flight, the menu shows
+the generic `:menu.edit.undo` / `:menu.edit.redo` key (e.g. "Undo" / "Redo" without a
+specific action description). The item remains enabled — the routing knows the backend
+entry wins, even if the description is not yet available. When the fetch completes, the
+menu refreshes to show the specific description (e.g. "Undo: Delete Instruments"). This
+brief generic-to-specific transition is the only visible effect of lazy fetching.
+
 **Threading rule**: The `SRV/get-undo-description` call is a gRPC operation and must not
 run on the JavaFX Application Thread. The menu refresh dispatches the fetch on a pool
 thread; the result is delivered back to the JAT via `fx/run-later!` for cache update and
@@ -725,7 +738,7 @@ or network calls on the JAT.
 
 ```clojure
 ;; Client fetches description for the winning backend resource:
-(SRV/get-undo-description :instrument-library)
+(SRV/get-undo-description :instrument-library nil)
 ;; → {:undo {:description-key    :il.undo/delete-instruments
 ;;           :description-params {:names "Flute, Oboe"}}
 ;;    :redo nil}
@@ -834,7 +847,7 @@ machine, with no dependency on external infrastructure.
 4. **Timestamp-based routing**: The frontend compares timestamps across local stacks and the backend cache. The highest timestamp wins for undo, the lowest for redo. No interleaved data structure to maintain — the correct ordering falls out of timestamp arithmetic.
 5. **Clean architectural separation**: Backend owns all backend undo stacks and descriptions; frontend owns local undo entries and the routing logic. The backend cache is a frontend-side timestamp cache, not a violation of the frontend-backend boundary.
 6. **Collaborative by default**: Shared per-resource stacks mean any client can undo the most recent operation. No per-user history complexity.
-7. **Honest user experience**: Single Cmd+Z with descriptive labels. The menu always shows what will actually happen — never a stale prediction. In single-user mode, this is identical to any desktop application.
+7. **Honest user experience**: Single Cmd+Z with descriptive labels. The menu and the routing use the same cached state, so pressing Cmd+Z always does what the menu says it will do. In single-user mode, this is identical to any desktop application.
 8. **Clock skew resilience**: Per-connection clock offset computed at registration time normalises server timestamps to the client's clock frame. Handles arbitrary clock differences (even minutes) with residual error bounded by one-way network delay. No dependency on NTP or external time synchronisation.
 
 ### Negative
@@ -846,7 +859,7 @@ machine, with no dependency on external infrastructure.
 
 ### Mitigations
 
-1. **Collaborative limitations are transparent**: The menu always shows the true current state — the user sees "Undo: [another client's action]" before pressing Cmd+Z and can choose not to. Redo unavailability is immediately visible (menu item disabled). These are inherent properties of shared undo stacks, not bugs — the price of determinism and consistency.
+1. **Collaborative limitations are transparent**: The menu reflects the cached state — after each `:undo-state-changed` notification, the user sees the current undo target (which may be another client's action) before pressing Cmd+Z and can choose not to. Redo unavailability is immediately visible (menu item disabled). These are inherent properties of shared undo stacks, not bugs — the price of determinism and consistency.
 2. **Offline**: Local entries are undoable offline. When the backend is unreachable and the backend cache has the highest timestamp, the undo item can show the backend entry as disabled (greyed) while local entries remain available.
 3. **Session scope**: Matches user expectations — no editor provides cross-restart undo. The depth cap (50 entries per resource) bounds memory usage.
 4. **Fetch latency**: The `get-undo-description` call returns only two small maps (description key + params). In combined mode, this is in-process with zero network latency. Over gRPC, it is sub-millisecond. The fetched description is cached until the next notification, so repeated menu displays do not re-fetch.
