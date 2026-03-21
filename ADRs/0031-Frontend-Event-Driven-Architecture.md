@@ -630,6 +630,24 @@ closed, `*instrument-library` is set to `nil` (staleness marker); the fetch is d
 until the window next opens. See [ADR-0045](0045-Instrument-Library.md) for the full lazy
 caching model.
 
+**Undo State** (`:undo` category):
+```clojure
+:undo-state-changed  ; The undo/redo state changed for a backend resource
+```
+
+**Required fields**: `:resource-key` (keyword or UUID), `:undo-timestamp` (number or nil),
+`:redo-timestamp` (number or nil)
+**Payload fields**: none — timestamps indicate current undo/redo availability; descriptions
+are fetched lazily via `SRV/get-undo-description` when the menu needs to display them.
+**Scoping**: IL notifications go to all connected clients (global resource). Piece
+notifications go only to clients subscribed to that piece, following the same audience
+scoping as `:piece-structure-changed`.
+**Subscriber reaction**: The frontend caches the timestamps per resource in its backend
+timestamp cache and marks any cached description as stale. The undo/redo menu item
+compares the highest cached backend timestamp with the local undo stack's top timestamp
+to determine what Cmd+Z will do. See [ADR-0015](0015-Undo-and-Redo.md) for the full
+invalidate→fetch model and timestamp-based routing.
+
 ---
 
 #### Category Derivation Logic
@@ -669,6 +687,9 @@ caching model.
 
     ;; Instrument library (global singleton — not piece-scoped)
     :instrument-library-changed :instrument-library
+
+    ;; Undo state (scoped: IL global, pieces per-subscription)
+    :undo-state-changed :undo
 
     ;; Everything else defaults to notification
     :notification))
