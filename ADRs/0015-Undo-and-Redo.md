@@ -338,10 +338,15 @@ regardless of the resource type:
   (dosync (alter piece-ref apply-mutation args))
   (let [after @piece-ref]
     (undo/push-undo! undo-mgr piece-id
-      :piece.undo/add-note {:pitch "C4" :measure 3}
+      description-key description-params          ;; e.g. :piece.undo/add-note {:pitch "C4" :measure 3}
       (fn [] (dosync (ref-set piece-ref before)))
       (fn [] (dosync (ref-set piece-ref after))))))
 ```
+
+The `description-key` and `description-params` are translation keys for the menu display.
+`(tr description-key description-params)` produces the user-facing string — e.g.
+`(tr :piece.undo/add-note {:pitch "C4" :measure 3})` → `"Add Note (C4, m. 3)"`.
+The undo manager stores these alongside the closures but never interprets them.
 
 In both cases, `before` and `after` are immutable Clojure values captured by the closure.
 They share structure via persistent data structures. The undo manager never inspects them,
