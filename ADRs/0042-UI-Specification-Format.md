@@ -271,13 +271,27 @@ Three formatters exist specifically for dense form controls:
 
 | Formatter | Encapsulates |
 |-----------|--------------|
-| `ooloi-dense-combo-box` | `["combo-box" "combo-box-base" Styles/DENSE]` style-class set |
+| `ooloi-dense-combo-box` | `["combo-box" "combo-box-base" Styles/DENSE]` style-class set; with `:choices`, handles keyword↔label translation (see below) |
 | `ooloi-dense-text-field` | `["text-input" "text-field" Styles/DENSE]` style-class set |
 | `ooloi-icon-button` | `ext-instance-factory` wrapping `FontIcon` + `["button" Styles/FLAT]` |
 
 The complete component inventory is in the `ooloi.frontend.ui.core.cljfx` namespace.
 
 **`ooloi-dense-combo-box` uses a custom lifecycle, not the `:combo-box` keyword.** The standard cljfx ComboBox lifecycle has no `:prop-order`, so `advance-composite-component` iterates its ~17 inherited props in hash-set order — non-deterministic. When both `:items` and `:value` change simultaneously (as they do on every locale switch), hash ordering may apply `:value` first. JavaFX's SelectionModel then fails to match the new value against the old items list, clears the selection, and the ComboBox shows blank. The custom lifecycle adds `:prop-order {:items 0 :value 1}`, guaranteeing `:items` is applied first on every advance. This is why the one-method principle matters here beyond style-class safety: the formatter enforces the correct lifecycle, not just the correct CSS classes.
+
+**Keyword↔label translation with `:choices`.** When a ComboBox represents a set of named options (language filter, sort order, display mode), `:choices` is the standard pattern. Callers provide a map of `keyword → tr-key-or-string`, keyword `:items` and `:value`, and receive keywords back in `:on-value-changed`:
+
+```clojure
+{:fx/type  ofx/ooloi-dense-combo-box
+ :choices  {:all :instrument-library.language.all
+            :de  :instrument-library.language.german
+            :fr  :instrument-library.language.french}
+ :items    [:all :de :fr]
+ :value    :de
+ :on-value-changed (fn [kw] (settings/set-app-setting! :my/filter kw))}
+```
+
+The formatter translates keyword items/value to display labels for the UI, and maps labels back to keywords in the callback. Choice values that are keywords are translated via `tr`; strings are used as-is. Without `:choices`, all props pass through unchanged (for cases where the caller manages labels directly). `:choices` is the preferred approach for all new dropdown menus — it keeps the spec data-level (keywords transport over gRPC), centralises the translation logic, and eliminates manual `kw->label`/`label->kw` boilerplate at every call site.
 
 ### Per-Window Reactive Renderer
 
