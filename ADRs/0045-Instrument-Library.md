@@ -613,7 +613,7 @@ All editing operations apply to the current selection. Write permission is requi
   order within each family.
 - **Reorder (drag)**: moves selected instruments within their family. Relative order of dragged
   instruments is preserved. Instruments cannot be dragged across families.
-- **Modifier-drag** (Cmd/Ctrl on macOS, Ctrl on other platforms): produces copies at the drop
+- **Modifier-drag** (Option on macOS, Alt on other platforms): produces copies at the drop
   position instead of moving the originals. Same duplication semantics as Duplicate (new UUID `:id`,
   `" (copy)"` suffix).
 
