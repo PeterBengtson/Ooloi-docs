@@ -396,10 +396,17 @@ cljfx supports functions as `:fx/type` values. Each Ooloi custom component funct
 {:fx/type ooloi-button
  :text-key :common.save}
 
-;; Reactive: :raw-text (tr key) resolved at spec-construction time (for locale-sensitive windows)
+;; Reactive (leaf): :raw-text (tr key) resolved at spec-construction time
 {:fx/type ooloi-button
  :raw-text (tr :piece-window.piece-settings-button)
  :on-action {:ooloi/event :ui/show-piece-settings}}
+
+;; Reactive (nested): :locale cache-buster for components that call tr internally
+;; — cljfx skips re-invoking functions with identical keyword props; passing
+;;   @tr/current-locale as :locale forces re-invocation on locale change
+{:fx/type ooloi-transposition-controls
+ :tokens  [:up :major :second]
+ :locale  @tr/current-locale}
 ```
 
 Resolution happens at render time on the frontend, where the locale is known. The spec author — whether frontend code or a backend plugin — writes `:text-key :some.key`. The infrastructure calls `tr` at materialisation.
@@ -424,11 +431,13 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-menu-item` | `:text-key` | `:menu-item` |
 | `ooloi-menu` | `:text-key` | `:menu` |
 | `ooloi-command-item` | `:descriptor`, `:state` | `:menu-item` with resolved text and `:disable` |
-| `ooloi-dense-combo-box` | `:choices` (optional) | Dense `:combo-box` with AtlantaFX base style-classes; with `:choices`, translates keyword items/value to labels and maps callbacks back to keywords |
+| `ooloi-dense-combo-box` | `:choices` (optional), `:locale` (optional cache-buster) | Dense `:combo-box` with AtlantaFX base style-classes; with `:choices`, translates keyword items/value to labels and maps callbacks back to keywords; `:locale` forces re-invocation on locale change |
 | `ooloi-dense-text-field` | — | `:text-field` with correct AtlantaFX base style-classes for dense layout |
+| `ooloi-dense-spinner` | `:min`, `:max`, `:value` | Dense `:spinner` with integer value factory; non-editable (small numeric ranges) |
 | `ooloi-search-field` | `:text`, `:on-text-changed` | AtlantaFX `CustomTextField` with muted magnifying glass icon (visible only when empty); `ext-instance-factory` with `["text-input" "text-field" "custom-text-field" Styles/DENSE]` |
 | `ooloi-icon-button` | `:icon-literal` | Flat `:button` with `FontIcon` graphic; encapsulates `Styles/FLAT` and `ext-instance-factory` |
 | `ooloi-notification` | `:text-key`, `:raw-text`, `:type`, `:icon`, `:opacity`, `:min-height` | AtlantaFX `Notification` node |
+| `ooloi-titled-pane` | `:text`, `:extra-style-classes` | TitledPane with `["titled-pane" Styles/DENSE]`; merges `:extra-style-classes`; all props pass through |
 
 **Composite components** encode Ooloi's layout conventions, not just atomic elements:
 
@@ -436,6 +445,11 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 |-----------|---------------------|
 | `ooloi-button-bar` | Right-aligned HBox with a spacer Region; consistent button padding |
 | `ooloi-vscroll-pane` | Optionally titled ScrollPane with a muted border; title style via `TITLE_4` |
+| `ooloi-labelled-field` | HBox with fixed-width label and control; reusable in instrument and staff editors |
+| `ooloi-range-field` | HBox with label, low/high sub-labels and text fields |
+| `ooloi-transposition-controls` | HBox with direction/quality/interval combo-boxes and octave spinner; accepts `:locale` cache-buster |
+| `ooloi-transposition-field` | nil → unchecked checkbox; non-nil → VBox with transposition controls and clef override rows; accepts `:locale` |
+| `ooloi-instrument-editor` | TitledPane with HBox graphic (name, comment, spacer, language); content VBox with labelled fields; accepts `:locale` |
 
 These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
 
@@ -1036,6 +1050,12 @@ The UI Manager is that something. When it receives a `:setting-changed` event fo
 
 **The renderer spec is the locale-reactivity boundary.** Only content the renderer re-evaluates on `swap!` gets updated. Content built by one-time `cljfx/create-component` + `cljfx/instance` at window creation time — without `cljfx/mount-renderer` watching it — is constructed once and never revisited. This is the correct choice for truly static content (confirmation dialogs, the splash screen). For any window with locale-sensitive strings, all visible content must be returned by the spec function that the renderer's `:middleware` evaluates. Button labels, section headings, and field prompts built outside the renderer spec will silently display the locale active at window-open time and will not respond to locale changes.
 
+**The `:locale` cache-buster for nested custom components.** The `swap! *state identity` cascade re-evaluates the top-level spec function, but cljfx's delta computation skips re-invoking nested custom component functions when their props are identical between renders. A component receiving only keyword props (e.g. `{:fx/type ooloi-transposition-controls :tokens [:up :major :second]}`) will not be re-invoked on locale change — cljfx sees identical props and reuses the old output.
+
+The solution is to pass `@tr/current-locale` as a `:locale` prop through the formatter chain. When the locale changes, cljfx sees a different `:locale` value, re-invokes the component function, and the `tr` calls inside produce updated strings. Each component `dissoc`s `:locale` from its output and passes it to child custom components that also call `tr`. See the component table in Section 4.4 for which components accept `:locale`.
+
+**When to use `:locale` vs `:raw-text`:** Use `:raw-text` for leaf atomic components with a single translatable string. Use `:locale` for composite components that call `tr` internally on keyword maps. Both mechanisms coexist. Issue #195 tracks systematic adoption of `:locale` across all `tr`-calling formatters.
+
 ---
 
 ## 10. Settings System
@@ -1564,6 +1584,8 @@ The locale change cascade (`swap! *state identity` on all registered renderer at
 **Invariant:** If a window module uses a standalone `cljfx/create-component` call at window-creation time for content that contains user-visible strings, those strings will not update on locale change.
 
 The correct model: the renderer's `:middleware` function returns a spec that includes all visible content. `cljfx/instance @(renderer @*state)` extracts the initial JavaFX Node. `cljfx/mount-renderer` keeps the renderer watching the atom. All subsequent re-renders flow through the same spec function.
+
+For nested custom component functions that call `tr` internally on keyword props, the `:locale` cache-buster pattern (see §9.8) must be used — `swap! identity` alone is not sufficient because cljfx skips re-invoking components whose props are identical.
 
 One-time materialisation (`cljfx/create-component` + `cljfx/instance` without a mounted renderer) is reserved for `show-confirmation!` — a blocking modal that returns synchronously via `.showAndWait` and has no ongoing lifecycle. No other window uses it.
 
