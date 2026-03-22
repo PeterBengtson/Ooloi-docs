@@ -273,6 +273,7 @@ Three formatters exist specifically for dense form controls:
 |-----------|--------------|
 | `ooloi-dense-combo-box` | `["combo-box" "combo-box-base" Styles/DENSE]` style-class set; with `:choices`, handles keyword↔label translation (see below) |
 | `ooloi-dense-text-field` | `["text-input" "text-field" Styles/DENSE]` style-class set |
+| `ooloi-search-field` | `ext-instance-factory` wrapping AtlantaFX `CustomTextField` + `["text-input" "text-field" "custom-text-field" Styles/DENSE]`; muted magnifying glass icon visible only when empty |
 | `ooloi-icon-button` | `ext-instance-factory` wrapping `FontIcon` + `["button" Styles/FLAT]` |
 
 The complete component inventory is in the `ooloi.frontend.ui.core.cljfx` namespace.
@@ -768,7 +769,7 @@ JavaFX controls ship with default style classes that AtlantaFX uses as CSS selec
 
 **Tempting shortcut — do not use:** using `ext-on-instance-lifecycle :on-created` to call `.add` on the style class list sidesteps the need to know the defaults, but it breaks the pure-data spec paradigm. The result is no longer serialisable over gRPC, no longer testable without JavaFX, and is inconsistent with ADR-0042's core requirement. There is one correct approach: write the complete `:style-class` list in the spec.
 
-**Formatter functions eliminate the risk entirely.** The `ooloi-dense-combo-box` and `ooloi-dense-text-field` formatters in `ooloi.frontend.ui.core.cljfx` embed the correct `:style-class` list internally. Application code that uses these formatters as `:fx/type` values cannot accidentally strip a base class — the formatter enforces the correct set unconditionally.
+**Formatter functions eliminate the risk entirely.** The `ooloi-dense-combo-box`, `ooloi-dense-text-field`, and `ooloi-search-field` formatters in `ooloi.frontend.ui.core.cljfx` embed the correct `:style-class` list internally. Application code that uses these formatters as `:fx/type` values cannot accidentally strip a base class — the formatter enforces the correct set unconditionally.
 
 **Consequence of stripping base classes:** AtlantaFX simulates control borders using multi-stop `-fx-background-color` layers — the outermost stop is the border paint, the inner stop is the fill. The border-rendering CSS rule is anchored to the base selector (e.g. `.combo-box-base`). Without that class on the node, the rule never fires and the control appears as plain text on the background with no visible border.
 

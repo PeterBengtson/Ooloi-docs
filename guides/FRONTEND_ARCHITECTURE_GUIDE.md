@@ -426,6 +426,7 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-command-item` | `:descriptor`, `:state` | `:menu-item` with resolved text and `:disable` |
 | `ooloi-dense-combo-box` | `:choices` (optional) | Dense `:combo-box` with AtlantaFX base style-classes; with `:choices`, translates keyword items/value to labels and maps callbacks back to keywords |
 | `ooloi-dense-text-field` | — | `:text-field` with correct AtlantaFX base style-classes for dense layout |
+| `ooloi-search-field` | `:text`, `:on-text-changed` | AtlantaFX `CustomTextField` with muted magnifying glass icon (visible only when empty); `ext-instance-factory` with `["text-input" "text-field" "custom-text-field" Styles/DENSE]` |
 | `ooloi-icon-button` | `:icon-literal` | Flat `:button` with `FontIcon` graphic; encapsulates `Styles/FLAT` and `ext-instance-factory` |
 | `ooloi-notification` | `:text-key`, `:raw-text`, `:type`, `:icon`, `:opacity`, `:min-height` | AtlantaFX `Notification` node |
 
@@ -516,7 +517,7 @@ AtlantaFX's border and background CSS for `ComboBox` is on `.combo-box-base`; fo
 
 **The rule:** Before writing a custom `:style-class` list, look up the cljfx default for that node type. Defaults are declared in the cljfx source as `:default` on the `:style-class` prop (e.g. `cljfx.fx.combo-box`, `cljfx.fx.text-field`). Every class in the default must appear in your custom list.
 
-**Formatter functions eliminate the risk.** The `ooloi-dense-combo-box` and `ooloi-dense-text-field` formatters in `ooloi.frontend.ui.core.cljfx` embed the correct `:style-class` lists internally. Application code using these as `:fx/type` values cannot accidentally strip a base class.
+**Formatter functions eliminate the risk.** The `ooloi-dense-combo-box`, `ooloi-dense-text-field`, and `ooloi-search-field` formatters in `ooloi.frontend.ui.core.cljfx` embed the correct `:style-class` lists internally. Application code using these as `:fx/type` values cannot accidentally strip a base class.
 
 **`ooloi-dense-combo-box` with `:choices`** is the standard pattern for keyword-based dropdowns. When `:choices` is provided (a map of `keyword → tr-key-or-string`), the formatter translates keyword `:items` and `:value` to display labels, and maps labels back to keywords in `:on-value-changed`. This keeps specs at the data level (keywords transport over gRPC), centralises translation, and eliminates manual `kw->label`/`label->kw` boilerplate. Without `:choices`, props pass through unchanged. All new dropdown menus with named options should use `:choices`.
 
