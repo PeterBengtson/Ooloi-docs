@@ -205,14 +205,11 @@ base transposition with overrides present. The unified map makes these structura
 :transposition nil
 
 ;; Transposing, no clef overrides:
-:transposition {:sounding->written [:up :perfect :fifth]
-                :written->sounding [:down :perfect :fifth]}
+:transposition {:sounding->written [:up :perfect :fifth]}
 
 ;; Transposing with clef-dependent overrides (e.g. Horn in F, old notation):
 :transposition {:sounding->written [:up :perfect :fifth]
-                :written->sounding [:down :perfect :fifth]
-                :clef-overrides {:bass {:sounding->written [:down :perfect :fourth]
-                                        :written->sounding [:up :perfect :fourth]}}}
+                :clef-overrides {:bass {:sounding->written [:down :perfect :fourth]}}}
 ```
 
 `(nil? (:transposition instrument))` definitively answers "is this instrument transposing?" — no
@@ -230,7 +227,8 @@ as the fallback:
 ```
 
 Most transposing instruments apply the same transposition regardless of which clef is active. For
-these, `:sounding->written` and `:written->sounding` inside the `:transposition` map are sufficient.
+these, `:sounding->written` inside the `:transposition` map is sufficient. The reverse direction
+is derivable via `invert-transposition-direction`.
 
 Some instruments deviate: the same clef symbol carries a different transposition depending on
 notation convention. Historical natural horns are the canonical case — a Horn in F in treble clef
@@ -258,8 +256,7 @@ at the call site: `(apply make-transposer (:sounding->written (:transposition in
   :id :piccolo-it :language :it
   :name "Flauto piccolo" :short-name "Fl. picc."
   :family :woodwind
-  :transposition {:sounding->written [:down :perfect :octave]
-                  :written->sounding [:up :perfect :octave]}
+  :transposition {:sounding->written [:down :perfect :octave]}
   :staves [(create-staff
              :clefs {:sounding {:default-clef :treble}
                      :written  {:default-clef :treble}})])
@@ -278,25 +275,23 @@ at the call site: `(apply make-transposer (:sounding->written (:transposition in
              :clefs {:sounding {:default-clef :bass}
                      :written  {:default-clef :bass}})])
 
-;; Transposing — Lane 1 (interval string)
+;; Transposing — Bb Clarinet
 (create-instrument
   :id :bb-clarinet-it :language :it
   :name "Clarinetto in Si♭" :short-name "Cl."
   :family :woodwind
-  :transposition {:sounding->written [:interval "M2+"]
-                  :written->sounding [:interval "M2-"]}
+  :transposition {:sounding->written [:up :major :second]}
   :staves [(create-staff
              :clefs {:sounding {:default-clef :treble}
                      :written  {:default-clef :treble}})])
 
-;; Transposing — Lane 2 (fluid keywords)
+;; Transposing — fluid keywords with compound interval
 ;; Bass Clarinet: bass clef at concert pitch; treble (French notation) when transposing
 (create-instrument
   :id :bass-clarinet-french-it :language :it
   :name "Clarinetto basso in Si♭" :short-name "Cl. b."
   :family :woodwind
-  :transposition {:sounding->written [:up :major :ninth]
-                  :written->sounding [:down :major :ninth]}
+  :transposition {:sounding->written [:up :major :ninth]}
   :staves [(create-staff
              :clefs {:sounding {:default-clef :bass}
                      :written  {:default-clef :treble}})])
@@ -306,8 +301,7 @@ at the call site: `(apply make-transposer (:sounding->written (:transposition in
   :id :horn-f-it :language :it
   :name "Corno in Fa" :short-name "Cor."
   :family :brass
-  :transposition {:sounding->written [:up :perfect :fifth]
-                  :written->sounding [:down :perfect :fifth]}
+  :transposition {:sounding->written [:up :perfect :fifth]}
   :range        {:low "B1" :high "F5"}
   :amateur-range {:low "E2" :high "C5"}
   :staves [(create-staff
@@ -322,22 +316,19 @@ at the call site: `(apply make-transposer (:sounding->written (:transposition in
   :family :brass
   :comment "Notazione antica"
   :transposition {:sounding->written [:up :perfect :fifth]
-                  :written->sounding [:down :perfect :fifth]
-                  :clef-overrides {:bass {:sounding->written [:down :perfect :fourth]
-                                          :written->sounding [:up :perfect :fourth]}}}
+                  :clef-overrides {:bass {:sounding->written [:down :perfect :fourth]}}}
   :staves [(create-staff
              :clefs {:sounding {:default-clef :treble}
                      :written  {:default-clef :treble}
                      :aux-ranges {:bass {:low "B1" :high "E4"}}})])
 
-;; Transposing — Lane 3 (chromatic with cents)
+;; Transposing with microtonal offset (fluid keywords + :cents)
 ;; Quarter-tone Bb Trumpet: pitched a quarter tone flat of Bb — sounds M2 + 50¢ below written
 (create-instrument
   :id :quartertone-bb-tpt-en :language :en
   :name "Quarter-tone Trumpet in B♭" :short-name "Tpt."
   :family :brass
-  :transposition {:sounding->written [:chromatic 2 :cents 50]
-                  :written->sounding [:chromatic -2 :cents -50]}
+  :transposition {:sounding->written [:up :major :second :cents 50]}
   :staves [(create-staff
              :clefs {:sounding {:default-clef :treble}
                      :written  {:default-clef :treble}})])
@@ -719,14 +710,14 @@ additional checks needed.
 {:id :bb-clarinet-en
  :name "Clarinet in B♭" :short-name "Cl. in B♭"
  :language :en :family :woodwind
- :transposition {:sounding->written [:up :major :second]
-                 :written->sounding [:down :major :second]}
+ :transposition {:sounding->written [:up :major :second]}
  :staves [{:clefs {:sounding {:default-clef :treble}
                    :written  {:default-clef :treble}}}]}
 ```
 
 Most transposing instruments apply the same transposition regardless of which clef is active. For
-these, `:sounding->written` and `:written->sounding` inside the `:transposition` map are sufficient.
+these, `:sounding->written` inside the `:transposition` map is sufficient. The reverse direction
+is derivable via `invert-transposition-direction`.
 
 **Clef-dependent transposition** (Horn in F, old notation):
 
@@ -736,9 +727,7 @@ these, `:sounding->written` and `:written->sounding` inside the `:transposition`
  :language :en :family :brass
  :comment "Old notation"
  :transposition {:sounding->written [:up :perfect :fifth]
-                 :written->sounding [:down :perfect :fifth]
-                 :clef-overrides {:bass {:sounding->written [:down :perfect :fourth]
-                                         :written->sounding [:up :perfect :fourth]}}}
+                 :clef-overrides {:bass {:sounding->written [:down :perfect :fourth]}}}
  :range         {:low "B1"  :high "F5"}
  :amateur-range {:low "C2"  :high "C5"}
  :staves [{:clefs {:sounding {:default-clef :treble}
@@ -750,7 +739,7 @@ Natural horns in Classical and Romantic scores use *old notation* in bass clef: 
 sounds one octave higher than under modern convention. Treble and bass clef therefore yield
 different transposition intervals for the same instrument. The Horn in F sounds a perfect fifth
 below written in treble clef but a perfect fourth *above* written in bass clef (old notation). The treble clef
-transposition is the base `:sounding->written`/`:written->sounding`; the bass clef transposition
+transposition is the base `:sounding->written`; the bass clef transposition
 is expressed as `:clef-overrides {:bass {...}}`. At the call site, the active clef is checked against
 `:clef-overrides` first; the base transposition is used as the fallback:
 
@@ -790,8 +779,7 @@ preferred for everything below the lowest auxiliary range.
  :name "Bass Clarinet" :short-name "B.Cl."
  :language :en :family :woodwind
  :comment "French notation"
- :transposition {:sounding->written [:up :major :ninth]
-                 :written->sounding [:down :major :ninth]}
+ :transposition {:sounding->written [:up :major :ninth]}
  :staves [{:clefs {:sounding {:default-clef :bass}
                    :written  {:default-clef :treble}}}]}
 ```

@@ -508,23 +508,20 @@ Includes global caching and hot-path memoization. Performance scales well for in
 
 ```clojure
 {:name "B♭ Clarinet"
- :sounding->written [:interval "M2+"]
- :written->sounding [:interval "M2-"]}
+ :sounding->written [:up :major :second]}
 
-{:name "Horn in F"  
- :sounding->written [:up :perfect :fifth]
- :written->sounding [:down :perfect :fifth]}
+{:name "Horn in F"
+ :sounding->written [:up :perfect :fifth]}
 
 {:name "Bass Clarinet in B♭"
- :sounding->written [:up :major :ninth]     ; M2 + octave
- :written->sounding [:down :major :ninth]}
+ :sounding->written [:up :major :ninth]}    ; M2 + octave
 
 {:name "Quarter-tone Trumpet in B♭"
- :sounding->written [:chromatic 2 :cents 50]
- :written->sounding [:chromatic -2 :cents -50]}
+ :sounding->written [:up :major :second :cents 50]}
 ```
 
-These vectors are applied as `(apply make-transposer params)`.
+These vectors are applied as `(apply make-transposer params)`. The reverse direction is
+derivable via `invert-transposition-direction` (fluid keyword lane only).
 
 **Integration with musical processing**: Pitch operations are extensively used within the timewalking system ([ADR-0014 Timewalk](0014-Timewalk.md)) for musical analysis, frequency calculations, and cross-measure processing.
 
