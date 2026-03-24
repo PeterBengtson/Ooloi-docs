@@ -449,8 +449,8 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-range-field` | HBox with label, low/high sub-labels and text fields |
 | `ooloi-transposition-controls` | HBox with direction/quality/interval combo-boxes and octave spinner; accepts `:locale` cache-buster |
 | `ooloi-transposition-field` | nil → unchecked checkbox; non-nil → VBox with transposition controls and clef override rows; accepts `:locale` |
-| `ooloi-instrument-editor` | TitledPane with HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors; accepts `:locale`. Uses nested-pane-safe event handling (see §4.6) |
-| `ooloi-staff-editor` | TitledPane for a staff within an instrument; HBox graphic with staff name (suppressed when blank) and translated written default-clef. Arrow-only expand/collapse with nested-pane-safe event handling |
+| `ooloi-instrument-editor` | TitledPane with HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors; accepts `:locale`, `:selected-staves`, `:on-staff-clicked`, `:on-collapsed`. Uses nested-pane-safe event handling (see §4.6) |
+| `ooloi-staff-editor` | TitledPane for a staff within an instrument; HBox graphic with staff name (suppressed when blank) and translated written default-clef. Accepts `:selected` and `:on-mouse-clicked`; mirrors selection highlight via `own-lookup`. Arrow-only expand/collapse with nested-pane-safe event handling |
 
 These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
 
@@ -554,7 +554,7 @@ When TitledPanes are nested (e.g. instrument editors containing staff editors), 
 
 **Rule**: Never use `.lookup` on a TitledPane that contains (or may contain) nested TitledPanes. See [UI Architecture §6.x](../research/UI_ARCHITECTURE.md) for wrong/correct code examples.
 
-**Regression tests**: `instrument_library_regression_test.clj` — 12 tests using synthetic `Event.fireEvent()` through real event filter chains, covering expand/collapse isolation, selection passthrough, drag handling, staff isolation, and selection highlight correctness.
+**Regression tests**: `instrument_library_regression_test.clj` — synthetic `Event.fireEvent()` through real event filter chains, covering expand/collapse isolation, selection passthrough, drag handling, staff isolation, and selection highlight correctness.
 
 ---
 

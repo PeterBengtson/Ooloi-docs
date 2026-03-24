@@ -577,17 +577,39 @@ collaborative session, guests have write permission only if the host has granted
 
 ### Selection Model
 
-Multi-select with standard platform conventions. Selection state is a set of instrument `:id`
-keywords, held in a separate frontend atom (`*il-selection`). The mounted renderer receives a
-derived atom combining `*instrument-library` and `*il-selection` so that both library updates and
-selection changes trigger re-render.
+Multi-select with standard platform conventions. Both instrument selection (`:selected`) and
+staff selection (`:selected-staves`) use **vectors**, not sets — the first element is the
+**anchor** for shift-click and shift-arrow range extension. Clojure sets are unordered, so
+`(first set)` returns an arbitrary element; vectors preserve insertion order and provide a
+stable anchor. Selection state is held in the window's view-state atom.
 
-- **Click** selects one instrument, clearing previous selection.
+**Instrument selection** (`:selected` — vector of instrument `:id` keywords):
+
+- **Click** selects one instrument, clearing previous selection and any staff selection.
 - **Cmd/Ctrl-click** toggles an instrument in or out of the current selection.
 - **Shift-click** extends selection to a contiguous range within the same family.
-- **Cross-family Cmd/Ctrl-click** works — the selection set can span multiple families.
+- **Cross-family Cmd/Ctrl-click** works — the selection can span multiple families.
+- **Arrow up/down** moves instrument selection one step within visible (filtered) instruments.
+- **Shift+arrow up/down** extends/contracts the selection range preserving the anchor.
 - **Select All**: nothing selected → all instruments in all families; one or more instruments
   selected → all instruments in the families containing selected instruments.
+
+**Staff selection** (`:selected-staves` — vector of staff `:id` keywords within one instrument):
+
+- **Click on a staff** selects that staff, clearing instrument selection.
+- **Cmd/Ctrl-click** toggles a staff in or out of the current staff selection.
+- **Shift-click** extends to a contiguous range within the instrument's staves vector.
+- **Arrow up/down** (when staff selection is active) moves within the instrument's staves.
+- **Shift+arrow up/down** extends/contracts staff selection preserving the anchor.
+- **Collapsing an instrument** clears its staff selection.
+
+**Mutual exclusivity**: instrument selection and staff selection cannot both be non-empty
+simultaneously. Selecting an instrument clears staff selection; selecting a staff clears
+instrument selection.
+
+**Keyboard navigation respects filters**: arrow key navigation operates on the visible
+(language-filtered and search-filtered) instrument list, not the full library. This ensures
+arrow keys only step through instruments the user can see.
 
 Selection is frontend-only state. It is never sent to the backend and not persisted across window
 close/reopen.
