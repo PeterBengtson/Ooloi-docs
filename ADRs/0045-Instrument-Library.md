@@ -633,6 +633,23 @@ All editing operations apply to the current selection. Write permission is requi
 All mutations are expressed as transformations of the instrument vector and submitted via
 `set-instrument-library`. See [Optimistic Locking](#optimistic-locking) for conflict handling.
 
+#### Staff Editing
+
+Staff operations follow the same patterns as instrument operations, applied within an instrument's
+`:staves` vector via `update-instrument-field`:
+
+- **Delete**: removes selected staves. Last-staff protection prevents deleting an instrument's sole
+  staff (confirmation dialog for multi-staff delete).
+- **Reorder (drag within instrument)**: moves a staff to a new position within the same instrument's
+  staves vector.
+- **Modifier-drag within instrument**: duplicates the staff with a new UUID `:id`.
+- **Plain drag to different instrument**: rejected — cross-instrument moves are not supported.
+- **Modifier-drag to different instrument**: clones the staff with a new UUID `:id`, appended to
+  the target instrument's staves. Source instrument is unmodified.
+
+Staff selection is mutually exclusive with instrument selection — selecting a staff clears instrument
+selection and vice versa. Shift-extend is constrained to the same instrument.
+
 ### Undo/Redo
 
 IL editing operations (reorder, delete, duplicate, rename, add) are undoable. Because the IL is a
