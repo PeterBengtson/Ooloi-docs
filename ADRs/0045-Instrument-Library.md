@@ -154,7 +154,7 @@ Every instrument must declare its staves. Each staff is a `Staff` defrecord:
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `:id` | keyword | UUID-based | Unique identifier for this staff |
-| `:name` | string | `"Unnamed Staff"` | Full display name for the staff, e.g. `"Mano destra"`. |
+| `:name` | string | `""` | Full display name for the staff, e.g. `"Mano destra"`. Empty for most single-staff instruments. |
 | `:short-name` | string | `""` | Abbreviated name, e.g. `"M.d."` |
 | `:clefs` | map | `{:sounding {:default-clef :treble} :written {:default-clef :treble}}` | Consolidated clef specification; see below |
 | `:num-lines` | integer | `5` | Number of staff lines |

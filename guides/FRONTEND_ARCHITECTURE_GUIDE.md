@@ -449,7 +449,8 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-range-field` | HBox with label, low/high sub-labels and text fields |
 | `ooloi-transposition-controls` | HBox with direction/quality/interval combo-boxes and octave spinner; accepts `:locale` cache-buster |
 | `ooloi-transposition-field` | nil → unchecked checkbox; non-nil → VBox with transposition controls and clef override rows; accepts `:locale` |
-| `ooloi-instrument-editor` | TitledPane with HBox graphic (name, comment, spacer, language); content VBox with labelled fields; accepts `:locale` |
+| `ooloi-instrument-editor` | TitledPane with HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors; accepts `:locale`. Uses nested-pane-safe event handling (see §4.6) |
+| `ooloi-staff-editor` | TitledPane for a staff within an instrument; HBox graphic with staff name (suppressed when blank) and translated written default-clef. Arrow-only expand/collapse with nested-pane-safe event handling |
 
 These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
 
@@ -538,6 +539,22 @@ AtlantaFX's border and background CSS for `ComboBox` is on `.combo-box-base`; fo
 **Tempting shortcut — do not use:** using `ext-on-instance-lifecycle :on-created` to call `.add` on the style class list avoids having to look up the defaults — but the result is not pure data, cannot be serialised over gRPC, and is inconsistent with ADR-0042. Write the complete `:style-class` list in the spec, or use the appropriate formatter.
 
 **CSS child selectors on themed parent nodes.** Adding a custom class to a `TitledPane` — for example `"setting-tile"` — means that CSS child selectors now match TitledPane's internal structure. `.setting-tile > .content` matches the collapsible body pane. Setting any solid background colour on that pane (including `-color-bg-subtle`) can make all controls nested inside it appear borderless, because AtlantaFX simulates borders via multi-stop `-fx-background-color` layers whose outer stop blends into the parent surface. Use `transparent` for TitledPane content backgrounds when controls are placed inside.
+
+### 4.6 Nested TitledPane Event Handling
+
+When TitledPanes are nested (e.g. instrument editors containing staff editors), `Node.lookup(selector)` returns ambiguous results — depth-first search may return the inner pane's `.title` instead of the outer's. This breaks MOUSE_PRESSED consumption, causes title clicks to toggle expand, arrow clicks to double-toggle (appearing dead), and style mirroring to target wrong nodes.
+
+**Production code uses three helper functions** (in `cljfx.clj`):
+
+| Function | Replaces | Purpose |
+|---|---|---|
+| `in-own-title?` | `.lookup pane ".title"` | Walks from node to find `.title` class, verifies first TitledPane ancestor is `pane` |
+| `event-for-this-pane?` | N/A | Checks event target's first TitledPane ancestor is `pane` |
+| `own-lookup` | `.lookup` | Uses `.lookupAll` + ancestry filter |
+
+**Rule**: Never use `.lookup` on a TitledPane that contains (or may contain) nested TitledPanes. See [UI Architecture §6.x](../research/UI_ARCHITECTURE.md) for wrong/correct code examples.
+
+**Regression tests**: `instrument_library_regression_test.clj` — 12 tests using synthetic `Event.fireEvent()` through real event filter chains, covering expand/collapse isolation, selection passthrough, drag handling, staff isolation, and selection highlight correctness.
 
 ---
 
