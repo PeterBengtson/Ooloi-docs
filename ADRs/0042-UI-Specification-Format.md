@@ -280,7 +280,7 @@ The complete component inventory is in the `ooloi.frontend.ui.core.cljfx` namesp
 
 **`ooloi-dense-combo-box` uses a custom lifecycle, not the `:combo-box` keyword.** The standard cljfx ComboBox lifecycle has no `:prop-order`, so `advance-composite-component` iterates its ~17 inherited props in hash-set order — non-deterministic. When both `:items` and `:value` change simultaneously (as they do on every locale switch), hash ordering may apply `:value` first. JavaFX's SelectionModel then fails to match the new value against the old items list, clears the selection, and the ComboBox shows blank. The custom lifecycle adds `:prop-order {:items 0 :value 1}`, guaranteeing `:items` is applied first on every advance. This is why the one-method principle matters here beyond style-class safety: the formatter enforces the correct lifecycle, not just the correct CSS classes.
 
-**Keyword↔label translation with `:choices`.** When a ComboBox represents a set of named options (language filter, sort order, display mode), `:choices` is the standard pattern. Callers provide a map of `keyword → tr-key-or-string`, keyword `:items` and `:value`, and receive keywords back in `:on-value-changed`:
+**Keyword↔label translation with `:choices` (cell factory pattern).** When a ComboBox represents a set of named options (language filter, sort order, transposition direction), `:choices` is the standard pattern. Callers provide a map of `keyword → tr-key-or-string`, keyword `:items` and `:value`, and receive keywords back in `:on-value-changed` via `:fx/event`:
 
 ```clojure
 {:fx/type  ofx/ooloi-dense-combo-box
@@ -289,10 +289,15 @@ The complete component inventory is in the `ooloi.frontend.ui.core.cljfx` namesp
             :fr  :instrument-library.language.french}
  :items    [:all :de :fr]
  :value    :de
- :on-value-changed (fn [kw] (settings/set-app-setting! :my/filter kw))}
+ :locale   locale                        ;; cache-buster: forces re-render on locale change
+ :on-value-changed {:event/type :my-event}}
 ```
 
-The formatter translates keyword items/value to display labels for the UI, and maps labels back to keywords in the callback. Choice values that are keywords are translated via `tr`; strings are used as-is. Without `:choices`, all props pass through unchanged (for cases where the caller manages labels directly). `:choices` is the preferred approach for all new dropdown menus — it keeps the spec data-level (keywords transport over gRPC), centralises the translation logic, and eliminates manual `kw->label`/`label->kw` boilerplate at every call site.
+The formatter uses cljfx's **cell factory pattern** internally: `:button-cell` (a function returning a describe map) controls how the selected value displays, and `:cell-factory` `{:fx/cell-type :list-cell :describe fn}` controls how dropdown items display. Items remain as keywords throughout — no string translation or reverse lookup. The `:on-value-changed` handler receives the keyword directly as `:fx/event`.
+
+This is the idiomatic cljfx approach for non-string ComboBox items. It preserves map event handler dispatch (cljfx merges `:fx/event` into the map and dispatches), works with the `:locale` cache-buster (new cell factory functions capture the current `tr` on re-render), and keeps specs at the data level (keywords transport over gRPC).
+
+Without `:choices`, all props pass through unchanged (for cases where items are already strings or the caller manages display directly).
 
 ### Per-Window Reactive Renderer
 

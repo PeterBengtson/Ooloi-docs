@@ -431,7 +431,7 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-menu-item` | `:text-key` | `:menu-item` |
 | `ooloi-menu` | `:text-key` | `:menu` |
 | `ooloi-command-item` | `:descriptor`, `:state` | `:menu-item` with resolved text and `:disable` |
-| `ooloi-dense-combo-box` | `:choices` (optional), `:locale` (optional cache-buster) | Dense `:combo-box` with AtlantaFX base style-classes; with `:choices`, translates keyword items/value to labels and maps callbacks back to keywords; `:locale` forces re-invocation on locale change |
+| `ooloi-dense-combo-box` | `:choices` (optional), `:locale` (optional cache-buster) | Dense `:combo-box` with AtlantaFX base style-classes and ordered lifecycle (items-before-value); with `:choices`, uses cljfx cell factory pattern — items stay as keywords, `:fx/event` delivers keywords; `:locale` forces re-render so cell factories capture current `tr` |
 | `ooloi-dense-text-field` | — | `:text-field` with correct AtlantaFX base style-classes for dense layout |
 | `ooloi-dense-spinner` | `:min`, `:max`, `:value` | Dense `:spinner` with integer value factory; non-editable (small numeric ranges) |
 | `ooloi-search-field` | `:text`, `:on-text-changed` | AtlantaFX `CustomTextField` with muted magnifying glass icon (visible only when empty); `ext-instance-factory` with `["text-input" "text-field" "custom-text-field" Styles/DENSE]` |
@@ -533,7 +533,7 @@ AtlantaFX's border and background CSS for `ComboBox` is on `.combo-box-base`; fo
 
 **Formatter functions eliminate the risk.** The `ooloi-dense-combo-box`, `ooloi-dense-text-field`, and `ooloi-search-field` formatters in `ooloi.frontend.ui.core.cljfx` embed the correct `:style-class` lists internally. Application code using these as `:fx/type` values cannot accidentally strip a base class.
 
-**`ooloi-dense-combo-box` with `:choices`** is the standard pattern for keyword-based dropdowns. When `:choices` is provided (a map of `keyword → tr-key-or-string`), the formatter translates keyword `:items` and `:value` to display labels, and maps labels back to keywords in `:on-value-changed`. This keeps specs at the data level (keywords transport over gRPC), centralises translation, and eliminates manual `kw->label`/`label->kw` boilerplate. Without `:choices`, props pass through unchanged. All new dropdown menus with named options should use `:choices`.
+**`ooloi-dense-combo-box` with `:choices`** is the standard pattern for keyword-based dropdowns. When `:choices` is provided (a map of `keyword → tr-key-or-string`), the formatter uses cljfx's **cell factory pattern**: `:button-cell` controls how the selected value displays, `:cell-factory` `{:fx/cell-type :list-cell :describe fn}` controls how dropdown items display. Items remain as keywords throughout — no string translation, no reverse lookup. The `:on-value-changed` handler receives the keyword directly as `:fx/event`, preserving map event handler dispatch. The `:locale` cache-buster works because re-render creates new cell factory functions that capture the current `tr`. Without `:choices`, props pass through unchanged. All new dropdown menus with named options should use `:choices`.
 
 **Tempting shortcut — do not use:** using `ext-on-instance-lifecycle :on-created` to call `.add` on the style class list avoids having to look up the defaults — but the result is not pure data, cannot be serialised over gRPC, and is inconsistent with ADR-0042. Write the complete `:style-class` list in the spec, or use the appropriate formatter.
 
