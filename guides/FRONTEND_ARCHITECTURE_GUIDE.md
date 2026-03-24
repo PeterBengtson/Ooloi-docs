@@ -450,7 +450,7 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-transposition-controls` | HBox with direction/quality/interval combo-boxes and octave spinner; accepts `:locale` cache-buster |
 | `ooloi-transposition-field` | nil → unchecked checkbox; non-nil → VBox with transposition controls and clef override rows; accepts `:locale` |
 | `ooloi-instrument-editor` | TitledPane with HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors; accepts `:locale`, `:selected-staves`, `:on-staff-clicked`, `:on-staff-drag-detected` (3-arity fn wrapped in per-staff closure), `:on-collapsed`. DRAG_OVER filter accepts staff drags when expanded, rejects when collapsed. Uses nested-pane-safe event handling (see §4.6) |
-| `ooloi-staff-editor` | TitledPane for a staff within an instrument; HBox graphic with staff name (suppressed when blank) and translated written default-clef. Accepts `:selected`, `:instrument-id`, and `:on-mouse-clicked`. DRAG_OVER filter sets `:target-instrument-id` for cross-instrument staff drops. Mirrors selection highlight via `own-lookup`. Arrow-only expand/collapse with nested-pane-safe event handling |
+| `ooloi-staff-editor` | TitledPane for a staff within an instrument; HBox graphic with staff name (suppressed when blank) and translated written default-clef. Accepts `:selected`, `:instrument-id`, and `:on-mouse-clicked`. DRAG_OVER filter sets both `:target-instrument-id` and `:target-staff-id` in `dnd/*drag-data` — enabling position-accurate staff drops. Mirrors selection highlight via `own-lookup`. Arrow-only expand/collapse with nested-pane-safe event handling |
 
 These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
 
@@ -554,7 +554,7 @@ When TitledPanes are nested (e.g. instrument editors containing staff editors), 
 
 **Rule**: Never use `.lookup` on a TitledPane that contains (or may contain) nested TitledPanes. See [UI Architecture §6.x](../research/UI_ARCHITECTURE.md) for wrong/correct code examples.
 
-**Regression tests**: `instrument_library_regression_test.clj` — synthetic `Event.fireEvent()` through real event filter chains, covering expand/collapse isolation, selection passthrough, drag handling, staff isolation, selection highlight correctness, and staff D&D wiring (scroll pane DRAG_DROPPED routing, caller `:on-staff-drag-detected` wiring, staff/instrument editor DRAG_OVER target resolution, expanded/collapsed acceptance).
+**Regression tests**: `event_wiring_test.clj` — synthetic `Event.fireEvent()` through real event filter chains, covering expand/collapse isolation, selection passthrough, drag handling, staff isolation, selection highlight correctness, staff D&D wiring (scroll pane DRAG_DROPPED routing, caller `:on-staff-drag-detected` wiring, staff editor DRAG_OVER `:target-staff-id` resolution, expanded/collapsed acceptance), and instrument D&D bug fix verification (`:target-index-copy` for COPY operations).
 
 ---
 
