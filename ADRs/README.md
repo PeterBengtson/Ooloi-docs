@@ -119,7 +119,8 @@ Computing visual layout and engraving decisions from semantic musical data.
 Executing rendering decisions and handling user interaction.
 
 - **[0005-JavaFX-and-Skija](0005-JavaFX-and-Skija.md)**: UI framework and rendering technology
-- **[0006-SMuFL](0006-SMuFL.md)**: Standard Music Font Layout for notation rendering
+- **[0006-SMuFL](0006-SMuFL.md)**: Adoption of SMuFL as the sole font standard for musical symbol rendering
+- **[0047-Font-Management](0047-Font-Management.md)**: Font registry component with dual Skija/JavaFX registration, bundled-first loading, local font discovery, exact version matching for pieces, and multi-user font consistency
 - **[0031-Frontend-Event-Driven-Architecture](0031-Frontend-Event-Driven-Architecture.md)**: Separate event systems with Event Router for frontend-backend event synchronization
 - **[0032-Flow-Mode](0032-Flow-Mode.md)**: Ooloi Flow Mode – stateful modal keyboard input paradigm revival
 - **[0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**: Backend-authoritative rendering with terminal frontend execution and GPU-accelerated vector rendering
