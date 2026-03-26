@@ -552,9 +552,13 @@ When TitledPanes are nested (e.g. instrument editors containing staff editors), 
 | `event-for-this-pane?` | N/A | Checks event target's first TitledPane ancestor is `pane` |
 | `own-lookup` | `.lookup` | Uses `.lookupAll` + ancestry filter |
 
-**Rule**: Never use `.lookup` on a TitledPane that contains (or may contain) nested TitledPanes. See [UI Architecture §6.x](../research/UI_ARCHITECTURE.md) for wrong/correct code examples.
+**Rule**: Never use `.lookup` on a TitledPane that contains (or may contain) nested TitledPanes. Use `in-own-title?`, `event-for-this-pane?`, or `own-lookup` instead.
 
-**Regression tests**: `event_wiring_test.clj` — synthetic `Event.fireEvent()` through real event filter chains, covering expand/collapse isolation, selection passthrough, drag handling, staff isolation, selection highlight correctness, staff D&D wiring (scroll pane DRAG_DROPPED routing, caller `:on-staff-drag-detected` wiring, staff editor DRAG_OVER `:target-staff-id` resolution, expanded/collapsed acceptance), and instrument D&D bug fix verification (`:target-index-copy` for COPY operations).
+**Post-D&D MOUSE_CLICKED trap**: after a drag-and-drop gesture ends, JavaFX may synthesise a MOUSE_CLICKED event if press and release targets overlap. In nested TitledPane structures, this MOUSE_CLICKED bubbles from a child pane to the parent, triggering the parent's selection handler and destroying the selection set by the drag handler. **Fix**: all MOUSE_CLICKED selection handlers in D&D containers must check `(.isStillSincePress event)` — returns `false` after a drag gesture. This bug is invisible in Robot-based tests because Robot suppresses MOUSE_CLICKED after D&D; use handler-level tests with synthetic `MouseEvent(stillSincePress=false)` instead. See [UI Architecture §Staff D&D](../research/UI_ARCHITECTURE.md) for the full pattern.
+
+**`:fx/key` for identity-based reconciliation**: when nested TitledPanes support D&D reordering, child specs must include `:fx/key` with a stable identity (e.g., `:fx/key (:id staff)`). Without it, cljfx matches by vector position after reorder — `:on-created` closures that capture the item identity for DRAG_OVER target tracking become stale. See [UI Architecture §Staff D&D](../research/UI_ARCHITECTURE.md).
+
+**Regression tests**: `event_wiring_test.clj` — synthetic `Event.fireEvent()` through real event filter chains, covering expand/collapse isolation, selection passthrough, drag handling, staff isolation, selection highlight correctness, staff D&D wiring (scroll pane DRAG_DROPPED routing, caller `:on-staff-drag-detected` wiring, staff editor DRAG_OVER `:target-staff-id` resolution, expanded/collapsed acceptance), and instrument D&D bug fix verification (`:target-index-copy` for COPY operations). `meta_test.clj` — Robot-based integration tests verifying full D&D pipeline with production renderer, plus handler-level `isStillSincePress` tests.
 
 ---
 
