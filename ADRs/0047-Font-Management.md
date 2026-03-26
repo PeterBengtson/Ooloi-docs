@@ -72,9 +72,24 @@ The rendering pipeline reads all glyph metrics from the registry. There is no se
 
 ### Bundled Fonts
 
-Ooloi ships with one or more SMuFL-compliant fonts as JAR resources. Bravura is the canonical fallback: it is always available, always loads first, and serves as the default active font.
+Ooloi ships with eight SMuFL-compliant notation fonts as JAR resources in `shared/resources/smufl-fonts/`, each with its companion SMuFL metadata JSON. Companion text fonts for lyrics, expression markings, and other text-alongside-music live in `shared/resources/music-text-fonts/`.
 
-Bundled fonts are the tested, known-good pairing with the rendering pipeline. A specific Bravura version is validated against the layout engine before each Ooloi release. Upgrading a bundled font is an application release, not a user action — the TeX model applies here. Knuth does not let users swap in a different Computer Modern and expect the same line breaks; the font and the layout engine are a tested pair.
+**Bundled notation fonts:**
+
+| Font | Style | Developer | License |
+|---|---|---|---|
+| Bravura (v1.392) | Traditional engraved (SMuFL reference) | Steinberg | SIL OFL |
+| Finale Maestro | Traditional engraved (classic Finale) | MakeMusic | SIL OFL |
+| Leland (v0.80) | Traditional engraved (SCORE-inspired) | MuseScore | SIL OFL |
+| Petaluma (v1.065) | Handwritten (Real Book jazz) | Steinberg | SIL OFL |
+| Finale Jazz | Handwritten (bold jazz) | MakeMusic | SIL OFL |
+| Finale Broadway | Handwritten (theatre/copyist) | MakeMusic | SIL OFL |
+| Finale Ash | Handwritten (legendary AshMusic) | MakeMusic | SIL OFL |
+| Leipzig (v5.2.96) | Scholarly/musicological | RISM Digital | SIL OFL |
+
+Bravura is the canonical fallback: it is always available, always loads first, and serves as the default active font.
+
+Bundled fonts are the tested, known-good pairing with the rendering pipeline. A specific version of each font is validated against the layout engine before each Ooloi release. Upgrading a bundled font is an application release, not a user action — the TeX model applies here. Knuth does not let users swap in a different Computer Modern and expect the same line breaks; the font and the layout engine are a tested pair.
 
 ### Local Font Discovery
 
@@ -181,7 +196,7 @@ The benefit — making bundled SMuFL fonts available to other applications — d
 
 **Negative**
 
-- Upgrading bundled fonts requires an Ooloi release. Users who want a newer Bravura before the next release must use the local font path and explicitly opt in.
+- Upgrading bundled fonts requires an Ooloi release. Users who want a newer version of a bundled font before the next release must use the local font path and explicitly opt in.
 - The local font scan adds startup time proportional to the number of fonts installed on the system. The scan should be bounded (check known directories, match known family names or metadata files, do not parse every installed font).
 - JavaFX's `Font.loadFont` registers fonts globally for the JVM lifetime. If multiple font versions of the same family are loaded (bundled and user-supplied), JavaFX's family name resolution may be ambiguous. The registry must manage this — either by loading only the active version, or by qualifying family names.
 - Exact version matching means a client cannot open a piece created with a font version it does not have. This is intentional friction: the user is told exactly what is needed and can acquire it through the font management UI. The alternative — silent misrendering — is worse.
