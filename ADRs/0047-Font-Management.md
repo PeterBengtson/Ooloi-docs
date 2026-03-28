@@ -88,13 +88,13 @@ Independent of any specific font, the SMuFL specification defines three JSON fil
 
 **Why both layers are necessary.** Per-font metadata tells the registry what a specific font *can render* and how (metrics, bounding boxes). Spec-level metadata tells the registry what the glyphs *are* and how they relate to each other (classification, vocabulary). The intersection — glyphs that exist in the spec AND are present in the active font — determines what the application can offer the user at any given moment.
 
-**Glyph classification drives the glyph selection mechanism.** Ooloi's notation elements (clefs, noteheads, rests, accidentals, articulations, time signature digits) are defined at a logical level using keywords. The visual realisation of each logical element is determined by a cascade: house style default → piece override → local override. The SMuFL classes define which glyphs are valid alternatives at each level of the cascade. A clef defined with class `:clefsG` can be rendered using any glyph in the `clefsG` class that the active font provides. A notehead set defined with class `:noteheadSetDefault` can be switched to any alternative notehead set class. The spec-level metadata is the foundation of this mechanism.
+**Glyph classification drives the glyph selection mechanism.** The classes from `classes.json` define which glyphs are valid visual alternatives for each notation element. The full glyph selection mechanism — the three-level cascade (house style → piece → local), two selection patterns (single glyph vs. set), the `:additional-glyphs` mechanism for historical variants, and the complete class inventory — is specified in [ADR-0048: SMuFL Glyph Selection Architecture](0048-SMuFL-Glyph-Selection-Architecture.md).
 
 **Font availability filtering.** Not every SMuFL font implements every glyph. When the user is presented with visual alternatives for a notation element, the choices are the intersection of the element's SMuFL class membership and the active font's glyph inventory (from its per-font metadata). Glyphs defined in the spec but absent from the active font simply do not appear as choices. No error, no placeholder — the font's capabilities are respected silently.
 
 ### Bundled Fonts
 
-Ooloi ships with eight SMuFL-compliant notation fonts as JAR resources in `shared/resources/smufl-fonts/`, each with its companion SMuFL metadata JSON. Companion text fonts for lyrics, expression markings, and other text-alongside-music live in `shared/resources/music-text-fonts/`.
+Ooloi ships with eleven SMuFL-compliant notation fonts as JAR resources in `shared/resources/smufl-fonts/`, each with its companion SMuFL metadata JSON. Companion text fonts for lyrics, expression markings, and other text-alongside-music live in `shared/resources/music-text-fonts/`.
 
 **Bundled notation fonts:**
 
@@ -102,7 +102,10 @@ Ooloi ships with eight SMuFL-compliant notation fonts as JAR resources in `share
 |---|---|---|---|
 | Bravura (v1.392) | Traditional engraved (SMuFL reference) | Steinberg | SIL OFL |
 | Finale Maestro | Traditional engraved (classic Finale) | MakeMusic | SIL OFL |
+| Finale Engraver | Traditional engraved (Urtext influence) | MakeMusic | SIL OFL |
+| Finale Legacy | Traditional engraved (Petrucci style) | MakeMusic | SIL OFL |
 | Leland (v0.80) | Traditional engraved (SCORE-inspired) | MuseScore | SIL OFL |
+| Sebastian (v1.35) | Traditional engraved (distinct character) | Florian Kretlow & Ben Byram-Wigfield | SIL OFL |
 | Petaluma (v1.065) | Handwritten (Real Book jazz) | Steinberg | SIL OFL |
 | Finale Jazz | Handwritten (bold jazz) | MakeMusic | SIL OFL |
 | Finale Broadway | Handwritten (theatre/copyist) | MakeMusic | SIL OFL |
@@ -230,6 +233,7 @@ The benefit — making bundled SMuFL fonts available to other applications — d
 ### Related ADRs
 
 - [ADR-0006: SMuFL](0006-SMuFL.md) — adopts SMuFL as the sole font standard; this ADR implements the management layer
+- [ADR-0048: SMuFL Glyph Selection Architecture](0048-SMuFL-Glyph-Selection-Architecture.md) — class-driven glyph selection mechanism built on the spec-level metadata this ADR loads
 - [ADR-0005: JavaFX and Skija](0005-JavaFX-and-Skija.md) — frontend rendering framework; Skija draws the score, JavaFX draws the UI
 - [ADR-0003: Plugins](0003-Plugins.md) — plugin system that may extend SMuFL-based notation with specialised symbols
 - [ADR-0016: Settings](0016-Settings.md) / [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) — active font selection stored in application settings
