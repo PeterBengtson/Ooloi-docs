@@ -11,6 +11,8 @@ Accepted
   - [Font Registry Component](#font-registry-component)
   - [Dual Registration](#dual-registration)
   - [Metadata Loading](#metadata-loading)
+    - [Per-Font Metadata](#per-font-metadata)
+    - [Spec-Level Metadata](#spec-level-metadata)
   - [Bundled Fonts](#bundled-fonts)
   - [Local Font Discovery](#local-font-discovery)
   - [User-Supplied Fonts](#user-supplied-fonts)
@@ -61,6 +63,10 @@ Both registrations happen in a single function. There is no path by which one re
 
 ### Metadata Loading
 
+The font registry consumes two distinct layers of SMuFL metadata: spec-level metadata that defines the universal vocabulary and classification of all SMuFL glyphs, and per-font metadata that describes which glyphs a specific font provides and their metrics.
+
+#### Per-Font Metadata
+
 Each SMuFL font ships with a companion `metadata.json` file conforming to the SMuFL specification. The registry parses this JSON at registration time and stores the result alongside the font. The parsed metadata includes:
 
 - **Glyph names → codepoints**: the mapping from canonical SMuFL names to Unicode Private Use Area codepoints.
@@ -69,6 +75,22 @@ Each SMuFL font ships with a companion `metadata.json` file conforming to the SM
 - **Engraving defaults**: staff line thickness, stem width, beam spacing, and other font-specific defaults the rendering pipeline uses when no user override exists.
 
 The rendering pipeline reads all glyph metrics from the registry. There is no separate metadata loading path.
+
+#### Spec-Level Metadata
+
+Independent of any specific font, the SMuFL specification defines three JSON files that describe the universal glyph vocabulary and its organisation. These are bundled at `shared/src/main/clojure/ooloi/shared/smufl/metadata/` and loaded once at registry initialisation (they are font-independent and never change between fonts):
+
+| File | Contents | Purpose |
+|---|---|---|
+| `glyphnames.json` | Canonical name, Unicode codepoint, and description for every glyph in the SMuFL specification | Authoritative glyph vocabulary. The rendering pipeline, UI controls, and any component that references a SMuFL glyph by name resolves it through this file. |
+| `classes.json` | Named groupings of functionally related glyphs (e.g., `clefsG` contains all G clef variants, `noteheadSetDefault` contains the standard notehead set) | Glyph classification. Drives user-facing glyph selection: when a user chooses an alternative visual variant for a notation element, the class determines which glyphs are valid alternatives. |
+| `ranges.json` | Named ranges of glyphs as they appear in the SMuFL specification layout, with descriptions (e.g., `medievalAndRenaissanceClefs`, `rests`, `noteheads`) | Broader organisational groupings. Used alongside classes to discover related glyphs across historical periods and notation systems. |
+
+**Why both layers are necessary.** Per-font metadata tells the registry what a specific font *can render* and how (metrics, bounding boxes). Spec-level metadata tells the registry what the glyphs *are* and how they relate to each other (classification, vocabulary). The intersection — glyphs that exist in the spec AND are present in the active font — determines what the application can offer the user at any given moment.
+
+**Glyph classification drives the glyph selection mechanism.** Ooloi's notation elements (clefs, noteheads, rests, accidentals, articulations, time signature digits) are defined at a logical level using keywords. The visual realisation of each logical element is determined by a cascade: house style default → piece override → local override. The SMuFL classes define which glyphs are valid alternatives at each level of the cascade. A clef defined with class `:clefsG` can be rendered using any glyph in the `clefsG` class that the active font provides. A notehead set defined with class `:noteheadSetDefault` can be switched to any alternative notehead set class. The spec-level metadata is the foundation of this mechanism.
+
+**Font availability filtering.** Not every SMuFL font implements every glyph. When the user is presented with visual alternatives for a notation element, the choices are the intersection of the element's SMuFL class membership and the active font's glyph inventory (from its per-font metadata). Glyphs defined in the spec but absent from the active font simply do not appear as choices. No error, no placeholder — the font's capabilities are respected silently.
 
 ### Bundled Fonts
 
