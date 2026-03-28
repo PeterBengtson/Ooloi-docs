@@ -99,6 +99,7 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
 | Sopranino Clarinet in E♭ | treble | Minor third above written | |
+| Clarinet in D | treble | Major second above written | |
 | Clarinet in C | treble | — | |
 | Clarinet in B♭ | treble | Major second below written | |
 | Clarinet in A | treble | Minor third below written | |
@@ -205,6 +206,7 @@ and bass clef therefore yield different transposition intervals for the same ins
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
+| Soprano Trombone | treble | — | |
 | Alto Trombone | alto; treble | — | |
 | Tenor Trombone | bass; tenor | — | |
 | Bass Trombone | bass | — | |
@@ -284,6 +286,8 @@ and bass clef therefore yield different transposition intervals for the same ins
 |---|---|
 | Crash Cymbals | |
 | Suspended Cymbal | |
+| Ride Cymbal | |
+| Sizzle Cymbal | Riveted suspended cymbal |
 | Chinese Cymbal | |
 | Tam-tam | |
 | Finger Cymbals | |
@@ -436,9 +440,12 @@ single staff.
 |---|---|---|
 | SATB Choir | 4 | Standard mixed chorus |
 | SATB Choir (grand staff) | 2 | SA on treble staff, TB on bass staff |
+| SAB Choir | 3 | Three-part mixed chorus |
 | SSAATTBB Choir | 8 | Eight-part single chorus (2S, 2A, 2T, 2B) |
 | SA Choir | 2 | Women's or children's two-part |
+| SSA Choir | 3 | Three-part women's or children's chorus |
 | SSAA Choir | 4 | Two soprano + two alto parts |
+| TB Choir | 2 | Men's two-part |
 | TTBB Choir | 4 | Two tenor + two bass parts |
 | Knabenchor | 2 | Boys' choir (SS) |
 
