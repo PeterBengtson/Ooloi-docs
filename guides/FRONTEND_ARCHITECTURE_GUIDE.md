@@ -449,8 +449,12 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-range-field` | HBox with label, low/high sub-labels and text fields |
 | `ooloi-transposition-controls` | HBox with direction/quality/interval combo-boxes and octave spinner; accepts `:locale` cache-buster |
 | `ooloi-transposition-field` | nil → unchecked checkbox; non-nil → VBox with transposition controls and clef override rows; accepts `:locale` |
-| `ooloi-instrument-editor` | TitledPane with HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors; accepts `:locale`, `:selected-staves`, `:on-staff-clicked`, `:on-staff-drag-detected` (3-arity fn wrapped in per-staff closure), `:on-collapsed`. DRAG_OVER filter accepts staff drags when expanded, rejects when collapsed. Uses nested-pane-safe event handling (see §4.6) |
-| `ooloi-staff-editor` | TitledPane for a staff within an instrument; HBox graphic with staff name (suppressed when blank) and translated written default-clef. Accepts `:selected`, `:instrument-id`, and `:on-mouse-clicked`. DRAG_OVER filter sets both `:target-instrument-id` and `:target-staff-id` in `dnd/*drag-data` — enabling position-accurate staff drops. Mirrors selection highlight via `own-lookup`. Arrow-only expand/collapse with nested-pane-safe event handling |
+| `ooloi-clef-selector-field` | Clef selector: label + clef combo-box using `ooloi-labelled-field`. Uses `clef-choices` derived from `staff/valid-clefs`. Accepts `:label`, `:value`, `:locale`, `:on-value-changed`, `:disable` |
+| `ooloi-written-clef` | Written clef section: clef selector row + `[+]` button + aux-range rows (one per `:aux-ranges` entry). Aux-range clef combos exclude default written clef and sibling aux clefs. Accepts `:clefs`, `:label`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
+| `ooloi-sounding-clef` | Sounding clef selector (transposing instruments only). Accepts `:clefs`, `:label`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
+| `ooloi-aux-range-row` | Single aux-range row: clef combo + low/high text fields + `[-]` button. Fires `:staff-aux-clef-changed`, `:staff-aux-text-changed`, `:staff-aux-commit`, `:staff-aux-remove` events. Accepts `:clef`, `:aux-range`, `:available-clefs`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
+| `ooloi-instrument-editor` | TitledPane with HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors. Passes `(permissions/allowed? :edit-staff)` as `:editable?` to each staff editor. Accepts `:instrument`, `:locale`, `:editable?`, `:selected-staves`, `:on-staff-clicked`, `:on-staff-drag-detected` (3-arity fn wrapped in per-staff closure), `:on-collapsed`. DRAG_OVER filter accepts staff drags when expanded, rejects when collapsed. Uses nested-pane-safe event handling (see §4.6) |
+| `ooloi-staff-editor` | TitledPane for a staff within an instrument. HBox graphic with staff name and translated written default-clef. Content VBox with name/short-name text fields, num-lines spinner, written-clef component (with aux-ranges), and sounding-clef component (when transposing). All controls respect `:editable?`. Accepts `:staff`, `:locale`, `:editable?`, `:transposing?`, `:instrument-id`, `:selected`, `:on-mouse-clicked`. DRAG_OVER filter sets `:target-instrument-id` and `:target-staff-id`. Arrow-only expand/collapse with nested-pane-safe event handling |
 
 These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
 
@@ -1273,6 +1277,29 @@ switching between local and remote backends does not require reinterpretation of
 The frontend continues to perform the same role: a computationally strong execution layer at the end of a deterministic decision pipeline.
 
 Where that pipeline runs may vary. The discipline of the frontend remains constant.
+
+### 11.3 Frontend Permission Gating
+
+**File:** `frontend/src/main/clojure/ooloi/frontend/permissions.clj`
+
+The frontend uses a permission gating system to control which UI operations are available to the current user. This is **visual feedback only** — the backend is the real enforcer via gRPC interceptors (ADR-0036). The frontend gates at the handler level, not the gesture level, so all invocation paths (keyboard, menu, drag-and-drop) are covered by a single `allowed?` check per operation.
+
+**Transport-aware stub.** The `allowed?` function checks the transport type of the current gRPC connection via `srv-client/*srv-client*`:
+
+- **`:in-process`** (local desktop): always `true` — the user is the host
+- **`:network`** (remote server): always `false` — real permission delivery not yet implemented
+- **`nil`** (tests, early init): `true`
+
+**Operation keywords** follow a `verb-noun` convention. Staff and instrument permissions are independent — an admin can control each separately per role or person:
+
+| Category | Keywords |
+|----------|----------|
+| Instrument | `:edit-instrument`, `:delete-instrument`, `:copy-instrument`, `:reorder-instrument` |
+| Staff | `:edit-staff`, `:delete-staff`, `:copy-staff`, `:reorder-staff` |
+
+**Handler gating** — mutation handlers wrap their body in `(when (permissions/allowed? :keyword) ...)`. **Editor disable gating** — `ooloi-instrument-editor` passes `(permissions/allowed? :edit-staff)` as `:editable?` to each staff editor; when `false`, all interactive controls have `:disable true`.
+
+When collaborative sessions are implemented, `allowed?` will check against a set of granted operations populated from the gRPC session handshake. The handler-level gating pattern and keyword vocabulary are permanent — only the implementation of `allowed?` will change.
 
 ---
 
