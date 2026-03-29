@@ -454,6 +454,13 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 
 These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
 
+**Utility helpers** in `cljfx.clj` — not component functions, but shared imperative helpers used across UI modules:
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `action-handler` | `[f]` | Returns a `javafx.event.EventHandler` that calls `(f)`, ignoring the event. Use instead of inline `reify javafx.event.EventHandler` for `.setOnAction` and similar no-arg wiring |
+| `setup-editor-pane!` | `[pane opts]` | Common TitledPane setup shared by `ooloi-instrument-editor` and `ooloi-staff-editor`: arrow-only expand/collapse, title press consumption, edge-to-edge selection style mirroring. Optional `:on-drag-over` and `:on-collapsed` callbacks. See §4.6 for the nested TitledPane helpers it uses internally |
+
 ### 4.5 Per-Window Reactive Renderer
 
 Every application window uses a **per-window reactive renderer** ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). The renderer manages the content Node reactively; the UI Manager manages the Stage. These two responsibilities are absolute and never overlap. One-time `cljfx/create-component` + `cljfx/instance` materialisation without a renderer is reserved exclusively for `show-confirmation!`, which materialises a blocking cljfx `:alert` spec and returns synchronously via `.showAndWait`. Confirmation dialogs bypass `show-window!` entirely and have no lifecycle after dismissal. All other windows use `cljfx/mount-renderer`.
