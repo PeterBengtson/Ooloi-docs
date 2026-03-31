@@ -295,15 +295,20 @@ The recognised `:window/*` keys for `:window-open-requested` events:
 | `:window/default-position` | Default `{:x n :y n}` if no persisted state exists |
 | `:window/default-size` | Default `{:width n :height n}` if no persisted state exists |
 
-**Event dispatch pipeline keys** — when present, the UI Manager builds a cljfx renderer with a co-effects/effects event dispatch pipeline (see §4.5):
+**Declarative window pipeline keys** — when `:window/spec-fn` is present, the UI Manager builds a cljfx renderer with full lifecycle management (see §4.5):
 
 | Key | Purpose |
 |-----|---------|
 | `:window/spec-fn` | Pure function `(state → cljfx-description)` — the renderer's `:middleware` via `wrap-map-desc` |
-| `:window/handler` | Pure function `(event-with-co-effects → effects-map)` — the event handler |
+| `:window/handler` | Event handler function — passed as `:fx.opt/map-event-handler` |
+| `:window/state` | The state atom the renderer watches — `swap!` triggers reactive re-render |
 | `:window/co-effects` | Map of `{key → atom}` — each atom derefed and injected into the event before the handler |
 | `:window/effects` | Map of `{key → atom}` — effect consumers that `reset!` atoms from the handler's return map |
-| `:window/state` | The state atom the renderer watches — `swap!` triggers reactive re-render |
+| `:window/subscriptions` | Vector of `{:topic kw :handler fn}` — event bus subscriptions auto-subscribed on open, auto-unsubscribed on close |
+| `:window/watches` | Vector of `{:ref atom :key kw :fn watch-fn}` — atom watches auto-added on open, auto-removed on close |
+| `:window/stylesheets` | Vector of CSS resource path strings — auto-loaded on the scene after window opens |
+
+All four renderer windows (About, Piece, Settings, Instrument Library) use this pipeline. The complete lifecycle — renderer creation, mounting, registration, bus subscriptions, atom watches, stylesheet loading, and all cleanup — is fully automatic. No window module subscribes to `:window-lifecycle` directly or manages its own teardown.
 
 Unknown `:window/*` keys throw at construction time. Non-`:window/*` keys (`:width`, `:height`, etc.) pass through to the Stage directly.
 
@@ -494,7 +499,7 @@ These two responsibilities never overlap.
   Stage → window-registry
 ```
 
-Each call to `piece-window-content` allocates a fresh, independent state atom. This means any number of piece windows can be open simultaneously — each has fully isolated state, its own renderer, and its own lifecycle. A `:window-lifecycle` subscriber handles two events: on `:window-opened`, it calls `ui-manager/register-renderer!` to opt the window into locale and theme reactivity; on `:window-closed`, it calls `cljfx/unmount-renderer`, releasing the atom watch.
+Each `show-piece-window!` call publishes a fresh event with a fresh state atom, so any number of piece windows can be open simultaneously — each has fully isolated state, its own renderer, and its own lifecycle. The declarative pipeline handles renderer registration (for locale and theme reactivity) on open, and unmounts the renderer automatically on close. No window module subscribes to `:window-lifecycle` directly or manages its own cleanup.
 
 The renderer is created with two configurations:
 
@@ -530,11 +535,11 @@ This is the standard path for all interactive windows going forward. The manual 
 
 #### Declarative Convergence
 
-Every window type converges on the same declarative pattern: `ooloi-openable-pane` as the universal collapsible primitive, a per-window mounted renderer driving a private state atom, and event bus subscriptions for external state changes. The Instrument Library window and the Settings window both follow this pattern — no imperative node wiring, no reverse lookup maps, no nil-guards. All state changes flow through the renderer's diff-and-patch cycle.
+Every window type in Ooloi converges on the same fully declarative pattern: a single `eb/publish!` call with a data map that declares intent — spec function, event handler, state atom, subscriptions, watches, and stylesheets. The UI Manager's pipeline handles all lifecycle plumbing: renderer creation, mounting, registration, event bus subscriptions, atom watches, stylesheet loading, and cleanup on close. No window module subscribes to `:window-lifecycle` directly, calls `register-renderer!`, calls `cljfx/unmount-renderer`, or manages its own cleanup. All four renderer windows (About, Piece, Settings, Instrument Library) use this pipeline.
 
 `ooloi-openable-pane` provides two properties that carry forward to all future window types: lazy content (empty VBox when collapsed, reducing initial node count for large lists) and built-in drag-and-drop support (`:on-drag-over` event filter). The Piece window is the next consumer: instruments dragged from the Instrument Library window create Musicians and auxiliary instruments in the piece; Musicians dragged within the Piece window assign to Layouts, creating scores and parts for musicians playing instruments. The same `ooloi-openable-pane` with `:arrow-only-expand`, `:on-drag-over`, and `:on-expanded-changed` serves the Musicians and Layouts panels without new infrastructure.
 
-New windows follow a three-step process: (1) write a spec function that takes state and returns a cljfx description tree built from `ooloi-openable-pane` and the existing component library, (2) create a content function that allocates a state atom, mounts a renderer, and subscribes to relevant event bus categories, (3) register with the UI Manager via `:window-open-requested`. Locale reactivity, theme reactivity, geometry persistence, and lifecycle management are automatic.
+New windows follow a single step: publish a `:window-open-requested` event with a data map declaring `:window/spec-fn`, `:window/handler`, `:window/state`, and optionally `:window/subscriptions`, `:window/watches`, and `:window/stylesheets`. The pipeline builds the renderer, mounts it, registers it, wires all declared subscriptions and watches, loads stylesheets on the scene, and handles all cleanup on close. Locale reactivity, theme reactivity, geometry persistence, and lifecycle management are automatic.
 
 ### 4.6 Style Classes — The setAll() Trap
 
@@ -598,7 +603,7 @@ Mouse movement, key presses, window resize events — these originate in JavaFX.
 Semantic mutations do not propagate through UI state. They are sent to the backend through the polymorphic API. The backend processes them and publishes structured events describing what became stale. These are not UI instructions; they are invalidation signals.
 
 **3. Frontend Event Bus.**
-The frontend event bus is a category-based pub/sub mechanism. All frontend coordination travels through it: window lifecycle requests and results, settings changes, app lifecycle signals, collaboration status, and backend invalidations. Application code publishes requests; the UI Manager subscribes, performs the work, and publishes results. No subsystem reaches sideways into another through direct function calls on the UI Manager — the bus is the interface. Window modules subscribe to `:window-lifecycle` only: the `:window-opened` branch calls `register-renderer!` on the UI Manager, registering the window's private `*state` atom; the `:window-closed` branch unmounts the renderer. Settings-driven reactivity — locale changes in particular — is mediated entirely by the UI Manager, which calls `tr/set-locale!` synchronously then posts `(fx/run-later! ...)` to `swap!` all registered renderer atoms. Windows do not subscribe to `:app-settings` directly.
+The frontend event bus is a category-based pub/sub mechanism. All frontend coordination travels through it: window lifecycle requests and results, settings changes, app lifecycle signals, collaboration status, and backend invalidations. Application code publishes requests; the UI Manager subscribes, performs the work, and publishes results. No subsystem reaches sideways into another through direct function calls on the UI Manager — the bus is the interface. The declarative window pipeline handles all lifecycle management automatically — renderer registration, event bus subscriptions, atom watches, and cleanup on close. No window module subscribes to `:window-lifecycle` directly. Settings-driven reactivity — locale changes in particular — is mediated entirely by the UI Manager, which calls `tr/set-locale!` synchronously then posts `(fx/run-later! ...)` to `swap!` all registered renderer atoms. Windows that need to react to specific settings (like the IL window reacting to language filter changes) declare `:window/subscriptions` in their open event — the pipeline subscribes on open and unsubscribes on close.
 
 The separation is deliberate. Input, semantic mutation, and UI reaction are not collapsed into one mechanism. Each layer speaks in its own vocabulary.
 

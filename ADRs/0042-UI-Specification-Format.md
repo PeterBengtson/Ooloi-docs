@@ -301,55 +301,53 @@ Without `:choices`, all props pass through unchanged (for cases where items are 
 
 ### Per-Window Reactive Renderer
 
-Windows with rich, stateful content use a **per-window cljfx renderer** alongside the standard `show-window!` boundary. The renderer manages the **content** node reactively; the UI Manager manages the **Stage**. These two responsibilities are absolute and never overlap.
+Every application window uses a **per-window cljfx renderer** managed by the declarative pipeline. The renderer manages the **content** node reactively; the UI Manager manages the **Stage**. These two responsibilities are absolute and never overlap.
 
 #### Architecture
 
 ```
-┌────────────── piece_window.clj ───────────────────────────────────┐
+┌────────────── window module (e.g. piece_window.clj) ─────────────┐
 │                                                                   │
-│  backend events ──(future)──► swap!                               │
-│                                  │                                │
-│                     ┌────────────▼───────────────────────────┐    │
-│                     │      *piece-state (atom {})            │    │
-│                     └────────────┬───────────────────────────┘    │
-│                                  │ mount-renderer watches         │
-│                                  ▼                                │
-│                     ┌───────────────────────────────────────┐     │
-│                     │         cljfx renderer                │     │
-│                     │                                       │     │
-│                     │  :middleware — wrap-map-desc          │     │
-│                     │    s → {:fx/type piece-window-spec    │     │
-│                     │         :state s}                     │     │
-│                     │                                       │     │
-│                     │  :fx.opt/map-event-handler            │     │
-│                     │    dispatch-fn                        │     │
-│                     └────────────┬──────────────────────────┘     │
-│                                  │ cljfx/instance                 │
-│                     ┌────────────▼───────────────────────────┐    │
-│                     │    JavaFX Node (BorderPane)            │    │
-│                     │                                        │    │
-│                     │  SplitPane (centre)                    │    │
-│                     │  ├─ ooloi-vscroll-pane: Musicians      │    │
-│                     │  └─ ooloi-vscroll-pane: Layouts        │    │
-│                     │                                        │    │
-│                     │  ooloi-button-bar (bottom)             │    │
-│                     │  └─ ooloi-button "Piece Settings…"     │    │
-│                     │     :on-action {:ooloi/event           │    │
-│                     │                 :ui/show-piece-settings}│   │
-│                     └────────────┬───────────────────────────┘    │
+│  show-piece-window! publishes:                                    │
+│    {:type              :window-open-requested                     │
+│     :window/id         piece-id                                   │
+│     :window/spec-fn    piece-window-spec                          │
+│     :window/handler    dispatch-fn                                │
+│     :window/state      (atom {})                                  │
+│     :window/subscriptions [...]  ;; optional                      │
+│     :window/watches       [...]  ;; optional                      │
+│     :window/stylesheets   [...]} ;; optional                      │
+│                                                                   │
 └──────────────────────────────────┼────────────────────────────────┘
-                                   │ :window/content
+                                   │ eb/publish! :window-requests
                                    ▼
-                        show-window! (UI Manager)
-                        Stage → window-registry
+┌──────────────── UI Manager pipeline ─────────────────────────────┐
+│                                                                   │
+│  1. Compose handler (wrap-co-effects, wrap-effects if declared)  │
+│  2. Create renderer (wrap-map-desc + map-event-handler)          │
+│  3. Initial render: @(renderer @*state)                          │
+│  4. Mount renderer: cljfx/mount-renderer                         │
+│  5. Extract Node: cljfx/instance → :window/content               │
+│  6. show-window! → Stage → window-registry                       │
+│  7. register-renderer! (locale/theme reactivity)                 │
+│  8. Subscribe declared :window/subscriptions                     │
+│  9. Add declared :window/watches                                 │
+│ 10. Load declared :window/stylesheets                            │
+│                                                                   │
+│  On close-window!:                                               │
+│  1. Unsubscribe all stored bus handlers                          │
+│  2. Remove all stored atom watches                               │
+│  3. Unmount renderer                                             │
+│  4. Persist geometry, close Stage, remove registry entry         │
+│                                                                   │
+└──────────────────────────────────────────────────────────────────┘
 
 Map event flow:
   Button click
     │ cljfx appends :fx/event, calls map-event-handler
     ▼
   dispatch-fn (injected from system.clj)
-    ├─ piece-internal events ──► piece_window.clj handler (future)
+    ├─ module-internal events ──► window module handler
     └─ app commands ────────────► action-handlers (system.clj)
                                    :ui/show-piece-settings → fn
                                    :ui/quit → fn
@@ -358,16 +356,16 @@ Map event flow:
 
 #### How it works
 
-1. `piece-window-content` allocates a fresh state atom per call — each piece window has its own isolated state.
-2. `piece-window-content` creates the renderer with two configurations:
-   - **`:middleware`** — `cljfx/wrap-map-desc` transforms each new atom value into a cljfx description by calling `piece-window-spec` with the current state.
-   - **`:fx.opt/map-event-handler`** — routes all map-form `:on-action` values to a single dispatcher. When a cljfx element has `:on-action {:ooloi/event :foo}` (a map, not a function), cljfx appends `:fx/event` and calls this handler on the JAT.
+1. `show-piece-window!` publishes a `:window-open-requested` event with a data map declaring `:window/spec-fn`, `:window/handler`, `:window/state`, and optionally `:window/subscriptions`, `:window/watches`, and `:window/stylesheets`.
+2. The UI Manager's pipeline composes the handler with `cljfx/wrap-co-effects` and `cljfx/wrap-effects` (if declared), then creates a renderer with:
+   - **`:middleware`** — `cljfx/wrap-map-desc` transforms each new atom value into a cljfx description by calling the spec function with the current state.
+   - **`:fx.opt/map-event-handler`** — routes all map-form `:on-action` values through the composed handler.
 3. The renderer is called once with the initial state. `cljfx/mount-renderer` then keeps it watching the atom.
-4. `cljfx/instance` extracts the JavaFX Node. This is passed as `:window/content` in the `:window-open-requested` event.
-5. The renderer continues managing the Node reactively after the window opens — `swap!`ing the state atom diffs and patches the live scene graph without Stage recreation.
-6. A `:window-lifecycle` subscriber handles two events for the window's id: `:window-opened` calls `(ui-manager/register-renderer! manager window-id *state)` to enrol the atom in locale/theme reactivity; `:window-closed` calls `cljfx/unmount-renderer` to release the atom watch and unsubscribes the handler.
+4. `cljfx/instance` extracts the JavaFX Node. This is passed as `:window/content` to `show-window!`.
+5. The pipeline registers the renderer for locale/theme reactivity, subscribes all declared event bus subscriptions, adds all declared atom watches, and loads all declared stylesheets.
+6. On close, `close-window!` automatically unsubscribes all bus handlers, removes all atom watches, unmounts the renderer, persists geometry, and closes the Stage. No window module manages its own cleanup.
 
-Because each call to `piece-window-content` allocates a fresh atom and renderer, any number of piece windows can be open simultaneously with fully isolated state.
+Each `show-piece-window!` call publishes a fresh event with a fresh state atom, so any number of piece windows can be open simultaneously with fully isolated state.
 
 #### Map events and dispatch
 
@@ -383,9 +381,10 @@ This keeps each window module a **self-contained dispatch world**: internal even
 #### Boundary invariants
 
 - **Renderers manage content nodes, never Stages.** The windowing infrastructure is unaware of renderers; renderers are unaware of Stages.
-- **`dispatch-fn` is injected, not captured.** Window content functions receive it as a parameter. This keeps modules independently testable.
+- **`dispatch-fn` is injected, not captured.** `show-*!` functions receive it as a parameter. Window modules have no direct reference to application state or action tables. This keeps modules independently testable.
 - **State atoms are private.** Only the owning module writes to them. Callers cannot mutate window state directly.
-- **State updates from any source are safe.** `swap!` may come from user interactions, event bus subscriptions, or settings changes. The renderer reacts uniformly.
+- **State updates from any source are safe.** `swap!` may come from user interactions, event bus subscriptions, atom watches (library data changes), or settings changes. The renderer reacts uniformly.
+- **Cleanup is automatic.** No window module subscribes to `:window-lifecycle`, calls `register-renderer!`, calls `cljfx/unmount-renderer`, or manages its own teardown. The pipeline does it all.
 
 #### When to use a renderer
 
@@ -393,7 +392,7 @@ This keeps each window module a **self-contained dispatch world**: internal even
 
 **Use `cljfx/create-component` + `cljfx/instance` once** (no renderer) only for `show-confirmation!`, which materialises a blocking cljfx `:alert` spec and returns synchronously via `.showAndWait`. Confirmation dialogs are not full windows — they bypass `show-window!` entirely and have no ongoing lifecycle.
 
-**Locale reactivity pattern.** Windows call `(ui-manager/register-renderer! manager window-id *state)` in their `:window-opened` lifecycle handler, passing their private state atom to the UI Manager's window registry. When the UI Manager receives a `:setting-changed` event for `:ui/locale`, it calls `tr/set-locale!` synchronously on the event bus thread, then posts `(fx/run-later! ...)` to the JAT to call `(swap! *state identity)` on every registered renderer atom. The renderer re-evaluates the spec after the locale is already updated. Windows do not subscribe to `:app-settings` directly — locale reactivity is centralised in the UI Manager. The `:window-closed` branch of the `:window-lifecycle` handler calls `cljfx/unmount-renderer`.
+**Locale reactivity pattern.** The declarative pipeline automatically registers each window's renderer with the UI Manager via `register-renderer!` during `show-window!`. When the UI Manager receives a `:setting-changed` event for `:ui/locale`, it calls `tr/set-locale!` synchronously on the event bus thread, then posts `(fx/run-later! ...)` to the JAT to call `(swap! *state identity)` on every registered renderer atom. The renderer re-evaluates the spec after the locale is already updated. Windows do not subscribe to `:app-settings` for locale — the UI Manager mediates locale reactivity through the renderer registry. On close, `close-window!` automatically unmounts the renderer, unsubscribes all declared event bus subscriptions, and removes all declared atom watches.
 
 **Renderer spec is the locale-reactivity boundary.** Only content inside the renderer spec updates when the locale changes. One-time materialisation (`cljfx/create-component` + `cljfx/instance` without `cljfx/mount-renderer`) produces content constructed once and never re-evaluated again. For a window to be locale-reactive, all its visible content — button labels, headings, field prompts — must be returned by the spec function that the renderer's `:middleware` evaluates on each render cycle. Content built outside the renderer spec silently retains the locale active at window-open time.
 
@@ -524,10 +523,10 @@ The `:window-open-requested` handler supports four materialisation paths:
 
 1. **`:window/content-spec`** — materialise a cljfx data spec to a Node via `create-component` + `instance`.
 2. **`:window/type`** — look up a registered factory function by type keyword.
-3. **`:window/spec-fn`** — create a full renderer + dispatch pipeline from declarative keys (this section). The standard path for all interactive windows.
-4. **Pass-through** — the event already contains a pre-built `:window/content` Node.
+3. **`:window/spec-fn`** — create a full renderer + dispatch pipeline from declarative keys (this section). **The standard path for all renderer windows.** All four windows (About, Piece, Settings, Instrument Library) use this path.
+4. **Pass-through** — the event already contains a pre-built `:window/content` Node. Used by the splash screen.
 
-Path 3 is the standard for interactive windows going forward. Paths 1 and 2 support plugin-contributed windows and one-time materialisation. Path 4 is the legacy path for windows that build their own content before publishing.
+Paths 1 and 2 support plugin-contributed windows. Path 4 exists for unusual windows that manage their own content (splash screen). The manual approach of building a renderer in the window module and passing a pre-built Node is no longer used by any production window.
 
 ### Architectural Invariants
 
