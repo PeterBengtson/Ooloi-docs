@@ -102,6 +102,8 @@ The same principle ripples through the entire frontend:
 
 None of this requires the plugin to import JavaFX classes, manipulate scene graphs, or manage threads. The frontend infrastructure handles materialisation. The plugin speaks in data.
 
+To make this possible, all Java interop is confined to a minimal set of boundary files — currently `cljfx.clj` (component lifecycle: event filters, property listeners, style mirroring, drag-over handlers) and `ui_manager.clj` (Stage lifecycle: creation, geometry persistence, window registry). Every window module, event handler, and spec function outside these boundaries operates exclusively on Clojure data. Specs compose freely from standard cljfx types (`:h-box`, `:v-box`, `:region`, `:label`, etc.) for layout and static content, plus `ooloi-*` component functions for responsive, interactive components that require JavaFX interop underneath. This vocabulary, together with the map-form event dispatch pipeline, is the complete interface between the application layer and JavaFX. Everything above it is data — generatable, testable, and portable across all transport modes. See [UI Architecture §1](../research/UI_ARCHITECTURE.md) for the full specification.
+
 This is what the apparent rigidity protects. It is not rigidity for its own sake. It is the structural precondition for a plugin system where third‑party extensions operate at the same level of architectural integrity as core code — across process boundaries, across network boundaries, and across trust boundaries.
 
 The result is a system where:
