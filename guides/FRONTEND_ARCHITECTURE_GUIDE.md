@@ -432,13 +432,12 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-menu` | `:text-key` | `:menu` |
 | `ooloi-command-item` | `:descriptor`, `:state` | `:menu-item` with resolved text and `:disable` |
 | `ooloi-dense-combo-box` | `:choices` (optional), `:locale` (optional cache-buster) | Dense `:combo-box` with AtlantaFX base style-classes and ordered lifecycle (items-before-value); with `:choices`, uses cljfx cell factory pattern — items stay as keywords, `:fx/event` delivers keywords; `:locale` forces re-render so cell factories capture current `tr` |
-| `ooloi-dense-text-field` | — | `:text-field` with correct AtlantaFX base style-classes for dense layout |
+| `ooloi-openable-pane` | `:expanded`, `:on-expanded-changed`, `:arrow-only-expand`, `:on-drag-over`, `:on-collapsed`, `:extra-style-classes`, `:locale` | Universal primitive for all openable/closable panes. Dense TitledPane with lazy content (empty VBox when collapsed). Arrow-only mode wires MOUSE_CLICKED/MOUSE_PRESSED filters and style mirroring via `ext-on-instance-lifecycle`. Used by family panes, instrument editors, staff editors, and settings tiles |
+| `ooloi-dense-text-field` | `:on-commit` (optional) | Dense `:text-field` with AtlantaFX base style-classes. With `:on-commit`: fires `(on-commit text-string)` on Enter and focus loss. Without: all props pass through |
 | `ooloi-dense-spinner` | `:min`, `:max`, `:value` | Dense `:spinner` with integer value factory; non-editable (small numeric ranges) |
 | `ooloi-search-field` | `:text`, `:on-text-changed` | AtlantaFX `CustomTextField` with muted magnifying glass icon (visible only when empty); `ext-instance-factory` with `["text-input" "text-field" "custom-text-field" Styles/DENSE]` |
 | `ooloi-icon-button` | `:icon-literal` | Flat `:button` with `FontIcon` graphic; encapsulates `Styles/FLAT` and `ext-instance-factory` |
 | `ooloi-notification` | `:text-key`, `:raw-text`, `:type`, `:icon`, `:opacity`, `:min-height` | AtlantaFX `Notification` node |
-| `ooloi-titled-pane` | `:text`, `:extra-style-classes` | TitledPane with `["titled-pane" Styles/DENSE]`; merges `:extra-style-classes`; all props pass through |
-
 **Composite components** encode Ooloi's layout conventions, not just atomic elements:
 
 | Component | Encapsulated layout |
@@ -453,8 +452,8 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-written-clef` | Written clef section: clef selector row + `[+]` button + aux-range rows (one per `:aux-ranges` entry). Aux-range clef combos exclude default written clef and sibling aux clefs. Accepts `:clefs`, `:label`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
 | `ooloi-sounding-clef` | Sounding clef selector (transposing instruments only). Accepts `:clefs`, `:label`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
 | `ooloi-aux-range-row` | Single aux-range row: clef combo + low/high text fields + `[-]` button. Fires `:staff-aux-clef-changed`, `:staff-aux-text-changed`, `:staff-aux-commit`, `:staff-aux-remove` events. Accepts `:clef`, `:aux-range`, `:available-clefs`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
-| `ooloi-instrument-editor` | TitledPane with HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors. Passes `(permissions/allowed? :edit-staff)` as `:editable?` to each staff editor. Accepts `:instrument`, `:locale`, `:editable?`, `:selected-staves`, `:on-staff-clicked`, `:on-staff-drag-detected` (3-arity fn wrapped in per-staff closure), `:on-collapsed`. DRAG_OVER filter accepts staff drags when expanded, rejects when collapsed. Uses nested-pane-safe event handling (see §4.6) |
-| `ooloi-staff-editor` | TitledPane for a staff within an instrument. HBox graphic with staff name and translated written default-clef. Content VBox with name/short-name text fields, num-lines spinner, written-clef component (with aux-ranges), and sounding-clef component (when transposing). All controls respect `:editable?`. Accepts `:staff`, `:locale`, `:editable?`, `:transposing?`, `:instrument-id`, `:selected`, `:on-mouse-clicked`. DRAG_OVER filter sets `:target-instrument-id` and `:target-staff-id`. Arrow-only expand/collapse with nested-pane-safe event handling |
+| `ooloi-instrument-editor` | Instrument editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors. Passes `(permissions/allowed? :edit-staff)` as `:editable?` to each staff editor. Accepts `:instrument`, `:locale`, `:editable?`, `:selected-staves`, `:on-staff-clicked`, `:on-staff-drag-detected` (3-arity fn wrapped in per-staff closure), `:on-collapsed`, `:on-expanded-changed`. `:on-drag-over` accepts staff drags when expanded, rejects when collapsed |
+| `ooloi-staff-editor` | Staff editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic with staff name and translated written default-clef. Content VBox with name/short-name text fields, num-lines spinner, written-clef (with aux-ranges), sounding-clef (when transposing). All controls respect `:editable?`. Accepts `:staff`, `:locale`, `:editable?`, `:transposing?`, `:instrument-id`, `:selected`, `:on-mouse-clicked`. `:on-drag-over` sets `:target-instrument-id` and `:target-staff-id` |
 
 These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
 
@@ -463,7 +462,6 @@ These ensure consistent spatial rhythm throughout the application without repeat
 | Function | Signature | Purpose |
 |----------|-----------|---------|
 | `action-handler` | `[f]` | Returns a `javafx.event.EventHandler` that calls `(f)`, ignoring the event. Use instead of inline `reify javafx.event.EventHandler` for `.setOnAction` and similar no-arg wiring |
-| `setup-editor-pane!` | `[pane opts]` | Common TitledPane setup shared by `ooloi-instrument-editor` and `ooloi-staff-editor`: arrow-only expand/collapse, title press consumption, edge-to-edge selection style mirroring. Optional `:on-drag-over` and `:on-collapsed` callbacks. See §4.6 for the nested TitledPane helpers it uses internally |
 
 ### 4.5 Per-Window Reactive Renderer
 
@@ -527,6 +525,14 @@ The UI Manager provides a **declarative event dispatch pipeline** for interactiv
 The UI Manager composes the handler with `cljfx/wrap-co-effects` and `cljfx/wrap-effects`, creates the renderer, mounts it on the state atom, and extracts the JavaFX Node for `show-window!`. The handler is pure: receives an event map with co-effect values merged in, returns an effects map. No side effects in the handler body.
 
 This is the standard path for all interactive windows going forward. The manual approach (creating the renderer within the window module) remains available for windows that need custom lifecycle management. See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §Event Dispatch Pipeline for the full specification.
+
+#### Declarative Convergence
+
+Every window type converges on the same declarative pattern: `ooloi-openable-pane` as the universal collapsible primitive, a per-window mounted renderer driving a private state atom, and event bus subscriptions for external state changes. The Instrument Library window and the Settings window both follow this pattern — no imperative node wiring, no reverse lookup maps, no nil-guards. All state changes flow through the renderer's diff-and-patch cycle.
+
+`ooloi-openable-pane` provides two properties that carry forward to all future window types: lazy content (empty VBox when collapsed, reducing initial node count for large lists) and built-in drag-and-drop support (`:on-drag-over` event filter). The Piece window is the next consumer: instruments dragged from the Instrument Library window create Musicians and auxiliary instruments in the piece; Musicians dragged within the Piece window assign to Layouts, creating scores and parts for musicians playing instruments. The same `ooloi-openable-pane` with `:arrow-only-expand`, `:on-drag-over`, and `:on-expanded-changed` serves the Musicians and Layouts panels without new infrastructure.
+
+New windows follow a three-step process: (1) write a spec function that takes state and returns a cljfx description tree built from `ooloi-openable-pane` and the existing component library, (2) create a content function that allocates a state atom, mounts a renderer, and subscribes to relevant event bus categories, (3) register with the UI Manager via `:window-open-requested`. Locale reactivity, theme reactivity, geometry persistence, and lifecycle management are automatic.
 
 ### 4.6 Style Classes — The setAll() Trap
 
@@ -1413,21 +1419,29 @@ For the complete treatment of Integrant lifecycle, the `with-combined-system` ma
 When a test needs to verify production event listener behaviour wired into a component tree by a builder function — validation logic, CSS class changes, settings commits — the test does not need a Stage, Scene, or OS-level window focus:
 
 ```clojure
-(th/with-test-config {}
-  (let [root (th/run-on-fx-thread-sync!
-               #(cljfx/instance (cljfx/create-component (build-settings-content-spec))))
-        tf   (find-text-field root)
-        btn  (find-button root)]
-    (with-redefs [settings/set-app-setting! (fn [k v & _] ...)]
-      (th/run-on-fx-thread-sync!
-        #(do (.setText tf "value")
-             (#'app-settings-window/commit-text-field! :setting/key tf btn))))
-    ...))
+;; Settings window tests use a mounted renderer — show-app-settings!
+;; opens the window and wires the reactive update cycle.
+(th/with-test-config {:ui/theme :nord-light}
+  (th/with-ui-manager [mgr]
+    (th/run-on-fx-thread-sync!
+      (fn [] (app-settings-window/show-app-settings! mgr (fn [_]))))
+    (Thread/sleep 200)
+    (let [stage    (:stage (get @(:window-registry mgr) :app-settings))
+          outer    (first (.getChildren (.getRoot (.getScene stage))))
+          tab-pane (first (.getChildren outer))
+          ...]
+      ;; Trigger a setting change — the renderer re-renders automatically
+      (th/run-on-fx-thread-sync! (fn [] (.fire reset-btn)))
+      (Thread/sleep 400)
+      ;; Assert that the DOM reflects the change
+      ...)
+    (th/run-on-fx-thread-sync!
+      (fn [] (um/close-window! mgr :app-settings)))))
 ```
 
-`cljfx/create-component` + `cljfx/instance` on the JAT materialises the full node tree with all production listeners attached. Private production functions are callable directly via `(#'ns/fn ...)`.
+The `with-ui-manager` macro wires the event bus (required for `set-app-setting!` to publish `:setting-changed` events). `show-app-settings!` creates a mounted renderer and subscribes to `(:event-bus mgr)` for setting changes. After a setting change, `Thread/sleep 400` allows the renderer cycle to complete. Private production functions are callable directly via `(#'ns/fn ...)`.
 
-**`Node.focusedProperty` cannot be driven in tests.** In test processes initialised via `Platform/startup`, the OS never grants focus to a Stage — `requestFocus()` has no effect and `focusedProperty` ChangeListeners never fire regardless. Code in a focus-loss listener must be tested by calling the listener's target function directly. Do not attempt to simulate OS focus transfer.
+**`Node.focusedProperty` cannot be driven in tests.** In test processes initialised via `Platform/startup`, the OS never grants focus to a Stage — `requestFocus()` has no effect and `focusedProperty` ChangeListeners never fire regardless. The `ooloi-dense-text-field` `:on-commit` callback fires on both Enter and focus loss, but tests that need to verify focus-loss commits must call the listener's target function directly. Do not attempt to simulate OS focus transfer.
 
 **Shutdown race — JAT flush before pool halt.** `run-later!` callbacks queued during `show-window!` or `attach-notification-widget!` may still be pending on the JAT when the pool is halted, causing `RejectedExecutionException`. Drain the JAT queue with a no-op `run-on-fx-thread-sync!` before halting the pool. `with-ui-manager` performs this automatically. Never write manual pool/bus/manager boilerplate in tests.
 
