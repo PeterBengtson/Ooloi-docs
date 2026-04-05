@@ -10,7 +10,7 @@ Performance benchmarks for the Ooloi timewalk traversal system using Criterium f
 - **Graphics**: Intel UHD Graphics 630 1536 MB
 - **macOS**: Sequoia 15.6.1
 
-**MacBook Air (2024) - M3 Comparison**
+**MacBook Pro (2023) - M3 Comparison**
 - **Processor**: Apple M3 chip
 - **Memory**: 16 GB
 - **macOS**: Sonoma 14.x
@@ -39,7 +39,7 @@ For each scope we report two forms:
 | 1 instrument × full piece | Part extraction / analysis | ~35 ms | ~35 ms | Noise within measurement variance |
 | 50 measures × 1 staff | Search endpoint (worst case) | ~2.3 ms | N/A | Real slurs end within 1-2 measures |
 
-**2024 M3 MacBook Air (2-3× improvement):**
+**2023 M3 MacBook Pro (2-3× improvement):**
 
 | Scope | Typical Use | Unrealised Mean | Materialised Mean | Notes |
 |------|--------------|-----------------|-------------------|-------|
@@ -93,7 +93,7 @@ There are two ways to consume this stream:
 | **Load from disk** | Full piece | ~3.3 sec | - | Deserialization + verification |
 | **File size** | Full piece | 0.17 MB | - | 0.35 bytes/pitch with hash-consing |
 
-**2024 M3 MacBook Air (2-3× improvement):**
+**2023 M3 MacBook Pro (2-3× improvement):**
 
 | Operation | Scope | Mean Time | Memory | Notes |
 |-----------|-------|-----------|--------|-------|

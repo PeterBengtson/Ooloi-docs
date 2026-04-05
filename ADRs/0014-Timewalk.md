@@ -604,7 +604,7 @@ Comprehensive benchmarks (October 2025) on a 1000-measure orchestral piece (29 i
 - Constant memory for exports (<10 MB regardless of piece size)
 - Streaming export: 1.25 seconds for 520K pitches
 
-**M3 MacBook Air Performance (2-3× improvement)**:
+**M3 MacBook Pro Performance (2-3× improvement)**:
 - Full traversal: 316ms (~1.6M pitches/second)
 - Cache refresh: 360μs (typical window)
 - Typical slur search: <50 microseconds
