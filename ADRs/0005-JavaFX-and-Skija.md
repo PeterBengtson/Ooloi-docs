@@ -23,7 +23,7 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
    - Existing Clojure wrappers for JavaFX (e.g., cljfx) can simplify development.
 
 3. Cross-platform Support:
-   - JavaFX applications can run on Windows, macOS, and Linux with minimal platform-specific code.
+   - JavaFX applications can run on Windows, macOS, and Linux with minimal platform-specific code. The authoritative list of `(os, arch)` pairs Ooloi actually ships bundles for is in [ADR-0050: Platform Support Policy](0050-Platform-Support-Policy.md).
 
 4. High-Quality, Consistent Printing:
    - Skija's rendering capabilities extend to printing, ensuring high-quality output.

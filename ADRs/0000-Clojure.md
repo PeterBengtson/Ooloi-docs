@@ -19,7 +19,7 @@ We will use Clojure as the primary programming language for developing Ooloi, bo
    - Facilitates easier reasoning about code, particularly beneficial for a complex domain like music notation.
 
 2. JVM Compatibility:
-   - Runs on the Java Virtual Machine, providing excellent performance and cross-platform compatibility.
+   - Runs on the Java Virtual Machine, providing excellent performance and cross-platform compatibility. The specific `(os, arch)` pairs Ooloi targets are recorded in [ADR-0050: Platform Support Policy](0050-Platform-Support-Policy.md).
    - Allows easy integration with existing Java libraries, crucial for GUI (JavaFX) and audio processing.
 
 3. Concurrency Support:

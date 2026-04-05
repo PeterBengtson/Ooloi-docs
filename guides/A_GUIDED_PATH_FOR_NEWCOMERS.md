@@ -170,7 +170,11 @@ The `ExecuteMethod` unified endpoint and `OoloiValue` schema. Dynamic function r
 
 The 36-microsecond roundtrip figure. In combined deployments, gRPC transport is in-process, not networked. The frontend-backend separation is therefore architecturally clean (all mutation goes through the API; the frontend never touches the musical model directly) without performance penalty. This ADR is short and resolves what would otherwise feel like a paradox.
 
-**20. [ADR-0022: Lazy Frontend-Backend Architecture](../ADRs/0022-Lazy-Frontend-Backend-Architecture.md)**
+**20. [ADR-0046: Reference-Passing In-Process Transport](../ADRs/0046-Reference-Passing-In-Process-Transport.md)**
+
+Completes the optimisation chain ADR-0019 began. For in-process gRPC, custom marshallers pass Clojure references directly between frontend and backend rather than converting to and from protobuf. The final conversion overhead vanishes. Read directly after ADR-0019 — together they make the case that "gRPC everywhere" is not a performance compromise for the combined-desktop case, it is the baseline.
+
+**21. [ADR-0022: Lazy Frontend-Backend Architecture](../ADRs/0022-Lazy-Frontend-Backend-Architecture.md)**
 
 The complete data synchronisation model. Three layers: events tell clients which local objects are stale; gRPC requests provide fresh data when needed; local shared API provides fast access to cached data. The key insight: invalidation events contain only structural addresses (VPD regions), not content. The frontend knows *that* something has changed and *where*, then requests fresh data on demand. This is lazy evaluation applied to distributed state.
 
@@ -182,19 +186,19 @@ The complete data synchronisation model. Three layers: events tell clients which
 
 *The domain-specific decisions that determine what notes mean.*
 
-**21. [ADR-0026: Pitch Representation and Operations](../ADRs/0026-Pitch-Representation-and-Operations.md)**
+**22. [ADR-0026: Pitch Representation and Operations](../ADRs/0026-Pitch-Representation-and-Operations.md)**
 
 String-based canonical form: `"C#4"`, `"Bb3-75"` (75 cents below B♭3), `"C###4"`. Pitches are stored as sounding pitches throughout the system. Key signatures do not alter stored pitch values — they are purely presentational constructs that guide the engraving engine. The ADR treats round-trip integrity under diatonic transposition carefully, because it is harder to guarantee than it initially appears.
 
-**22. [ADR-0033: Time Signature Architecture](../ADRs/0033-Time-Signature-Architecture.md)**
+**23. [ADR-0033: Time Signature Architecture](../ADRs/0033-Time-Signature-Architecture.md)**
 
 Composite metres, irrational time signatures, the descriptor string format. Establishes rational arithmetic as the internal representation — no floating-point approximations anywhere in the temporal model.
 
-**23. [ADR-0034: Key Signature Architecture](../ADRs/0034-Key-Signature-Architecture.md)**
+**24. [ADR-0034: Key Signature Architecture](../ADRs/0034-Key-Signature-Architecture.md)**
 
 Standard (major, minor, modal), keyless, mixed-accidental, per-octave variation (Bartók-style), and microtonal key signatures. The critical architectural point: key signatures guide when accidentals are printed; they do not alter stored pitches. This separation between sounding pitch (always stored exactly) and notated pitch (determined at engraving time) is what makes the next ADR possible.
 
-**24. [ADR-0035: Remembered Alterations](../ADRs/0035-Remembered-Alterations.md)**
+**25. [ADR-0035: Remembered Alterations](../ADRs/0035-Remembered-Alterations.md)**
 
 The first "impossible problem turned straightforward" result. Read the problem statement carefully. Accidentals have temporal memory within measures; that memory applies to the musical timeline, not to visual order; multi-staff instruments require a single shared accidental state across all staves. The solution is deterministic via the timewalker. The same input always produces the same accidental decisions, regardless of layout, staff count, or rendering order.
 
@@ -208,11 +212,11 @@ This is worth understanding thoroughly. It is the first empirical confirmation t
 
 *The crown of the architecture. Where all prior foundations become consequence.*
 
-**25. [Blog: "The Rendering Pipeline: Ooloi's Core Architecture"](https://www.ooloi.org/home/the-rendering-pipeline-oolois-core-architecture)**
+**26. [Blog: "The Rendering Pipeline: Ooloi's Core Architecture"](https://www.ooloi.org/home/the-rendering-pipeline-oolois-core-architecture)**
 
 Peter's own description of ADR-0028 in prose, written when the specification was complete. Read this before the ADR itself; it gives the conceptual shape — the fan-out/fan-in pattern, the separation of connecting from non-connecting elements, the plugin hooks at each stage — without the engineering detail.
 
-**26. [ADR-0028: Hierarchical Rendering Pipeline](../ADRs/0028-Hierarchical-Rendering-Pipeline.md)**
+**27. [ADR-0028: Hierarchical Rendering Pipeline](../ADRs/0028-Hierarchical-Rendering-Pipeline.md)**
 
 Six stages:
 
@@ -227,7 +231,7 @@ The gutter model is the detail that enables Stage 3 to be provably optimal: ever
 
 Plugin hooks exist at every stage. Core notation elements and plugin-defined elements use identical interfaces.
 
-**27. [ADR-0037: Measure Distribution Optimisation](../ADRs/0037-Measure-Distribution-Optimization.md)**
+**28. [ADR-0037: Measure Distribution Optimisation](../ADRs/0037-Measure-Distribution-Optimization.md)**
 
 The second "impossible problem turned straightforward" result. The Knuth-Plass algorithm — TeX's paragraph-breaking algorithm from 1981, well-known in typesetting circles — applies directly to measure distribution once Stages 1–2 have resolved vertical coordination and collision detection. The problem that had appeared intractable turns out to be textbook dynamic programming on a one-dimensional sequence with separable costs.
 
@@ -235,11 +239,11 @@ The ADR makes the key point explicitly: the algorithm is not novel; its applicab
 
 [Blog post "Twice"](https://www.ooloi.org/home/twice) captures the significance: two problems the industry treats as inherently heuristic — requiring manual correction, special cases, user-facing knobs to tune approximations — collapsed into straightforward algorithms. Same architectural properties both times: immutable data, rational arithmetic, explicit stage boundaries, semantic determinism before layout.
 
-**28. [ADR-0038: Backend Authoritative Rendering and Terminal Frontend Execution](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**
+**29. [ADR-0038: Backend Authoritative Rendering and Terminal Frontend Execution](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**
 
 The frontend is *terminal*: it executes rendering decisions but never renegotiates, refines, or reinterprets them. The litmus test: discard all frontend rendering state, regenerate from backend → identical output. This is the property that makes distributed collaboration and multiple frontend implementations consistent without complex synchronisation.
 
-**29. [ADR-0013: Slur Formatting](../ADRs/0013-Slur-Formatting.md)**
+**30. [ADR-0013: Slur Formatting](../ADRs/0013-Slur-Formatting.md)**
 
 Stage 5 in practice. Point collection via timewalking; shape determination via hull and Bézier; variable-thickness rendering following copper-plate engraving aesthetics. The problem statement is worth reading even if you are not implementing spanners, because it shows how the pipeline's prior stages provide complete information to Stage 5: atom positions, slur start and end points, items under the slur's span — all resolved before Stage 5 begins.
 
@@ -251,27 +255,27 @@ Stage 5 in practice. Point collection via timewalking; shape determination via h
 
 *How users interact with it, and how the UI is structured.*
 
-**30. [FRONTEND_README.md](../READMEs/FRONTEND_README.md)**
+**31. [FRONTEND_README.md](../READMEs/FRONTEND_README.md)**
 
 The component overview: event-bus, ui-manager, grpc-clients, event-router, fetch-coordinator. Short; establishes vocabulary before the architecture guide.
 
-**31. [ADR-0031: Frontend Event-Driven Architecture](../ADRs/0031-Frontend-Event-Driven-Architecture.md)**
+**32. [ADR-0031: Frontend Event-Driven Architecture](../ADRs/0031-Frontend-Event-Driven-Architecture.md)**
 
 Three event layers: the frontend event bus (category-based pub/sub backed by the shared Claypoole thread pool), the backend event router (categorises and batches backend events for the bus), and JavaFX (UI input only). The threading model and handler isolation guarantee that a slow subscriber cannot block the publisher, and that one handler's failure does not affect others.
 
-**32. [ADR-0039: Localisation Architecture](../ADRs/0039-Localisation-Architecture.md)**
+**33. [ADR-0039: Localisation Architecture](../ADRs/0039-Localisation-Architecture.md)**
 
 GNU gettext `.po` files, `tr-declare` as first-class mechanism for translation key visibility, instant locale switching via event-driven architecture. Short. The critical architectural point: locale is application state, not startup configuration.
 
-**33. [ADR-0042: UI Specification Format](../ADRs/0042-UI-Specification-Format.md)**
+**34. [ADR-0042: UI Specification Format](../ADRs/0042-UI-Specification-Format.md)**
 
 Pure-data UI specification. cljfx specs, setting declarations, command descriptors. The per-window reactive renderer pattern — the piece window as pilot implementation. The absolute invariant: the UI Manager manages Stages (outer window shell); window files manage content nodes (inner reactive content). These responsibilities never overlap.
 
-**34. [ADR-0043: Frontend Settings](../ADRs/0043-Frontend-Settings.md)**
+**35. [ADR-0043: Frontend Settings](../ADRs/0043-Frontend-Settings.md)**
 
 Lazy loading, atomic file writes, closed mutation surface. Short. Read in conjunction with ADR-0042.
 
-**35. [Guide: FRONTEND_ARCHITECTURE_GUIDE.md](FRONTEND_ARCHITECTURE_GUIDE.md)**
+**36. [Guide: FRONTEND_ARCHITECTURE_GUIDE.md](FRONTEND_ARCHITECTURE_GUIDE.md)**
 
 Read this after the individual ADRs, so that specific concepts arrive with context. The guide synthesises window lifecycle, event architecture, the rendering pipeline's frontend side, fetch coordination, localisation, and collaboration.
 
@@ -298,6 +302,14 @@ These documents are not required for understanding Ooloi's architecture. They pr
 **[ADR-0045: Instrument Library](../ADRs/0045-Instrument-Library.md)** — The first non-piece singleton in the architecture: a server-side instrument registry with optimistic locking, lazy frontend caching, and invalidate-only event synchronisation. Concrete proof that the single-authority model scales beyond piece data to any global state. The bundled default library covers the full orchestral repertoire from Bach to Messiaen, together with the mechanisms for users to extend it permanently with instruments of their own.
 
 **[ADR-0030: MusicXML](../ADRs/0030-MusicXML.md)** — Import and export as a first-class plugin, preserving musical meaning rather than graphical approximation.
+
+**[ADR-0047: Font Management](../ADRs/0047-Font-Management.md)** — Font registry with dual Skija/JavaFX registration, bundled-first loading, local font discovery across the OS font directories, exact version matching for pieces (the TeX model: a piece stores the font version it was laid out against, and opening it later requires that exact version to reproduce the layout), and multi-user font consistency for collaborative sessions. Read together with ADR-0048 and ADR-0049 — they form the font-and-glyph cluster.
+
+**[ADR-0048: SMuFL Glyph Selection Architecture](../ADRs/0048-SMuFL-Glyph-Selection-Architecture.md)** — The general mechanism for selecting notation glyphs from the SMuFL specification. Logical keywords resolve to SMuFL classes, which resolve to glyphs through a three-level cascade (house style → piece → local), filtered by the active font's glyph inventory. The additional-glyphs mechanism lets individual glyphs be added to a class without pulling in a whole mixed range. ADR-0049 is the first concrete implementation of this architecture.
+
+**[ADR-0049: Clef Registry](../ADRs/0049-Clef-Registry.md)** — The first application of ADR-0048. Clefs become a registry mapping keywords to structured definitions (class, line or space, pitch, optional additional glyphs), with 17 defaults covering standard practice and full support for user-defined clefs (French violin clef, sub-bass clef, mensural C clefs, anything else). Historically "impossible" in notation software because the conflated keyword space (`:treble`, `:bass`) was the ceiling; factoring it into orthogonal dimensions turns the problem trivial.
+
+**[ADR-0050: Platform Support Policy](../ADRs/0050-Platform-Support-Policy.md)** — The authoritative answer to "what does Ooloi run on?" macOS on Apple Silicon only, Windows and Linux on `x86_64`, with Linux `aarch64` planned. The reasoning section is the most interesting part: the four-case Rosetta matrix, the pathological behaviour of JVMs under binary translation (every JIT output invalidates Rosetta's translation cache), the build-on-target discipline that follows from `jlink`, and Apple's deprecation timeline. Read when you need to understand why Ooloi's distribution looks the way it does.
 
 **[Guide: INTEGRANT_COMPONENTS.md](INTEGRANT_COMPONENTS.md)** — Integrant component lifecycle, the three-project wiring asymmetry, the combined system dependency graph, startup sequence, component wiring checklist (including two unintuitive requirements), and the full testing macro reference. Essential reading before adding any new component to the system.
 

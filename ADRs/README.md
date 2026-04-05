@@ -14,6 +14,7 @@ Technical decisions that shaped Ooloi's architecture, organized by architectural
 - [Backend: Rendering & Layout](#backend-rendering--layout)
 - [Frontend: Execution & UI](#frontend-execution--ui)
 - [Audio Architecture](#audio-architecture)
+- [Platforms & Distribution](#platforms--distribution)
 
 ## Architecture Overview
 
@@ -137,3 +138,9 @@ Playback generation delegated to frontend plugins with backend coordination.
 - **[0027-Plugin-Based-Audio-Architecture](0027-Plugin-Based-Audio-Architecture.md)**: Frontend plugin-based audio architecture with complete backend-frontend audio separation
 - **[0041-Ooloi-Virtual-Instrument-Definition-OVID](0041-Ooloi-Virtual-Instrument-Definition-OVID.md)**: YAML-based virtual instrument definition with canonical technique taxonomy, calibration requirements, and fallback generators
 - **[0044-MIDI-Input-Library-and-Boundary-Architecture](0044-MIDI-Input-Library-and-Boundary-Architecture.md)**: `javax.sound.midi` as single MIDI API, CoreMidi4J as macOS SPI provider, and hard input boundary filter accepting only note and sustain messages
+
+## Platforms & Distribution
+
+The authoritative record of which `(os, arch)` pairs Ooloi targets, and the reasoning behind those choices.
+
+- **[0050-Platform-Support-Policy](0050-Platform-Support-Policy.md)**: Supported platforms (macOS `aarch64`, Windows `x86_64`, Linux `x86_64`); Apple Silicon-only decision with the four-case Rosetta matrix, JVM-under-Rosetta pathology, build-on-target discipline, and Apple's deprecation timeline. The single source of truth for "what does Ooloi run on?"

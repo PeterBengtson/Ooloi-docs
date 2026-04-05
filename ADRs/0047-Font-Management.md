@@ -118,7 +118,7 @@ Bundled fonts are the tested, known-good pairing with the rendering pipeline. A 
 
 ### Local Font Discovery
 
-After loading bundled fonts, the registry scans for locally installed SMuFL-compliant fonts. Font files and SMuFL metadata JSON are stored in separate locations on all platforms — the OS font system knows nothing about SMuFL metadata. The scanner must search both sets of directories and correlate results by font family name.
+After loading bundled fonts, the registry scans for locally installed SMuFL-compliant fonts. Font files and SMuFL metadata JSON are stored in separate locations on all platforms — the OS font system knows nothing about SMuFL metadata. The scanner must search both sets of directories and correlate results by font family name. The set of platforms Ooloi actually ships for is defined in [ADR-0050: Platform Support Policy](0050-Platform-Support-Policy.md); the tables below cover all three supported OSes.
 
 **Font file locations (standard OS font directories):**
 

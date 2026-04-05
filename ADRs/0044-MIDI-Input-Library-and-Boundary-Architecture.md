@@ -75,6 +75,12 @@ it retains the dependency for development and testing. The shared dependency cov
 the combined application build, which is the actual desktop artifact. No conditional
 loading, no platform detection, no application-level branching.
 
+The macOS bundles Ooloi ships target Apple Silicon (`aarch64`) only; the authoritative
+platform list is in [ADR-0050: Platform Support Policy](0050-Platform-Support-Policy.md).
+CoreMidi4J works identically on both Intel and Apple Silicon Macs at the SPI layer,
+so this ADR's reasoning is unaffected by the architectural restriction — the SPI
+provider decision would be the same regardless of which Mac architectures Ooloi targeted.
+
 ### 3. Hard Input Boundary Filter as Architectural Invariant
 
 The MIDI `Receiver` implementation accepts exactly three message types:
