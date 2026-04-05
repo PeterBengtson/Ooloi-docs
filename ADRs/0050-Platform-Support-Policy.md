@@ -28,7 +28,7 @@ Ooloi is distributed as a self-contained desktop application with a bundled JVM 
 
 Until now, Ooloi's supported platforms have been described only in scattered locations — [ADR-0000](0000-Clojure.md) mentions "cross-platform via JVM", [ADR-0005](0005-JavaFX-and-Skija.md) notes that JavaFX runs on Windows, macOS, and Linux, [ADR-0044](0044-MIDI-Input-Library-and-Boundary-Architecture.md) discusses macOS MIDI providers, [ADR-0047](0047-Font-Management.md) discusses platform-specific font directories, and the Project README mentions three platforms. None of these distinguish Intel Macs from Apple Silicon Macs, and no document states authoritatively what an Ooloi build targets.
 
-This gap matters. Apple reclassified 2017 Intel MacBook Pros as "vintage" in 2024 and will complete the Rosetta 2 deprecation in macOS 28. Shipping an Intel-targeted bundle to Apple Silicon users — which is almost all Mac users buying software on current hardware — would force the worst-performing execution path available on their hardware. Shipping two separate Mac bundles doubles the build matrix and the support burden for a population that is already a small minority of the Mac-using audience and is actively shrinking.
+This gap matters. Apple reclassified 2017 Intel MacBook Pros as "vintage" in 2024 and will complete the Rosetta 2 deprecation in macOS 28. Shipping an Intel-targeted bundle to Apple Silicon users — which is almost all Mac users running current software on current hardware — would force the worst-performing execution path available on their hardware. Shipping two separate Mac bundles doubles the build matrix and the support burden for a population that is already a small minority of the Mac-using audience and is actively shrinking.
 
 This ADR records the platform set Ooloi actually targets, the reasoning behind the Apple Silicon decision, and the disciplines that follow from both. It is the authoritative answer to the question "what does Ooloi run on?"; other documents that mention platforms should reference this ADR rather than restate the list.
 
@@ -67,9 +67,9 @@ A single Ooloi build cycle produces one bundle per supported `(os, arch)` pair. 
 
 The decision to drop Intel Mac support and ship only Apple Silicon on macOS rests on three independent legs, any one of which would be sufficient on its own:
 
-1. **Apple Silicon users must not get the Intel bundle.** The overwhelming majority of Mac users buying or updating software on current hardware are on Apple Silicon. Shipping them an Intel bundle forces them to run a JVM under Rosetta 2, which is the worst execution path available on their hardware (see [§JVM Under Rosetta 2](#jvm-under-rosetta-2-the-pathological-case)). This is not a theoretical concern; it is the default outcome if an Intel bundle is the only macOS bundle offered.
+1. **Apple Silicon users must not get the Intel bundle.** The overwhelming majority of Mac users running current software on current hardware are on Apple Silicon. Shipping them an Intel bundle forces them to run a JVM under Rosetta 2, which is the worst execution path available on their hardware (see [§JVM Under Rosetta 2](#jvm-under-rosetta-2-the-pathological-case)). This is not a theoretical concern; it is the default outcome if an Intel bundle is the only macOS bundle offered.
 
-2. **A dual-architecture Mac build matrix does not pay for itself.** Supporting both Intel and Apple Silicon on macOS would double the build, test, and distribution pipeline for the Mac platform while serving an Intel Mac population that is small, shrinking, and increasingly outside Apple's own support window. The engineering cost per user served on Intel Macs is disproportionate to the cost per user on any other supported platform.
+2. **A dual-architecture Mac build matrix is not justified by the audience it would serve.** Supporting both Intel and Apple Silicon on macOS would double the build, test, and distribution pipeline for the Mac platform while serving an Intel Mac population that is small, shrinking, and increasingly outside Apple's own support window. The engineering effort required to support Intel Macs is disproportionate to the number of users it would reach, relative to any other supported platform.
 
 3. **Apple's deprecation timeline makes an Intel Mac bundle a dead end regardless.** Rosetta 2 is being retired in macOS 28. 2017-era Intel Macs are already classified as "vintage". Investing in Intel Mac support now means investing in a target that Apple itself is actively removing from the ecosystem.
 
@@ -116,7 +116,7 @@ An Apple Silicon bundle is built on an Apple Silicon Mac. A Windows bundle is bu
 
 The cost of this discipline is that the build matrix requires one machine per supported `(os, arch)` pair. The benefit is that every bundle is produced under the exact conditions it will run under, and platform-specific bugs cannot hide behind cross-compilation quirks.
 
-This discipline is one of the reasons the dual-architecture Mac matrix does not pay for itself: supporting Intel Macs would require maintaining a permanent Intel Mac build machine in the pipeline, with all the continuous-integration and release-signing plumbing that entails, for a population that is actively leaving the platform.
+This discipline is one of the reasons the dual-architecture Mac matrix is hard to justify: supporting Intel Macs would require maintaining a permanent Intel Mac build machine in the pipeline, with all the continuous-integration and release-signing plumbing that entails, for a population that is actively leaving the platform.
 
 ### Apple's Deprecation Timeline
 
