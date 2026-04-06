@@ -106,6 +106,16 @@ Measured against a native Apple Silicon bundle, the same Mac running the Intel b
 
 This is why "just ship an Intel bundle and let Rosetta handle Apple Silicon" is the wrong answer. Rosetta handles Apple Silicon; it does not handle Apple Silicon *running a JVM*.
 
+### GPU Rendering Path: OpenGL Deprecation and Metal
+
+The JVM execution path is not the only platform-level concern that favours Apple Silicon on macOS. The GPU rendering path tells the same story from a different angle.
+
+Ooloi uses Skija (Java bindings for Skia) for high-performance 2D rendering and printing ([ADR-0005](0005-JavaFX-and-Skija.md)). Skija currently uses OpenGL as its GPU backend on macOS. Apple deprecated OpenGL in macOS 10.14 Mojave (2018) and has not updated it since. OpenGL still functions, but it is a dead-end path that will eventually be removed.
+
+The successor is Metal, Apple's native GPU API. On Apple Silicon, Metal is the native execution path — Apple Silicon GPUs use a tile-based deferred rendering (TBDR) architecture designed from the ground up for Metal. On Intel Macs, Metal was a compatibility layer over GPUs (Intel, AMD, Nvidia) designed for immediate-mode rendering. Apple has stopped updating Metal support for Intel hardware: Intel Metal received no updates in macOS Ventura, and Metal 2/3 capabilities are being deprecated on Intel machines.
+
+When Skija's Metal backend ships — it is planned but not yet available — Apple Silicon will be the platform where it performs natively. Intel Macs will have neither a current OpenGL path nor a maintained Metal path. The GPU rendering story on macOS converges on the same conclusion as the JVM story: Apple Silicon is the only path with a future.
+
 ### Build-On-Target Discipline
 
 `jlink` bakes the host JDK into the output image. Running `jlink` on an Apple Silicon Mac produces an `aarch64` runtime; running it on an Intel Mac produces an `x86_64` runtime. There is no `--target-arch` flag that makes a Mac produce a Windows runtime, or an `x86_64` machine produce an `aarch64` runtime. Cross-jlink exists in some JDK distributions as a supported configuration, but the dependency graph (JavaFX natives via Maven classifiers, Skija natives, CoreMidi4J on macOS, platform-specific font loading, platform-specific TLS stores) makes cross-building brittle in practice — every native dependency has to be manually overridden for the target platform, and the results have historically been fragile enough that the Ooloi build pipeline takes the simpler discipline:
