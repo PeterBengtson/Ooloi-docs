@@ -73,16 +73,16 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
 | Piccolo | treble | Octave above written | |
 | Flute | treble | — | |
 | Alto Flute in G | treble | Perfect fourth below written | |
-| Bass Flute in C | treble | Octave below written | |
+| Bass Flute | treble | Octave below written | |
 | Shakuhachi | treble | — | Japanese end-blown bamboo flute |
 
 ### Ocarinas
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Soprano Ocarina in C | treble | — | |
-| Alto Ocarina in C | treble | — | |
-| Bass Ocarina in C | treble | — | |
+| Soprano Ocarina | treble | — | |
+| Alto Ocarina | treble | — | |
+| Bass Ocarina | treble | — | |
 
 ### Double Reeds
 
@@ -91,7 +91,7 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
 | Oboe | treble | — | |
 | Oboe d'amore in A | treble | Minor third below written | |
 | English Horn in F | treble | Perfect fifth below written | Cor anglais |
-| Bass Oboe | bass; tenor | — | |
+| Bass Oboe | treble | Octave below written | |
 | Heckelphone | treble | Octave below written | |
 
 ### Clarinets
@@ -112,8 +112,7 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
 
 **Notation variants for Bass Clarinet and Contrabass Clarinet**
 
-Two professional notations coexist in the published literature, differing in transposition
-interval and default clef. Both variants are included in the library.
+Two professional notations coexist in the published literature, differing in transposition interval and default clef. Both variants are included in the library.
 
 | Variant | Default clef | Transposition |
 |---|---|---|
@@ -143,7 +142,7 @@ concert pitch by different intervals depending on the size of the instrument.
 |---|---|---|---|
 | Bassoon | bass; tenor | — | |
 | Contrabassoon | bass | Octave below written | |
-| Contrabass Sarrusophone in C | bass | — | Metal double reed; French orchestral substitute for contrabassoon |
+| Contrabass Sarrusophone | bass | — | Metal double reed; French orchestral substitute for contrabassoon |
 
 ### Bagpipes
 
