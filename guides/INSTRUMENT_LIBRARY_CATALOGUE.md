@@ -30,7 +30,6 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
   - [Clarinets](#clarinets)
   - [Saxophones](#saxophones)
   - [Bassoons](#bassoons)
-  - [Bagpipes](#bagpipes)
 - [Brass](#brass)
   - [Modern Horns](#modern-horns)
   - [Historical Horns (Old Notation)](#historical-horns-old-notation)
@@ -43,6 +42,8 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
   - [Pitched Percussion](#pitched-percussion)
   - [Unpitched Percussion](#unpitched-percussion)
 - [Special Effects](#special-effects)
+- [Other](#other)
+  - [Bagpipes](#bagpipes)
 - [Electronics](#electronics)
 - [Keyboards](#keyboards)
 - [Plucked Instruments](#plucked-instruments)
@@ -98,7 +99,7 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Sopranino Clarinet in E♭ | treble | Minor third above written | |
+| Clarinet in E♭ | treble | Minor third above written | |
 | Clarinet in D | treble | Major second above written | |
 | Clarinet in C | treble | — | |
 | Clarinet in B♭ | treble | Major second below written | |
@@ -142,15 +143,7 @@ concert pitch by different intervals depending on the size of the instrument.
 |---|---|---|---|
 | Bassoon | bass; tenor | — | |
 | Contrabassoon | bass | Octave below written | |
-| Contrabass Sarrusophone | bass | — | Metal double reed; French orchestral substitute for contrabassoon |
-
-### Bagpipes
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Great Highland Bagpipe | treble | Major second below written | Chanter written in B♭ key signature |
-| Uilleann Pipes | treble | — | Irish bellows-blown pipes; D chanter |
-| Northumbrian Smallpipes | treble | — | English bellows-blown smallpipes |
+| Contrabass Sarrusophone | bass | Octave below written | Metal double reed; French orchestral substitute for contrabassoon |
 
 ---
 
@@ -345,6 +338,20 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Ratchet | Ratsche / Crécelle; notched rotating wheel |
 | Anvil | Verdi, Wagner |
 | Siren | Varèse, Ligeti |
+
+---
+
+## Other
+
+Instruments outside standard orchestral, chamber music, and marching band practice. Includes folk instruments, sound effects, and other specialist instruments.
+
+### Bagpipes
+
+| Instrument | Clef(s) | Transposition | Notes |
+|---|---|---|---|
+| Great Highland Bagpipe | treble | Major second below written | Chanter written in B♭ key signature |
+| Uilleann Pipes | treble | — | Irish bellows-blown pipes; D chanter |
+| Northumbrian Smallpipes | treble | — | English bellows-blown smallpipes |
 
 ---
 
