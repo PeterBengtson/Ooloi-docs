@@ -1012,7 +1012,7 @@ The declarative prop eliminates all dynamic style-class mutation for validation.
 
 **Tile selection** (instrument and staff editors):
 
-Tile-based editors (instrument library, staff editor) use `colours/selected-fill-style` for the selected tile. The fill-style is assigned inline via `:style` in the tile's cljfx spec when the tile is in the selection set. The three-token pattern applies as for severity states — selection gains a consistent background, foreground, and border treatment for structural parity with error/warning/success rendering.
+Tile-based editors (instrument library, staff editor) use `colours/selected-style` for the selected tile. The `-style` constant is assigned inline via `:style` in the tile's cljfx spec when the tile is in the selection set. The three-slot pattern applies as for severity states — selection gains a consistent background, foreground, and border treatment for structural parity with error/warning/success rendering.
 
 **Windows** (About, Settings):
 
