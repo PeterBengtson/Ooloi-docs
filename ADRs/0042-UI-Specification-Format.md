@@ -730,7 +730,7 @@ All UI styling in Ooloi must work identically in dark and light mode without cod
 (.setStyle node "-fx-font-size: 24; -fx-text-fill: #888;")
 ```
 
-**When to use Java interop:** Only for dynamic style mutations on already-constructed nodes (e.g., adding a `Styles/DANGER` class when validation fails, removing it when the input is corrected). Initial construction should use cljfx specs wherever possible.
+**When to use Java interop:** Only for dynamic style mutations on already-constructed nodes (e.g., re-applying a theme-dependent inline `:style` on an existing overlay Region when the active theme changes). Initial construction should use cljfx specs wherever possible.
 
 **Plugin implication:** A backend plugin that includes `:style-class ["title-2" "accent"]` in its cljfx spec will render correctly on any Ooloi frontend regardless of the active theme. The string values are stable AtlantaFX API — they don't change between themes.
 
@@ -904,6 +904,34 @@ Each severity category offers four intensity levels. Choose based on the UI elem
 
 **Invariant:** Scale tokens (`-color-base-0` through `-color-base-9`, `-color-accent-0` through `-color-accent-9`, etc.) must NOT be used. They are raw palette values that do not adapt semantically across themes. Always use the functional tokens above.
 
+#### Fill-Style Constants — Uniform Severity and Selection Styling
+
+All severity states (error/warning/success) and the selection state share one mechanism: a single fill-style string, redefined as an inline `:style`, that exploits JavaFX's CSS lookup variable cascade. The fill-style redefines `-color-*-muted`, `-color-fg-default`, and `-color-*-emphasis` on the target node; all descendants inherit the redefinition automatically.
+
+The four fill-style constants live in `ooloi.frontend.ui.core.colours` as public `def`s — the single source of truth. They are imported wherever severity or selection rendering is needed.
+
+| Constant | Background | Text | Border |
+|---|---|---|---|
+| `danger-fill-style` | `-color-danger-muted` | `-color-fg-default` | `-color-danger-emphasis` |
+| `warning-fill-style` | `-color-warning-muted` | `-color-fg-default` | `-color-warning-emphasis` |
+| `success-fill-style` | `-color-success-muted` | `-color-fg-default` | `-color-success-emphasis` |
+| `selected-fill-style` | `-color-accent-muted` | `-color-fg-default` | `-color-accent-emphasis` |
+
+**Three-token pattern.** Every fill-style uses the same trio: a `-muted` background behind `-color-fg-default` text, framed by an `-emphasis` border. This is not an accident — the three-token pattern is what makes the lookup variable cascade work uniformly across TextField, ComboBox, Spinner, TitledPane, and AtlantaFX `Notification`.
+
+**Contrast.** Measured contrast ratios (from the AtlantaFX Nord palette swatches in `research/`):
+
+| Constant | Nord Dark | Nord Light |
+|---|---|---|
+| `danger-fill-style` | 7.05 AAA | 7.31 AAA |
+| `warning-fill-style` | 5.51 AA | 8.63 AAA |
+| `success-fill-style` | 5.90 AA | 8.21 AAA |
+| `selected-fill-style` | 6.19 AA | 7.98 AAA |
+
+Danger is the only state that reaches AAA in both themes because `-color-danger-muted` is the darkest of the Nord Dark muted palette. Warning, success, and selected sit at AA in dark mode because the Nord palette's muted greens, yellows, and blues are closer to `-color-fg-default` luminance. AAA across the board would require leaving the Nord palette and breaking theme coherence; AA is the pragmatic target for non-safety-critical states.
+
+**Grep invariant test.** `frontend/test/clojure/ooloi/frontend/ui/core/colour_invariants_test.clj` scans all `.clj` files under `frontend/src/main/clojure/` for hex literals, `rgb(...)`/`rgba(...)` strings, `javafx.scene.paint.Color` constructors, and hardcoded `-fx-*-color` values. Lines with a `;; colour-literal-allowed: <reason>` comment are allowlisted; every other match is a build failure.
+
 #### Established Usage Patterns
 
 The following patterns are established in the Ooloi codebase. New UI code should follow these conventions.
@@ -912,33 +940,18 @@ The following patterns are established in the Ooloi codebase. New UI code should
 
 Notifications are shown via `(um/show-notification! mgr spec)` where `spec` is a map with `:message` (string), `:type` (`:info`, `:success`, `:warning`, `:error`), and optional `:timeout-ms` (auto-dismiss delay) and `:opacity` (default 0.8). Notifications do not create a Stage — they are rendered into a shared overlay Popup attached to the primary window.
 
-The notification component (`ooloi-notification` in `ooloi.frontend.ui.core.cljfx`) is an `ext-instance-factory` that materialises an AtlantaFX `Notification` control. It resolves `:text-key` via `tr`, applies severity style classes, and sets a default icon from the type. `build-notification!` in `ui_manager.clj` is the materialisation wrapper called by the notification system.
+The notification component (`ooloi-notification` in `ooloi.frontend.ui.core.cljfx`) is an `ext-instance-factory` that materialises an AtlantaFX `Notification` control. It resolves `:text-key` via `tr`, sets a default icon from the type, and applies the matching fill-style constant via `.setStyle` inside its `:create` fn. `build-notification!` in `ui_manager.clj` is the materialisation wrapper called by the notification system.
 
-Notifications demonstrate the two-layer mechanism. The style class (`Styles/SUCCESS`, etc.) selects the severity variant. A generated CSS stylesheet maps each variant to its theme-aware background using CSS semantic tokens:
+Severity rendering is applied inline via `.setStyle` — no CSS stylesheet file is involved. The style classes (`Styles/SUCCESS`, `Styles/WARNING`, `Styles/DANGER`) stay on the style-class list because they set `-fx-icon-color` correctly; they do not conflict with the inline `:style` for the severity fill.
 
-```css
-/* Generated at runtime by init-notification-overlay! */
-.notification.success > .container {
-  -fx-background-color: -color-success-muted;   /* ← CSS token, adapts to theme */
-}
-.notification.warning > .container {
-  -fx-background-color: -color-warning-muted;
-}
-.notification.danger > .container {
-  -fx-background-color: -color-danger-muted;
-}
-```
+| Notification type | Style class (icon colour) | Fill-style constant |
+|-------------------|---------------------------|---------------------|
+| `:info` | `"notification"` `Styles/ELEVATED_2` | — (neutral, no `.setStyle` call) |
+| `:success` | `"notification"` `Styles/SUCCESS` `Styles/ELEVATED_2` | `colours/success-fill-style` |
+| `:warning` | `"notification"` `Styles/WARNING` `Styles/ELEVATED_2` | `colours/warning-fill-style` |
+| `:error` | `"notification"` `Styles/DANGER` `Styles/ELEVATED_2` | `colours/danger-fill-style` |
 
-The style classes applied per notification type:
-
-| Notification type | Style classes | Background token |
-|-------------------|---------------|------------------|
-| `:info` | `"notification"` `Styles/ELEVATED_2` | Default (no severity accent) |
-| `:success` | `"notification"` `Styles/SUCCESS` `Styles/ELEVATED_2` | `-color-success-muted` |
-| `:warning` | `"notification"` `Styles/WARNING` `Styles/ELEVATED_2` | `-color-warning-muted` |
-| `:error` | `"notification"` `Styles/DANGER` `Styles/ELEVATED_2` | `-color-danger-muted` |
-
-This is the general pattern: **style classes** name the variant, **CSS tokens** provide the themed visual. The `Styles` class constants are selectors; the `-color-*` tokens are values. Neither works alone — both are needed for theme-independent styling that also carries semantic meaning.
+`:info` notifications are intentionally neutral — no fill-style and no severity accent. This is the only type without a fill-style constant.
 
 **Window content** (headings, placeholder text):
 
@@ -950,11 +963,25 @@ This is the general pattern: **style classes** name the variant, **CSS tokens** 
 
 **Form controls** (settings window, input validation):
 
-| Purpose | Style class | Usage |
-|---------|-------------|-------|
-| Flat icon button (reset) | `Styles/FLAT` | Reset-to-default buttons beside settings fields |
-| Invalid input | `Styles/DANGER` | Added dynamically when validation fails |
-| Valid input (restore) | Remove `Styles/DANGER` | Removed dynamically when input becomes valid |
+| Purpose | Approach | Usage |
+|---------|----------|-------|
+| Flat icon button (reset) | `Styles/FLAT` style class | Reset-to-default buttons beside settings fields |
+| Invalid input | `:error?` prop on formatter | Set declaratively at render time — the formatter applies `colours/danger-fill-style` via `:style` when `:error? true` |
+
+`ooloi-dense-text-field`, `ooloi-dense-combo-box`, `ooloi-dense-spinner`, and `ooloi-labelled-field` all accept an `:error?` boolean prop. `ooloi-labelled-field` threads `:error?` through to its nested `:control`. Callers read their view-state `:field-errors` map at render time:
+
+```clojure
+{:fx/type ofx/ooloi-dense-text-field
+ :text-key :instrument.name
+ :error? (boolean (get-in @*view-state [:field-errors :name]))
+ :on-action ...}
+```
+
+The declarative prop eliminates all dynamic style-class mutation for validation. There is no `.addStyleClass`/`.removeStyleClass` pair; the cljfx diff applies the correct `:style` on each render.
+
+**Tile selection** (instrument and staff editors):
+
+Tile-based editors (instrument library, staff editor) use `colours/selected-fill-style` for the selected tile. The fill-style is assigned inline via `:style` in the tile's cljfx spec when the tile is in the selection set. The three-token pattern applies as for severity states — selection gains a consistent background, foreground, and border treatment for structural parity with error/warning/success rendering.
 
 **Windows** (About, Settings):
 
@@ -968,11 +995,11 @@ This is the general pattern: **style classes** name the variant, **CSS tokens** 
 
 #### Documented Exceptions
 
-Two narrow cases permit literal colour values:
+Two narrow cases permit literal colour values. Every occurrence must carry a `;; colour-literal-allowed: <reason>` comment — the grep invariant test enforces both the comment and its non-empty reason.
 
 1. **Pre-theme rendering (splash screen).** The splash renders before AtlantaFX themes are loaded. It uses hardcoded CSS strings for branding colours that are constant regardless of theme: `:style "-fx-background-color: #1a1a2e;"` for the background, `:style "-fx-text-fill: white; ..."` for the progress label, and `:color "#000000cc"` for the drop shadow effect. These are cljfx spec properties, not Java API calls — but the colour values themselves are intentionally non-adaptive.
 
-2. **Theme-aware transparency overlays.** The About window's translucent background implements both light and dark appearances directly using `rgba()` values that are chosen per-theme at construction time. This is legitimate because transparency blending over arbitrary content cannot be expressed as a single semantic token — the overlay must know the target luminance.
+2. **Theme-aware transparency overlays.** The About window's translucent background implements both light and dark appearances directly using `rgba()` values that are chosen per-theme at construction time. This is legitimate because transparency blending over arbitrary content cannot be expressed as a single semantic token — the overlay must know the target luminance. The theme-branching logic lives in the shared `overlay-style` helper in `ui_manager.clj`; `about.clj` calls the helper rather than duplicating the literals. A custom `-color-scrim-*` semantic token could be introduced if a photographic scrim state becomes needed elsewhere, but currently adds indirection without semantic value.
 
 #### Font Handling
 
