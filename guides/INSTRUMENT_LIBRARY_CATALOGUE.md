@@ -32,6 +32,7 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
   - [Bassoons](#bassoons)
 - [Brass](#brass)
   - [Modern Horns](#modern-horns)
+  - [Wagner Tubas](#wagner-tubas)
   - [Historical Horns (Old Notation)](#historical-horns-old-notation)
   - [Trumpets](#trumpets)
   - [Trombones](#trombones)
@@ -154,8 +155,26 @@ concert pitch by different intervals depending on the size of the instrument.
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
 | Horn in F | treble; bass | Perfect fifth below written | Modern standard; bass clef uses same transposition as treble |
-| Wagner Tuba in B♭ | treble | Major second below written | Tenortuba; played by horn players |
-| Wagner Tuba in F | treble | Perfect fifth below written | Basstuba; played by horn players |
+
+### Wagner Tubas
+
+Wagner tubas are played by horn players (identical mouthpiece and fingering). Two notation
+conventions coexist in the literature and both are included in the bundle.
+
+**Modern F-horn convention.** All Wagner tubas are written in treble clef transposing a perfect
+fifth below written, exactly like Horn in F. This is the dominant modern practice and allows
+horn players to switch between horn and Wagner tuba parts without mental recalibration.
+
+**Historical (Strauss/Bruckner) convention.** Bass clef, with the tenor in B♭ basso sounding a
+major ninth below written and the bass in octave-displaced F sounding a perfect twelfth below
+written. This is what appears in Bruckner's symphonies and in most Strauss scores.
+
+| Instrument | Clef(s) | Transposition | Notes |
+|---|---|---|---|
+| Tenor Wagner Tuba | treble; bass | Perfect fifth below written | Modern F-horn convention; B♭ instrument |
+| Bass Wagner Tuba | treble; bass | Perfect fifth below written | Modern F-horn convention; F instrument |
+| Tenor Wagner Tuba (historical notation) | bass | Major ninth below written | B♭ basso; Bruckner, Strauss |
+| Bass Wagner Tuba (historical notation) | bass | Perfect twelfth below written | F octave-displaced bass clef; Bruckner, Strauss |
 
 ### Historical Horns (Old Notation)
 
