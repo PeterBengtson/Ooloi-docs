@@ -171,10 +171,10 @@ written. This is what appears in Bruckner's symphonies and in most Strauss score
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Tenor Wagner Tuba | treble; bass | Perfect fifth below written | Modern F-horn convention; B♭ instrument |
-| Bass Wagner Tuba | treble; bass | Perfect fifth below written | Modern F-horn convention; F instrument |
-| Tenor Wagner Tuba (historical notation) | bass | Major ninth below written | B♭ basso; Bruckner, Strauss |
-| Bass Wagner Tuba (historical notation) | bass | Perfect twelfth below written | F octave-displaced bass clef; Bruckner, Strauss |
+| Tenor Wagner Tuba in B♭ | treble; bass | Perfect fifth below written | Modern F-horn convention |
+| Bass Wagner Tuba in F | treble; bass | Perfect fifth below written | Modern F-horn convention |
+| Tenor Wagner Tuba in B♭ (historical notation) | bass | Major ninth below written | B♭ basso; Bruckner, Strauss |
+| Bass Wagner Tuba in F (historical notation) | bass | Perfect twelfth below written | F octave-displaced bass clef; Bruckner, Strauss |
 
 ### Historical Horns (Old Notation)
 
