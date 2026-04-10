@@ -904,33 +904,64 @@ Each severity category offers four intensity levels. Choose based on the UI elem
 
 **Invariant:** Scale tokens (`-color-base-0` through `-color-base-9`, `-color-accent-0` through `-color-accent-9`, etc.) must NOT be used. They are raw palette values that do not adapt semantically across themes. Always use the functional tokens above.
 
-#### Fill-Style Constants — Uniform Severity and Selection Styling
+#### `-style` Constants — Uniform Severity and Selection Styling
 
-All severity states (error/warning/success) and the selection state share one mechanism: a single fill-style string, redefined as an inline `:style`, that exploits JavaFX's CSS lookup variable cascade. The fill-style redefines `-color-*-muted`, `-color-fg-default`, and `-color-*-emphasis` on the target node; all descendants inherit the redefinition automatically.
+All severity states (info/success/warning/error) and the selection state share one mechanism: a single `:style` string that exploits JavaFX's CSS lookup variable cascade. Each constant redefines `-color-bg-default`, `-color-fg-default`, and `-color-border-default` on the target node; all descendants inherit the redefinition automatically. This triple is what AtlantaFX's own CSS reads when painting TextField, ComboBox, Spinner, TitledPane, and `Notification` — so one constant covers every control type uniformly.
 
-The four fill-style constants live in `ooloi.frontend.ui.core.colours` as public `def`s — the single source of truth. They are imported wherever severity or selection rendering is needed.
+The `-style` constants live in `ooloi.frontend.ui.core.colours` as public `def`s — the single source of truth. They are imported wherever severity or selection rendering is needed. The set is open: additional states may add further constants following the same three-slot pattern.
 
-| Constant | Background | Text | Border |
+| Constant | `-color-bg-default` → | `-color-fg-default` → | `-color-border-default` → |
 |---|---|---|---|
-| `danger-fill-style` | `-color-danger-muted` | `-color-fg-default` | `-color-danger-emphasis` |
-| `warning-fill-style` | `-color-warning-muted` | `-color-fg-default` | `-color-warning-emphasis` |
-| `success-fill-style` | `-color-success-muted` | `-color-fg-default` | `-color-success-emphasis` |
-| `selected-fill-style` | `-color-accent-muted` | `-color-fg-default` | `-color-accent-emphasis` |
+| `info-style` | `-color-bg-default` | `-color-fg-default` | `-color-border-default` |
+| `success-style` | `-color-success-muted` | `-color-fg-default` | `-color-success-emphasis` |
+| `warning-style` | `-color-warning-muted` | `-color-fg-default` | `-color-warning-emphasis` |
+| `error-style` | `-color-danger-muted` | `-color-fg-default` | `-color-danger-emphasis` |
+| `selected-style` | `-color-accent-muted` | `-color-fg-default` | `-color-accent-emphasis` |
 
-**Three-token pattern.** Every fill-style uses the same trio: a `-muted` background behind `-color-fg-default` text, framed by an `-emphasis` border. This is not an accident — the three-token pattern is what makes the lookup variable cascade work uniformly across TextField, ComboBox, Spinner, TitledPane, and AtlantaFX `Notification`.
+**Naming.** Ooloi constants use Ooloi vocabulary: the notification type is `:error`, so the constant is `error-style`. The underlying AtlantaFX tokens (`-color-danger-muted`, `-color-danger-emphasis`) remain as AtlantaFX named them — that is their vocabulary, not ours. The constant insulates the rest of the codebase from AtlantaFX's naming choices.
+
+**Why `info-style` names the defaults explicitly.** `info-style` redefines `-color-bg-default: -color-bg-default;` etc. — a self-reference that resolves to the theme's current default. This is not a no-op: applying `info-style` forces the node's cascade scope to re-read the defaults, which clears any inherited severity styling from an ancestor node and guarantees the neutral appearance. Every state has its own constant; there is no fall-through behaviour.
+
+**Three-slot pattern.** Every `-style` uses the same three slots: background, foreground, border. This is not an accident — the three-slot pattern is what makes the lookup variable cascade work uniformly across TextField, ComboBox, Spinner, TitledPane, and AtlantaFX `Notification` without per-control tweaking. New `-style` constants must follow the same pattern.
 
 **Contrast.** Measured contrast ratios (from the AtlantaFX Nord palette swatches in `research/`):
 
 | Constant | Nord Dark | Nord Light |
 |---|---|---|
-| `danger-fill-style` | 7.05 AAA | 7.31 AAA |
-| `warning-fill-style` | 5.51 AA | 8.63 AAA |
-| `success-fill-style` | 5.90 AA | 8.21 AAA |
-| `selected-fill-style` | 6.19 AA | 7.98 AAA |
+| `error-style` | 7.05 AAA | 7.31 AAA |
+| `warning-style` | 5.51 AA | 8.63 AAA |
+| `success-style` | 5.90 AA | 8.21 AAA |
+| `selected-style` | 6.19 AA | 7.98 AAA |
+| `info-style` | (theme default) | (theme default) |
 
-Danger is the only state that reaches AAA in both themes because `-color-danger-muted` is the darkest of the Nord Dark muted palette. Warning, success, and selected sit at AA in dark mode because the Nord palette's muted greens, yellows, and blues are closer to `-color-fg-default` luminance. AAA across the board would require leaving the Nord palette and breaking theme coherence; AA is the pragmatic target for non-safety-critical states.
+Error is the only severity state that reaches AAA in both themes because `-color-danger-muted` is the darkest of the Nord Dark muted palette. Warning, success, and selected sit at AA in dark mode because the Nord palette's muted greens, yellows, and blues are closer to `-color-fg-default` luminance. AAA across the board would require leaving the Nord palette and breaking theme coherence; AA is the pragmatic target for non-safety-critical states. `info-style` resolves to the theme default background and carries whatever contrast the theme provides for body text.
 
 **Grep invariant test.** `frontend/test/clojure/ooloi/frontend/ui/core/colour_invariants_test.clj` scans all `.clj` files under `frontend/src/main/clojure/` for hex literals, `rgb(...)`/`rgba(...)` strings, `javafx.scene.paint.Color` constructors, and hardcoded `-fx-*-color` values. Lines with a `;; colour-literal-allowed: <reason>` comment are allowlisted; every other match is a build failure.
+
+#### Empirical verification of the cascade mechanism
+
+Before this design was committed, a REPL spike verified the JavaFX CSS lookup variable cascade empirically against an AtlantaFX-themed `TextField` under Nord Dark. The findings are recorded here as the authoritative architectural record. Tests written against this mechanism must read fills at the correct inspection point and assert against exact Nord-palette hex values.
+
+**Inspection point.** `.getBackground().getFills()` — NOT `.getBorder().getStrokes()`. AtlantaFX does not use JavaFX's `Border` API. It simulates borders using a multi-stop `-fx-background-color` layer in which the outer stop references `-color-border-default` and the inner stop references `-color-bg-default`. `.getBorder()` returns `nil` on an AtlantaFX-themed text field. The two fills in `.getBackground().getFills()` are what must be read.
+
+**Spike results (Nord Dark, empirical).** Each row applies a `:style` string to a `TextField` placed in a real Scene with the AtlantaFX Nord Dark stylesheet loaded, calls `.applyCss()` and `.layout()`, then reads `.getBackground().getFills()`:
+
+| `:style` applied | Result `[outer stop, inner stop]` |
+|---|---|
+| Baseline (no override) | `[#5e6675, #2e3440]` — border default, bg default |
+| `-color-bg-default: #ff0000;` | `[#5e6675 unchanged, #ff0000 cascaded]` |
+| `-color-border-default: #ff0000;` | `[#ff0000 cascaded, #2e3440 unchanged]` |
+| `-color-bg-default: -color-danger-muted; -color-border-default: -color-danger-emphasis;` | `[#bf616a, #684651]` — `danger-emphasis`, `danger-muted` |
+| `-fx-background-color: #ff0000;` (direct) | `[#ff0000]` — multi-stop structure destroyed, single flat fill |
+
+**What the spike proves:**
+
+1. **Lookup variable cascade works.** Redefining `-color-*-default` on a descendant node is resolved lazily by AtlantaFX's internal rules through the parent chain. The JavaFX CSS engine evaluates lookup variables at style application time, not at parse time.
+2. **The cascade is non-destructive.** The multi-stop structure AtlantaFX uses for simulated borders is preserved because `-style` constants redefine the *values* that structure references, not the structure itself. `error-style` changes what `-color-bg-default` and `-color-border-default` resolve to inside the node's subtree; AtlantaFX's own multi-stop rule is still the thing painting the control.
+3. **Direct `-fx-background-color` is the wrong mechanism.** It replaces the multi-stop layer with a single flat colour, erasing the simulated border entirely. This is why inline strings like `-fx-background-color: -color-accent-muted;` (used in the pre-unification tile selection code) produced controls without borders — they bypassed the mechanism that creates borders.
+4. **Self-referencing declarations resolve.** `-color-bg-default: -color-bg-default;` does not produce a CSS loop. The right-hand side is resolved against the parent scope because the current scope is in the process of being declared. This is what makes `info-style` a structural no-op that still participates in the cascade uniformly — a Layer 0 verification step in the implementation ticket re-verifies this behaviour before the constants are committed.
+
+Tests written against `-style` constants must read `.getBackground().getFills()` after `.applyCss()`, assert the returned list has the expected number of stops, and compare each stop to `Color/rgb` values encoding the exact Nord-palette hex values above. See UI_ARCHITECTURE §7 for the full inspection procedure and the Layer 1 test pattern.
 
 #### Established Usage Patterns
 
@@ -940,18 +971,18 @@ The following patterns are established in the Ooloi codebase. New UI code should
 
 Notifications are shown via `(um/show-notification! mgr spec)` where `spec` is a map with `:message` (string), `:type` (`:info`, `:success`, `:warning`, `:error`), and optional `:timeout-ms` (auto-dismiss delay) and `:opacity` (default 0.8). Notifications do not create a Stage — they are rendered into a shared overlay Popup attached to the primary window.
 
-The notification component (`ooloi-notification` in `ooloi.frontend.ui.core.cljfx`) is an `ext-instance-factory` that materialises an AtlantaFX `Notification` control. It resolves `:text-key` via `tr`, sets a default icon from the type, and applies the matching fill-style constant via `.setStyle` inside its `:create` fn. `build-notification!` in `ui_manager.clj` is the materialisation wrapper called by the notification system.
+The notification component (`ooloi-notification` in `ooloi.frontend.ui.core.cljfx`) is an `ext-instance-factory` that materialises an AtlantaFX `Notification` control. It resolves `:text-key` via `tr`, sets a default icon from the type, and applies the matching `-style` constant via `.setStyle` inside its `:create` fn. Every notification receives a `.setStyle` call — `:info` notifications apply `colours/info-style` (self-referencing defaults), not an empty string. `build-notification!` in `ui_manager.clj` is the materialisation wrapper called by the notification system.
 
 Severity rendering is applied inline via `.setStyle` — no CSS stylesheet file is involved. The style classes (`Styles/SUCCESS`, `Styles/WARNING`, `Styles/DANGER`) stay on the style-class list because they set `-fx-icon-color` correctly; they do not conflict with the inline `:style` for the severity fill.
 
-| Notification type | Style class (icon colour) | Fill-style constant |
+| Notification type | Style class (icon colour) | `-style` constant |
 |-------------------|---------------------------|---------------------|
-| `:info` | `"notification"` `Styles/ELEVATED_2` | — (neutral, no `.setStyle` call) |
-| `:success` | `"notification"` `Styles/SUCCESS` `Styles/ELEVATED_2` | `colours/success-fill-style` |
-| `:warning` | `"notification"` `Styles/WARNING` `Styles/ELEVATED_2` | `colours/warning-fill-style` |
-| `:error` | `"notification"` `Styles/DANGER` `Styles/ELEVATED_2` | `colours/danger-fill-style` |
+| `:info` | `"notification"` `Styles/ELEVATED_2` | `colours/info-style` |
+| `:success` | `"notification"` `Styles/SUCCESS` `Styles/ELEVATED_2` | `colours/success-style` |
+| `:warning` | `"notification"` `Styles/WARNING` `Styles/ELEVATED_2` | `colours/warning-style` |
+| `:error` | `"notification"` `Styles/DANGER` `Styles/ELEVATED_2` | `colours/error-style` |
 
-`:info` notifications are intentionally neutral — no fill-style and no severity accent. This is the only type without a fill-style constant.
+Every state has its own constant and follows the same three-slot pattern. `info-style` is not a special case — it redefines the same three tokens as the others, but to their theme defaults. The uniformity eliminates fall-through behaviour and makes cascade scoping explicit at every node.
 
 **Window content** (headings, placeholder text):
 
@@ -966,7 +997,7 @@ Severity rendering is applied inline via `.setStyle` — no CSS stylesheet file 
 | Purpose | Approach | Usage |
 |---------|----------|-------|
 | Flat icon button (reset) | `Styles/FLAT` style class | Reset-to-default buttons beside settings fields |
-| Invalid input | `:error?` prop on formatter | Set declaratively at render time — the formatter applies `colours/danger-fill-style` via `:style` when `:error? true` |
+| Invalid input | `:error?` prop on formatter | Set declaratively at render time — the formatter applies `colours/error-style` via `:style` when `:error? true` |
 
 `ooloi-dense-text-field`, `ooloi-dense-combo-box`, `ooloi-dense-spinner`, and `ooloi-labelled-field` all accept an `:error?` boolean prop. `ooloi-labelled-field` threads `:error?` through to its nested `:control`. Callers read their view-state `:field-errors` map at render time:
 
