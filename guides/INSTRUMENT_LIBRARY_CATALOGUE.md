@@ -158,23 +158,43 @@ concert pitch by different intervals depending on the size of the instrument.
 
 ### Wagner Tubas
 
-Wagner tubas are played by horn players (identical mouthpiece and fingering). Two notation
-conventions coexist in the literature and both are included in the bundle.
+Wagner tubas are played by horn players (identical mouthpiece and fingering). No single
+notation standard exists: transposition and clef both vary by composer and even by work.
+The bundle carries the conventions that actually appear in the core repertoire.
 
-**Modern F-horn convention.** All Wagner tubas are written in treble clef transposing a perfect
-fifth below written, exactly like Horn in F. This is the dominant modern practice and allows
-horn players to switch between horn and Wagner tuba parts without mental recalibration.
+**Modern F-horn convention.** Both tubas are written in treble clef transposing a perfect
+fifth below written, exactly like Horn in F. This is what Éditions Plamondon recommends for
+new parts and the dominant default in modern editions. It lets horn players switch between
+horn and Wagner tuba parts without mental recalibration.
 
-**Historical (Strauss/Bruckner) convention.** Bass clef, with the tenor in B♭ basso sounding a
-major ninth below written and the bass in octave-displaced F sounding a perfect twelfth below
-written. This is what appears in Bruckner's symphonies and in most Strauss scores.
+**Historical "basso" transposition.** The tenor in B♭ sounds a major ninth below written
+("B♭ basso") and the bass in F sounds a perfect twelfth below written (octave-displaced F).
+This is the transposition Bruckner and Strauss both use. The clef, however, splits them:
+
+- **Bruckner** (Symphonies 7, 8, 9) writes the basso transposition in **bass clef**.
+- **Strauss** (e.g. *Elektra*, *Eine Alpensinfonie*) writes the same basso transposition in
+  **treble clef**. This is also Sibelius's default for Wagner Tuba and what Éditions
+  Plamondon identifies as the most common engraving of the instrument today.
+
+Wagner's own *Ring* uses a different, inconsistent set of conventions: B♭ "alto" and F parts
+sounding a major second and a perfect fifth below written in *Das Rheingold*; unusual keys
+such as E♭ tenor tuba and C or B♭ bass tuba in *Die Walküre* and *Siegfried*. These Ring
+variants are not currently in the bundle; when performing from those parts, use the modern
+F-horn entries and transpose by hand, or add a user-library entry with the required
+transposition.
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Tenor Wagner Tuba in B♭ | treble; bass | Perfect fifth below written | Modern F-horn convention |
-| Bass Wagner Tuba in F | treble; bass | Perfect fifth below written | Modern F-horn convention |
-| Tenor Wagner Tuba in B♭ (historical notation) | bass | Major ninth below written | B♭ basso; Bruckner, Strauss |
-| Bass Wagner Tuba in F (historical notation) | bass | Perfect twelfth below written | F octave-displaced bass clef; Bruckner, Strauss |
+| Tenor Wagner Tuba in B♭ | treble; bass | Perfect fifth below written | Modern F-horn convention; recommended for new parts |
+| Bass Wagner Tuba in F | treble; bass | Perfect fifth below written | Modern F-horn convention; recommended for new parts |
+| Tenor Wagner Tuba in B♭ (Strauss basso, treble) | treble | Major ninth below written | B♭ basso; Strauss (*Elektra*, *Alpensinfonie*); Sibelius default |
+| Bass Wagner Tuba in F (Strauss basso, treble) | treble | Perfect twelfth below written | Octave-displaced F; Strauss |
+| Tenor Wagner Tuba in B♭ (Bruckner basso, bass clef) | bass | Major ninth below written | B♭ basso; Bruckner 7, 8, 9 |
+| Bass Wagner Tuba in F (Bruckner basso, bass clef) | bass | Perfect twelfth below written | Octave-displaced F; Bruckner 7, 8, 9 |
+
+For the full taxonomy of transpositions across the Ring Cycle, Bruckner's symphonies, the
+Dorico/MuseScore/Sibelius defaults, and the practical consequences for modern performers,
+see Éditions Plamondon's [*Notation for Wagnertuba: The Definitive Guide*](https://editionsplamondon.com/blogs/news/notation-for-wagnertuba-the-definitive-guide).
 
 ### Historical Horns (Old Notation)
 
