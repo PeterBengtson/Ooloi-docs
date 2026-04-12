@@ -7,6 +7,7 @@ Updated - February 13, 2026 (Defaults declared in def-app-setting; event bus int
 Updated - February 16, 2026 (Settings window implemented; code references added)
 Updated - February 27, 2026 (Testing section: with-test-config, default-settings, with-event-bus)
 Updated - March 8, 2026 (Testing section: with-ui-manager replaces ig/init-key in primary example)
+Updated - April 12, 2026 (Validation feedback architecture: uniform closure interface, notification-based error display)
 
 ## Table of Contents
 - [Context](#context)
@@ -16,6 +17,7 @@ Updated - March 8, 2026 (Testing section: with-ui-manager replaces ig/init-key i
   - [Architecture Overview](#architecture-overview)
   - [Setting Definitions](#setting-definitions)
   - [Validation Architecture](#validation-architecture)
+  - [Validation Feedback Architecture](#validation-feedback-architecture)
   - [Translation Integration](#translation-integration)
   - [Storage](#storage)
   - [API](#api)
@@ -133,6 +135,73 @@ Invalid values throw exceptions with clear error messages, matching [ADR-0016](0
 
 **Closed mutation surface:** `set-app-setting!` refuses to set keys that are not registered via `def-app-setting`. This ensures every writable key has validation rules and a corresponding default — no unregistered keys can enter the settings map through the public API.
 
+### Validation Feedback Architecture
+
+The validation architecture above defines *what* is valid. This section defines how validation errors are communicated to the user.
+
+#### Uniform Closure Interface
+
+Ooloi uses three distinct validation backends:
+
+| Backend | Where | Mechanism |
+|---------|-------|-----------|
+| App settings (this ADR) | `def-app-setting` registry | `:choices` set or `:validator` predicate |
+| Piece settings ([ADR-0016](0016-Settings.md)) | `defsetting` registry | Set or predicate |
+| Domain records | `create-instrument`, `create-staff` | `clojure.spec.alpha` |
+
+All three currently use fail-fast exceptions. UI editors need non-throwing, live validation with user-facing feedback. Rather than each editor knowing which validation system to call, a uniform closure interface wraps the underlying mechanism:
+
+```clojure
+;; Contract: (fn [value] → nil | error-message-string)
+;; nil = valid, string = localised error message
+
+;; App setting — wraps registry predicate
+(fn [value]
+  (let [{:keys [choices validator]} (get @registry setting-key)]
+    (cond
+      (and choices (not (contains? choices value)))
+      (str "Must be one of: " (str/join ", " (map #(tr (get choices %)) (keys choices))))
+
+      (and validator (not (validator value)))
+      (str "Invalid value: " value)))) ; → humanised via tr keys over time
+
+;; Instrument spec — wraps clojure.spec
+(fn [instrument]
+  (when-not (s/valid? ::instrument/instrument instrument)
+    (format-explain-data (s/explain-data ::instrument/instrument instrument))))
+```
+
+The closure captures its validation context at construction time. Consumers call it uniformly without knowing whether a predicate, a choices set, or a full clojure.spec is behind it.
+
+#### Error Display
+
+Validation errors produce two simultaneous effects:
+
+1. **Visual styling** — the field receives `:error? true`, which applies `styles/error-style` (Category 1 lookup variable cascade; see [UI Architecture](../research/UI_ARCHITECTURE.md)). The field turns danger-coloured.
+2. **Error notification** — `show-error-notification!` displays the closure's error message. Error notifications do not auto-dismiss — they persist until the user explicitly dismisses them or the value becomes valid (dismissed programmatically via `dismiss-notification!`).
+
+This uses existing infrastructure with no new UI components. A future refinement may add inline pop-up messages anchored to the field for stronger spatial association; the closure interface remains unchanged — only the consumer changes from notification to inline display.
+
+#### `s/explain-data` Humanisation Path
+
+For spec-validated domain records (instruments, staves), `s/explain-data` provides structured failure information:
+
+- `:in` — which field failed (e.g. `[:number]`, `[:range]`)
+- `:val` — the rejected value
+- `:pred` — the predicate that failed (e.g. `pos-int?`, `hz<=`)
+
+The `:pred` values fall into a small, closed set that can be mapped to `tr` keys incrementally:
+
+| Predicate | Translation key |
+|-----------|----------------|
+| `pos-int?` | `:validation.must-be-positive-integer` |
+| `string?` | `:validation.must-be-text` |
+| `hz<=` | `:validation.low-must-not-exceed-high` |
+| `valid-families` | `:validation.must-be-valid-family` |
+| `valid-clef-set` | `:validation.must-be-valid-clef` |
+
+Initial implementation uses `(str pred)` as the message. The lookup table grows as translations are added. `s/nilable` fields produce two problems per failure (pred branch + nil branch); the nil branch is filtered out before display.
+
 ### Translation Integration
 
 All user-facing strings follow [ADR-0039](0039-Localisation-Architecture.md). Translation keys use a convention derived from the setting keyword:
@@ -235,7 +304,7 @@ The settings registry provides everything needed to generate a Settings window:
   - `:validator` + no `:control` → text field (default)
 - **Labels**: setting name via `(tr :setting.ui.theme)`, description via `(tr :setting.ui.theme.desc)`
 - **Choice labels**: `(tr :setting.ui.theme.nord-dark)` → "Dark"
-- **Validation feedback**: immediate validation on input change
+- **Validation feedback**: immediate validation on input change via the uniform closure interface (see [Validation Feedback Architecture](#validation-feedback-architecture)). Invalid fields receive `:error? true` styling; error messages display as persistent notifications.
 
 The Settings window is implemented in `app_settings_window.clj` (`frontend/src/main/clojure/ooloi/frontend/ui/app/app_settings_window.clj`), consuming the registry to generate the UI automatically. It follows the content builder pattern (ADR-0042): a private `build-full-content-spec` returns a cljfx description map for the complete window content (tab pane + button bar), and `show-app-settings!` (public) handles lifecycle via the UI Manager. Each tab contains a ScrollPane of setting rows — `Tile` + `ComboBox` for choices, `Tile` + `TextField` for validator-based settings — each with a per-field reset button. A unified bottom bar provides Reset All Defaults (scoped to the active tab's category) and OK.
 

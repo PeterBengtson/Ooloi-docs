@@ -1157,7 +1157,20 @@ The result is a window that is consistent by construction:
 
 There is no duplication between "settings storage" and "settings UI." The window is a projection of the registry.
 
-### 10.3 Settings Events and Live Updates
+### 10.3 Validation Feedback
+
+When a user enters an invalid value, the system provides immediate visual feedback through two mechanisms:
+
+1. **Field styling** — the control receives `:error? true`, applying `error-style` (a Category 1 lookup variable cascade that redefines AtlantaFX's danger tokens on the field's subtree).
+2. **Error notification** — a persistent error notification displays a human-readable message explaining what is wrong. Error notifications do not auto-dismiss.
+
+Both are driven by a uniform validation closure: `(fn [value] → nil | error-message-string)`. The closure wraps whatever validation backend applies — the app settings registry predicate, a `clojure.spec` check for domain records like instruments and staves, or any future validation system. The form field formatter calls the closure without knowing what is behind it.
+
+For spec-validated domain records, the closure extracts structured failure data from `s/explain-data` and humanises it via a translatable predicate lookup table (e.g. `pos-int?` → "Must be a positive integer"). The table grows incrementally; unknown predicates fall back to `(str pred)`.
+
+This architecture is specified in [ADR-0043 § Validation Feedback Architecture](../ADRs/0043-Frontend-Settings.md#validation-feedback-architecture).
+
+### 10.4 Settings Events and Live Updates
 
 When a setting changes, the system publishes an event through the frontend event bus (Section 5).
 
@@ -1177,7 +1190,7 @@ This reinforces the broader architectural pattern:
 * Effects are triggered via event subscription.
 * No subsystem reaches sideways to mutate another's internals.
 
-### 10.4 Persistence and Scope
+### 10.5 Persistence and Scope
 
 Settings persistence is handled centrally.
 
@@ -1198,7 +1211,7 @@ The backend does not own application settings. It owns piece data. This boundary
 
 Keeping this separation clean avoids a subtle but common architectural drift where UI configuration becomes entangled with domain state.
 
-### 10.5 Architectural Role
+### 10.6 Architectural Role
 
 The settings system may appear modest compared to rendering or collaboration, but it plays a stabilising role.
 
