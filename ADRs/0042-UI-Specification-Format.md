@@ -912,35 +912,17 @@ The namespace is **open**: additional states (focus, hover, disabled, custom sev
 
 The constants split into two structural categories by mechanism, but both share the same call-site shape (`:style styles/foo` in a cljfx spec, or `(.setStyle node styles/foo)` on a Java-constructed Node). The category a constant belongs to is determined by whether its target control uses AtlantaFX's multi-stop `-fx-background-color` simulated-border structure.
 
-##### Category 1 — Lookup Variable Cascade (severity, info, selection)
+##### Category 1 — Lookup Variable Cascade (form field error styling)
 
-**Targets:** `TextField`, `ComboBox`, `Spinner`, `TitledPane`, AtlantaFX `Notification` — controls whose AtlantaFX theming uses a multi-stop `-fx-background-color` layer where the outer stop references `-color-border-default` and the inner stop references `-color-bg-default` to simulate a border. Direct `-fx-background-color` on these controls destroys the multi-stop structure and erases the simulated border; the lookup variable cascade is the only mechanism that changes their appearance while preserving the border.
+**Targets:** `TextField`, `ComboBox`, `Spinner` — controls whose AtlantaFX theming uses a multi-stop `-fx-background-color` layer where the outer stop references `-color-border-default` and the inner stop references `-color-bg-default` to simulate a border. Direct `-fx-background-color` on these controls destroys the multi-stop structure and erases the simulated border; the lookup variable cascade is the only mechanism that changes their appearance while preserving the border.
 
 **Mechanism:** JavaFX CSS supports lookup variables (`-color-bg-default`, `-color-fg-default`, `-color-border-default`, and the full AtlantaFX semantic token set) that cascade from the node they are defined on to all descendants. AtlantaFX themes define these variables globally; redefining them on any node overrides the cascade for that subtree. Each Category 1 constant redefines exactly three tokens — `-color-bg-default`, `-color-fg-default`, `-color-border-default` — so AtlantaFX's own painting rules pick up the new values on the target node without any per-control tweaking.
 
 **Three-slot pattern.** Every Category 1 constant uses the same three slots: background, foreground, border. This is not an accident — the three-slot pattern is what makes the cascade work uniformly across every AtlantaFX control type. New Category 1 constants must follow the same pattern.
 
-| Constant | `-color-bg-default →` | `-color-fg-default →` | `-color-border-default →` |
-|---|---|---|---|
-| `info-style` | `-color-bg-default` | `-color-fg-default` | `-color-border-default` |
-| `success-style` | `-color-success-muted` | `-color-fg-default` | `-color-success-emphasis` |
-| `warning-style` | `-color-warning-muted` | `-color-fg-default` | `-color-warning-emphasis` |
-| `error-style` | `-color-danger-muted` | `-color-fg-default` | `-color-danger-emphasis` |
-| `selected-style` | `-color-accent-muted` | `-color-fg-default` | `-color-accent-emphasis` |
+**Current status:** No Category 1 constants exist yet. Issue #206 will add `error-style` for form field validation using this mechanism. The cascade mechanism and three-slot pattern are documented here as the specification for that future work.
 
-**Why `info-style` names the defaults explicitly.** `info-style` redefines `-color-bg-default: -color-bg-default;` and so on — a self-reference that resolves against the parent scope to the theme's current default. This is not a no-op: applying `info-style` forces the node's cascade scope to re-read the defaults, which clears any inherited severity styling from an ancestor and guarantees the neutral appearance. Every state has its own constant. There is no fall-through, no empty-string shortcut, no `(if (= :info type) "" severity-style)` anywhere in the codebase — the notification constructor, the form field formatters, and the tile selection code apply a three-slot constant uniformly for every value.
-
-**Contrast.** Measured contrast ratios (from the AtlantaFX Nord palette swatches in `research/`):
-
-| Constant | Nord Dark | Nord Light |
-|---|---|---|
-| `error-style` | 7.05 AAA | 7.31 AAA |
-| `warning-style` | 5.51 AA | 8.63 AAA |
-| `success-style` | 5.90 AA | 8.21 AAA |
-| `selected-style` | 6.19 AA | 7.98 AAA |
-| `info-style` | (theme default) | (theme default) |
-
-Error is the only severity state that reaches AAA in both themes because `-color-danger-muted` is the darkest of the Nord Dark muted palette. Warning, success, and selected sit at AA in dark mode because the Nord palette's muted greens, yellows, and blues are closer to `-color-fg-default` luminance. AAA across the board would require leaving the Nord palette and breaking theme coherence; AA is the pragmatic target for non-safety-critical states. `info-style` resolves to the theme default background and carries whatever contrast the theme provides for body text.
+**Why not notifications or selection?** Notifications use AtlantaFX's separate `-color-notify-bg` token system (see Notification Styling below). Selection uses a direct `-fx-background-color` property (Category 2) because the lookup variable cascade leaks into nested children — containers can nest selectable items (musicians → instruments → staves), and a cascade would make descendants appear selected. A direct property confines the highlight to the target node only.
 
 ##### Category 2 — Direct Property Strings Using Semantic Tokens
 
@@ -950,10 +932,13 @@ Error is the only severity state that reaches AAA in both themes because `-color
 
 | Constant | CSS string | Used by |
 |---|---|---|
+| `selected-style` | `-fx-background-color: -color-accent-muted;` | Instrument and staff tiles: applied via `:style` when the tile is in the selection set |
 | `panel-style` | `-fx-border-color: -color-neutral-muted; -fx-border-width: 1; -fx-background-color: -color-bg-subtle;` | Bordered panel surfaces: `ooloi-vscroll-pane` wrappers in piece window panes and instrument library family scroll area |
 | `muted-text-style` | `-fx-text-fill: -color-fg-muted;` | Secondary labels: instrument-editor comment and staves labels, staff-editor clef label, app-settings choice and text descriptions |
 | `subtle-text-style` | `-fx-text-fill: -color-fg-subtle;` | Tertiary labels: instrument-editor language label, piece-window empty-state placeholders |
 | `search-icon-style` | `-fx-icon-color: -color-fg-muted; -fx-font-family: 'Material Icons';` | Muted Material Icons rendered via `FontIcon` (search field magnifying glass and similar) |
+
+`selected-style` uses a direct `-fx-background-color` rather than a lookup variable cascade because containers can nest selectable children (musicians → instruments → staves), and a cascade would leak into descendants, making them appear selected. A direct property confines the highlight to the target node only. The mirror pattern (`.title` and `.content` set to `transparent`) lets the parent's direct background show through without propagating to children.
 
 `panel-style` bundles three properties (border colour, border width, background) into one constant because they describe one visual concept — a bordered panel surface — and splitting them would invite inconsistent reuse. `search-icon-style` fuses icon colour and font family for the same reason: every site that wants a muted Material Icon wants both, and splitting the constant would force every caller to compose the same two strings.
 
@@ -961,7 +946,7 @@ Error is the only severity state that reaches AAA in both themes because `-color
 
 ##### Ooloi vocabulary, not AtlantaFX vocabulary
 
-Ooloi constants use Ooloi vocabulary: the notification type is `:error`, so the constant is `error-style`. The underlying AtlantaFX tokens (`-color-danger-muted`, `-color-danger-emphasis`, `-color-fg-muted`, `-color-bg-subtle`) remain as AtlantaFX named them — that is their vocabulary, not ours. The constants insulate the rest of the codebase from AtlantaFX's naming choices so that Ooloi plugins, tests, and call sites see a semantic vocabulary rooted in Ooloi's own domain concepts.
+Ooloi constants use Ooloi vocabulary. Notification constants are prefixed `notification-` (e.g. `notification-error-style`) to disambiguate from future form field constants (e.g. `error-style` in #206). The underlying AtlantaFX tokens (`-color-danger-muted`, `-color-notify-bg`, `-color-fg-muted`, `-color-bg-subtle`) remain as AtlantaFX named them — that is their vocabulary, not ours. The constants insulate the rest of the codebase from AtlantaFX's naming choices so that Ooloi plugins, tests, and call sites see a semantic vocabulary rooted in Ooloi's own domain concepts.
 
 ##### Grep invariant test
 
@@ -986,9 +971,9 @@ Tests and debugging sessions that read paint state on AtlantaFX-themed input con
 **Four invariants of the cascade mechanism:**
 
 1. **Lookup variables cascade lazily.** Redefining `-color-*-default` on a descendant node is resolved through the parent chain at style application time, not at parse time. The JavaFX CSS engine evaluates lookup variables when it applies styles, so a redefinition in an inline `:style` string is picked up by AtlantaFX's own rules on the same pass.
-2. **The cascade is non-destructive.** Redefining the *values* a multi-stop structure references preserves the structure itself. `error-style` changes what `-color-bg-default` and `-color-border-default` resolve to inside the target node's subtree; AtlantaFX's own multi-stop rule is still the thing painting the control, so the simulated border is preserved.
-3. **Direct `-fx-background-color` is the wrong mechanism for Category 1 targets.** It replaces the multi-stop layer with a single flat colour, erasing the simulated border entirely. Inline strings like `-fx-background-color: -color-accent-muted;` on a `TextField` or `TitledPane` produce a control without a border. Direct `-fx-background-color` is however the correct mechanism for Category 2 targets (see `panel-style`) — regions that do not use multi-stop simulated borders.
-4. **Self-referencing declarations resolve.** `-color-bg-default: -color-bg-default;` does not produce a CSS loop. The right-hand side is resolved against the parent scope because the current scope is in the process of being declared. This is what makes `info-style` a structural no-op that still participates in the cascade uniformly: all three of its slots are self-references, and all three resolve to the theme's current defaults.
+2. **The cascade is non-destructive.** Redefining the *values* a multi-stop structure references preserves the structure itself. A Category 1 constant changes what `-color-bg-default` and `-color-border-default` resolve to inside the target node's subtree; AtlantaFX's own multi-stop rule is still the thing painting the control, so the simulated border is preserved.
+3. **Direct `-fx-background-color` is the wrong mechanism for Category 1 targets.** It replaces the multi-stop layer with a single flat colour, erasing the simulated border entirely. Inline strings like `-fx-background-color: -color-accent-muted;` on a `TextField` produce a control without a border. Direct `-fx-background-color` is however the correct mechanism for Category 2 targets (see `panel-style`, `selected-style`) — regions that do not use multi-stop simulated borders.
+4. **Self-referencing declarations resolve.** `-color-bg-default: -color-bg-default;` does not produce a CSS loop. The right-hand side is resolved against the parent scope because the current scope is in the process of being declared. Self-references can be used to force a node's cascade scope to re-read theme defaults, clearing any inherited styling from an ancestor. However, self-referencing `-color-fg-default: -color-fg-default;` on a node whose foreground is painted by that same token causes the value to resolve to null/transparent — the declaration and consumption are on the same node, creating a circular reference. This was discovered when `selected-style` as a Category 1 cascade made TitledPane disclosure arrows invisible.
 
 Layer 1 tests read `.getBackground().getFills()` after `.applyCss()`, assert the returned list has the expected number of stops, and compare each stop to `Color/rgb` values encoding the exact Nord-palette hex values above. See UI_ARCHITECTURE §7 for the full inspection procedure and the Layer 1 test pattern.
 
@@ -1000,18 +985,22 @@ The following patterns are established in the Ooloi codebase. New UI code should
 
 Notifications are shown via `(um/show-notification! mgr spec)` where `spec` is a map with `:message` (string), `:type` (`:info`, `:success`, `:warning`, `:error`), and optional `:timeout-ms` (auto-dismiss delay) and `:opacity` (default 0.8). Notifications do not create a Stage — they are rendered into a shared overlay Popup attached to the primary window.
 
-The notification component (`ooloi-notification` in `ooloi.frontend.ui.core.cljfx`) is an `ext-instance-factory` that materialises an AtlantaFX `Notification` control. It resolves `:text-key` via `tr`, sets a default icon from the type, and applies the matching `-style` constant via `.setStyle` inside its `:create` fn. Every notification receives a `.setStyle` call — `:info` notifications apply `styles/info-style` (self-referencing defaults), not an empty string. `build-notification!` in `ui_manager.clj` is the materialisation wrapper called by the notification system.
+The notification component (`ooloi-notification` in `ooloi.frontend.ui.core.cljfx`) is an `ext-instance-factory` that materialises an AtlantaFX `Notification` control. It resolves `:text-key` via `tr`, sets a default icon from the type, and applies the matching `notification-*-style` constant to the `.container` child node inside the Notification. `build-notification!` in `ui_manager.clj` is the materialisation wrapper called by the notification system.
 
-Severity rendering is applied inline via `.setStyle` — no CSS stylesheet file is involved. The style classes (`Styles/SUCCESS`, `Styles/WARNING`, `Styles/DANGER`) stay on the style-class list because they set `-fx-icon-color` correctly; they do not conflict with the inline `:style` for the severity fill.
+**Why `.container` and not the Notification node itself:** AtlantaFX `Notification` extends `Control` (not `VBox`). The visual background and border are rendered on `.container` — an HBox child created by the Notification's Skin. Setting `-fx-background-radius` or `-color-notify-bg` on the Notification control has no effect on `.container`'s appearance. Since the Skin is instantiated lazily (not during construction), the style is applied via a `skinProperty` listener that fires when the Skin creates `.container`, followed by a `Platform/runLater` to ensure `.lookup(".container")` resolves.
 
-| Notification type | Style class (icon colour) | `-style` constant |
+**Notification token system.** AtlantaFX notifications use their own token system (`-color-notify-bg`, `-color-notify-fg`, `-color-notify-border`), NOT the generic `-color-bg-default` cascade. The `notification-*-style` constants target `-color-notify-bg` for the severity background and include corner radius. `notification-info-style` applies corner radius only — no background override, it uses the theme's default notification background.
+
+Severity rendering is applied inline via `.setStyle` on `.container` — no CSS stylesheet file is involved. The style classes (`Styles/SUCCESS`, `Styles/WARNING`, `Styles/DANGER`) stay on the Notification node's style-class list because they set `-fx-icon-color` correctly; they do not conflict with the inline style on `.container`.
+
+| Notification type | Style class (icon colour) | `-style` constant (on `.container`) |
 |-------------------|---------------------------|---------------------|
-| `:info` | `"notification"` `Styles/ELEVATED_2` | `styles/info-style` |
-| `:success` | `"notification"` `Styles/SUCCESS` `Styles/ELEVATED_2` | `styles/success-style` |
-| `:warning` | `"notification"` `Styles/WARNING` `Styles/ELEVATED_2` | `styles/warning-style` |
-| `:error` | `"notification"` `Styles/DANGER` `Styles/ELEVATED_2` | `styles/error-style` |
+| `:info` | `"notification"` `Styles/ELEVATED_2` | `styles/notification-info-style` |
+| `:success` | `"notification"` `Styles/SUCCESS` `Styles/ELEVATED_2` | `styles/notification-success-style` |
+| `:warning` | `"notification"` `Styles/WARNING` `Styles/ELEVATED_2` | `styles/notification-warning-style` |
+| `:error` | `"notification"` `Styles/DANGER` `Styles/ELEVATED_2` | `styles/notification-error-style` |
 
-Every state has its own constant and follows the same three-slot pattern. `info-style` is not a special case — it redefines the same three tokens as the others, but to their theme defaults. The uniformity eliminates fall-through behaviour and makes cascade scoping explicit at every node.
+Every type has its own constant. `notification-info-style` applies corner radius only (theme default background). The other three override `-color-notify-bg` with the severity-appropriate muted token.
 
 **Window content** (headings, placeholder text):
 
@@ -1026,7 +1015,7 @@ Every state has its own constant and follows the same three-slot pattern. `info-
 | Purpose | Approach | Usage |
 |---------|----------|-------|
 | Flat icon button (reset) | `Styles/FLAT` style class | Reset-to-default buttons beside settings fields |
-| Invalid input | `:error?` prop on formatter | Set declaratively at render time — the formatter applies `styles/error-style` via `:style` when `:error? true` |
+| Invalid input | `:error?` prop on formatter | Set declaratively at render time — the formatter will apply a Category 1 `styles/error-style` via `:style` when `:error? true` (#206) |
 
 `ooloi-dense-text-field`, `ooloi-dense-combo-box`, `ooloi-dense-spinner`, and `ooloi-labelled-field` all accept an `:error?` boolean prop. `ooloi-labelled-field` threads `:error?` through to its nested `:control`. Callers read their view-state `:field-errors` map at render time:
 
@@ -1041,7 +1030,7 @@ The declarative prop eliminates all dynamic style-class mutation for validation.
 
 **Tile selection** (instrument and staff editors):
 
-Tile-based editors (instrument library, staff editor) use `styles/selected-style` for the selected tile. The `-style` constant is assigned inline via `:style` in the tile's cljfx spec when the tile is in the selection set. The three-slot pattern applies as for severity states — selection gains a consistent background, foreground, and border treatment for structural parity with error/warning/success rendering.
+Tile-based editors (instrument library, staff editor) use `styles/selected-style` for the selected tile. The constant is assigned inline via `:style` in the tile's cljfx spec when the tile is in the selection set. `selected-style` is a Category 2 direct property (`-fx-background-color: -color-accent-muted;`) — NOT a lookup variable cascade — because containers can nest selectable children (musicians → instruments → staves), and a cascade would leak into descendants, making them appear selected. The mirror pattern (`.title` and `.content` set to `-fx-background-color: transparent;`) lets the parent's direct background show through without propagating.
 
 **Windows** (About, Settings):
 
