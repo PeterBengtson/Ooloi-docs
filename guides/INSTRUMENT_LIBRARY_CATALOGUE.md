@@ -155,7 +155,7 @@ concert pitch by different intervals depending on the size of the instrument.
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
 | Horn in F | treble; bass | Perfect fifth below written | Modern standard; bass clef uses same transposition as treble |
-| Tenor Horn in E♭ / Alto Horn in E♭ | treble | Major sixth below written | Same instrument, two regional EN names: Tenor Horn (British brass band), Alto Horn (American concert/marching band); Althorn (German); Saxhorn alto (French); Flicorno contralto (Italian) |
+| Tenor Horn in E♭ | treble | Major sixth below written | British brass band instrument; "Alto Horn" is the American name; Althorn (German); Saxhorn alto (French); Flicorno contralto (Italian) |
 | Mellophone in F | treble | Perfect fifth below written | Band substitute for horn; forward-facing bell for marching |
 
 ### Wagner Tubas
