@@ -155,6 +155,8 @@ concert pitch by different intervals depending on the size of the instrument.
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
 | Horn in F | treble; bass | Perfect fifth below written | Modern standard; bass clef uses same transposition as treble |
+| Tenor Horn in E♭ / Alto Horn in E♭ | treble | Major sixth below written | Same instrument, two regional EN names: Tenor Horn (British brass band), Alto Horn (American concert/marching band); Althorn (German); Saxhorn alto (French); Flicorno contralto (Italian) |
+| Mellophone in F | treble | Perfect fifth below written | Band substitute for horn; forward-facing bell for marching |
 
 ### Wagner Tubas
 
@@ -231,6 +233,8 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Trumpet in B♭ | treble | Major second below written | Modern standard |
 | Piccolo Trumpet in B♭ | treble | Major second below written | High register; one octave above standard B♭ |
 | Cornet in B♭ | treble | Major second below written | Separate entry from trumpet |
+| Soprano Cornet in E♭ | treble | Minor third above written | Leads the brass band |
+| Flugelhorn in B♭ | treble | Major second below written | Conical-bore; warmer tone than trumpet; *flicorno soprano* (Italian); *bugle* (French) |
 | Bass Trumpet in C | treble; bass; tenor | Treble: octave below written; bass/tenor: concert pitch | Treble clef notation (trumpet players) transposes an octave; bass/tenor clef (trombone players) is at concert pitch |
 
 ### Trombones
@@ -242,28 +246,24 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Tenor Trombone | bass; tenor | — | |
 | Bass Trombone | bass | — | |
 | Contrabass Trombone | bass | — | |
+| Cimbasso | bass | — | Valved contrabass trombone; Verdi, Puccini, film scoring |
 
 ### Tubas
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Euphonium / Tenor Tuba in B♭ | bass; treble | Treble: major ninth below written; bass: concert pitch | British brass band treble clef notation transposes a major ninth; orchestral bass clef is at concert pitch |
+| Baritone Horn in B♭ (orchestral) | bass | — | Narrower bore than euphonium; concert pitch in bass clef; *flicorno tenore* (Italian); *saxhorn baryton* (French) |
+| Baritone Horn in B♭ (brass band) | treble | Major ninth below written | British brass band notation |
+| Euphonium / Tenor Tuba in B♭ (orchestral) | bass | — | Concert pitch in bass clef; orchestral and wind ensemble notation |
+| Euphonium / Tenor Tuba in B♭ (brass band) | treble | Major ninth below written | British brass band notation; whole part in treble clef |
 | Bass Tuba | bass | — | |
 | Contrabass Tuba | bass | — | |
-
-### Band and Cornet Family
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Soprano Cornet in E♭ | treble | Minor third above written | Leads the brass band |
-| Flugelhorn in B♭ | treble | Major second below written | Conical-bore; warmer tone than trumpet |
-| Alto Horn in E♭ | treble | Major sixth below written | Tenor Horn (British); Althorn (German/Austrian) |
-| Baritone Horn in B♭ | treble; bass | Treble: major ninth below written; bass: concert pitch | Narrower bore than euphonium |
-| Mellophone | treble | Perfect fifth below written | Band substitute for horn; F instrument |
-| Sousaphone | bass; treble | Bass: concert pitch; treble: major ninth below written | B♭ instrument; marching and concert band bass |
-| Bombardon in E♭ | bass; treble | Bass: concert pitch; treble: major sixth below written | E♭ bass in British brass band |
-| Bombardon in B♭ | bass; treble | Bass: concert pitch; treble: major ninth below written | B♭ bass; Berg's Wozzeck; British brass band |
-| Cimbasso | bass | — | Valved contrabass trombone; Verdi, Puccini, film scoring |
+| Sousaphone in B♭ (concert band) | bass | — | B♭ bass; concert pitch in bass clef; marching and concert band |
+| Sousaphone in B♭ (brass band) | treble | Major ninth below written | British brass band notation |
+| Bombardon in E♭ (orchestral) | bass | — | E♭ bass; concert pitch in bass clef |
+| Bombardon in E♭ (brass band) | treble | Major sixth below written | E♭ bass in British brass band; treble clef notation |
+| Bombardon in B♭ (orchestral) | bass | — | B♭ bass; concert pitch in bass clef; Berg's *Wozzeck* (military stage band) |
+| Bombardon in B♭ (brass band) | treble | Major ninth below written | B♭ bass in British brass band; treble clef notation |
 | Ophicleide | bass | — | 19th-century keyed brass; precursor to the tuba; Mendelssohn, Berlioz, early Verdi |
 
 ---
