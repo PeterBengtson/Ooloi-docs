@@ -37,7 +37,6 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
   - [Trumpets](#trumpets)
   - [Trombones](#trombones)
   - [Tubas](#tubas)
-  - [Band and Cornet Family](#band-and-cornet-family)
 - [Percussion](#percussion)
   - [Timpani](#timpani)
   - [Pitched Percussion](#pitched-percussion)
@@ -63,6 +62,7 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
   - [Baroque Strings](#baroque-strings)
   - [Baroque Brass](#baroque-brass)
   - [Baroque Keyboards and Plucked](#baroque-keyboards-and-plucked)
+- [References](#references)
 
 ---
 
