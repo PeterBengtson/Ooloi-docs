@@ -179,15 +179,18 @@ Action handlers `:ui/undo` and `:ui/redo` are registered in `system.clj` and del
 `undo-redo/undo!` and `undo-redo/redo!`. The stacks are not persisted — they reset on
 application restart.
 
-**Note**: The Tier 2 implementation above predates Tier 1. When Tier 1 is implemented, the
-Tier 2 local undo/redo stacks remain as-is, but routing is extended to compare local stack
-timestamps with the backend timestamp cache (see
-[Unified Frontend Routing](#unified-frontend-routing--tier-1-and-tier-2-merge)). The Tier 2
-code above documents the current implementation; the timestamp-based routing is the target
-architecture.
+The Tier 2 stacks stand on their own — they require no knowledge of Tier 1. The
+[Unified Frontend Routing](#unified-frontend-routing--tier-1-and-tier-2-merge) layer reads
+the Tier 2 stacks and the backend timestamp cache in parallel and decides which one Cmd+Z
+acts on. Tier 2 exposes `can-undo?`, `can-redo?`, `top-undo-key`, `top-redo-key`, `undo!`,
+`redo!`, and `record-setting-change!`; the routing layer consumes them without further
+coupling.
+
+The following is the reference implementation. The normative specification is the prose
+above; the code shows one realisation of those requirements.
 
 ```clojure
-;; ooloi.frontend.undo_redo — module structure
+;; ooloi.frontend.undo_redo — reference implementation
 
 (def ^:private max-stack-depth 50)
 (def ^:private undo-stack (atom []))
@@ -300,6 +303,10 @@ No client can supply a snapshot or trigger a restoration outside the undo manage
 The `resource-key` is `:instrument-library` for the IL, a piece UUID for pieces, and
 any future keyword or UUID for other resources. The undo manager imposes no constraints
 on the key type.
+
+The API is backend-internal: `push-undo!` runs at mutation sites, `undo!`/`redo!` run
+in the gRPC handler for `undo-resource`/`redo-resource`, and `remove-resource!` runs
+in the Piece Manager. Clients cannot invoke any of these directly.
 
 #### Stack Semantics
 
@@ -511,6 +518,12 @@ These are **resource-scoped**, not "undo the latest across everything." The clie
 knows from its cached `:undo-state-changed` timestamps which resource has the most recent
 step. It sends `SRV/undo-resource(:instrument-library, nil)` or
 `SRV/undo-resource(:piece, piece-id)`.
+
+The internal mapping: when `resource-id` is nil (singleton resources such as the
+Instrument Library), the undo manager's `resource-key` equals `resource-type`. When
+`resource-id` is non-nil (pieces, future per-instance resources), the `resource-key`
+equals `resource-id`. The manager itself never inspects the pair — it receives the
+single resource-key it was pushed under.
 
 The `undo-resource` and `redo-resource` responses include the new undo/redo timestamps,
 allowing the calling client to update its cache immediately without waiting for the push
@@ -808,9 +821,9 @@ in the worst case (WAN with high latency) cannot cause a wrong routing decision 
 For the combined desktop application — the primary deployment model — the offset and
 residual are both effectively zero.
 
-**Backward compatibility.** If the server does not include `:server-timestamp` in the
-confirmation event (older server version), the offset defaults to zero. This is today's
-behaviour — no clock adjustment. The feature degrades gracefully.
+**Absent timestamp.** If `:server-timestamp` is not present in the confirmation event,
+the offset defaults to zero and no adjustment is applied. Routing correctness in this
+path depends on the two clocks agreeing within the gap between consecutive actions.
 
 **Confirmation event extension:**
 
