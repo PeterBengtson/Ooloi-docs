@@ -25,7 +25,6 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
 
 - [Woodwinds](#woodwinds)
   - [Flutes](#flutes)
-  - [Ocarinas](#ocarinas)
   - [Double Reeds](#double-reeds)
   - [Clarinets](#clarinets)
   - [Saxophones](#saxophones)
@@ -41,10 +40,11 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
   - [Timpani](#timpani)
   - [Pitched Percussion](#pitched-percussion)
   - [Unpitched Percussion](#unpitched-percussion)
-- [Special Effects](#special-effects)
 - [Other](#other)
   - [Bagpipes](#bagpipes)
-- [Electronics](#electronics)
+  - [Japanese Flute](#japanese-flute)
+  - [Ocarinas](#ocarinas)
+  - [Folk Plucked](#folk-plucked)
 - [Keyboards](#keyboards)
 - [Plucked Instruments](#plucked-instruments)
   - [Harp](#harp)
@@ -55,6 +55,8 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
 - [Strings](#strings)
   - [Sections and Solos](#sections-and-solos)
   - [Divisi](#divisi)
+- [Special Effects](#special-effects)
+- [Electronics](#electronics)
 - [Early Instruments](#early-instruments)
   - [Recorders](#recorders)
   - [Baroque Woodwinds](#baroque-woodwinds)
@@ -76,15 +78,6 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
 | Flute | treble | — | |
 | Alto Flute in G | treble | Perfect fourth below written | |
 | Bass Flute | treble | Octave below written | |
-| Shakuhachi | treble | — | Japanese end-blown bamboo flute |
-
-### Ocarinas
-
-| Instrument | Clef(s) | Transposition | Notes |
-|---|---|---|---|
-| Soprano Ocarina | treble | — | |
-| Alto Ocarina | treble | — | |
-| Bass Ocarina | treble | — | |
 
 ### Double Reeds
 
@@ -351,6 +344,7 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Metal Junk | Unspecified scrap metal; Bengtson (*Schakt*), Varèse |
 | Hammer | Mallet on wooden box (Kasten) |
 | Lion's Roar | String drum; Varèse |
+| Ship's Bell | Low-pitched metal bell, struck in pairs; Britten (*Peter Grimes*) |
 
 **Latin and World Percussion**
 
@@ -373,7 +367,7 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Wind Machine | Windmaschine / Machine à vent; rotating ribbed cylinder |
 | Thunder Machine | Donnermaschine / Machine à tonnerre; large drum or metal sheet |
 | Cowbells | Herdenglocken / Cloches de vache; multiple pitched cowbells |
-| Whip | Peitsche / Fouet; two flat boards |
+| Slapstick (Whip) | Peitsche / Fouet; two flat boards |
 | Ratchet | Ratsche / Crécelle; notched rotating wheel |
 | Anvil | Verdi, Wagner |
 | Siren | Varèse, Ligeti |
@@ -391,6 +385,43 @@ Instruments outside standard orchestral, chamber music, and marching band practi
 | Great Highland Bagpipe | treble | Major second below written | Chanter written in B♭ key signature |
 | Uilleann Pipes | treble | — | Irish bellows-blown pipes; D chanter |
 | Northumbrian Smallpipes | treble | — | English bellows-blown smallpipes |
+
+### Japanese Flute
+
+| Instrument | Clef(s) | Transposition | Notes |
+|---|---|---|---|
+| Shakuhachi | treble | — | Japanese end-blown bamboo flute |
+
+### Ocarinas
+
+| Instrument | Clef(s) | Transposition | Notes |
+|---|---|---|---|
+| Soprano Ocarina | treble | — | |
+| Alto Ocarina | treble | — | |
+| Bass Ocarina | treble | — | |
+
+### Folk Plucked
+
+| Instrument | Staves | Transposition | Notes |
+|---|---|---|---|
+| Zither | 2 | — | Austrian/Bavarian; melody + accompaniment staves |
+| Cimbalom | 2 | — | Hungarian hammered dulcimer; concert pitch |
+| Koto | 2 | — | Japanese 13-string zither; grand staff |
+| Kora | 1 | — | West African 21-string harp-lute |
+| Shamisen | 1 | — | Japanese 3-string lute |
+| Sitar | 1 | — | Indian; with sympathetic strings |
+| Oud | 1 | — | Middle Eastern/North African fretless lute |
+| Bouzouki | 1 | — | Greek tetrachordo; four double courses; C3–E5 |
+| Bouzouki (Irish) | 1 | — | GDAD tuning; flat-backed; G2–E5 |
+| Balalaika Prima | 1 | — | Soprano range |
+| Balalaika Sekunda | 1 | — | Alto range |
+| Balalaika Alto | 1 | — | |
+| Balalaika Bass | 1 | — | |
+| Balalaika Contrabass | 1 | Octave below written | |
+| Domra Piccolo | 1 | — | |
+| Domra Prima | 1 | — | Also called "Soprano" in English sources |
+| Domra Alto | 1 | — | |
+| Domra Bass | 1 | — | |
 
 ---
 
@@ -445,31 +476,14 @@ Instruments outside standard orchestral, chamber music, and marching band practi
 | Instrument | Staves | Transposition | Notes |
 |---|---|---|---|
 | Guitar | 1 | Octave below written | Classical guitar |
-| Electric Guitar | 1 | — | Lead / rhythm |
-| Electric Guitar (7-string) | 1 | — | Extended range |
+| Electric Guitar | 1 | Octave below written | Lead / rhythm |
+| Electric Guitar (7-string) | 1 | Octave below written | Extended range |
 | Electric Bass Guitar | 1 | Octave below written | 4-string |
 | Electric Bass Guitar (5-string) | 1 | Octave below written | Extended lower range |
 | Electric Bass Guitar (6-string) | 1 | Octave below written | Extended upper and lower range |
 | Banjo | 1 | — | 5-string; bluegrass and folk |
 | Mandolin | 1 | — | |
 | Ukulele | 1 | — | |
-| Zither | 2 | — | Austrian/Bavarian; melody + accompaniment staves |
-| Cimbalom | 2 | — | Hungarian hammered dulcimer; concert pitch |
-| Koto | 2 | — | Japanese 13-string zither; grand staff |
-| Kora | 1 | — | West African 21-string harp-lute |
-| Shamisen | 1 | — | Japanese 3-string lute |
-| Balalaika Prima | 1 | — | Soprano range |
-| Balalaika Sekunda | 1 | — | Alto range |
-| Balalaika Alto | 1 | — | |
-| Balalaika Bass | 1 | — | |
-| Balalaika Contrabass | 1 | Octave below written | |
-| Domra Piccolo | 1 | — | |
-| Domra Soprano | 1 | — | |
-| Domra Alto | 1 | — | |
-| Domra Bass | 1 | — | |
-| Sitar | 1 | — | Indian; with sympathetic strings |
-| Oud | 1 | — | Middle Eastern/North African fretless lute |
-| Bouzouki | 1 | — | Greek; also Irish variant |
 
 ---
 
@@ -514,15 +528,18 @@ single staff.
 
 ## Strings
 
-String instruments appear in **section** and **solo** variants. Section instruments additionally
-appear in divisi configurations for two, three, four, and six parts.
+String instruments appear in **section** and **solo** variants. Violins ship in three section
+variants — **Violins** (unified), **Violin I**, and **Violin II** — distinguished primarily by
+VST panning position (unified centre, I panned left, II panned right). Section instruments
+additionally appear in divisi configurations for two, three, four, and six parts.
 
 ### Sections and Solos
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Violin I | treble | — | Section |
-| Violin II | treble | — | Section |
+| Violins | treble | — | Section (unified) |
+| Violin I | treble | — | Section (panned left) |
+| Violin II | treble | — | Section (panned right) |
 | Violin | treble | — | Solo |
 | Viola | alto; treble | — | Section; alto clef default |
 | Viola | alto; treble | — | Solo; alto clef default |
@@ -533,14 +550,23 @@ appear in divisi configurations for two, three, four, and six parts.
 
 ### Divisi
 
-Divisi configurations are available for section instruments only.
+Divisi configurations are available for section instruments. Violins, Violin I, and Violin II
+each ship with their own divisi variants so that panning is preserved in VST playback.
 
 | Instrument | Staves |
 |---|---|
-| Violin div. 2 | 2 |
-| Violin div. 3 | 3 |
-| Violin div. 4 | 4 |
-| Violin div. 6 | 6 |
+| Violins div. 2 | 2 |
+| Violins div. 3 | 3 |
+| Violins div. 4 | 4 |
+| Violins div. 6 | 6 |
+| Violin I div. 2 | 2 |
+| Violin I div. 3 | 3 |
+| Violin I div. 4 | 4 |
+| Violin I div. 6 | 6 |
+| Violin II div. 2 | 2 |
+| Violin II div. 3 | 3 |
+| Violin II div. 4 | 4 |
+| Violin II div. 6 | 6 |
 | Viola div. 2 | 2 |
 | Viola div. 3 | 3 |
 | Viola div. 4 | 4 |
