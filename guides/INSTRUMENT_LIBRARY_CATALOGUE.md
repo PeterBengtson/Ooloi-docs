@@ -592,69 +592,84 @@ lautenwerk are keyboards, lute and theorbo are plucked instruments.
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Garklein Recorder in C | treble | — | Sopranissimo |
-| Sopranino Recorder in F | treble | — | |
-| Soprano Recorder in C | treble | — | Descant |
+| Garklein Recorder in C | treble 15ma | — | Sopranissimo; octave-displaced clef encodes the 2-octave shift |
+| Sopranino Recorder in F | treble 8va | — | Octave-displaced clef encodes the 1-octave shift |
+| Soprano Recorder in C | treble 8va | — | Descant; octave-displaced clef encodes the 1-octave shift |
 | Alto Recorder in F | treble | — | Treble |
 | Tenor Recorder in C | treble | — | |
-| Bass Recorder in F | treble | — | |
-| Contrabass Recorder in C | treble | — | |
+| Bass Recorder in F | bass | — | |
+| Contrabass Recorder in C | bass | — | |
 
 ### Baroque Woodwinds
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Traverso | treble | — | Baroque transverse flute |
+| Traverso | treble | — | One-keyed Baroque transverse flute in D; D4–A6 |
 | Oboe da caccia in F | treble | Perfect fifth below written | Curved-body Baroque oboe; distinct from English horn |
-| Chalumeau | treble | — | Baroque predecessor to the clarinet |
+| Soprano Chalumeau in C | treble | — | Denner family; F3–C5 |
+| Alto Chalumeau in F | treble | Perfect fifth below written | Denner family; B♭2–F4 sounding |
+| Tenor Chalumeau in C | treble | Octave below written | Denner family; F2–C4 sounding |
+| Bass Chalumeau in F | treble | Octave + perfect fifth below written | Denner family; B♭1–F3 sounding |
 
 ### Renaissance and Early Baroque Winds
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Cornettino | treble | Perfect fourth above written | Sopranino of the cornett family |
-| Treble Cornett | treble | — | Standard Zink (Cornetto) |
-| Mute Cornett | treble | — | Cornetto muto; integral mouthpiece |
-| Tenor Cornett (Lizard) | treble | — | S-curved body |
-| Serpent | bass | — | Bass of the cornett family |
-| Crumhorn | treble | — | Capped double reed; Renaissance consort instrument |
-| Shawm | treble | — | Loud double reed; precursor to the oboe |
-| Sordun | bass | — | Capped double reed; quieter than crumhorn; cylindrical bore |
-| Dulcian | bass | — | Renaissance bassoon; precursor to the modern bassoon |
-| Duduk | treble | — | Armenian double reed; cylindrical bore |
-| Sackbut | bass; tenor | — | Renaissance/Baroque trombone |
+| Cornettino | treble | Perfect fourth above written | Sopranino of the cornett family; C4–D6 sounding |
+| Treble Cornett | treble | — | Standard Zink (Cornetto); A3–A5 |
+| Mute Cornett | treble | — | Cornetto muto; integral mouthpiece; A3–A5 |
+| Tenor Cornett (Lizard) | treble | — | S-curved body; C3–C5 |
+| Serpent | bass | — | Bass of the cornett family; Bb1–Bb4 |
+| Soprano Crumhorn | treble | — | Capped double reed; C5–D6 |
+| Alto Crumhorn | treble | — | Most commonly played size; G4–A5 |
+| Tenor Crumhorn | treble | — | C4–D5 |
+| Bass Crumhorn | bass | — | F3–G4 |
+| Soprano Shawm | treble | — | Loud double reed; C4–D6 |
+| Alto Shawm | treble | — | G3–A5 |
+| Tenor Shawm | treble | — | C3–D5 |
+| Bass Shawm | bass | — | Bombard/Bombardone; F2–G4 |
+| Sordun | bass | — | Capped double reed; quieter than crumhorn; cylindrical bore; F2–F4 |
+| Soprano Dulcian | treble | — | Exilent; C4–D6 |
+| Alto Dulcian | treble | — | G3–A5 |
+| Tenor Dulcian | bass | — | C3–D5 |
+| Bass Dulcian | bass | — | Chorist; Renaissance bassoon; C2–G4 |
+| Duduk | treble | — | Armenian double reed; cylindrical bore; A3–D5 |
+| Alto Sackbut | alto | — | Renaissance/Baroque trombone; A2–E5 |
+| Tenor Sackbut | bass | — | E2–C5 |
+| Bass Sackbut | bass | — | Bb1–G4 |
+| Contrabass Sackbut | bass | — | E1–C4 |
 
 ### Baroque Strings
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Violino piccolo | treble | Minor third above written | Small violin tuned a minor third above standard |
-| Viola d'amore | treble; alto | — | Six or seven strings + sympathetic strings |
-| Violoncello piccolo | bass; tenor; treble | — | Five-string cello |
-| Treble Viol | treble | — | |
-| Tenor Viol | alto | — | |
-| Bass Viol | bass; tenor | — | Viola da gamba |
-| Hurdy-gurdy | treble | — | Cranked wheel; Vivaldi, Schubert; medieval and folk revival |
-| Violone | bass | Octave below written | Baroque string bass |
+| Violino piccolo | treble | Minor third above written | Small violin tuned a minor third above standard; Bb3–G7 sounding |
+| Viola d'amore | treble; alto | — | Six or seven strings + sympathetic strings; A3–E6 |
+| Violoncello piccolo | bass; tenor; treble | — | Five-string cello; C2–E6 |
+| Treble Viol | treble | — | Dessus de viole; D4–G6 |
+| Tenor Viol | alto | — | Taille de viole; A2–A4 |
+| Bass Viol | bass; tenor | — | Viola da gamba; D2–D5 |
+| Hurdy-gurdy | treble | — | Cranked wheel; Vivaldi, Schubert; medieval and folk revival; G3–G5 |
+| Violone | bass | Octave below written | Baroque string bass; D1–D4 sounding |
 
 ### Baroque Brass
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
-| Corno da caccia in C | treble | — | Natural hunting horn |
-| Corno da caccia in D | treble | Major second above written | |
-| Corno da caccia in F | treble | Perfect fourth above written | |
-| Corno da caccia in G | treble | Perfect fifth above written | |
-| Tromba da tirarsi | treble | Major second above written | Baroque slide trumpet |
+| Corno da caccia in C | treble | — | Natural hunting horn; C4–C6 sounding |
+| Corno da caccia in D | treble | Major second above written | D4–D6 sounding |
+| Corno da caccia in F | treble | Perfect fourth above written | F4–F6 sounding |
+| Corno da caccia in G | treble | Perfect fifth above written | G4–G6 sounding |
+| Tromba da tirarsi | treble | Major second above written | Baroque slide trumpet; A3–A5 sounding |
 
 ### Baroque Keyboards and Plucked
 
 | Instrument | Staves | Transposition | Notes |
 |---|---|---|---|
-| Clavichord | 2 | — | |
-| Lute | 1 | Octave below written | Various configurations |
-| Theorbo / Chitarrone | 1 | — | Long-neck continuo lute |
-| Lautenwerk | 2 | — | Harpsichord with gut strings |
+| Clavichord | 2 | — | C2–E6 sounding |
+| Lute | 1 | Octave below written | 11-course Baroque lute; A1–F5 sounding |
+| Theorbo | 1 | — | Long-neck continuo lute (chitarrone); A0–A4 sounding |
+| Lautenwerk | 2 | — | Harpsichord with gut strings; F1–F6 sounding |
 
 ---
 
