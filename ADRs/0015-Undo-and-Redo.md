@@ -263,6 +263,12 @@ No client can supply a snapshot or trigger a restoration outside the undo manage
 
 #### The Undo Manager API
 
+The functions below are **component methods on the undo manager** — plain Clojure
+functions on the Integrant component. They are **not** declared `^{:api true}` in
+`interfaces.clj` and are **not** exposed in the `api`/`SRV` namespace. They are called
+only from backend code: mutation sites, the Piece Manager, and the gRPC handlers for
+the public operations described in [gRPC Extensions](#grpc-extensions) below.
+
 ```clojure
 ;; backend/components/undo_manager.clj — Integrant component
 ;;
@@ -304,9 +310,13 @@ The `resource-key` is `:instrument-library` for the IL, a piece UUID for pieces,
 any future keyword or UUID for other resources. The undo manager imposes no constraints
 on the key type.
 
-The API is backend-internal: `push-undo!` runs at mutation sites, `undo!`/`redo!` run
-in the gRPC handler for `undo-resource`/`redo-resource`, and `remove-resource!` runs
-in the Piece Manager. Clients cannot invoke any of these directly.
+**Call sites.** `push-undo!` runs at mutation sites (e.g. `set-instrument!`,
+piece-mutation operations). `undo!` and `redo!` run inside the gRPC handlers for
+`undo-resource` and `redo-resource`. `current-state` runs inside the gRPC handler
+for `get-undo-description`. `remove-resource!` runs in the Piece Manager when no
+clients have a piece open. None of these names appear in the client-facing API
+surface — the frontend reaches undo functionality only through `SRV/undo-resource`,
+`SRV/redo-resource`, and `SRV/get-undo-description`.
 
 #### Stack Semantics
 
@@ -491,7 +501,12 @@ sequenceDiagram
 
 ### gRPC Extensions
 
-Three new API operations, declared `^{:api true}` in `interfaces.clj`:
+Three new public API operations, declared `^{:api true}` in `interfaces.clj` and
+therefore exported through the `api` namespace and callable by clients as
+`SRV/undo-resource`, `SRV/redo-resource`, and `SRV/get-undo-description`. These are
+the **only** undo-related entry points exposed to the frontend. Their handlers
+delegate to the undo manager's component methods described in
+[The Undo Manager API](#the-undo-manager-api) above.
 
 ```clojure
 (undo-resource resource-type resource-id)
