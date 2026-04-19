@@ -7,8 +7,20 @@ special-effect instruments, and a selection of historical instruments.
 Each instrument appears in up to four language editions — Italian, German, French, and English —
 with names and abbreviations drawn from standard orchestral tradition. Instruments whose names
 do not vary across these languages carry fewer editions. Every edition is a separate entry
-with its own identity. In total the bundled library contains roughly 270 instruments,
-yielding just over 1,000 language-specific library entries.
+with its own identity. The bundled library contains **315 instruments** across eight families,
+yielding **1,176 language-specific library entries**:
+
+| Family | Instruments | Entries |
+|---|---:|---:|
+| Woodwinds | 61 | 241 |
+| Brass | 62 | 245 |
+| Percussion | 66 | 219 |
+| Other | 27 | 84 |
+| Keyboards | 24 | 93 |
+| Plucked | 12 | 45 |
+| Voices | 21 | 84 |
+| Strings | 42 | 165 |
+| **Total** | **315** | **1,176** |
 
 The bundled library is a starting point, not a closed set. Any instrument not listed here —
 whether a historical reconstruction, a microtonal variant, a folk instrument, or a newly
