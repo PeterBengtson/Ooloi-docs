@@ -29,7 +29,7 @@ For more information, check out our website and blog on [https://ooloi.org](http
 
 ## Background and Name
 
-Ooloi is a modern revival and evolution of Igor Engraver, a pioneering music notation software developed from 1996 to 2001 by Peter Bengtson and a team of 12 spending a total of $7.5 million USD, adjusted for inflation. 
+Ooloi is a modern revival and evolution of Igor Engraver, a pioneering music notation software developed from 1996 to 2001 by Peter Bengtson and a team of 18 spending a total of $7.5 million USD, adjusted for inflation. 
 
 Igor Engraver was built entirely in Common Lisp and was named after the composer Igor Stravinsky, with an additional playful nod to Igor, the assistant from the classic film "Young Frankenstein." The project was innovative for its time, offering advanced features for music notation and engraving. However, it ultimately succumbed to management-imposed feature creep, venture capital policies, and the broader economic impact of the 9/11 attacks, which halted mergers and acquisitions worldwide.
 
