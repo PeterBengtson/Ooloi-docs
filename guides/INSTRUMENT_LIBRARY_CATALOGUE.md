@@ -1,40 +1,8 @@
 # Bundled Instrument Library
 
-Ooloi ships with a bundled instrument library covering the full modern symphony orchestra and
-beyond: woodwinds, brass, strings, percussion, keyboards, plucked instruments, voices, choirs,
-special-effect instruments, and a selection of historical instruments.
-
-Each instrument appears in up to four language editions — Italian, German, French, and English —
-with names and abbreviations drawn from standard orchestral tradition. Instruments whose names
-do not vary across these languages carry fewer editions. Every edition is a separate entry
-with its own identity. The bundled library contains **315 instruments** across eight families,
-yielding **1,176 language-specific library entries**:
-
-| Family | Instruments | Entries |
-|---|---:|---:|
-| Woodwinds | 61 | 241 |
-| Brass | 62 | 245 |
-| Percussion | 66 | 219 |
-| Other | 27 | 84 |
-| Keyboards | 24 | 93 |
-| Plucked | 12 | 45 |
-| Voices | 21 | 84 |
-| Strings | 42 | 165 |
-| **Total** | **315** | **1,176** |
-
-The bundled library is a starting point, not a closed set. Any instrument not listed here —
-whether a historical reconstruction, a microtonal variant, a folk instrument, or a newly
-invented sound source — can be added by the user at any time through the Instrument Library
-window and is saved permanently to the user's library.
-
-**Transposing instruments** are marked with their transposition interval relative to written
-pitch: "major second below written" means the instrument sounds a major second lower than
-the note on the page. Non-transposing instruments show "—" in the Transposition column.
-
----
-
 ## Table of Contents
 
+- [Overview](#overview)
 - [Woodwinds](#woodwinds)
   - [Flutes](#flutes)
   - [Double Reeds](#double-reeds)
@@ -77,6 +45,41 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
   - [Baroque Brass](#baroque-brass)
   - [Baroque Keyboards and Plucked](#baroque-keyboards-and-plucked)
 - [References](#references)
+
+---
+
+## Overview
+
+Ooloi ships with a bundled instrument library covering the full modern symphony orchestra and
+beyond: woodwinds, brass, strings, percussion, keyboards, plucked instruments, voices, choirs,
+special-effect instruments, and a selection of historical instruments.
+
+Each instrument appears in up to four language editions — Italian, German, French, and English —
+with names and abbreviations drawn from standard orchestral tradition. Instruments whose names
+do not vary across these languages carry fewer editions. Every edition is a separate entry
+with its own identity. The bundled library contains **315 instruments** across eight families,
+yielding **1,176 language-specific library entries**:
+
+| Family | Instruments | Entries |
+|---|---:|---:|
+| Woodwinds | 61 | 241 |
+| Brass | 62 | 245 |
+| Percussion | 66 | 219 |
+| Other | 27 | 84 |
+| Keyboards | 24 | 93 |
+| Plucked | 12 | 45 |
+| Voices | 21 | 84 |
+| Strings | 42 | 165 |
+| **Total** | **315** | **1,176** |
+
+The bundled library is a starting point, not a closed set. Any instrument not listed here —
+whether a historical reconstruction, a microtonal variant, a folk instrument, or a newly
+invented sound source — can be added by the user at any time through the Instrument Library
+window and is saved permanently to the user's library.
+
+**Transposing instruments** are marked with their transposition interval relative to written
+pitch: "major second below written" means the instrument sounds a major second lower than
+the note on the page. Non-transposing instruments show "—" in the Transposition column.
 
 ---
 
