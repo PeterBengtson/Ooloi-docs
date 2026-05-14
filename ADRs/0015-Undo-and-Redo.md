@@ -317,11 +317,20 @@ the public operations described in [gRPC Extensions](#grpc-extensions) below.
 ;; session (the IL is always available).
 ```
 
-`push-undo!` reads the originator from a dynamic var `*originator-id*` bound by the gRPC
-interceptor for the duration of each client call. There is no change to the `push-undo!`
-signature — mutation sites do not pass the originator explicitly. For mutations not
-initiated by a client call (server-side housekeeping, scheduled tasks), the var is
-unbound and the entry's `:originator-id` is `nil`.
+`push-undo!` reads the originator from the gRPC Context via
+`(ooloi.shared.grpc.headers/get-client-id-from-context)`. The authentication interceptor
+in `backend/grpc/server.clj` validates the `x-ooloi-client-id` header against the
+connection registry on every `ExecuteMethod` call and stores the validated client-id in
+`CLIENT_ID_CONTEXT_KEY` for the call's duration (gRPC's native context-propagation
+mechanism — not a Clojure dynamic var). Any code reached from the gRPC handler —
+including the mutation site and `push-undo!` — can read the client-id by calling
+`get-client-id-from-context`. No new dynamic var, no new binding wrapper, and no
+duplication of authentication logic. The signature of `push-undo!` is unchanged —
+mutation sites do not pass the originator explicitly.
+
+For mutations not initiated by a client call (server-side housekeeping, scheduled
+tasks), `get-client-id-from-context` returns `nil` and the entry's `:originator-id` is
+`nil`.
 
 The `resource-key` is `:instrument-library` for the IL, a piece UUID for pieces, and
 any future keyword or UUID for other resources. The undo manager imposes no constraints
@@ -366,6 +375,7 @@ regardless of the resource type:
       old-version             (:version @il-atom)
       [desc-key desc-params] (il-diff/describe old-instruments new-instruments)]
   ;; ... apply mutation (swap! il-atom ...) ...
+  ;; push-undo! reads the originator from the gRPC Context internally — see note above.
   (undo/push-undo! undo-mgr :instrument-library
     desc-key desc-params
     (fn [] (restore-instruments! il-atom old-instruments old-version))
