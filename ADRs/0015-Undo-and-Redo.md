@@ -18,6 +18,7 @@
     - [The Undo Manager API](#the-undo-manager-api)
     - [Stack Semantics](#stack-semantics)
     - [Mutation Sites — How Resources Register Undo Steps](#mutation-sites--how-resources-register-undo-steps)
+    - [IL Description Inference](#il-description-inference)
     - [Push-Based State Notification](#push-based-state-notification)
     - [Undo Operation — Sequence Diagram](#undo-operation--sequence-diagram)
     - [Collaborative Undo — Multi-Client Sequence](#collaborative-undo--multi-client-sequence)
@@ -29,7 +30,16 @@
     - [Multi-User Properties](#multi-user-properties)
     - [Undo Routing — Sequence Diagram](#undo-routing--sequence-diagram)
     - [Description Localisation](#description-localisation)
+    - [Ownership Awareness](#ownership-awareness)
     - [Clock Skew Mitigation](#clock-skew-mitigation)
+- [Future Extensions](#future-extensions)
+  - [Ownership-Aware UX (client-side, no backend change)](#ownership-aware-ux-client-side-no-backend-change)
+  - [Gating Foreign Operations (client-side, no backend change)](#gating-foreign-operations-client-side-no-backend-change)
+  - [Server-Side Enforcement (minor backend change)](#server-side-enforcement-minor-backend-change)
+  - [Policy as a Piece Setting](#policy-as-a-piece-setting)
+  - [Originator Naming](#originator-naming)
+  - [Why All of This Is Cheap](#why-all-of-this-is-cheap)
+  - [Permanent Non-Goal: Operational Transformation](#permanent-non-goal-operational-transformation)
 - [Consequences](#consequences)
 - [Alternatives Considered](#alternatives-considered)
 - [References](#references)
@@ -280,6 +290,7 @@ the public operations described in [gRPC Extensions](#grpc-extensions) below.
 ;;    :description-key :il.undo/delete-instruments   ;; translation key
 ;;    :description-params {:names "Flute, Oboe"}     ;; interpolation params
 ;;    :timestamp       1711023456789012               ;; epoch microseconds
+;;    :originator-id   "client-42"                    ;; gRPC client-id at push time, or nil
 ;;    :undo-fn         (fn [] ...)                    ;; restores previous state
 ;;    :redo-fn         (fn [] ...)}                   ;; re-applies mutation
 
@@ -305,6 +316,12 @@ the public operations described in [gRPC Extensions](#grpc-extensions) below.
 ;; no clients have the piece open anymore. The IL stack persists for the
 ;; session (the IL is always available).
 ```
+
+`push-undo!` reads the originator from a dynamic var `*originator-id*` bound by the gRPC
+interceptor for the duration of each client call. There is no change to the `push-undo!`
+signature — mutation sites do not pass the originator explicitly. For mutations not
+initiated by a client call (server-side housekeeping, scheduled tasks), the var is
+unbound and the entry's `:originator-id` is `nil`.
 
 The `resource-key` is `:instrument-library` for the IL, a piece UUID for pieces, and
 any future keyword or UUID for other resources. The undo manager imposes no constraints
@@ -341,12 +358,16 @@ regardless of the resource type:
 
 ```clojure
 ;; Instrument Library — atom-based, optimistic locking
-;; Inside set-instrument-library, after successful version-checked write:
-(let [old-instruments (:instruments @il-atom)
-      old-version     (:version @il-atom)]
+;; Inside set-instrument-library, after successful version-checked write.
+;; The description-key and description-params are computed server-side from
+;; the diff of old-instruments vs. new-instruments — see "IL Description
+;; Inference" below.
+(let [old-instruments        (:instruments @il-atom)
+      old-version             (:version @il-atom)
+      [desc-key desc-params] (il-diff/describe old-instruments new-instruments)]
   ;; ... apply mutation (swap! il-atom ...) ...
   (undo/push-undo! undo-mgr :instrument-library
-    :il.undo/set-instruments {:count (count new-instruments)}
+    desc-key desc-params
     (fn [] (restore-instruments! il-atom old-instruments old-version))
     (fn [] (restore-instruments! il-atom new-instruments (inc old-version)))))
 
@@ -373,6 +394,60 @@ In both cases, `before` and `after` are immutable Clojure values captured by the
 They share structure via persistent data structures. The undo manager never inspects them,
 never serialises them, never knows what they contain. It calls the closure; the closure
 restores the state.
+
+#### IL Description Inference
+
+The IL has a single mutation entry point — `set-instrument-library(expected-version,
+new-instruments)` — which replaces the entire instrument list atomically with optimistic
+locking. The frontend always sends the complete new list, even when only one field of one
+instrument has changed. This is a deliberate property of the IL protocol: there is no
+finer-grained mutation API and there is no batching of independent user actions into one
+call.
+
+Given this protocol, the description for each IL undo entry is derived **server-side**
+from the diff between `old-instruments` and `new-instruments`. The frontend supplies no
+description metadata. The protocol invariant — one logical user action per call — means
+the diff is unambiguous in nearly every case. The few legitimate multi-element changes
+(drag-copy duplicating several instruments at once, multi-drag reordering a group) are
+also trivially detectable from the diff because the set difference or order permutation
+expresses them naturally.
+
+The diff helper `il-diff/describe` returns a `[description-key description-params]` tuple
+covering the cases below. Each row is independent — no case overlaps with another given
+the single-logical-action invariant:
+
+| Diff signature | description-key | description-params |
+|---|---|---|
+| `(new-ids \ old-ids)` has size 1 | `:il.undo/add-instrument` | `{:name <added-name>}` |
+| `(new-ids \ old-ids)` has size N>1 (drag-copy) | `:il.undo/add-instruments` | `{:names "A, B, C" :count N}` |
+| `(old-ids \ new-ids)` has size 1 | `:il.undo/delete-instrument` | `{:name <deleted-name>}` |
+| `(old-ids \ new-ids)` has size N>1 | `:il.undo/delete-instruments` | `{:names "A, B" :count N}` |
+| Same id-set, different order (multi-drag also lands here) | `:il.undo/reorder-instruments` | `{}` |
+| Same set + order, exactly one instrument differs at top level | `:il.undo/edit-instrument` | `{:name <name> :field <field>}` |
+| Same set + order, exactly one instrument's staves differ | `:il.undo/add-staff` / `:il.undo/delete-staff` / `:il.undo/edit-staff` | `{:instrument <name> ...}` |
+| (defensive fallback — should not occur) | `:il.undo/changed` | `{}` |
+
+The diff is computable in time linear to the IL size, runs once per mutation, and
+produces a translation key + params that the standard `tr` machinery renders for the
+menu. The frontend remains entirely oblivious to undo descriptions: it sends the new
+instrument list, the server decides what the user just did, the description flows back
+through `get-undo-description` when the menu needs it.
+
+The same approach does **not** apply to pieces. Piece mutations have granular APIs
+(`add-note`, `delete-measure`, etc.), so each piece mutation site already knows its
+intent and passes a hardcoded description-key directly to `push-undo!` — no diff
+needed.
+
+**Phased implementation.** `il-diff/describe` is the architectural commitment — the IL
+mutation site always calls it, and the function's signature `(old, new) → [key params]`
+is fixed. The diff *sophistication* is incremental. The initial implementation returns
+`[:il.undo/changed {}]` for every input — equivalent to "Instrument Library changed" in
+the menu. The specific cases in the table above are added in follow-up work, each adding
+a branch to `il-diff/describe` and its own translation keys. The mutation site, the
+gRPC contract, the undo manager, the cache, and the routing all remain unchanged as
+descriptions get more specific. This is the payoff of putting the inference in one
+place: every refinement is a localised change inside `il-diff/describe` with no ripple
+effects.
 
 #### Push-Based State Notification
 
@@ -525,8 +600,10 @@ delegate to the undo manager's component methods described in
 
 (get-undo-description resource-type resource-id)
 ;; Returns the descriptions for the current top undo and redo entries.
-;; Returns: {:undo {:description-key ... :description-params ...}  ;; or nil
-;;           :redo {:description-key ... :description-params ...}} ;; or nil
+;; :own? is resolved on the server by comparing the entry's :originator-id
+;; to the calling client's id. Clients never see other clients' raw ids.
+;; Returns: {:undo {:description-key ... :description-params ... :own? true/false}  ;; or nil
+;;           :redo {:description-key ... :description-params ... :own? true/false}} ;; or nil
 ```
 
 These are **resource-scoped**, not "undo the latest across everything." The client
@@ -570,17 +647,21 @@ The frontend maintains three data structures:
 
 ```clojure
 ;; Backend timestamp cache — updated by :undo-state-changed notifications
-{:instrument-library {:undo-timestamp 1711023456789012
-                      :redo-timestamp nil
+{:instrument-library {:undo-timestamp   1711023456789012
+                      :redo-timestamp   nil
                       :undo-description nil     ;; fetched lazily
+                      :undo-own?        nil     ;; filled by description fetch
                       :redo-description nil
-                      :stale true}
+                      :redo-own?        nil
+                      :stale            true}
 
- #uuid "piece-1..."  {:undo-timestamp 1711023400000000
-                      :redo-timestamp 1711023350000000
+ #uuid "piece-1..."  {:undo-timestamp   1711023400000000
+                      :redo-timestamp   1711023350000000
                       :undo-description nil
+                      :undo-own?        nil
                       :redo-description nil
-                      :stale true}}
+                      :redo-own?        nil
+                      :stale            true}}
 ```
 
 The local stacks are always complete and current — they record the user's own local
@@ -703,6 +784,12 @@ consistency:
    shared stack downward. The menu makes this transparent — it always shows what the next
    undo will actually do.
 
+5. **Ownership is visible to the frontend.** Each entry's originating client is captured at
+   push time and exposed to clients as a boolean (`:own?`). The frontend knows, for every
+   entry, whether the local client created it. The specific UX treatment — visual
+   differentiation, confirmation prompts, dispatch refusal — is a separate decision; see
+   [Future Extensions](#future-extensions).
+
 #### Undo Routing — Sequence Diagram
 
 ```mermaid
@@ -783,6 +870,28 @@ The fetched description is cached in the backend timestamp cache until the next
 `:undo-state-changed` notification for that resource marks it stale. For local entries,
 the existing setting-name convention applies (`:ui/theme` → `:setting.ui.theme.name`).
 When no undo is available, the item falls back to the static `:menu.edit.undo` key.
+
+#### Ownership Awareness
+
+Every backend undo entry stores an `:originator-id` — the gRPC client-id of the call that
+pushed it. The `get-undo-description` response exposes an `:own?` boolean, resolved on the
+server by comparing the entry's originator to the calling client. Clients never see raw
+client-ids of other clients.
+
+Ownership is **architectural data exposure, not a prescribed UX**. The frontend has full
+information about whether each entry was made by the local client or another client. What
+the frontend *does* with that information — visual treatment, confirmation prompts,
+dispatch gating — is decided separately and may evolve over time without architectural
+change.
+
+The point is that all such treatments — from a subtle visual cue, to a confirmation
+dialog, to outright refusal to apply foreign undos — are trivially additive over this
+architecture. The data is already there. No backend change, no protocol change, no schema
+change is required to add or modify ownership-aware behaviour. A client-side policy
+decision is sufficient. See [Future Extensions](#future-extensions) for the design space.
+
+In single-user mode, every entry is local or `:own? true`, so ownership-aware UX is
+invisible by construction.
 
 #### Clock Skew Mitigation
 
@@ -865,6 +974,112 @@ correctness failure that breaks the user experience silently. The connection-tim
 handles any skew magnitude, from 10ms residual after NTP to 5 minutes on an unsynchronised
 machine, with no dependency on external infrastructure.
 
+## Future Extensions
+
+The ownership-awareness architecture (`:originator-id` on each entry, `:own?` resolved per
+call) is deliberately minimal. It exposes the data needed for ownership-aware behaviour
+without committing to any specific policy. This makes a range of future extensions
+trivially additive.
+
+### Ownership-Aware UX (client-side, no backend change)
+
+The frontend can use `:own?` to render foreign entries differently — visual styling,
+prefix labels, originator names in parentheses (if a client-display-name lookup is added
+later), distinct icons, or any combination. All of these are pure client decisions with
+no backend or protocol impact.
+
+### Gating Foreign Operations (client-side, no backend change)
+
+The same `:own?` data lets the frontend gate undo dispatch:
+
+- **Warn**: render with a visual marker
+- **Confirm**: pop a confirmation dialog before sending `SRV/undo-resource` for a foreign
+  entry
+- **Block**: refuse to dispatch `SRV/undo-resource` for foreign entries entirely; the menu
+  item is rendered but disabled
+
+These are conditional branches in the client routing logic. No backend changes required.
+
+### Server-Side Enforcement (minor backend change)
+
+For deployments that cannot trust client-side enforcement, the server can refuse foreign
+undos in the gRPC handler — one conditional comparing the call's client-id to the entry's
+`:originator-id` before invoking `undo!` on the undo manager. The undo manager itself is
+unchanged. This makes server-side policy a small additive change, not an architectural
+retrofit.
+
+### Policy as a Piece Setting
+
+The natural place to make ownership policy configurable is per-piece, via the
+piece-setting mechanism described in [ADR-0016](0016-Settings.md). A piece setting
+`:undo/foreign-policy` with values `:allow | :warn | :confirm | :block` lets each piece
+declare how foreign undos behave. The setting is stored only when non-default, so the
+storage cost is zero for the common case. A server-level default — declared in deployment
+configuration — covers pieces that do not override.
+
+The Instrument Library uses a server-level setting only (no per-instance axis applies).
+
+The frontend reads the active policy at subscription time, caches it alongside the
+timestamp data for that resource, and applies it during routing and rendering. Changing
+the policy for a piece is an ordinary setting change — the same invalidate-and-refresh
+cycle that handles every other piece setting.
+
+### Originator Naming
+
+Currently `:own?` is exposed as a boolean and the originator's raw client-id is not shared
+with other clients. A future client-display-name registry (set at client registration)
+could be queried by the server when resolving `get-undo-description`, allowing the
+response to include a human-friendly originator string (e.g. `"Anna"`) when the entry is
+foreign. This is purely additive — no change to the undo manager, only the
+description-resolution function on the server.
+
+### Why All of This Is Cheap
+
+The architectural commitment in this ADR is small: capture the originator at push time,
+resolve `:own?` per call, expose it to clients. That is enough to make ownership-aware
+UX, ownership-based gating, and configurable per-piece policy all small additive changes
+rather than architectural retrofits. The data is already there; future tickets choose
+what to do with it.
+
+### Permanent Non-Goal: Operational Transformation
+
+**Operational Transformation (OT) is permanently out of scope for Ooloi. Here be dragons.**
+
+OT is the family of algorithms used by Google Docs, Etherpad, Apache Wave, and similar
+real-time collaborative editors to rebase concurrent operations against each other so that
+all clients converge to the same state regardless of message ordering. It is the canonical
+solution to the "per-user undo of shared state" problem in collaborative editing: each
+user's inverse operation is transformed against intervening operations from other clients
+before being applied, so the undo affects only what that user originally changed.
+
+OT is not adopted in Ooloi, and never will be. The reasons are deliberate and final:
+
+1. **Combinatorial complexity.** OT requires a transformation function for every pair of
+   operation types in the domain. For music notation (insert-note, delete-measure,
+   change-time-signature, add-slur, transpose, …) this is a combinatorial nightmare with
+   subtle semantic interactions that are difficult to specify, test, or prove correct.
+
+2. **Decades of edge cases.** Even Google's Wave team — who invented modern OT — could not
+   ship a correct implementation in reasonable time. ShareJS, Etherpad, and every other
+   serious OT implementation has a history of convergence bugs, transformation function
+   errors, and document divergence in production. The problem space is genuinely hard.
+
+3. **Architectural pollution.** OT cannot be isolated to one component. The transformation
+   functions touch every operation type, every undo entry, every mutation path. Adopting
+   OT is a project-wide commitment that reshapes the entire system around its constraints.
+
+4. **The simple alternative is sufficient.** Shared per-resource stacks with ownership
+   awareness (`:own?`) and configurable policy (`:undo/foreign-policy`) cover the
+   collaborative use cases Ooloi targets. Real-time multi-user co-editing of the same
+   musical phrase is not a primary use case. Asymmetric and turn-based collaboration —
+   which are the realistic patterns for music notation — work well under the shared-stack
+   model with ownership-aware gating.
+
+Any future feature request that would require OT to implement correctly is to be answered
+with a redesign of the feature rather than the adoption of OT. The architectural commitment
+to shared-stack-with-ownership stands. OT, CRDT-with-operation-replay, and any other
+machinery that requires operation rebasing are permanently off the table.
+
 ## Consequences
 
 ### Positive
@@ -880,14 +1095,14 @@ machine, with no dependency on external infrastructure.
 
 ### Negative
 
-1. **Collaborative undo limitations**: In multi-user sessions, the menu may show another client's action as the next undo target (because it has a more recent timestamp on the shared stack). Redo is frequently invalidated by other clients' mutations.
+1. **Collaborative undo limitations**: In multi-user sessions, the menu may show another client's action as the next undo target. The frontend has full ownership information (`:own?`) for every entry and can render or gate foreign entries as the chosen UX dictates — this is policy, not architecture (see [Future Extensions](#future-extensions)). Redo is frequently invalidated by other clients' mutations.
 2. **Network dependency**: Backend undo/redo requires connectivity. When the backend is unreachable, only local undo entries are available.
 3. **Session-scoped only**: Undo history is lost on application restart. Closures cannot be serialised.
 4. **Lazy fetch latency**: The first time a backend undo entry needs to be displayed, a `get-undo-description` round trip is required. Subsequent displays use the cached description until marked stale.
 
 ### Mitigations
 
-1. **Collaborative limitations are transparent**: The menu reflects the cached state — after each `:undo-state-changed` notification, the user sees the current undo target (which may be another client's action) before pressing Cmd+Z and can choose not to. Redo unavailability is immediately visible (menu item disabled). These are inherent properties of shared undo stacks, not bugs — the price of determinism and consistency.
+1. **Collaborative limitations are transparent**: The menu reflects the cached state — after each `:undo-state-changed` notification, the user sees the current undo target (which may be another client's action) before pressing Cmd+Z and can choose not to. The frontend knows the originator of every entry (`:own?` boolean) and can apply any chosen ownership-aware UX — visual differentiation, confirmation prompts, dispatch refusal. Redo unavailability is immediately visible (menu item disabled). These are inherent properties of shared undo stacks, not bugs — the price of determinism and consistency.
 2. **Offline**: Local entries are undoable offline. When the backend is unreachable and the backend cache has the highest timestamp, the undo item can show the backend entry as disabled (greyed) while local entries remain available.
 3. **Session scope**: Matches user expectations — no editor provides cross-restart undo. The depth cap (50 entries per resource) bounds memory usage.
 4. **Fetch latency**: The `get-undo-description` call returns only two small maps (description key + params). In combined mode, this is in-process with zero network latency. Over gRPC, it is sub-millisecond. The fetched description is cached until the next notification, so repeated menu displays do not re-fetch.
