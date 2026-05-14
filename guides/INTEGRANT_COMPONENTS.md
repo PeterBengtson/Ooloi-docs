@@ -419,7 +419,7 @@ The system map contains all Integrant components as returned by `start-with-conf
 
 ### `with-combined-system`
 
-For testing the full combined application — all 11 components, in-process transport, headless UI. This is the heaviest macro and the most faithful to production.
+For testing the full combined application — all 11 components, in-process transport, headless UI by default. This is the heaviest macro and the most faithful to production.
 
 ```clojure
 (with-combined-system [sys]
@@ -433,7 +433,38 @@ For testing the full combined application — all 11 components, in-process tran
       (SRV/create-rest :duration 1/4) => truthy)))
 ```
 
-`with-combined-system` forces `:in-process` transport (no port binding) and `:headless` UI mode (no visual output). Tests that need network transport or a visible UI must start components individually.
+**Signature**: `[[system-symbol opts] & body]`. `opts` is an optional map; when omitted, the macro defaults to `:in-process` transport and `:headless` UI mode — the original single-argument behaviour. All existing call sites continue to work unchanged.
+
+**Options**:
+
+| Option | Default | Effect |
+|---|---|---|
+| `:transport` | `:in-process` | gRPC server transport. Use `:network` for tests that need real wire-level metadata propagation (e.g. multi-client `client-id` flow through the auth interceptor). |
+| `:extra-config` | `nil` | Map merged into the Integrant config at component granularity via `(merge-with merge ...)`. Use to override any component config key — port, `:ui-mode`, TLS settings — without replacing the whole component config. |
+| `:on-progress` | no-op | `(fn [component-key])` called before each component inits. Pass-through to `start-system!`. |
+| `:on-ready` | `nil` | `(fn [component-key result])` called after each component inits. Pass-through to `start-system!`. |
+
+**Examples**:
+
+```clojure
+;; Network transport — exercise real gRPC channels, headers, auth interceptor
+(with-combined-system [sys {:transport :network}]
+  (with-clients sys [[c1 "a"] [c2 "b"]]
+    ;; Each client's id flows through CLIENT_ID_HEADER on every call
+    ...))
+
+;; Component config override (e.g. non-default port, alternate UI mode)
+(with-combined-system [sys {:extra-config
+                            {:ooloi.backend.components/grpc-server {:port 11000}}}]
+  ...)
+
+;; Startup observation
+(let [started (atom [])]
+  (with-combined-system [sys {:on-ready (fn [k _] (swap! started conj k))}]
+    (count @started) => (count (system/combined-config))))
+```
+
+**Defaults preserved**: With no opts, the macro forces `:in-process` and `:headless` exactly as before. This is the right choice for combined-desktop end-to-end tests where there is exactly one client and no JavaFX windows should appear.
 
 **Domain event subscriptions are NOT wired by `with-combined-system`.** The macro calls `start-system!` (Integrant init only), not `start-app!` (which adds post-init wiring). Tests that need the full backend-event → frontend-handler pipeline — e.g. backend broadcasts `:instrument-library-changed` → event router → aggregator → event bus → `handle-library-changed!` → re-fetch — must call `wire-domain-subscriptions!` explicitly:
 
@@ -500,7 +531,7 @@ If a component throws during init, the partial system (components that started s
 `(count (keys (system/combined-config)))` and `(count (system/splash-message-keys))` change whenever a component is added. Hardcoding the number breaks every test that depends on it.
 
 **Tests run sequentially — fixed ports are safe.**
-All servers use default ports (gRPC: 10700, HTTP: 10701). There is no need for random port allocation. The `with-combined-system` macro uses in-process transport and binds no ports at all.
+All servers use default ports (gRPC: 10700, HTTP: 10701). There is no need for random port allocation. The `with-combined-system` macro defaults to in-process transport (no port binding); when called with `{:transport :network}`, it binds the default 10700/10701, same as `with-server`.
 
 **`Thread/sleep 50` after event dispatch, not after registration.**
 Client registration with `register-client` is synchronous. gRPC event delivery is asynchronous. Sleep after sending an event; never after registering a client.
