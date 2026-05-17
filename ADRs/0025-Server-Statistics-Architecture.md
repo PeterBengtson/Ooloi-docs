@@ -326,11 +326,12 @@ Extend existing connection registry with separate top-level `:client-statistics`
 ```clojure
 ;; Clean integration point - statistics complexity abstracted into helper function
 
-(defn execute-unified-method [method-name protobuf-request client-id]
-  (let [start-time (System/currentTimeMillis)]
+(defn handle-execute-method [request server-component]
+  (let [start-time (System/currentTimeMillis)
+        client-id (headers/get-client-id-from-context)]
     (try
-      ;; Normal business logic
-      (let [result (execute-api-method method-name protobuf-request)
+      ;; Normal business logic — request is a native Clojure map per ADR-0046
+      (let [result (invoke-api-fn request)
             end-time (System/currentTimeMillis)]
             
         ;; Clean abstraction - helper functions handle LongAdder increments
@@ -338,8 +339,8 @@ Extend existing connection registry with separate top-level `:client-statistics`
                            {:start-time start-time
                             :end-time end-time
                             :result result
-                            :request protobuf-request
-                            :method-name method-name
+                            :request request
+                            :method-name (:method request)
                             :success? true})
         result)
         
@@ -350,7 +351,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
           ;; API failure and error statistics
           (increment-api-stats server-component client-id 
                              {:start-time start-time :end-time end-time
-                              :request protobuf-request :method-name method-name
+                              :request request :method-name (:method request)
                               :success? false :exception e})
                           
           (increment-error-stats server-component client-id 

@@ -279,9 +279,12 @@ These transport-layer threading constraints necessitate careful architectural pa
 
 **API Request Architecture** (preserved):
 ```
-gRPC Request → executeMethod → execute-unified-method → execute-method → 
+gRPC Request → ExecuteMethod → handle-execute-method →
 resolve API function → STM-wrapped API function → dosync transaction
 ```
+ADR-0046 moved the wire ↔ Clojure conversion into transport-aware marshallers; the
+handler receives a native Clojure request map regardless of transport, so the older
+`execute-unified-method`/`execute-method` indirection is no longer needed.
 
 **Event Streaming Architecture** (enhanced):
 ```

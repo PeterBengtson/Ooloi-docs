@@ -911,9 +911,9 @@ Implement in a `shared/ops/` namespace. Because shared code cannot require backe
     ...))
 ```
 
-`*server-component*` is the gRPC server component map, bound per-request by every request handler (`handle-execute-method`, `handle-execute-batch`, `execute-unified-method`). Backend Integrant deps injected into the gRPC server — `:undo-manager-component`, `:instrument-library-component`, and any future singleton component — appear as keys on this map. Reach them by `(:my-component server-component)`.
+`*server-component*` is the gRPC server component map, bound per-request by `handle-execute-method` and `handle-execute-batch` in `backend/grpc/server.clj`. Backend Integrant deps injected into the gRPC server — `:undo-manager-component`, `:instrument-library-component`, and any future singleton component — appear as keys on this map. Reach them by `(:my-component server-component)`.
 
-> **🚨 Anti-pattern: per-component dynamic vars.** Some legacy code (notably `*instrument-library-component*`) declares its own `^:dynamic` var and binds it in every gRPC handler's `binding` block. **Do not extend this pattern.** Each additional dynamic var must be bound in *every* handler site — `handle-execute-method`, `handle-execute-batch`, `execute-unified-method`. Missing one site silently routes the component as `nil` and the request returns `{:result nil}` with no error visible to the caller. The `*server-component*` map already carries every dep — use it directly. The subscription operations in `event_subscription.clj` are the canonical model.
+> **🚨 Anti-pattern: per-component dynamic vars.** Some legacy code (notably `*instrument-library-component*`) declares its own `^:dynamic` var and binds it in every gRPC handler's `binding` block. **Do not extend this pattern.** Each additional dynamic var must be bound in *every* handler site (`handle-execute-method`, `handle-execute-batch`). Missing one site silently routes the component as `nil` and the request returns `{:result nil}` with no error visible to the caller. The `*server-component*` map already carries every dep — use it directly. The subscription operations in `event_subscription.clj` are the canonical model.
 
 ### Frontend Usage
 
@@ -940,13 +940,63 @@ Use a VPD operation when the target lives inside a piece. Use a direct `ops/` fu
 
 `subscribe-to-piece-events` and `unsubscribe-from-piece-events` in `shared/ops/event_subscription.clj` establish this pattern. Both are declared `^{:api true}` without `:vpd-category` in `interfaces.clj` and access `*server-component*` via `resolve`.
 
+## Error Surfacing Contract: Response Data, Client-Side Throw
+
+Every gRPC-accessible API function — VPD-based or singleton — returns through a uniform error contract. **Errors are values, not exceptions, on the wire — but they surface as exceptions at the SRV/* caller boundary.**
+
+### Server side: errors as data
+
+`handle-execute-method` and `handle-execute-batch` in `backend/grpc/server.clj` catch `Throwable` from the invoked operation, record API-failure and error-category statistics, and return a response map:
+
+```clojure
+;; Success
+{:success true  :error ""                          :result <value>}
+
+;; Failure
+{:success false :error "Execution error: <msg>"    :result nil}
+
+;; Method not found
+{:success false :error "Method not found: <name>"  :result nil}
+```
+
+The error message is preserved verbatim in `:error`. The server does **not** rethrow — exceptions never cross the gRPC boundary as `Status/INTERNAL`, which would truncate or normalise the message.
+
+### Client side: SRV/* throws on `:success false`
+
+The auto-generated `SRV/*` wrapper in `frontend/api/remote_api.clj` checks the response:
+
+```clojure
+(if (false? (:success response))
+  (throw (ex-info (str "SRV/" method-name " failed: " (:error response))
+                  {:method method-name
+                   :params compacted-params
+                   :server-error (:error response)
+                   :response response}))
+  (:result response))
+```
+
+Callers get the result on success, or a thrown `ex-info` carrying the server's exact error message plus method/params context. **Silent nils are not possible** — a server-side failure becomes a loud exception at the caller's boundary, with full inspectable context.
+
+### Why this shape (Pattern A, not server re-throw)
+
+The alternative — having the server re-throw and letting gRPC propagate a `StatusRuntimeException` — was tried and rejected. Rationale:
+
+1. **Error message fidelity**: gRPC's `Status/INTERNAL` description gets truncated and normalised by the runtime. The response-shape `:error` string survives intact.
+2. **Inspectable as data**: tests and callers that want to verify "this call failed with X error" can do so against a value (`response`), not by catching an exception type. Rich Hickey's "errors are values too" applies — non-local control flow (throwing) is reserved for the boundary, not for traversing layers.
+3. **Stats integrity**: the server records failure stats and error categorisation *before* the response is built. Tests can verify those counters directly without needing to catch-then-assert.
+4. **One contract, all paths**: the same `{:success :error :result}` envelope works for in-process transport (reference-marshalled), network transport (wire-marshalled), and the "Method not found" case where no exception occurred at all. Server re-throw would split paths.
+
+### Test mock convention
+
+Tests that mock `grpc-clients/execute-method` with Midje `provided` must return at least `{:result <value>}` to simulate success. A bare `{:result ...}` is treated as success (the `(false? (:success response))` check only throws on explicit `false`, not on missing `:success`). To simulate a server-side failure, mocks return `{:success false :error "<message>"}`.
+
 ## Backend Component Broadcasting via the gRPC Server
 
 The `resolve` + `^:dynamic var` mechanism described in the previous section also appears in a second role: **backend components that need to call back into the gRPC server to broadcast events**. `backend/components/instrument_library.clj` uses it for `:instrument-library-changed`; `backend/components/undo_manager.clj` uses it for `:undo-state-changed`.
 
 The mechanism is identical to the shared→backend case — `(some-> (resolve 'ooloi.backend.grpc.server/*server-component*) deref)` followed by an invocation of `send-server-event` resolved the same way. The **reason** for using runtime resolution here is *not* the modularity constraint that motivates the shared→backend case (both files live in `backend/`, so static `:require` would be legal). The reason is **namespace-level decoupling**: the broadcasting component does not statically link the gRPC stack, allowing it to run in isolation (component tests, future deployment modes that omit gRPC) without forcing the gRPC machinery to be loaded.
 
-The dynamic var is bound during `execute-method`, so during any gRPC request the broadcast call reaches a real `*server-component*`. Outside a request (component-isolation tests, server-internal mutations), the var is unbound and the broadcast no-ops, guarded by `when-let`.
+The dynamic var is bound during `handle-execute-method`, so during any gRPC request the broadcast call reaches a real `*server-component*`. Outside a request (component-isolation tests, server-internal mutations), the var is unbound and the broadcast no-ops, guarded by `when-let`.
 
 ### Alternatives Considered
 
