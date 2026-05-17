@@ -95,9 +95,9 @@ backend/src/main/clojure/ooloi/backend/components/
   instrument_library.clj
 ```
 
-### Frontend — components only, no standalone app
+### Frontend — components only, not deployed as an application
 
-The frontend defines Integrant components but has **no `system.clj` and is never deployed standalone**. Its components exist to be assembled by the shared combined system. Running `lein run` in `frontend/` has no meaning — the frontend project is a code library and a test harness.
+The frontend defines Integrant components but is **never deployed standalone**. Its components exist to be assembled by the shared combined system in `shared/system.clj` — the only shipped Ooloi desktop product. The frontend project's `project.clj` has no `:main` entry; running `lein run` in `frontend/` does not start an application.
 
 ```
 frontend/src/main/clojure/ooloi/frontend/components/
@@ -107,6 +107,8 @@ frontend/src/main/clojure/ooloi/frontend/components/
   event_router.clj
   fetch_coordinator.clj
 ```
+
+**`frontend/system.clj` exists as a test harness only.** It assembles the same frontend components the combined system uses (mirror of the frontend portion of `combined-config`) so the frontend project's own test suite can exercise component lifecycle in isolation without booting the full combined application. Production runs go through `shared/system.clj`.
 
 ### Shared — the combined application
 
@@ -277,13 +279,21 @@ Note the asymmetry: in `backend-config` the same component may have `{}` (no dep
 
 ### 2. `:status :running` in `init-key` return value
 
-`get-system-health` in `backend/system.clj` iterates every value in the system map. For map-type components it checks `(:status v) = :running`. A component that returns a map without this key is silently reported as `:unhealthy`, making the whole system `:unhealthy`. No exception is thrown; health checks simply fail.
+Every component (backend, frontend, or shared) must return either a `java.util.concurrent.ThreadPoolExecutor` (not shutdown) or a map containing `:status :running`. The three system-health functions enforce this invariant uniformly:
+
+- `ooloi.backend.system/get-backend-system-health` (backend standalone deployment)
+- `ooloi.frontend.system/get-frontend-system-health` (frontend test harness)
+- `ooloi.shared.system/get-combined-system-health` (combined desktop application — the shipped product)
+
+A component that returns a map without `:status :running` is silently reported as `:unhealthy`, making the whole system `:unhealthy`. No exception is thrown; health checks simply fail.
 
 ```clojure
 (defmethod ig/init-key :ooloi.backend.components/my-component [_ _]
   {:my-state (atom nil)
    :status   :running})     ; required
 ```
+
+**This invariant is test-enforced** for the combined system by the conformance test in `shared/test/app/clojure/ooloi/shared/system_test.clj` Section 30. Any future component added to `combined-config` that violates the invariant will fail the conformance test with the offending component name in the failure output. No per-component workarounds are permitted in `get-combined-system-health`.
 
 ### 3–7. The full checklist
 
@@ -411,7 +421,7 @@ For testing the full backend Integrant system — component coordination, health
 
 (with-system [system {:tls true}]
   (get-in system [:ooloi.backend.components/grpc-server :config :tls]) => true
-  (let [health (ooloi.backend.system/get-system-health system)]
+  (let [health (ooloi.backend.system/get-backend-system-health system)]
     (:status health) => :healthy))
 ```
 
@@ -519,7 +529,7 @@ Run with: `OOLOI_UI_VISUAL=true lein midje my.namespace`
 ## 9. Invariants and Pitfalls
 
 **Every map-type component must return `:status :running`.**
-`get-system-health` checks this for every value in the system map. Omitting it produces silent `:unhealthy` health status with no error.
+All three system-health functions (`get-backend-system-health`, `get-frontend-system-health`, `get-combined-system-health`) check this uniformly for every value in the system map. Omitting it produces silent `:unhealthy` status with no error. The combined system enforces this invariant via the Section 30 conformance test.
 
 **Backend components in `combined-config` must depend on `ui-manager`.**
 Without it, topological sort may place them before the UI manager, causing `tr` to fail before i18n is loaded. This does not apply to the standalone backend config (§4), which has no UI manager.

@@ -44,9 +44,11 @@ data structures live.
 **Combined app entry point**: `shared/src/app/clojure/ooloi/shared/system.clj` is the production
 entry point for the combined desktop application. It orchestrates startup, wires all action handlers
 (windows, menus, lifecycle events), and connects all component events.
-`frontend/src/main/clojure/ooloi/frontend/system.clj` is the frontend-only system used primarily
-for testing — it does not wire action handlers or UI lifecycle. When tracing production code paths
-for windows, menus, and startup, always look in `shared/system.clj` first.
+`frontend/src/main/clojure/ooloi/frontend/system.clj` is a **test harness only** — it mirrors the
+frontend portion of `combined-config` so the frontend project's own test suite can exercise component
+lifecycle in isolation. It is not deployed as an application (the frontend project has no `:main`
+entry). When tracing production code paths for windows, menus, and startup, always look in
+`shared/system.clj` first.
 
 ## Directory Structure
 
