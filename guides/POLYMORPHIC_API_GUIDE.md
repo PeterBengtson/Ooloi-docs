@@ -899,31 +899,21 @@ No `:vpd-category` means the VPD wrapper machinery is not applied. No automatic 
 
 ### Implementation
 
-Implement in a `shared/ops/` namespace. Because shared code cannot require backend namespaces directly, component state is reached via `resolve` on a `^:dynamic` var defined in the gRPC server:
+Implement in a `shared/ops/` namespace. Because shared code cannot require backend namespaces directly, the component is reached via `resolve` on the existing `*server-component*` dynamic var defined in the gRPC server. The component is read out of the server-component map:
 
 ```clojure
-(m/defmethod i/get-instrument-library :instrument-library []
-  (if-let [component (some-> (resolve 'ooloi.backend.grpc.server/*instrument-library-component*)
-                             deref)]
-    {:version    (:version @(:library component))
-     :instruments (:instruments @(:library component))}
-    (throw (ex-info "Instrument library component not available"
-                    {:type :no-component}))))
+(m/defmethod i/undo-resource :undo-resource
+  [resource-key]
+  (let [server-component @(resolve 'ooloi.backend.grpc.server/*server-component*)
+        component         (:undo-manager-component server-component)
+        undo-fn           (resolve 'ooloi.backend.components.undo-manager/undo!)]
+    (undo-fn component resource-key)
+    ...))
 ```
 
-The `^:dynamic` var lives in `grpc/server.clj` alongside `*server-component*` and is bound per-request by the universal `execute-method` handler:
+`*server-component*` is the gRPC server component map, bound per-request by every request handler (`handle-execute-method`, `handle-execute-batch`, `execute-unified-method`). Backend Integrant deps injected into the gRPC server — `:undo-manager-component`, `:instrument-library-component`, and any future singleton component — appear as keys on this map. Reach them by `(:my-component server-component)`.
 
-```clojure
-;; In grpc/server.clj
-(def ^:dynamic *instrument-library-component* nil)
-
-;; In the request handler
-(binding [*server-component*              server-component
-          *instrument-library-component*  instrument-library-component]
-  (execute-method request response-observer server-component))
-```
-
-The Integrant gRPC server component receives the instrument library component as a dependency and passes it into the binding.
+> **🚨 Anti-pattern: per-component dynamic vars.** Some legacy code (notably `*instrument-library-component*`) declares its own `^:dynamic` var and binds it in every gRPC handler's `binding` block. **Do not extend this pattern.** Each additional dynamic var must be bound in *every* handler site — `handle-execute-method`, `handle-execute-batch`, `execute-unified-method`. Missing one site silently routes the component as `nil` and the request returns `{:result nil}` with no error visible to the caller. The `*server-component*` map already carries every dep — use it directly. The subscription operations in `event_subscription.clj` are the canonical model.
 
 ### Frontend Usage
 

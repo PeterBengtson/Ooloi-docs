@@ -303,6 +303,19 @@ A component that returns a map without `:status :running` is silently reported a
 6. Copy and translate the new PO entry into all other locale files — `lein i18n` only touches `en_GB.po`
 7. Use dynamic counts in tests — `(count (keys (system/combined-config)))` and `(count (system/splash-message-keys))`, never hardcoded integers
 
+### 8. gRPC-accessible backend component: carry the dep through *every* site
+
+If the new component is reached from a `shared/ops/` impl during a gRPC request (i.e. it's exposed via an `^{:api true}` multimethod and called via `SRV/*`), its Integrant dep must be carried through **all four** of these sites. Missing any one routes the component as `nil` at the impl, and the SRV call silently returns `{:result nil}` with no error visible to the caller.
+
+| # | Site | What to add |
+|---|---|---|
+| 1 | `shared/system.clj` `combined-config` | `:my-component-component (ig/ref :ooloi.backend.components/my-component)` in `grpc-server`'s config map |
+| 2 | `backend/components/grpc_server.clj` `ig/init-key` return | `:my-component-component (:my-component-component config)` in the final merge |
+| 3 | `backend/components/grpc_server.clj` `build-grpc-server` `components` assoc | `:my-component-component (:my-component-component final-config)` — same site as `:instrument-library-component`. **This is the most-missed step**: `create-ooloi-service` captures the `components` map *before* `init-key` returns, so the dep must be assoc'd here or the live request handlers will never see it. |
+| 4 | `shared/ops/<your>.clj` impl | `(:my-component-component @(resolve 'ooloi.backend.grpc.server/*server-component*))` |
+
+**Do not add a new `^:dynamic *my-component-component*` var.** Read it from `*server-component*` directly. See [POLYMORPHIC_API_GUIDE.md §Non-VPD Singleton API Functions](POLYMORPHIC_API_GUIDE.md#non-vpd-singleton-api-functions) for the rationale and the canonical `event_subscription.clj` precedent.
+
 ---
 
 ## 8. Testing Components
