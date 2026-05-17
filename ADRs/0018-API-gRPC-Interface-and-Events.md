@@ -78,17 +78,13 @@ We will implement **unified Clojure-aware gRPC architecture with server-to-clien
 
 ### 4. Service Architecture
 
+The unified `OoloiValue` design (above) reduces the service surface from hundreds of generated method messages to three RPCs: a single `ExecuteMethod` for all unary API calls, an `ExecuteBatch` for STM-coordinated atomic batches, and a `RegisterClient` server-streaming RPC for event delivery:
+
 ```protobuf
 service OoloiService {
-  // Auto-generated from api.clj VPD-based signatures (hundreds when complete)
-  rpc AddArticulation(AddArticulationRequest) returns (AddArticulationResponse);
-  rpc GetMeasure(GetMeasureRequest) returns (GetMeasureResponse);
-  rpc SetTimeSignature(SetTimeSignatureRequest) returns (SetTimeSignatureResponse);
-  // ... hundreds more generated methods
-  
-  // Server-to-client event notification infrastructure
-  rpc SubscribeToPieceEvents(PieceSubscriptionRequest) returns (stream PieceEvent);
-  rpc ExecuteAsyncCommand(AsyncCommandRequest) returns (AsyncCommandResponse);
+  rpc ExecuteMethod(OoloiRequest) returns (OoloiResponse);
+  rpc ExecuteBatch(stream OoloiRequest) returns (OoloiResponse);
+  rpc RegisterClient(RegisterClientRequest) returns (stream EventMessage);
 }
 ```
 
@@ -503,10 +499,11 @@ The server provides two primary functions for event broadcasting with automatic 
 ```clojure
 (defn clj->proto [obj]
   (cond
-    (ratio? obj) {:ratio-val {:numerator (numerator obj) :denominator (denominator obj)}}
-    (keyword? obj) {:keyword-val {:namespace (namespace obj) :name (name obj)}}
-    (map? obj) {:map-val {:entries (map (fn [[k v]] {:key (clj->proto k) 
-                                                     :value (clj->proto v)}) obj)}}
+    (nil? obj)     {:nil-val true}   ; Explicit nil — survives `repeated` fields.
+    (ratio? obj)   {:ratio-val {:numerator (numerator obj) :denominator (denominator obj)}}
+    (keyword? obj) {:keyword-val {:namespace (or (namespace obj) "") :name (name obj)}}
+    (map? obj)     {:map-val {:entries (map (fn [[k v]] {:key (clj->proto k)
+                                                         :value (clj->proto v)}) obj)}}
     ;; ... handles all Clojure types recursively
     ))
 ```

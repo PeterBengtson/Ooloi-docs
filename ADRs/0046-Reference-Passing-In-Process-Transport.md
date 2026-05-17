@@ -293,6 +293,8 @@ Discoveries from implementation that affect the specification or clarify impleme
 
 **Error injection point moves from bridge to handler.** With reference-passing marshallers, `protobuf-bridge/protobuf-object->internal-map` is no longer in the handler code path — it is encapsulated within the wire marshaller. The correct error injection point is `resolve-api-var`, which is in the handler path for both transports. This ensures error categorisation exercises the same code path regardless of transport mode.
 
+**Errors travel as data on both transports.** `handle-execute-method` and `handle-execute-batch` catch `Throwable` from the invoked operation, record API-failure and error-category stats, and return `{:success false :error "<message>" :result nil}`. The handler does *not* rethrow — exceptions never cross the gRPC boundary as `Status/INTERNAL` (which would truncate the description). The client-side `SRV/*` wrapper inspects `:success` and throws `ex-info` carrying the server's exact error message. This contract is identical for in-process and network — only the marshaller differs. See [POLYMORPHIC_API_GUIDE §Error Surfacing Contract](../guides/POLYMORPHIC_API_GUIDE.md#error-surfacing-contract-response-data-client-side-throw) for the full design.
+
 ## Related ADRs
 
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) — three-deployment architecture requiring transport flexibility
