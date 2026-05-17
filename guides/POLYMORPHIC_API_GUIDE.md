@@ -16,6 +16,7 @@
 - [Basic Polymorphic Operations](#basic-polymorphic-operations)
 - [Cross-References](#cross-references)
 - [Non-VPD Singleton API Functions](#non-vpd-singleton-api-functions)
+- [Backend Component Broadcasting via the gRPC Server](#backend-component-broadcasting-via-the-grpc-server)
 - [Summary](#summary)
 - [Related Documentation](#related-documentation)
 
@@ -948,6 +949,32 @@ Use a VPD operation when the target lives inside a piece. Use a direct `ops/` fu
 ### Canonical Precedent
 
 `subscribe-to-piece-events` and `unsubscribe-from-piece-events` in `shared/ops/event_subscription.clj` establish this pattern. Both are declared `^{:api true}` without `:vpd-category` in `interfaces.clj` and access `*server-component*` via `resolve`.
+
+## Backend Component Broadcasting via the gRPC Server
+
+The `resolve` + `^:dynamic var` mechanism described in the previous section also appears in a second role: **backend components that need to call back into the gRPC server to broadcast events**. `backend/components/instrument_library.clj` uses it for `:instrument-library-changed`; `backend/components/undo_manager.clj` uses it for `:undo-state-changed`.
+
+The mechanism is identical to the shared→backend case — `(some-> (resolve 'ooloi.backend.grpc.server/*server-component*) deref)` followed by an invocation of `send-server-event` resolved the same way. The **reason** for using runtime resolution here is *not* the modularity constraint that motivates the shared→backend case (both files live in `backend/`, so static `:require` would be legal). The reason is **namespace-level decoupling**: the broadcasting component does not statically link the gRPC stack, allowing it to run in isolation (component tests, future deployment modes that omit gRPC) without forcing the gRPC machinery to be loaded.
+
+The dynamic var is bound during `execute-method`, so during any gRPC request the broadcast call reaches a real `*server-component*`. Outside a request (component-isolation tests, server-internal mutations), the var is unbound and the broadcast no-ops, guarded by `when-let`.
+
+### Alternatives Considered
+
+The current choice prefers consistency with the documented shared→backend pattern and namespace-level decoupling over compile-time linkage. Three alternatives were considered and not adopted at the time of writing. They remain available if trade-offs shift later:
+
+1. **Function injection at `grpc-server`'s `init-key`.** Each broadcasting component carries a `:broadcast-fn` slot. At its own startup, `grpc-server` plugs the real send function into each. Compile-time linkage; one explicit wiring step per broadcaster; mild post-init-mutation smell.
+2. **Dedicated broadcaster component.** A small Integrant component holds the broadcast function. `grpc-server` injects the real function into it at startup. Every broadcaster declares the broadcaster as an Integrant dependency and calls a single `broadcast!` function. Scales uniformly to N broadcasters; introduces one new component whose only purpose is to hold a function reference.
+3. **Atom-watch from `grpc-server`.** `grpc-server`, at its `init-key`, calls `add-watch` on the broadcasting component's state atom. The broadcasting component becomes pure data with no awareness of broadcasting; causation invisible at the call site; introduces a new project convention not used elsewhere.
+
+### When to Revisit
+
+The current `resolve`+dynvar choice is appropriate while the number of backend broadcasters is small (today: 2) and the namespace-decoupling benefit holds.
+
+Revisit in favour of alternative (2) — the dedicated broadcaster component — if:
+
+- The number of broadcasters grows past ~4 and tracking the implicit `*server-component*` dependency becomes hard
+- A typo in a quoted symbol survives to runtime as a real bug
+- The component-isolation argument stops mattering (every realistic deployment includes gRPC)
 
 ## Summary
 
