@@ -400,6 +400,17 @@ The library atom holds a version counter alongside the instrument vector. Every 
 increments the counter. `set-instrument-library` requires the caller to supply the version it last
 observed; the backend rejects writes based on stale versions.
 
+**Monotonic version invariant.** The counter is monotonically increasing across every state
+transition, regardless of which operation triggered it. `apply-state!` is the single
+enforcement point — it reads the live counter and increments it before writing — so every
+caller (forward mutation, undo, redo, and any future write path) advances the counter exactly
+once per call. Undo and redo are no exception to the monotonicity, even though conceptually
+they look like time travel: restoring earlier instruments does not restore the earlier
+version. The instruments revert; the counter still ticks forward. A client holding an older
+version conflicts on its next write whether the intervening transitions were mutations or
+undo/redo operations. See [ADR-0015 §The Undo Manager API](0015-Undo-and-Redo.md#the-undo-manager-api)
+for the closure model that funnels undo/redo through the same `apply-state!` call site.
+
 This guarantees that no instrument can be silently overwritten or lost in a concurrent write
 scenario. The conflict path is not an error to suppress — it is the defined protocol for concurrent
 editing. A client that receives a conflict response:

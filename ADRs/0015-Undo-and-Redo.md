@@ -282,6 +282,19 @@ invisible across restart. The simplest defense is a single canonical write helpe
 resource — invoked by both the mutation site and the undo/redo closures — so the side
 effects cannot drift apart.
 
+**Monotonic version invariant (when the resource has optimistic locking).** Some
+resources — the Instrument Library is the first — track a version counter for optimistic
+locking. The counter is monotonically increasing across every state transition, including
+undo and redo, regardless of how it looks conceptually. Undo and redo are no exception to
+the monotonicity, even though they look like time travel — restoring earlier instruments
+does not restore the earlier version. The instruments revert; the counter still ticks
+forward. The canonical write helper enforces this by reading the live counter and
+incrementing it on every call. A closure that captures both old-instruments and an
+old-version and tries to "restore" them as a pair would break the invariant; the closure
+must capture only the snapshot fields the user perceives (instruments, excluded set,
+etc.) and let the helper assign the next version at execution time. See
+[ADR-0045 §Optimistic Locking](0045-Instrument-Library.md#optimistic-locking).
+
 **ADR-0040 boundary**: Snapshot restoration is an implementation detail of the undo
 manager's accepted `undo!` and `redo!` operations. It is not a second authority path and
 not an implicit `set-piece`. The undo manager is a backend component operating within the
@@ -389,21 +402,26 @@ regardless of the resource type:
 ;; the diff of old-instruments vs. new-instruments — see "IL Description
 ;; Inference" below.
 ;;
-;; apply-state! is the canonical IL write helper: it resets the atom,
+;; apply-state! is the canonical IL write helper. It reads the live version,
+;; increments it, then resets the atom (instruments + excluded + new version),
 ;; persists to disk via the writer agent, and broadcasts
 ;; :instrument-library-changed. set-instrument-library and the undo/redo
-;; closures both call it, so persistence and broadcast happen on every
-;; state change regardless of which path triggered it.
-(let [old-state              @il-atom                            ;; {:version :instruments :excluded}
-      new-state              (next-il-state old-state new-instruments)
-      [desc-key desc-params] (il-diff/describe (:instruments old-state)
-                                               (:instruments new-state))]
-  (apply-state! il-component new-state)
+;; closures both call it — so persistence, broadcast, and forward-version-
+;; monotonicity all happen on every state change regardless of which path
+;; triggered it. Note the closures capture only instruments and excluded;
+;; they do NOT capture or pass version. The helper assigns the next version
+;; freshly at execution time, so undo/redo move the counter forward even
+;; though they restore earlier instruments.
+(let [old-instruments        (:instruments @il-atom)
+      old-excluded           (:excluded    @il-atom)
+      new-excluded           (next-excluded old-excluded new-instruments)
+      [desc-key desc-params] (il-diff/describe old-instruments new-instruments)]
+  (apply-state! il-component new-instruments new-excluded)
   ;; push-undo! reads the originator from the gRPC Context internally — see note above.
   (undo/push-undo! undo-mgr :instrument-library
     desc-key desc-params
-    (fn [] (apply-state! il-component old-state))   ;; undo: restore old snapshot
-    (fn [] (apply-state! il-component new-state)))) ;; redo: re-apply new snapshot
+    (fn [] (apply-state! il-component old-instruments old-excluded))   ;; undo
+    (fn [] (apply-state! il-component new-instruments new-excluded)))) ;; redo
 
 ;; Piece — STM-based, dosync transactions
 ;; Capture before inside dosync (in-transaction read is consistent with alter).
