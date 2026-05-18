@@ -166,10 +166,10 @@ stack (feedback loop prevention).
 does the inverse. Both are no-ops on an empty stack.
 
 The undo and redo menu items use `text-key` functions that derive the setting name from the
-top stack entry: `:ui/theme` → `:setting.ui.theme.name` via the convention
-`(keyword (str "setting." (namespace k) "." (name k) ".name"))`. When the stack is empty,
-the item falls back to the static `:menu.edit.undo` / `:menu.edit.redo` key. Both items are
-enabled only when their respective stacks are non-empty.
+top stack entry: `:ui/theme` → `:setting.ui.theme` via the convention
+`(keyword (str "setting." (namespace k) "." (name k)))`. When the stack is empty, the item
+falls back to the static `:menu.edit.undo` / `:menu.edit.redo` key. Both items are enabled
+only when their respective stacks are non-empty.
 
 The menu bar is built imperatively once via `build-menu-item!`. Each menu item stores its
 `enabled?` predicate in the item's JavaFX `::dynamic-enabled?` property at build time.
@@ -947,8 +947,8 @@ or network calls on the JAT.
 
 The fetched description is cached in the backend timestamp cache until the next
 `:undo-state-changed` notification for that resource marks it stale. For local entries,
-the existing setting-name convention applies (`:ui/theme` → `:setting.ui.theme.name`).
-When no undo is available, the item falls back to the static `:menu.edit.undo` key.
+the existing setting-name convention applies (`:ui/theme` → `:setting.ui.theme`). When no
+undo is available, the item falls back to the static `:menu.edit.undo` key.
 
 #### Ownership Awareness
 
