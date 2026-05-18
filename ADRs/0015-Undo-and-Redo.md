@@ -260,10 +260,27 @@ computation.
 
 This is the core elegance of the model: the undo manager is pure infrastructure. After it
 is implemented, making any mutation undoable requires a single function call at the mutation
-site. The undo-fn and redo-fn are closures that restore immutable state snapshots. For
-atom-based resources (IL), the closure calls `reset!`. For STM-based resources (pieces), the
-closure calls `ref-set` inside `dosync`. The undo manager does not distinguish between these
-cases — the closure abstracts the storage mechanism.
+site. The undo-fn and redo-fn are closures that restore immutable state snapshots.
+
+**Closures own every side effect of a state change for their resource.** The undo manager
+does not distinguish between resource types — the closure abstracts the storage mechanism
+*and* every other side effect that a state change implies for that resource. For the
+Instrument Library, a state change is three coupled side effects: `reset!` the atom,
+persist the new state to disk via the writer agent, and broadcast
+`:instrument-library-changed` to subscribed clients. The mutation path and the undo path
+both invoke the same canonical write helper inside the IL component — typically a single
+`(apply-state! component new-state)` function — so the closure is one call, not three.
+For STM-based resources (pieces), the closure performs `ref-set` inside `dosync` and
+broadcasts the resource's invalidation event. Each resource defines what "apply a state"
+means for it; the closure captures a snapshot and invokes that helper.
+
+**Anti-pattern: a closure that does only `reset!` (or only `ref-set`).** Any resource
+whose successful mutation triggers additional side effects (persistence, broadcast,
+auditing) must wire those same side effects into the undo/redo closures. A closure that
+restores in-memory state but skips persistence makes undo visible in-session and
+invisible across restart. The simplest defense is a single canonical write helper per
+resource — invoked by both the mutation site and the undo/redo closures — so the side
+effects cannot drift apart.
 
 **ADR-0040 boundary**: Snapshot restoration is an implementation detail of the undo
 manager's accepted `undo!` and `redo!` operations. It is not a second authority path and
@@ -371,19 +388,29 @@ regardless of the resource type:
 ;; The description-key and description-params are computed server-side from
 ;; the diff of old-instruments vs. new-instruments — see "IL Description
 ;; Inference" below.
-(let [old-instruments        (:instruments @il-atom)
-      old-version             (:version @il-atom)
-      [desc-key desc-params] (il-diff/describe old-instruments new-instruments)]
-  ;; ... apply mutation (swap! il-atom ...) ...
+;;
+;; apply-state! is the canonical IL write helper: it resets the atom,
+;; persists to disk via the writer agent, and broadcasts
+;; :instrument-library-changed. set-instrument-library and the undo/redo
+;; closures both call it, so persistence and broadcast happen on every
+;; state change regardless of which path triggered it.
+(let [old-state              @il-atom                            ;; {:version :instruments :excluded}
+      new-state              (next-il-state old-state new-instruments)
+      [desc-key desc-params] (il-diff/describe (:instruments old-state)
+                                               (:instruments new-state))]
+  (apply-state! il-component new-state)
   ;; push-undo! reads the originator from the gRPC Context internally — see note above.
   (undo/push-undo! undo-mgr :instrument-library
     desc-key desc-params
-    (fn [] (restore-instruments! il-atom old-instruments old-version))
-    (fn [] (restore-instruments! il-atom new-instruments (inc old-version)))))
+    (fn [] (apply-state! il-component old-state))   ;; undo: restore old snapshot
+    (fn [] (apply-state! il-component new-state)))) ;; redo: re-apply new snapshot
 
 ;; Piece — STM-based, dosync transactions
 ;; Capture before inside dosync (in-transaction read is consistent with alter).
 ;; push-undo! is called outside dosync to avoid side effects in a retrying transaction.
+;; The piece equivalent of apply-state! handles ref-set + invalidation broadcast
+;; (and any piece-specific persistence the future piece undo design requires) —
+;; the closure is one call, not several.
 (let [[before after]
       (dosync
         (let [before @piece-ref]
@@ -391,8 +418,8 @@ regardless of the resource type:
           [before @piece-ref]))]
   (undo/push-undo! undo-mgr piece-id
     description-key description-params            ;; e.g. :piece.undo/add-note {:pitch "C4" :measure 3}
-    (fn [] (dosync (ref-set piece-ref before)))
-    (fn [] (dosync (ref-set piece-ref after)))))
+    (fn [] (apply-piece-state! piece-component before))
+    (fn [] (apply-piece-state! piece-component after))))
 ```
 
 The `description-key` and `description-params` are translation keys for the menu display.

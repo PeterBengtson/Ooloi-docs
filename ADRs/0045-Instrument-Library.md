@@ -104,10 +104,25 @@ Returns one of:
 {:conflict true :version <current-version> :instruments <current>}  ; version mismatch
 {:error :duplicate-ids :ids #{...}}                                 ; duplicate :id values in submitted vector
 ```
-On success: increments the version counter, dispatches persistence to the writer agent, and
-broadcasts `:instrument-library-changed` to all subscribed clients.
+On success: invokes the internal `apply-state!` helper, which performs the three coupled
+side effects of an IL state change as a single atomic step — `reset!`s the atom (committing
+the version increment), dispatches persistence to the writer agent, and broadcasts
+`:instrument-library-changed` to all subscribed clients.
 On conflict: returns the current library unchanged. The caller reapplies its pending change on top
 of the returned state and retries.
+
+**`apply-state!` is the single canonical IL write path.** Every state change — whether
+triggered by `set-instrument-library` directly or by an undo/redo closure restoring a
+captured snapshot — funnels through `apply-state!`. The helper is internal to the
+`instrument-library` component (not on `interfaces.clj`, not exposed via `SRV/*`). Its
+purpose is to guarantee that the three side effects of a state change stay coupled:
+disk persistence cannot drift apart from in-memory state, and broadcasts cannot drift
+apart from either. The undo/redo closures captured at `push-undo!` time call
+`apply-state!` with the old or new snapshot they captured (see
+[ADR-0015 §The Undo Manager API](0015-Undo-and-Redo.md#the-undo-manager-api)), so an undo
+operation persists to disk and broadcasts to clients exactly as a forward mutation
+would. Bypassing the helper — for example, in a closure that calls only `reset!` — is an
+anti-pattern that produces in-session correctness with cross-restart silent data loss.
 On duplicate IDs: rejects the write without modifying state and returns the set of conflicting
 `:id` values. The backend validates that every `:id` in the submitted instruments vector is unique
 before accepting any write. Duplicate IDs would cause semantic corruption in the tombstone
