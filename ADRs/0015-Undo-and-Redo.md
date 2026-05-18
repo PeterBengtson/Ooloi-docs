@@ -885,6 +885,30 @@ sequenceDiagram
     FE->>FE: refresh-dynamic-items! (menu text + enabled state)
 ```
 
+#### Frontend Wiring Invariants
+
+Two design constraints govern how the Tier 1 cache integrates with the existing Tier 2
+menu refresh path. Both must hold for the menu to reflect Tier 1 state changes in real
+life — they describe the architectural contract, not implementation detail.
+
+1. **Single on-change callback shared by both tiers.** `wire-undo-redo!` accepts an
+   `on-change` callback that fires after any stack mutation, queuing `refresh-menu-text!`
+   on the JAT. The Tier 1 cache subscriber (the `:undo` bus handler that calls
+   `record-backend-state!`) must invoke the *same* callback after every cache update —
+   including after a lazy `SRV/get-undo-description` fetch returns. A cache update that
+   does not trigger the callback leaves the menu showing stale text even though the
+   cache is correct: a class of bug that passes internal-state tests while failing in
+   practice. The single callback is the contract; tier-specific menu refresh paths are
+   an anti-pattern.
+
+2. **Menu `text-key` and `enabled?` functions consult the routing layer, not Tier 2
+   alone.** The undo and redo `MenuItem`s store their `text-key` and `enabled?`
+   predicates at build time. Those predicates must call the unified routing layer
+   (which considers both Tier 2 stacks and the backend cache to pick the winning entry).
+   Predicates that read only Tier 2 (`can-undo?` from the local stack alone) silently
+   hide backend-only state from the user — Cmd+Z would dispatch via the routing layer
+   correctly, but the menu would show "Undo" disabled until a local action occurred.
+
 #### Description Localisation
 
 Undo description keys are translation keys stored in the undo manager alongside the
