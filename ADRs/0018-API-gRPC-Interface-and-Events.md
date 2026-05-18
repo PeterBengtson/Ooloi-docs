@@ -232,6 +232,16 @@ All event types must follow naming pattern enforced by `validate-event-structure
   `:piece-structure-changed` follows. See [ADR-0045](0045-Instrument-Library.md) for the
   full event architecture and frontend caching model.
 
+**Undo/Redo Events**:
+- `:undo-state-changed` — The undo/redo stacks for a backend-managed resource changed
+  (any client's `push-undo!`, `undo!`, or `redo!`). Carries `:resource-key` (`:instrument-library`
+  or piece UUID), `:undo-timestamp` (number or `nil` if undo unavailable), and
+  `:redo-timestamp` (number or `nil` if redo unavailable). No descriptions are carried —
+  clients fetch them lazily via `get-undo-description` when the menu needs to display them.
+  Scoping mirrors the resource: IL notifications go to all connected clients; piece
+  notifications go only to clients subscribed to that piece. Valid under the namespace-style
+  naming rule. See [ADR-0015](0015-Undo-and-Redo.md) for the full architecture.
+
 ### Event Lifecycle and Processing
 
 **Event Creation** (Server-side):

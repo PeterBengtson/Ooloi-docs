@@ -29,6 +29,8 @@
     - [Single-User Guarantee](#single-user-guarantee)
     - [Multi-User Properties](#multi-user-properties)
     - [Undo Routing — Sequence Diagram](#undo-routing--sequence-diagram)
+    - [Frontend Wiring Invariants](#frontend-wiring-invariants)
+    - [Routing Layer — Reference Implementation](#routing-layer--reference-implementation)
     - [Description Localisation](#description-localisation)
     - [Ownership Awareness](#ownership-awareness)
     - [Clock Skew Mitigation](#clock-skew-mitigation)
@@ -156,10 +158,16 @@ undo stack and a redo stack — each holding a vector of stack entries. Stack en
 the `:setting-changed` event payload: `{:key, :old-value, :new-value, :timestamp}`. The stack is
 capped at 50 entries; oldest entries are dropped when the cap is reached.
 
-The module subscribes to the `:app-settings` event bus category via `wire-undo-redo!`. On
-each `:setting-changed` event, it calls `record-setting-change!` — unless the event carries
-`:sender :undo-redo`, which marks an undo/redo-triggered replay and must not push to the
-stack (feedback loop prevention).
+The module subscribes to two event bus categories via `wire-undo-redo!`. The
+`:app-settings` subscription drives the Tier 2 stacks: on each `:setting-changed` event the
+module calls `record-setting-change!` — unless the event carries `:sender :undo-redo`,
+which marks an undo/redo-triggered replay and must not push to the stack (feedback loop
+prevention). The second subscription, on `:undo`, drives the Tier 1 backend timestamp cache
+that the routing layer reads — described in
+§[Unified Frontend Routing](#unified-frontend-routing--tier-1-and-tier-2-merge). The two
+subscriptions are wired in a single function so the menu's `on-change` callback is set
+once and shared by both tiers — see
+§[Frontend Wiring Invariants](#frontend-wiring-invariants).
 
 `undo!` pops the top entry from the undo stack, calls `set-app-setting!` with the
 `:old-value` and `{:sender :undo-redo}`, and pushes the entry onto the redo stack. `redo!`
@@ -242,6 +250,12 @@ above; the code shows one realisation of those requirements.
                     (not= sender :undo-redo))
            (record-setting-change! event)))))))
 ```
+
+The Unified Frontend Routing layer (§[Unified Frontend Routing](#unified-frontend-routing--tier-1-and-tier-2-merge))
+extends the same module with a backend timestamp cache, routing-aware versions of
+`can-undo?` / `can-redo?`, and a second subscription on `:undo` inside `wire-undo-redo!`.
+Per §[Frontend Wiring Invariants](#frontend-wiring-invariants) the on-change callback is
+single and shared. The combined reference implementation appears at the end of that section.
 
 ### Tier 1: Backend Implementation — The Undo Manager
 
@@ -924,6 +938,162 @@ life — they describe the architectural contract, not implementation detail.
    `ooloi.frontend.api.remote-api` throws with the message *"called on the JAT — use
    cp/future to dispatch on a pool thread"* if a `SRV/*` invocation ever escapes
    onto the JavaFX Application Thread.
+
+#### Routing Layer — Reference Implementation
+
+The Tier 2 reference implementation shown earlier captures the local-only path. The
+extension below shows the backend timestamp cache, the source-picking and description
+functions, the Claypoole-pool dispatch entry points, and the `:undo` subscription that
+populates the cache. Together with the Tier 2 atoms, this constitutes the full
+`ooloi.frontend.undo_redo` module. The normative specification is the prose above; the
+code shows one realisation of those requirements.
+
+```clojure
+;; ooloi.frontend.undo_redo — routing layer (extends the Tier 2 reference impl)
+;;
+;; The Tier 2 atoms (undo-stack, redo-stack, on-change-callback), max-stack-depth,
+;; record-setting-change!, undo!, redo!, top-undo-key, and top-redo-key are defined in
+;; the Tier 2 reference implementation and are not repeated here.
+
+(require '[com.climate.claypoole :as cp]
+         '[ooloi.frontend.api.remote-api :as SRV])
+
+(def ^:private backend-cache (atom {}))
+
+(defn record-backend-state!
+  "Update the per-resource backend cache from a :undo-state-changed event."
+  [{:keys [resource-key undo-timestamp redo-timestamp]}]
+  (swap! backend-cache assoc resource-key
+         {:undo-timestamp   undo-timestamp
+          :redo-timestamp   redo-timestamp
+          :undo-description nil
+          :undo-own?        nil
+          :redo-description nil
+          :redo-own?        nil
+          :stale            true}))
+
+(defn backend-state [resource-key] (get @backend-cache resource-key))
+
+(defn winning-undo-source
+  "Return :local, [:backend resource-key], or nil — highest timestamp wins."
+  []
+  (let [local-ts      (some-> (peek @undo-stack) :timestamp)
+        backend-pairs (for [[k v] @backend-cache :when (:undo-timestamp v)]
+                        [[:backend k] (:undo-timestamp v)])
+        all           (cond-> (vec backend-pairs)
+                        local-ts (conj [:local local-ts]))]
+    (when (seq all) (first (apply max-key second all)))))
+
+(defn winning-redo-source
+  "Mirror — lowest timestamp wins (reverses undo order)."
+  []
+  (let [local-ts      (some-> (peek @redo-stack) :timestamp)
+        backend-pairs (for [[k v] @backend-cache :when (:redo-timestamp v)]
+                        [[:backend k] (:redo-timestamp v)])
+        all           (cond-> (vec backend-pairs)
+                        local-ts (conj [:local local-ts]))]
+    (when (seq all) (first (apply min-key second all)))))
+
+;; Routing-aware predicates — Frontend Wiring Invariant 2 replaces the Tier 2 forms
+(defn can-undo? [] (some? (winning-undo-source)))
+(defn can-redo? [] (some? (winning-redo-source)))
+
+(defn winning-undo-description
+  "Return {:description-key K :description-params P} for the winning undo entry, or
+   nil. Callers fall back to :menu.edit.undo when nil (backend description not yet
+   fetched)."
+  []
+  (let [src (winning-undo-source)]
+    (cond
+      (= :local src)
+      (when-let [k (top-undo-key)]
+        {:description-key    (keyword (str "setting." (namespace k) "." (name k)))
+         :description-params {}})
+
+      (and (vector? src) (= :backend (first src)))
+      (:undo-description (get @backend-cache (second src))))))
+
+(defn winning-redo-description []
+  (let [src (winning-redo-source)]
+    (cond
+      (= :local src)
+      (when-let [k (top-redo-key)]
+        {:description-key    (keyword (str "setting." (namespace k) "." (name k)))
+         :description-params {}})
+
+      (and (vector? src) (= :backend (first src)))
+      (:redo-description (get @backend-cache (second src))))))
+
+(defn dispatch-undo!
+  "Route Cmd+Z. Local: call undo! synchronously. Backend: dispatch SRV/undo-resource
+   on the shared Claypoole pool (Frontend Wiring Invariant 3 — no clojure.core/future)."
+  [pool]
+  (let [src (winning-undo-source)]
+    (cond
+      (= :local src)                                  (undo!)
+      (and (vector? src) (= :backend (first src)))    (cp/future pool (SRV/undo-resource (second src))))))
+
+(defn dispatch-redo! [pool]
+  (let [src (winning-redo-source)]
+    (cond
+      (= :local src)                                  (redo!)
+      (and (vector? src) (= :backend (first src)))    (cp/future pool (SRV/redo-resource (second src))))))
+
+(defn ensure-fresh-description!
+  "If the winning undo entry is backend-side and its description is stale, dispatch
+   SRV/get-undo-description on the pool. On response, update cache and fire the
+   shared on-change callback (Frontend Wiring Invariant 1 — lazy-fetch completion
+   must trigger the menu refresh)."
+  [pool]
+  (let [src (winning-undo-source)]
+    (when (and (vector? src) (= :backend (first src)))
+      (let [rk    (second src)
+            entry (get @backend-cache rk)]
+        (when (:stale entry)
+          (cp/future pool
+            (let [response (SRV/get-undo-description rk)]
+              (swap! backend-cache update rk
+                     (fn [e]
+                       (assoc e
+                              :undo-description (when-let [u (:undo response)]
+                                                  (select-keys u [:description-key :description-params]))
+                              :undo-own?        (get-in response [:undo :own?])
+                              :redo-description (when-let [r (:redo response)]
+                                                  (select-keys r [:description-key :description-params]))
+                              :redo-own?        (get-in response [:redo :own?])
+                              :stale            false)))
+              (when-let [cb @on-change-callback] (cb)))))))))
+
+;; wire-undo-redo! adds the :undo subscription alongside the :app-settings one.
+;; The on-change callback is set once and shared by both tiers — Frontend Wiring
+;; Invariant 1. The :undo subscriber fires on-change after every cache update so the
+;; menu reflects the new winning entry (or its description, once lazily fetched).
+(defn wire-undo-redo!
+  ([event-bus] (wire-undo-redo! event-bus nil))
+  ([event-bus on-change]
+   (reset! on-change-callback on-change)
+   (eb/subscribe! event-bus :app-settings
+     (fn [events]
+       (doseq [{:keys [type sender] :as event} events]
+         (when (and (= type :setting-changed)
+                    (not= sender :undo-redo))
+           (record-setting-change! event)))))
+   (eb/subscribe! event-bus :undo
+     (fn [events]
+       (doseq [event events]
+         (when (= (:type event) :undo-state-changed)
+           (record-backend-state! event)
+           (when-let [cb @on-change-callback] (cb))))))))
+```
+
+The pool argument to `dispatch-undo!`, `dispatch-redo!`, and `ensure-fresh-description!`
+is the shared `:thread-pool` Integrant component. The wiring lives in
+`shared/src/app/clojure/ooloi/shared/system.clj`: the `:ui/undo` action handler
+calls `(undo-redo/dispatch-undo! pool)`, the `:ui/redo` handler calls
+`(undo-redo/dispatch-redo! pool)`, and the `on-change` callback passed to
+`wire-undo-redo!` is `(fn [] (fx/run-later! #(um/refresh-menu-text! mgr)) (undo-redo/ensure-fresh-description! pool))`
+— so every stack mutation (Tier 2) and every cache update (Tier 1) triggers both a menu
+refresh on the JAT and a lazy description fetch on the pool when needed.
 
 #### Description Localisation
 

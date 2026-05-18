@@ -144,8 +144,15 @@ Category-based pub/sub for all frontend event delivery, backed by a shared Clayp
 | `:app-lifecycle` | `:app-ready`, `:app-shutting-down` | `start-app!`, shutdown handler |
 | `:window-lifecycle` | `:window-opened`, `:window-closed`, `:window-hidden`, `:window-state-persisted` | `show-window!`, `close-window!`, `persist-stage-geometry!` |
 | `:app-settings` | `:setting-changed` | `set-app-setting!` (ADR-0043) |
+| `:instrument-library` | `:instrument-library-changed` | Event Router (routed from backend; ADR-0045) |
+| `:undo` | `:undo-state-changed` | Event Router (routed from backend; ADR-0015) |
 
-Categories are arbitrary keywords — any component can define new ones.
+Categories are arbitrary keywords — any component can define new ones. Backend-originated
+categories (`:cache-invalidation`, `:presence`, `:playback`, `:system`, `:notification`,
+`:piece-structure`, `:piece-settings`, `:instrument-library`, `:undo`) appear on the same
+bus as the frontend-originated ones above — the bus is the single delivery mechanism for
+all frontend code. See [Event Type Taxonomy and Category Derivation](#event-type-taxonomy-and-category-derivation)
+for the complete backend-event-to-category mapping.
 
 **Backend Events on the Bus:**
 
