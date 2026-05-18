@@ -909,6 +909,22 @@ life — they describe the architectural contract, not implementation detail.
    hide backend-only state from the user — Cmd+Z would dispatch via the routing layer
    correctly, but the menu would show "Undo" disabled until a local action occurred.
 
+3. **All off-JAT dispatch uses the shared Claypoole pool, never
+   `clojure.core/future`.** The routing layer dispatches gRPC calls
+   (`SRV/undo-resource`, `SRV/redo-resource`, `SRV/get-undo-description`) on the
+   shared `:thread-pool` Integrant component via `cp/future pool …`, in keeping with
+   the project-wide convention established by ADR-0028 §Shared Threadpool. Built-in
+   `clojure.core/future` is forbidden in this path for two reasons: (a) its agent
+   thread pool is unbounded and outside Integrant's lifecycle, so it cannot be
+   gracefully shut down with the rest of the system; (b) deviating from the shared
+   pool fragments parallelism across competing executors that don't know about each
+   other. The pool must be passed in by the caller from the system map — typically
+   the action handler in `system.clj` that wires the dispatch and the menu refresh
+   function that triggers lazy description fetches. A runtime guard in
+   `ooloi.frontend.api.remote-api` throws with the message *"called on the JAT — use
+   cp/future to dispatch on a pool thread"* if a `SRV/*` invocation ever escapes
+   onto the JavaFX Application Thread.
+
 #### Description Localisation
 
 Undo description keys are translation keys stored in the undo manager alongside the
