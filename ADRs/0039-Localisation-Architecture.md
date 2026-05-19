@@ -162,6 +162,39 @@ resources/i18n/
 - The localisation layer survives forward UI evolution
 - External `en_GB.po` can override bundled version for testing or customisation
 
+### Currently Bundled Locales
+
+The set of bundled locales is auto-discovered at runtime from `shared/resources/i18n/` and is not enumerated in code. The current bundled set is:
+
+| Code | Language | Native name | Status |
+|---|---|---|---|
+| `en-GB` | English (United Kingdom) | English | Canonical source — human-written |
+| `cs-CZ` | Czech | Čeština | AI-translated |
+| `da-DK` | Danish | Dansk | AI-translated |
+| `de-DE` | German | Deutsch | AI-translated |
+| `el-GR` | Greek | Ελληνικά | AI-translated |
+| `en-US` | English (United States) | English | AI-translated |
+| `es-ES` | Spanish | Español | AI-translated |
+| `fi-FI` | Finnish | Suomi | AI-translated |
+| `fr-FR` | French | Français | AI-translated |
+| `hu-HU` | Hungarian | Magyar | AI-translated |
+| `is-IS` | Icelandic | Íslenska | AI-translated |
+| `it-IT` | Italian | Italiano | AI-translated |
+| `ja-JP` | Japanese | 日本語 | AI-translated |
+| `ko-KR` | Korean | 한국어 | AI-translated |
+| `nb-NO` | Norwegian Bokmål | Norsk bokmål | AI-translated |
+| `nl-NL` | Dutch | Nederlands | AI-translated |
+| `pl-PL` | Polish | Polski | AI-translated |
+| `pt-BR` | Portuguese (Brazil) | Português (Brasil) | AI-translated |
+| `pt-PT` | Portuguese (Portugal) | Português (Portugal) | AI-translated |
+| `sv-SE` | Swedish | Svenska | AI-translated |
+| `uk-UA` | Ukrainian | Українська | AI-translated |
+| `zh-CN` | Chinese (Simplified) | 简体中文 | AI-translated |
+
+**Translation quality caveat.** UK English is the sole default and the only human-written locale. All other locales — including American English — are AI-generated translations and require review by native speakers before they should be considered authoritative. Translation quality varies by language; in particular, languages with rich morphology (e.g. Icelandic, Hungarian, Finnish) or non-Latin scripts may need closer revision than languages closer to the source. Localisation is a natural community-driven contribution area — corrections to existing locales and submissions of new locales are welcome.
+
+The list above is a snapshot; the source of truth is the bundled directory. New locales added there are picked up automatically at startup.
+
 ### Runtime Loading and Caching
 
 **Bundled locales:**

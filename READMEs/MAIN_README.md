@@ -91,6 +91,14 @@ Copyright © 2024-2026 Peter Bengtson
 
 We welcome contributions to Ooloi from the community! By contributing to to the core of Ooloi, you agree that your contributions will be licensed under the MPL 2.0. Please see our [CONTRIBUTING.md](CONTRIBUTING.md) file for more details on how to contribute.
 
+## Languages
+
+The user interface source language is UK English, which is the default and the canonical wording. Every other locale is a translation, including American English.
+
+Bundled locales: Czech (Čeština), Danish (Dansk), Dutch (Nederlands), English UK (default), English US, Finnish (Suomi), French (Français), German (Deutsch), Greek (Ελληνικά), Hungarian (Magyar), Icelandic (Íslenska), Italian (Italiano), Japanese (日本語), Korean (한국어), Norwegian Bokmål, Polish (Polski), Portuguese — Brazil (Português), Portuguese — Portugal (Português), Simplified Chinese (简体中文), Spanish (Español), Swedish (Svenska), Ukrainian (Українська).
+
+**Translation quality caveat.** All non-English locales are AI-generated translations and require review by native speakers before they should be considered authoritative. Translation quality varies by language. Localisation is a natural community-driven contribution area — corrections to existing locales and submissions of new locales are welcome. See [ADR-0039](ADRs/0039-Localisation-Architecture.md) for the architectural model and the PO-file workflow.
+
 ## Code of Conduct
 
 We are committed to providing a friendly, safe, and welcoming environment for all. Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
