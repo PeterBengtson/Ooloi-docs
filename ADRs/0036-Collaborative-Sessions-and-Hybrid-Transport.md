@@ -101,11 +101,13 @@ Both gRPC servers — the in-process server (always active) and the network serv
 
 The network gRPC server is managed through standard Integrant lifecycle methods, started and stopped under explicit triggers — never running automatically at application boot.
 
-**Start.** The host initiates collaboration through the UI: the "**Host Collaboration Session…**" menu action calls the backend API which adds the `network-grpc-server` component to the running Integrant system via `ig/init-key`. The new component shares all backend state with the in-process server through Integrant refs to the shared components named in §Hybrid Transport Architecture above.
+**Menu items.** Two menu items in the application's File menu drive the network server lifecycle: **"Host Collaboration Session…"** (host action — starts the server) and **"Terminate Collaboration Session"** (host action — stops the server). Both menu items are handled in the combined application's `start-app!` action-handler map. The "Host Collaboration Session…" menu item is enabled whenever the network server is not running; the "Terminate Collaboration Session" menu item is enabled whenever it is.
+
+**Start.** The host selects the **"Host Collaboration Session…"** menu item from the application's UI. This menu action calls the backend API which adds the `network-grpc-server` component to the running Integrant system via `ig/init-key`. The new component shares all backend state with the in-process server through Integrant refs to the shared components named in §Hybrid Transport Architecture above.
 
 **Stop.** The network server stops via `ig/halt-key!` under either of two triggers:
 
-- **Manual termination**: the host terminates the collaboration session through the UI ("**Terminate Collaboration Session**" menu action). If guests are currently connected, the host is presented with a confirmation dialog warning about the disconnection before the server is halted.
+- **Manual termination**: the host selects the **"Terminate Collaboration Session"** menu item. If guests are currently connected, the host is presented with a confirmation dialog warning about the disconnection before the server is halted.
 - **Automatic halt**: a configurable grace period after the last external collaborator disconnects. See §Auto-Halt Grace Period Setting below for the setting name, semantics, and defaults.
 
 A new guest connection during the automatic-halt grace period cancels the pending halt — the server stays up.
