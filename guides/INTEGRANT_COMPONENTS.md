@@ -365,14 +365,18 @@ All test macros live in `util.server` (for server/system tests) and `util.fronte
 (require '[util.frontend :as th])
 ```
 
-### Choosing the right macro
+### Choosing the Right Test Macro — Decision Table
 
-| What you're testing | Macro to use |
-|---|---|
-| gRPC client-server API calls | `with-server` + `with-clients` + `with-srv-client` |
-| Full backend Integrant system | `with-system` |
-| Full combined application | `with-combined-system` |
-| Frontend UI manager and components | `with-ui-manager` |
+Ooloi provides four primary test macros covering distinct test scopes. Pick the lightest one that exercises the production code path your test is verifying. The heavier macros initialise more components and pay correspondingly higher setup/teardown cost, but they're the only way to exercise certain integration paths (frontend → backend event pipeline, JAT-scheduled callbacks, splash lifecycle).
+
+| What you're testing | Macro to use | Scope started |
+|---|---|---|
+| gRPC client-server API calls — wire protocol, headers, interceptors, event streaming, security | `with-server` + `with-clients` + `with-srv-client` | `grpc-server` + `http-server` only; backend state components passed as `nil` |
+| Full backend Integrant system — multi-client integration with real piece/IL/undo state | `with-system` | All backend components (piece-manager, instrument-library, undo-manager, grpc-server, http-server, cache-daemon) |
+| Full combined application — frontend → backend pipeline, JAT callbacks, UI manager state | `with-combined-system` | All 14 baseline components (every backend + every frontend), headless UI by default |
+| Frontend UI manager and individual frontend components | `with-ui-manager` | Just thread-pool, event-bus, ui-manager |
+
+The §Component init scope below has the detail on which components each macro actually starts, the consequence for tests that reach into nil dependencies, and the macro signatures and options.
 
 ### Component init scope
 
@@ -384,7 +388,15 @@ The three system-level macros differ in *which components actually start*. Pick 
 | `with-system` | Full backend: `piece-manager`, `instrument-library`, `undo-manager`, `grpc-server`, `http-server`, `cache-daemon`. | None | Multi-client integration tests that need real backend state (IL, pieces, undo stacks) but no frontend pipeline. SRV calls that touch IL or pieces are safe here. |
 | `with-combined-system` | All backend components (same as `with-system`). | All five frontend components: `event-bus`, `ui-manager`, `grpc-clients`, `event-router`, `fetch-coordinator`. | Tests that need the frontend → backend event pipeline, JAT-scheduled callbacks, or UI manager state. Heaviest macro. |
 
-**Common pitfall — `with-server` and SRV calls to state-holding components.** Because `with-server` initialises the gRPC server with `nil` for its IL/undo-manager/piece-manager dependencies, an SRV call that reaches those components fails server-side. The op impl resolves `(:instrument-library-component server-component)` to `nil` and `(deref nil)` falls through Clojure's `deref` into `deref-future`, calling `.get` on a `Future` that is `nil`. The server's exception handler catches this and returns `{:success false :error "Execution error: Cannot invoke \"java.util.concurrent.Future.get()\" because \"fut\" is null"}`, which the client wrapper surfaces as `clojure.lang.ExceptionInfo: SRV/<method> failed: …`. The error is misleading — there's nothing wrong with futures or the wire layer; the dependency was simply never initialised. If you see this NPE, switch to `with-system` (or `with-combined-system` if you also need the frontend).
+#### `with-server` with nil backend dependencies: `Future.get` NPE pitfall
+
+**Symptom.** An SRV call inside `with-server` fails with `clojure.lang.ExceptionInfo: SRV/<method> failed: Execution error: Cannot invoke "java.util.concurrent.Future.get()" because "fut" is null`.
+
+**Cause.** `with-server` initialises only the gRPC server and HTTP health server — `piece-manager`, `instrument-library`, and `undo-manager` are passed in as `nil`. When the SRV call reaches one of those state-holding components, the op impl resolves `(:instrument-library-component server-component)` (or the equivalent for piece-manager / undo-manager) to `nil`. The subsequent `(deref nil)` falls through Clojure's `deref` into `deref-future`, which calls `.get` on a `Future` that is `nil`. The server's exception handler catches this and returns `{:success false :error "Execution error: Cannot invoke \"java.util.concurrent.Future.get()\" because \"fut\" is null"}`, which the client wrapper surfaces as the ExceptionInfo above.
+
+The error message is misleading — there's nothing wrong with futures, with promises, with the gRPC wire layer, or with the SRV call mechanism. The dependency was simply never initialised, and the resulting `nil` propagated until it hit a `.get` on a nullable Java reference.
+
+**Fix.** Switch the test from `with-server` to `with-system` (full backend) or `with-combined-system` (full backend + frontend, if the test also needs the frontend pipeline). Use `with-server` only for tests that don't reach state-holding components: pure gRPC mechanism tests — TLS handshake, header propagation, event streaming protocol, security interceptors, client registration mechanics, two-phase connection lifecycle.
 
 ### `with-server` / `with-clients` / `with-srv-client`
 
