@@ -336,6 +336,18 @@ All test macros live in `util.server` (for server/system tests) and `util.fronte
 | Full combined application | `with-combined-system` |
 | Frontend UI manager and components | `with-ui-manager` |
 
+### Component init scope
+
+The three system-level macros differ in *which components actually start*. Pick the lightest that gives your test the state it needs to exercise the production code path it's verifying.
+
+| Macro | Backend components initialised | Frontend components initialised | Use when |
+|---|---|---|---|
+| `with-server` | `grpc-server` + `http-server` only. Dependencies (`piece-manager`, `instrument-library`, `undo-manager`) are **not** initialised — they're passed to the gRPC server as `nil`. | None | Pure gRPC mechanism tests: TLS handshake, header propagation, event streaming protocol, security interceptors, client registration mechanics. The test must not invoke any SRV call that reaches into a state-holding backend component. |
+| `with-system` | Full backend: `piece-manager`, `instrument-library`, `undo-manager`, `grpc-server`, `http-server`, `cache-daemon`. | None | Multi-client integration tests that need real backend state (IL, pieces, undo stacks) but no frontend pipeline. SRV calls that touch IL or pieces are safe here. |
+| `with-combined-system` | All backend components (same as `with-system`). | All five frontend components: `event-bus`, `ui-manager`, `grpc-clients`, `event-router`, `fetch-coordinator`. | Tests that need the frontend → backend event pipeline, JAT-scheduled callbacks, or UI manager state. Heaviest macro. |
+
+**Common pitfall — `with-server` and SRV calls to state-holding components.** Because `with-server` initialises the gRPC server with `nil` for its IL/undo-manager/piece-manager dependencies, an SRV call that reaches those components fails server-side. The op impl resolves `(:instrument-library-component server-component)` to `nil` and `(deref nil)` falls through Clojure's `deref` into `deref-future`, calling `.get` on a `Future` that is `nil`. The server's exception handler catches this and returns `{:success false :error "Execution error: Cannot invoke \"java.util.concurrent.Future.get()\" because \"fut\" is null"}`, which the client wrapper surfaces as `clojure.lang.ExceptionInfo: SRV/<method> failed: …`. The error is misleading — there's nothing wrong with futures or the wire layer; the dependency was simply never initialised. If you see this NPE, switch to `with-system` (or `with-combined-system` if you also need the frontend).
+
 ### `with-server` / `with-clients` / `with-srv-client`
 
 The standard pattern for gRPC integration tests. `with-server` starts both the gRPC server and HTTP health server, waits for startup (100ms default), then tears them down. `with-clients` creates client components, optionally registers them, then disconnects them. `with-srv-client` binds a client to the `SRV/*` dynamic context.
@@ -422,6 +434,25 @@ The standard pattern for gRPC integration tests. `with-server` starts both the g
 ;; ❌ Fragile — breaks if implementation sends different numbers of internal events
 (count @events) => 1
 ```
+
+**Root binding behaviour — load-bearing, not hygiene** — `with-clients` deliberately leaves `*srv-client*`'s root binding pointing at the last client it initialised, and most tests depend on this.
+
+The frontend `grpc-clients` component's `init-key` unconditionally `alter-var-root`s `ooloi.shared.srv-client/*srv-client*` to itself ("single-client always" — correct for production, where exactly one frontend client ever initialises). In tests, every `with-clients` invocation re-fires this clobber. That is load-bearing: SRV calls inside the body without an explicit `with-srv-client` wrapper, and off-thread production code (Claypoole pool dispatches, JAT-scheduled SRV calls) reached from inside the body, both read the root and route through the client `with-clients` just created. Both established patterns rely on this.
+
+**The combined-system + `with-clients` case is different.** When the test has already started a combined-system frontend via `start-app!`, the root was set to that frontend's grpc-clients (call it B). A subsequent `with-clients` for an additional bare client A clobbers root to A. Whether you want root = A or root = B inside the body is a per-test decision, not something the macros can resolve:
+
+- If the body's pool dispatches must run through the registered bare client (the typical case — e.g. `instrument_library_test`'s DELETE round-trip needs the registered `client` to receive backend events), leave root = A. Default behaviour, no action needed.
+- If the body's pool dispatches must run through the combined-system frontend (e.g. Test 43 in `undo_redo_test`, where B is the focus and A is a foreign mutator), restore root explicitly:
+
+```clojure
+(with-clients server [[client-a "foreign-mutator"]]
+  (alter-var-root #'srv-client/*srv-client*
+                  (constantly (:ooloi.frontend.components/grpc-clients sys)))
+  ;; … body. with-srv-client client-a still overrides per A's calls.
+)
+```
+
+The symptom of getting this wrong is identity-dependent server responses (`:own?` flipping unexpectedly, event subscribers not seeing broadcasts) with no exception and no stack trace pointing at client identity — the SRV calls succeed but route through the wrong client.
 
 ### `with-system`
 
