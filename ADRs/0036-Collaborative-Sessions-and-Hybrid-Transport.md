@@ -97,13 +97,20 @@ Both gRPC servers — the in-process server (always active) and the network serv
 **Per-server state** (intentionally distinct):
 - The gRPC `Server` instance, the gRPC health manager (each server's own SERVING state for the gRPC health protocol), transport configuration (port, TLS), lifecycle timestamps, and component status
 
-**Server Lifecycle**:
-- The host initiates collaboration through a UI action → network server component starts via `ig/init-key`
-- The network server stops via `ig/halt-key!` under either trigger:
-  - **Manual**: the host terminates the collaboration session through a UI action; if guests are currently connected, the host is asked to confirm.
-  - **Automatic**: after a configurable grace period when the last external collaborator disconnects. The grace period is an app setting; a negative value disables the auto-halt entirely, keeping the server running until manually terminated or the application exits.
+### Network Server Lifecycle
 
-**Server Lifecycle State Diagram**:
+The network gRPC server is managed through standard Integrant lifecycle methods, started and stopped under explicit triggers — never running automatically at application boot.
+
+**Start.** The host initiates collaboration through the UI: the "**Host Collaboration Session…**" menu action calls the backend API which adds the `network-grpc-server` component to the running Integrant system via `ig/init-key`. The new component shares all backend state with the in-process server through Integrant refs to the shared components named in §Hybrid Transport Architecture above.
+
+**Stop.** The network server stops via `ig/halt-key!` under either of two triggers:
+
+- **Manual termination**: the host terminates the collaboration session through the UI ("**Terminate Collaboration Session**" menu action). If guests are currently connected, the host is presented with a confirmation dialog warning about the disconnection before the server is halted.
+- **Automatic halt**: a configurable grace period after the last external collaborator disconnects. See §Auto-Halt Grace Period Setting below for the setting name, semantics, and defaults.
+
+A new guest connection during the automatic-halt grace period cancels the pending halt — the server stays up.
+
+**Lifecycle state diagram:**
 
 ```mermaid
 stateDiagram-v2
@@ -124,6 +131,20 @@ stateDiagram-v2
     Standalone --> [*]: Application exits
     CollaborationActive --> [*]: Application exits
 ```
+
+### Auto-Halt Grace Period Setting
+
+The `:collaboration/auto-halt-seconds` app setting controls how long the network gRPC server remains running after the last external guest disconnects.
+
+**Type**: integer (seconds).
+
+**Semantics**:
+- **Non-negative N**: the network server halts N seconds after the last guest disconnects. A new guest connection during the grace period cancels the pending halt.
+- **Negative**: auto-halt is disabled entirely. The server runs until the host manually terminates the session via the "Terminate Collaboration Session" menu action or the application exits.
+
+**Default**: `-1` (auto-halt disabled).
+
+The setting is surfaced declaratively in the application preferences editor alongside other app-level settings (per ADR-0043 Frontend Settings). Changing the value mid-session takes effect on the next disconnect event.
 
 ### Role-Based Permission System
 
@@ -199,6 +220,17 @@ stateDiagram-v2
     LocalWork --> [*]: Application exits
     RemoteCollaboration --> [*]: Application exits
 ```
+
+### Frontend Reconnection: `switch-to!`
+
+Transport switching from the frontend is mediated by a single named operation on the `grpc-clients` component: `switch-to!`. The operation atomically replaces the client's transport — closing the existing API pool and event-stream, opening new ones against the target, re-registering with the target backend, restoring the Event Router's piece subscriptions per ADR-0031 §Subscription State Management, and publishing `:instrument-library-changed` on the frontend event bus so the existing handler refetches state from the new backend.
+
+**Targets**:
+
+- `:in-process` — returns the frontend to its local always-running in-process backend. This is the default state, the reversion target when a remote connection drops (per ADR-0040), and what the "Disconnect" menu action invokes.
+- A `{:host h :port p :tls? boolean}` map — opens a network transport against the specified remote backend. This is what the "Connect to other Ooloi…" dialog invokes after host/port/TLS input.
+
+**Error handling.** `switch-to!` returning an error leaves the previous connection intact — the frontend never ends up in an unconnected state. If a remote connection is lost mid-session (server-initiated disconnect, network partition), the `grpc-clients` component invokes `switch-to! :in-process` automatically, restoring the frontend to the local backend per ADR-0040's single-authority reversion model.
 
 ### Collaboration API
 
