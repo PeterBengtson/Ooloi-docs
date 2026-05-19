@@ -523,11 +523,13 @@ The system map contains all Integrant components as returned by `start-with-conf
 
 ### `with-combined-system`
 
-For testing the full combined application — all 11 components, in-process transport, headless UI by default. This is the heaviest macro and the most faithful to production.
+For testing the full combined application — all 14 baseline components, in-process transport, headless UI by default. This is the heaviest macro and the most faithful to production.
+
+**Macro signature**: `[[system-symbol opts] & body]`. The `opts` map is optional and accepts the following keys: `:transport` (`:in-process` default, or `:network` for real gRPC channels with header propagation), `:extra-config` (a map merged into the Integrant config at component granularity to override any component's settings — port, `:ui-mode`, TLS, etc.), `:on-progress` (called before each component inits), and `:on-ready` (called after each component inits). See §Options below for the full table.
 
 ```clojure
 (with-combined-system [sys]
-  ;; All 11 components are running
+  ;; All 14 baseline components are running
   (get-in sys [:ooloi.backend.components/grpc-server :status]) => :running
   (get-in sys [:ooloi.frontend.components/ui-manager :status]) => :running
 
