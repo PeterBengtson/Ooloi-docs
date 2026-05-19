@@ -153,7 +153,7 @@ piece-manager
 
 ## 5. The Combined Application System
 
-The combined app runs 11 components. They divide into four initialisation groups that must run in order:
+The combined app's baseline `combined-config` initialises 14 components, plus an on-demand 15th (the network gRPC server) that the application adds at runtime when the host enables collaboration. The baseline divides into four initialisation groups that must run in order:
 
 ```
 SHARED FOUNDATION
@@ -166,7 +166,12 @@ FRONTEND EARLY  — splash screen must exist before backend reports progress
 BACKEND
   instrument-library                       [ui-manager]
   piece-manager                            [ui-manager]
-  grpc-server         ← in-process only    [piece-manager, instrument-library]
+  undo-manager                             [ui-manager]
+  connection-registry  ← shared state      [ui-manager]
+  server-statistics    ← shared state      [ui-manager]
+  grpc-server         ← in-process only    [piece-manager, instrument-library,
+                                            undo-manager, connection-registry,
+                                            server-statistics]
   http-server                              [grpc-server]
   cache-daemon                             [piece-manager]
 
@@ -176,7 +181,9 @@ FRONTEND LATE  — connect to backend after it is running
   fetch-coordinator                        [thread-pool, grpc-clients]
 ```
 
-Backend components' dependency on `ui-manager` is the load-bearing design in `combined-config`: it forces them to start *after* the UI manager (and thus after the splash screen is showing and i18n is loaded). Without it, a backend component might init before i18n is ready and crash when it calls `tr`. This dependency exists **only** in `combined-config` — in the standalone backend config (§4), the same components have no frontend dependencies.
+Backend components' dependency on `ui-manager` is the load-bearing design in `combined-config`: it forces them to start *after* the UI manager (and thus after the splash screen is showing and i18n is loaded). Without it, a backend component might init before i18n is ready and crash when it calls `tr`. This dependency exists **only** in `combined-config` — in the standalone backend config (§4), the same components have no frontend dependencies. The shared-state components (`connection-registry`, `server-statistics`) carry the dependency uniformly with every other backend component even though their `init-key` does no `tr`-touching work; the rule is uniform precisely so the topological invariant is not contingent on what each component happens to do today.
+
+**Shared backend state has its own components.** `connection-registry` (the single map of registered clients) and `server-statistics` (the single set of counters reported via the HTTP statistics endpoint) live in their own Integrant components, depended on by the `grpc-server` via refs. This is the spec ADR-0036 §Hybrid Transport Architecture commits to: shared state with lifecycle is its own component, depended on by every consumer; no server owns it. The on-demand network gRPC server documented below depends on the same refs, which is what guarantees broadcasts triggered on either transport reach all registered clients and statistics counters report system totality across all transports.
 
 **The complete dependency graph as declared in `combined-config`:**
 
@@ -200,9 +207,24 @@ Backend components' dependency on `ui-manager` is the load-bearing design in `co
    :ooloi.backend.components/piece-manager
    {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
 
+   :ooloi.backend.components/undo-manager
+   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
+
+   ;; Shared backend state — see ADR-0036 §Hybrid Transport Architecture.
+   ;; Depended on by every transport surface so broadcasts and statistics counters
+   ;; are single sources of truth regardless of which transport a client joined through.
+   :ooloi.backend.components/connection-registry
+   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
+
+   :ooloi.backend.components/server-statistics
+   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
+
    :ooloi.backend.components/grpc-server
    {:piece-manager                (ig/ref :ooloi.backend.components/piece-manager)
     :instrument-library-component (ig/ref :ooloi.backend.components/instrument-library)
+    :undo-manager-component       (ig/ref :ooloi.backend.components/undo-manager)
+    :connection-registry          (ig/ref :ooloi.backend.components/connection-registry)
+    :server-statistics            (ig/ref :ooloi.backend.components/server-statistics)
     :transport                    :in-process}
 
    :ooloi.backend.components/http-server
@@ -225,6 +247,22 @@ Backend components' dependency on `ui-manager` is the load-bearing design in `co
    {:thread-pool  (ig/ref :ooloi.shared.components/thread-pool)
     :grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients)}})
 ```
+
+### Dynamic (On-Demand) Components
+
+Some components are not part of `combined-config` and therefore do not start with the application. They are added to the running Integrant system through an application-level API, then removed when no longer needed. The component itself is a full Integrant component — it implements `ig/init-key` and `ig/halt-key!` and complies with the `:status :running` invariant — but its lifecycle is driven by application logic rather than the system bootstrap.
+
+**`:ooloi.backend.components/network-grpc-server`** — second gRPC transport surface, started when the host enables a collaboration session and stopped on manual termination or after a configurable grace period of no connected guests (ADR-0036 §Hybrid Transport Architecture). It declares the same shared-state dependencies as the in-process `grpc-server` — `piece-manager`, `instrument-library`, `undo-manager`, `connection-registry`, `server-statistics` — and points its config to the **same refs**. The in-process server is unaffected by the network server's lifecycle.
+
+The pattern for dynamic components:
+
+- Their config keys live alongside the static `combined-config` keys; the `init-key` and `halt-key!` methods are normal Integrant methods.
+- The application's backend API adds the component to the running system map by calling `ig/init-key` directly, threading the live refs from the running system into the new component's config.
+- `ig/halt-key!` removes the component when its lifecycle ends; the next reference to the system map omits the entry.
+- The `:status :running` invariant applies while the component is running; the system-health functions (§9) walk every key in the system map uniformly — they need no special handling for dynamic components.
+- The §30 conformance test enforces the invariant on whatever is present in the running system: components added dynamically during the test must comply too.
+
+The same pattern can host future dynamic components — a future HTTP REST gateway, a future MIDI listener, anything that is not part of every application run but follows the Integrant lifecycle when it does run.
 
 ---
 

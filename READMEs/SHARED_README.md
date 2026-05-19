@@ -101,28 +101,14 @@ See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) f
 
 The shared project includes `system.clj` and `app.clj` (in `src/app/clojure`) for combined deployment, composing all backend and frontend components into a single JVM process.
 
-**Combined System Components (11 total):**
+**Combined System Components (14 baseline + 1 on-demand):**
 - **Shared**: thread-pool
 - **Frontend (early)**: event-bus, ui-manager — start before backend so the splash screen exists to report backend startup progress
-- **Backend**: piece-manager, grpc-server, http-server, cache-daemon, instrument-library — all defined in the backend project and wired here in the combined config
+- **Backend**: piece-manager, grpc-server, http-server, cache-daemon, instrument-library, undo-manager, connection-registry, server-statistics — all defined in the backend project and wired here in the combined config. The last two are shared-state Integrant components owning the live connection registry and statistics counters; every gRPC server consumes them via refs (the in-process server always; the on-demand network gRPC server when running) so broadcast and statistics are single sources of truth across transports.
 - **Frontend (late)**: grpc-clients, event-router, fetch-coordinator — connect to backend after it is running
+- **On-demand**: network-grpc-server — added to the running Integrant system when the host enables a collaboration session via the application API; halted on manual termination or after a configurable grace period of no connected guests. See ADR-0036 §Hybrid Transport Architecture for the architectural decision.
 
-**Dependency graph** (each component depends on those listed in brackets):
-```
-thread-pool                                      [no dependencies]
-event-bus                                        [thread-pool]
-ui-manager          (shows splash screen)        [thread-pool, event-bus]
-piece-manager                                    [ui-manager]
-grpc-clients        (in-process transport)       [ui-manager]
-grpc-server                                      [piece-manager]
-cache-daemon                                     [piece-manager]
-instrument-library                               [ui-manager]
-event-router                                     [grpc-clients, event-bus]
-fetch-coordinator                                [thread-pool, grpc-clients]
-http-server                                      [grpc-server]
-```
-
-Integrant initialises components in dependency order, so ui-manager (and its splash screen) is running before any backend component starts.
+For the full dependency graph, init order, conformance invariants, and the canonical `combined-config` code, see [INTEGRANT_COMPONENTS.md §5](../guides/INTEGRANT_COMPONENTS.md#5-the-combined-application-system) — the authoritative reference. Integrant initialises components in dependency order, so ui-manager (and its splash screen) is running before any backend component starts.
 
 **Configuration Framework:**
 - Declarative config specs in each project define CLI switches, env vars, defaults, and validation

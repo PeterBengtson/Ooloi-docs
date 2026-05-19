@@ -104,7 +104,7 @@ Statistics are collected in real-time during operation with minimal performance 
 
 ### Server-Wide Statistics Structure
 
-Add new `server-statistics` component field containing a map of thread-safe LongAdder counters:
+The shared `:ooloi.backend.components/server-statistics` Integrant component owns a map of thread-safe LongAdder counters. Every gRPC server in the system (the in-process server, and — when running — the on-demand network gRPC server) consumes this component via an Integrant ref, so the single HTTP statistics endpoint reports system totality across all transports. See ADR-0036 §Hybrid Transport Architecture for the architectural decision and the INTEGRANT_COMPONENTS guide for component-wiring specifics:
 
 ```clojure
 { ;; ==========================================

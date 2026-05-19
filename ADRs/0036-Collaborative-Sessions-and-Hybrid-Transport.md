@@ -85,15 +85,23 @@ We will implement **hybrid transport architecture** enabling dynamic collaborati
 ### Hybrid Transport Architecture
 
 **Component Architecture**:
-- Single piece manager and event manager shared by both servers
-- In-process server: Always active, serves local frontend
-- Network server: Disabled by default, starts on-demand with TLS and authentication
-- Both servers reference the same backend components, ensuring consistent state
+
+Both gRPC servers — the in-process server (always active) and the network server (on-demand, TLS) — are coordinate transport surfaces over a single set of shared backend state. Shared state with lifecycle is its own Integrant component, depended on by every consumer; no server owns it. This keeps the dependency graph honest (each component depends on what it actually depends on), keeps lifecycles independent (halting one server does not invalidate state the other is still using), and makes shared state directly testable in isolation.
+
+**Shared components** (one instance per JVM, both servers consume via dependency):
+- Domain state: piece manager, instrument library, undo manager
+- Connection registry: the single source of registered clients, iterated by every event broadcaster so a mutation on either transport reaches all clients regardless of how they joined
+- Server statistics: a single set of counters, incremented by both servers' interceptors so the single HTTP statistics endpoint reports totality (requests per second, etc.) across all transports
+- Thread pool: the shared pool used wherever off-thread dispatch is needed
+
+**Per-server state** (intentionally distinct):
+- The gRPC `Server` instance, the gRPC health manager (each server's own SERVING state for the gRPC health protocol), transport configuration (port, TLS), lifecycle timestamps, and component status
 
 **Server Lifecycle**:
-- User initiates collaboration → network server component starts via `ig/init-key`
-- Last external collaborator disconnects → network server stops via `ig/halt-key!`
-- Automatic lifecycle management through client registry monitoring
+- The host initiates collaboration through a UI action → network server component starts via `ig/init-key`
+- The network server stops via `ig/halt-key!` under either trigger:
+  - **Manual**: the host terminates the collaboration session through a UI action; if guests are currently connected, the host is asked to confirm.
+  - **Automatic**: after a configurable grace period when the last external collaborator disconnects. The grace period is an app setting; a negative value disables the auto-halt entirely, keeping the server running until manually terminated or the application exits.
 
 **Server Lifecycle State Diagram**:
 
@@ -104,14 +112,14 @@ stateDiagram-v2
     Standalone: Local frontend connected
     Standalone: Zero network exposure
 
-    Standalone --> CollaborationActive: User clicks<br/>"Invite others"
+    Standalone --> CollaborationActive: Host selects<br/>"Host Collaboration Session…"
 
     CollaborationActive: Both Servers Running
     CollaborationActive: In-process + Network
     CollaborationActive: Multiple clients connected
 
     CollaborationActive --> CollaborationActive: Collaborator joins/leaves
-    CollaborationActive --> Standalone: Last collaborator<br/>disconnects
+    CollaborationActive --> Standalone: Host terminates session,<br/>or last collaborator disconnects<br/>(after configurable grace period)
 
     Standalone --> [*]: Application exits
     CollaborationActive --> [*]: Application exits
@@ -219,6 +227,27 @@ New gRPC methods enable collaboration management:
 - No in-process server component
 - Full authentication and TLS required
 - Supports institutional deployment, 24/7 availability
+
+### Delivery Staging
+
+The hybrid transport architecture, the permission model, and the invitation flow are independent layers and are delivered in stages. The stable surface — what every later layer builds on — is the dual-server transport infrastructure with its shared-state components and frontend reconnection. Authentication, authorisation, and invitation are layered on top of that surface, not woven into it.
+
+**Stage 1 — Transport and lifecycle infrastructure**:
+- Dual-server architecture with shared-state Integrant components per §Hybrid Transport Architecture
+- Frontend reconnection between in-process and network backends (`switch-to!` operation on the client component, automatic reversion to the local backend per ADR-0040 when a remote connection is lost)
+- Host UI to start and terminate the network server
+- Guest UI to connect to and disconnect from a remote backend
+- The authorisation interceptor is present in the form ADR-0021 specifies but is stubbed to permit every registered client; no role-based gating yet
+- Cross-client propagation verified across both transports for the first non-piece authoritative entity (the instrument library, ADR-0045)
+
+**Stage 2 — Authentication, authorisation, and invitation** (layered on Stage 1):
+- JWT generation and validation per ADR-0021
+- Role-based permission gating in the existing interceptor
+- Email-based invitation flow with `ooloi://` deep links
+- Piece-identity-as-access-key (per the planned identity ADR)
+- Persistent collaborator registry and audit log
+
+The Stage 1 stubbed interceptor is the exact surface that Stage 2 replaces with real permission logic; Stage 2 is decision logic layered into an existing interceptor pipeline, not a re-architecture of the transport.
 
 ## Rationale
 
@@ -354,7 +383,7 @@ This design prioritizes **ease of use over technical sophistication** - the righ
 **Connection Monitoring**:
 - Efficient client registry queries for auto-shutdown detection
 - Event-driven approach avoids polling
-- Configurable grace period balances responsiveness and stability
+- Configurable grace period (`:collaboration/auto-halt-seconds` app setting; integer seconds, with a negative value disabling auto-halt entirely) balances responsiveness and stability
 
 **Context Switching**:
 - Frontend reconnection requires brief UI pause (typically <500ms)

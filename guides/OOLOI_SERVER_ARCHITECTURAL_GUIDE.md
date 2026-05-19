@@ -286,7 +286,7 @@ graph TB
 
 ### Connection Registry Architecture
 
-The server maintains a concurrent connection registry using atoms for O(1) client lookup:
+The shared `:ooloi.backend.components/connection-registry` Integrant component owns the concurrent connection registry — a single atom for O(1) client lookup. Every gRPC server in the system (the in-process server, and — when running — the on-demand network gRPC server) consumes this component via an Integrant ref, so a broadcast triggered by a mutation on either transport iterates one registry and reaches every registered client regardless of which transport they joined through. See ADR-0036 §Hybrid Transport Architecture for the architectural decision and the INTEGRANT_COMPONENTS guide for component-wiring specifics:
 
 ```clojure
 ;; Registry structure
