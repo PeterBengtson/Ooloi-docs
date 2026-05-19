@@ -429,7 +429,7 @@ regardless of the resource type:
 (let [old-instruments        (:instruments @il-atom)
       old-excluded           (:excluded    @il-atom)
       new-excluded           (next-excluded old-excluded new-instruments)
-      [desc-key desc-params] (il-diff/describe old-instruments new-instruments)]
+      [desc-key desc-params] (describe-diff old-instruments new-instruments)]
   (apply-state! il-component new-instruments new-excluded)
   ;; push-undo! reads the originator from the gRPC Context internally — see note above.
   (undo/push-undo! undo-mgr :instrument-library
@@ -481,20 +481,32 @@ the diff is unambiguous in nearly every case. The few legitimate multi-element c
 also trivially detectable from the diff because the set difference or order permutation
 expresses them naturally.
 
-The diff helper `il-diff/describe` returns a `[description-key description-params]` tuple
-covering the cases below. Each row is independent — no case overlaps with another given
-the single-logical-action invariant:
+The diff helper `describe-diff` (colocated in `instrument_library.clj`) returns a
+`[description-key description-params]` tuple covering the cases below. Each key is
+plural-form-aware: PO files carry `msgid_plural` so the `tr` machinery picks the
+correct grammatical form per locale based on the `:n` parameter (see the existing
+`instrument-library.confirm-delete` entry as the precedent pattern).
 
 | Diff signature | description-key | description-params |
 |---|---|---|
-| `(new-ids \ old-ids)` has size 1 | `:il.undo.add-instrument` | `{:name <added-name>}` |
-| `(new-ids \ old-ids)` has size N>1 (drag-copy) | `:il.undo.add-instruments` | `{:names "A, B, C" :count N}` |
-| `(old-ids \ new-ids)` has size 1 | `:il.undo.delete-instrument` | `{:name <deleted-name>}` |
-| `(old-ids \ new-ids)` has size N>1 | `:il.undo.delete-instruments` | `{:names "A, B" :count N}` |
-| Same id-set, different order (multi-drag also lands here) | `:il.undo.reorder-instruments` | `{}` |
-| Same set + order, exactly one instrument differs at top level | `:il.undo.edit-instrument` | `{:name <name> :field <field>}` |
-| Same set + order, exactly one instrument's staves differ | `:il.undo.add-staff` / `:il.undo.delete-staff` / `:il.undo.edit-staff` | `{:instrument <name> ...}` |
-| (defensive fallback — should not occur) | `:il.undo.changed` | `{}` |
+| `(new-ids \ old-ids)` non-empty, no other change | `:il.undo.add-instruments` | `{:n N :names "A, B, C"}` |
+| `(old-ids \ new-ids)` non-empty, no other change | `:il.undo.delete-instruments` | `{:n N :names "A, B"}` |
+| Same id-set, common instruments unchanged, positions differ | `:il.undo.reorder-instruments` | `{}` |
+| Same set + order, every differing instrument has only `:name` changed | `:il.undo.rename-instruments` | `{:n N :names "A, B"}` |
+| Same set + order, some differing instrument has non-`:name` top-level field changes | `:il.undo.edit-instruments` | `{:n N :names "A, B"}` |
+| Same set + order, exactly one instrument differs only in `:staves`, new staff-ids ⊃ old | `:il.undo.add-staves` | `{:n N :instrument "Flute"}` |
+| Same set + order, exactly one instrument differs only in `:staves`, new staff-ids ⊂ old | `:il.undo.delete-staves` | `{:n N :instrument "Flute"}` |
+| Same set + order, exactly one instrument differs only in `:staves`, staff-ids match but positions differ | `:il.undo.reorder-staves` | `{:instrument "Flute"}` |
+| Same set + order, exactly one instrument differs only in `:staves`, staff-ids and positions match, fields differ | `:il.undo.edit-staves` | `{:n N :instrument "Flute"}` |
+| Defensive fallback — mixed-kind change, or `old = new` | `:il.undo.changed` | `{}` |
+
+The edit branches are deliberately coarse — `:il.undo.edit-instruments` covers any
+non-name top-level field change (`:transposition`, `:range`, `:comment`,
+`:amateur-range`) without distinguishing which one, and `:il.undo.edit-staves` likewise
+covers any staff field change (`:short-name`, `:clefs`, `:num-lines`). The user-visible
+benefit of "Undo Edit Range" vs "Undo Edit Comment" is marginal; "Undo Edit Flute"
+carries enough information. `:language` on the Instrument record is fixed at catalogue
+creation and never user-editable, so `describe-diff` does not observe it changing.
 
 The diff is computable in time linear to the IL size, runs once per mutation, and
 produces a translation key + params that the standard `tr` machinery renders for the
@@ -506,17 +518,6 @@ The same approach does **not** apply to pieces. Piece mutations have granular AP
 (`add-note`, `delete-measure`, etc.), so each piece mutation site already knows its
 intent and passes a hardcoded description-key directly to `push-undo!` — no diff
 needed.
-
-**Phased implementation.** `il-diff/describe` is the architectural commitment — the IL
-mutation site always calls it, and the function's signature `(old, new) → [key params]`
-is fixed. The diff *sophistication* is incremental. The initial implementation returns
-`[:il.undo.changed {}]` for every input — equivalent to "Instrument Library changed" in
-the menu. The specific cases in the table above are added in follow-up work, each adding
-a branch to `il-diff/describe` and its own translation keys. The mutation site, the
-gRPC contract, the undo manager, the cache, and the routing all remain unchanged as
-descriptions get more specific. This is the payoff of putting the inference in one
-place: every refinement is a localised change inside `il-diff/describe` with no ripple
-effects.
 
 #### Push-Based State Notification
 
