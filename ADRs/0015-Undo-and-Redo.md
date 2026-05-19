@@ -331,7 +331,7 @@ the public operations described in [gRPC Extensions](#grpc-extensions) below.
 ;;
 ;; Each entry:
 ;;   {:id              (UUID)
-;;    :description-key :il.undo/delete-instruments   ;; translation key
+;;    :description-key :il.undo.delete-instruments   ;; translation key
 ;;    :description-params {:names "Flute, Oboe"}     ;; interpolation params
 ;;    :timestamp       1711023456789012               ;; epoch microseconds
 ;;    :originator-id   "client-42"                    ;; gRPC client-id at push time, or nil
@@ -487,14 +487,14 @@ the single-logical-action invariant:
 
 | Diff signature | description-key | description-params |
 |---|---|---|
-| `(new-ids \ old-ids)` has size 1 | `:il.undo/add-instrument` | `{:name <added-name>}` |
-| `(new-ids \ old-ids)` has size N>1 (drag-copy) | `:il.undo/add-instruments` | `{:names "A, B, C" :count N}` |
-| `(old-ids \ new-ids)` has size 1 | `:il.undo/delete-instrument` | `{:name <deleted-name>}` |
-| `(old-ids \ new-ids)` has size N>1 | `:il.undo/delete-instruments` | `{:names "A, B" :count N}` |
-| Same id-set, different order (multi-drag also lands here) | `:il.undo/reorder-instruments` | `{}` |
-| Same set + order, exactly one instrument differs at top level | `:il.undo/edit-instrument` | `{:name <name> :field <field>}` |
-| Same set + order, exactly one instrument's staves differ | `:il.undo/add-staff` / `:il.undo/delete-staff` / `:il.undo/edit-staff` | `{:instrument <name> ...}` |
-| (defensive fallback — should not occur) | `:il.undo/changed` | `{}` |
+| `(new-ids \ old-ids)` has size 1 | `:il.undo.add-instrument` | `{:name <added-name>}` |
+| `(new-ids \ old-ids)` has size N>1 (drag-copy) | `:il.undo.add-instruments` | `{:names "A, B, C" :count N}` |
+| `(old-ids \ new-ids)` has size 1 | `:il.undo.delete-instrument` | `{:name <deleted-name>}` |
+| `(old-ids \ new-ids)` has size N>1 | `:il.undo.delete-instruments` | `{:names "A, B" :count N}` |
+| Same id-set, different order (multi-drag also lands here) | `:il.undo.reorder-instruments` | `{}` |
+| Same set + order, exactly one instrument differs at top level | `:il.undo.edit-instrument` | `{:name <name> :field <field>}` |
+| Same set + order, exactly one instrument's staves differ | `:il.undo.add-staff` / `:il.undo.delete-staff` / `:il.undo.edit-staff` | `{:instrument <name> ...}` |
+| (defensive fallback — should not occur) | `:il.undo.changed` | `{}` |
 
 The diff is computable in time linear to the IL size, runs once per mutation, and
 produces a translation key + params that the standard `tr` machinery renders for the
@@ -510,7 +510,7 @@ needed.
 **Phased implementation.** `il-diff/describe` is the architectural commitment — the IL
 mutation site always calls it, and the function's signature `(old, new) → [key params]`
 is fixed. The diff *sophistication* is incremental. The initial implementation returns
-`[:il.undo/changed {}]` for every input — equivalent to "Instrument Library changed" in
+`[:il.undo.changed {}]` for every input — equivalent to "Instrument Library changed" in
 the menu. The specific cases in the table above are added in follow-up work, each adding
 a branch to `il-diff/describe` and its own translation keys. The mutation site, the
 gRPC contract, the undo manager, the cache, and the routing all remain unchanged as
@@ -622,14 +622,14 @@ sequenceDiagram
 
     Note over A,E: Client A deletes "Flute"
     A->>IL: set-instrument-library (without Flute)
-    IL->>UM: push-undo!(:instrument-library, :il.undo/delete, undo-fn, redo-fn)
+    IL->>UM: push-undo!(:instrument-library, :il.undo.delete, undo-fn, redo-fn)
     UM->>E: :undo-state-changed {undo-ts: 100, redo-ts: nil}
     E->>A: Timestamp cache: undo-ts=100, stale
     E->>B: Timestamp cache: undo-ts=100, stale
 
     Note over A,E: Client B opens Edit menu → needs description
     B->>UM: SRV/get-undo-description(:instrument-library, nil)
-    UM-->>B: {:undo {:description-key :il.undo/delete-instruments, :description-params {:names "Flute"}}}
+    UM-->>B: {:undo {:description-key :il.undo.delete-instruments, :description-params {:names "Flute"}}}
     Note over B: Menu shows "Undo: Delete Instruments (Flute)"
 
     Note over A,E: Client B undoes Client A's deletion
@@ -1119,12 +1119,12 @@ or network calls on the JAT.
 ```clojure
 ;; Client fetches description for the winning backend resource:
 (SRV/get-undo-description :instrument-library nil)
-;; → {:undo {:description-key    :il.undo/delete-instruments
+;; → {:undo {:description-key    :il.undo.delete-instruments
 ;;           :description-params {:names "Flute, Oboe"}}
 ;;    :redo nil}
 
 ;; Client resolves via tr:
-(tr :il.undo/delete-instruments {:names "Flute, Oboe"})
+(tr :il.undo.delete-instruments {:names "Flute, Oboe"})
 ;; → "Delete Instruments"  (or locale-specific equivalent)
 
 ;; Menu item displays:
