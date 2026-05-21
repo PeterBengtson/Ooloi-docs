@@ -218,7 +218,9 @@ From here, we can expand the example — adding interaction, backend calls, and 
 
 Windows are the general lifecycle mechanism. Three other pieces complete the common interaction vocabulary.
 
-**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.core.confirmation-dialog` is the sole dialog helper. It materialises a standard cljfx `:alert` spec via `cljfx/create-component` + `cljfx/instance`, blocks synchronously on the JAT via `.showAndWait`, and returns `true` if the user confirmed. No custom dialog infrastructure is needed beyond this.
+**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.core.confirmation-dialog` is the sole dialog helper. It takes the UI Manager and a message, materialises a standard cljfx `:alert` spec via `cljfx/create-component` + `cljfx/instance`, hands the dialog to `show-modal!` (which sets `initOwner` so the dialog joins the macOS menu-bar-host owner chain), blocks synchronously on the JAT via `.showAndWait`, and returns `true` if the user confirmed.
+
+**Modal dialogs in general.** Any `javafx.scene.control.Dialog` shown modally must go through `show-modal!` on the UI Manager. Without `initOwner`, an unparented modal Stage on macOS causes the system menu bar to collapse to just the application menu while the dialog is shown — and the menu bar is not restored when focus returns to the previously focused managed window. `show-modal!` prefers the currently focused managed window as owner, falls back to the menu-bar-host Stage, and is a no-op for owner on non-macOS platforms.
 
 **Notifications.** The UI Manager provides a non-blocking notification overlay through convenience functions: `show-info-notification!`, `show-warning-notification!`, `show-error-notification!`, and `show-success-notification!`. Notifications auto-dismiss after a configurable delay, stack vertically in a corner of the screen, and are backed by AtlantaFX `Notification` controls materialised via the `ooloi-notification` custom component function. Application code calls the convenience wrappers; the overlay lifecycle is managed entirely by the UI Manager.
 
@@ -266,9 +268,13 @@ This is not a full API reference, but the most commonly used frontend entry poin
   [{:type :window-close-requested :window/id :my-window}])
 ```
 
+**Modal dialogs (UI Manager)**
+
+* `show-modal!` `[manager dialog]` — shows a `javafx.scene.control.Dialog` modally; sets `initOwner` on macOS so the dialog joins the menu-bar-host owner chain (focused managed window preferred, host as fallback). All modal dialogs must go through this primitive.
+
 **Confirmation dialogs**
 
-* `show-confirmation!` (`ooloi.frontend.ui.core.confirmation-dialog`) — materialises a cljfx `:alert`, blocks on the JAT via `.showAndWait`, and returns `true` if the user confirmed.
+* `show-confirmation!` `[manager message]` (`ooloi.frontend.ui.core.confirmation-dialog`) — materialises a cljfx `:alert`, routes through `show-modal!`, blocks on the JAT via `.showAndWait`, and returns `true` if the user confirmed.
 
 **Notifications (UI Manager)**
 
@@ -1377,7 +1383,7 @@ These tests:
 * Simulate user interaction where necessary.
 * Verify event publication and lifecycle wiring.
 
-Because lifecycle entry points are centralised (`show-window!`, `close-window!`, `show-confirmation!`), integration testing can focus on those choke points rather than attempting to observe arbitrary widget state.
+Because lifecycle entry points are centralised (`show-window!`, `close-window!`, `show-modal!`, `show-confirmation!`), integration testing can focus on those choke points rather than attempting to observe arbitrary widget state.
 
 The explicit boundaries make integration testing narrower and more predictable.
 
