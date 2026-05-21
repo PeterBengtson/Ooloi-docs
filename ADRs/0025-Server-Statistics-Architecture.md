@@ -649,6 +649,8 @@ The foundational layer provides essential computed statistics that support compr
 
 **Implementation**: `backend/src/main/clojure/ooloi/backend/components/http_server.clj`
 
+**Dependency wiring**: `http-server` is its own Integrant component that depends directly on the shared `:ooloi.backend.components/connection-registry`, `:ooloi.backend.components/server-statistics`, and `:ooloi.backend.components/health-manager` components — not on any individual gRPC server. Its handlers read stats from the shared LongAdder counters and the registry atom directly, without drilling into a gRPC server's component map. This means the HTTP endpoint continues serving even when an on-demand gRPC server (e.g. the network server per ADR-0036) is halted; only full system shutdown stops `http-server`. See [OOLOI_SERVER_ARCHITECTURAL_GUIDE §Shared Backend State Components](../guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md#shared-backend-state-components).
+
 **Content Negotiation**: Full ADR-0025 architecture implemented
 - **Default JSON format**: `GET /health` returns JSON with underscored field names
 - **Prometheus text format**: `Accept: text/plain` or `User-Agent: Prometheus/*` triggers Prometheus exposition format

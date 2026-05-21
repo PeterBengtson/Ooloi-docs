@@ -88,14 +88,17 @@ We will implement **hybrid transport architecture** enabling dynamic collaborati
 
 Both gRPC servers — the in-process server (always active) and the network server (on-demand, TLS) — are coordinate transport surfaces over a single set of shared backend state. Shared state with lifecycle is its own Integrant component, depended on by every consumer; no server owns it. This keeps the dependency graph honest (each component depends on what it actually depends on), keeps lifecycles independent (halting one server does not invalidate state the other is still using), and makes shared state directly testable in isolation.
 
-**Shared components** (one instance per JVM, both servers consume via dependency):
+**Shared components** (one instance per JVM, both gRPC servers and `http-server` consume via dependency):
 - Domain state: piece manager, instrument library, undo manager
 - Connection registry: the single source of registered clients, iterated by every event broadcaster so a mutation on either transport reaches all clients regardless of how they joined
 - Server statistics: a single set of counters, incremented by both servers' interceptors so the single HTTP statistics endpoint reports totality (requests per second, etc.) across all transports
+- Health manager: the gRPC `HealthStatusManager` singleton consumed by both gRPC servers and by `http-server` directly — extracted from individual gRPC servers' component maps so the HTTP statistics endpoint isn't dependency-coupled to any specific gRPC server
 - Thread pool: the shared pool used wherever off-thread dispatch is needed
 
+After the shared-state extraction, **`http-server` no longer holds an `ig/ref` to any individual gRPC server.** Its handlers read connection registry, statistics, and health status from the three shared components directly. Halting the on-demand network gRPC server does not touch `http-server`; the HTTP `/health` endpoint continues to serve uninterrupted. See [INTEGRANT_COMPONENTS §2a — Component Design Principles](../guides/INTEGRANT_COMPONENTS.md#2a-component-design-principles) for the dependency-graph-visibility heuristic that motivated the extraction.
+
 **Per-server state** (intentionally distinct):
-- The gRPC `Server` instance, the gRPC health manager (each server's own SERVING state for the gRPC health protocol), transport configuration (port, TLS), lifecycle timestamps, and component status
+- The gRPC `Server` instance, transport configuration (port, TLS), lifecycle timestamps, and component status
 
 ### Network Server Lifecycle
 

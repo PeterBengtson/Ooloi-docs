@@ -338,6 +338,14 @@ hacks leak into production and obscure what the multimethod is actually selectin
   is incomplete or a test assumption is wrong, fix the test — never add nil-guards, fallbacks, or
   alternate code paths to production to make the test pass.
 
+### Integrant Component Design
+
+When extracting or adding Integrant components, the dependency graph should be visible in the
+config map, not hidden in `init-key` bodies that reach into sibling components' fields. When a
+consumer reads state from a sibling component, that state usually wants to be its own component
+with an explicit `ig/ref`. See [INTEGRANT_COMPONENTS §2a — Component Design Principles](../../../../../guides/INTEGRANT_COMPONENTS.md#2a-component-design-principles)
+for the full heuristic and worked example.
+
 ## Adding New Multimethods
 
 When adding a new operation to the Ooloi API, follow this four-step procedure in order:

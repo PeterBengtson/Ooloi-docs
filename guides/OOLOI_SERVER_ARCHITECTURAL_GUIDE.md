@@ -284,7 +284,23 @@ graph TB
 
 ## Connection Management
 
-### Connection Registry Architecture
+### Shared Backend State Components
+
+Three pieces of state that previously lived inside `grpc-server`'s component map are extracted into their own tiny Integrant components, so multiple gRPC servers (the in-process server and — when running — the on-demand network server per ADR-0036) and `http-server` can all depend on them directly via `ig/ref`. This is the pattern Integrant was built for: separate concerns, explicit dependency edges, lifecycle that the framework manages independently of any individual consumer.
+
+The three shared components:
+
+| Component | Owns | Consumers |
+|---|---|---|
+| `:ooloi.backend.components/connection-registry` | The concurrent client connection atom (O(1) lookup) | Both gRPC servers, `http-server` |
+| `:ooloi.backend.components/server-statistics` | The map of thread-safe LongAdder counters (see ADR-0025) | Both gRPC servers (writers), `http-server` (reader) |
+| `:ooloi.backend.components/health-manager` | The gRPC `HealthStatusManager` singleton | Both gRPC servers, `http-server` |
+
+After this extraction, **`http-server` no longer holds an `ig/ref` to `grpc-server`** — its handlers read from the three shared components directly. This eliminates the coupling where `http-server`'s stats and health handlers had to drill into `grpc-server`'s component map for fields that weren't really `grpc-server`'s responsibility, and makes `http-server` truly system-singleton: it serves stats from the shared atoms regardless of which gRPC servers are currently running. Halting the on-demand network gRPC server does not touch `http-server` at all.
+
+See [INTEGRANT_COMPONENTS §2a — Component Design Principles](INTEGRANT_COMPONENTS.md#2a-component-design-principles) for the design heuristic behind these extractions.
+
+### Connection Registry
 
 The shared `:ooloi.backend.components/connection-registry` Integrant component owns the concurrent connection registry — a single atom for O(1) client lookup. Every gRPC server in the system (the in-process server, and — when running — the on-demand network gRPC server) consumes this component via an Integrant ref, so a broadcast triggered by a mutation on either transport iterates one registry and reaches every registered client regardless of which transport they joined through. See ADR-0036 §Hybrid Transport Architecture for the architectural decision and the INTEGRANT_COMPONENTS guide for component-wiring specifics:
 

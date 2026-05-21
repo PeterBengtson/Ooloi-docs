@@ -118,6 +118,8 @@ The Ooloi Frontend uses Integrant dependency injection for component lifecycle m
 - **event-router**: Routes backend events to the frontend event bus
 - **fetch-coordinator**: Coordinates data fetches from the backend
 
+For component design principles (the "god component" drift heuristic, when to extract a component, dependency-graph visibility), see [INTEGRANT_COMPONENTS §2a — Component Design Principles](../guides/INTEGRANT_COMPONENTS.md#2a-component-design-principles). For the full test infrastructure model (`with-server` / `with-system` / `with-combined-system` / `with-ui-manager`, async helpers, the `util.common` / `util.server` / `util.client` / `util.frontend` split), see [§8 Testing Components](../guides/INTEGRANT_COMPONENTS.md#8-testing-components).
+
 ### Command-Line Arguments
 
 The frontend supports comprehensive command-line configuration:

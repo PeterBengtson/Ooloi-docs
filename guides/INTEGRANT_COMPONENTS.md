@@ -77,6 +77,81 @@ In practice, Ooloi never calls `ig/init` directly — it uses `ig/build` for the
 
 ---
 
+## 2a. Component Design Principles
+
+Integrant gives you the tools to express dependencies cleanly. The framework doesn't enforce good design — it makes good design *possible*. Three principles guide how Ooloi uses Integrant.
+
+### 1. A component's value is its public API
+
+What `init-key` returns is what every dependent will see. If you put stuff on that map, you're publishing it. Consumers can — and will — read whatever you put there.
+
+This means: be deliberate about what you return. The component value should expose what the component is, not its bag of internals.
+
+### 2. The dependency graph belongs in the config, not in `init-key` bodies
+
+If component A needs X, A declares `(ig/ref :X)` in its config. The wiring is then visible by reading the config map.
+
+The antipattern: component A declares `(ig/ref :B)` but only because B happens to hold X on its component value. A then drills `(:X b)` inside its `init-key`. The config says "A depends on B"; the reality is "A depends on X". The config lies.
+
+When `init-key` bodies reach into sibling components' fields for unrelated state, the dependency graph stops matching the config. The fix: extract X into its own Integrant component and have A declare a ref on X directly.
+
+### 3. The right size for a component is "owns one concern"
+
+Components should be small. If a single `init-key` produces a map carrying:
+- A network resource (server, channel, port binding),
+- Shared mutable state (atoms, counter maps),
+- Lifecycle metadata (started-at, status), and
+- A service registry (health-manager, connection tracker)
+
+…then it's a god component. Each of those is a separable concern with its own lifecycle and consumers. The fact that they all happen to start at the same time, in the same `init-key`, is incidental.
+
+A focused component has:
+- One clearly stated responsibility
+- A small surface area on the returned value
+- Obvious init and halt semantics
+- Exactly the dependencies it needs, declared in the config
+
+### Worked example: extracting shared state from `grpc-server`
+
+`grpc-server`'s `init-key` originally created and returned:
+- `:server` (the gRPC server instance)
+- `:health-manager` (gRPC HealthStatusManager)
+- `:connection-registry` (atom of client connections)
+- `:server-statistics` (LongAdder counter map)
+- `:started-at-ns` / `:started-at-ms` (uptime)
+- `:status`
+
+`http-server` then drilled into all of these to build its handlers. Two architectural problems:
+
+1. **Dual-server impossibility.** Adding a second gRPC server (Phase 1 network server) made every drilled field ambiguous: which server's health-manager? which startup time? Their values are now contested between two consumers.
+2. **Coupling that wasn't in the config.** `http-server` declared a single `(ig/ref :grpc-server)` dependency, but actually consumed four pieces of state from inside it. The config understated the coupling by a factor of four.
+
+The fix (Phase 0 of #211):
+
+- Extract `connection-registry`, `server-statistics`, and `health-manager` into their own tiny Integrant components.
+- `grpc-server` consumes them via `ig/ref` instead of constructing them internally.
+- `http-server` drops its `:grpc-server` ref entirely and declares direct refs on the three shared components.
+
+After the refactor:
+- The config visibly shows `http-server → {connection-registry, server-statistics, health-manager}`. No more hidden coupling.
+- Two gRPC servers can coexist, both depending on the shared state, with no ambiguity about ownership.
+- Halting one gRPC server doesn't touch `http-server` — they share state, but not lifecycle.
+
+This is "extract a component" applied to the same code three times. The result is what Integrant was built to produce.
+
+### When to extract a component
+
+Promote a piece of state or capability to its own Integrant component when **any one** of the following is true:
+
+- It has multiple consumers
+- It has lifecycle independent of its current "owner"
+- It represents a separate concern (different responsibility from the component that currently holds it)
+- Consumers are reaching into a sibling component to access it
+
+The bar is intentionally low. Tiny components (an atom + `:status :running`) are perfectly idiomatic and have negligible cost. The cost of the alternative — a god component with a wide implicit API — is much higher.
+
+---
+
 ## 3. The Three-Project Structure
 
 The three projects use Integrant differently, and understanding the asymmetry is essential.
@@ -358,11 +433,35 @@ If the new component is reached from a `shared/ops/` impl during a gRPC request 
 
 ## 8. Testing Components
 
-All test macros live in `util.server` (for server/system tests) and `util.frontend` (for frontend UI tests). Load them with:
+### Test utility namespaces
+
+Ooloi's test utilities are split into four namespaces, each in its own source root under `shared/test/util/`. The split is enforced by the classpath: backend tests load only what their test profile maps in, so backend-only tests cannot accidentally load frontend-coupled helpers.
+
+| Namespace | File location | Source root | Available from |
+|---|---|---|---|
+| `util.common` | `shared/test/util/common/util/common.clj` | `util/common` | All projects (backend, shared, frontend) |
+| `util.server` | `shared/test/util/backend/util/server.clj` | `util/backend` | Backend and shared tests |
+| `util.client` | `shared/test/util/frontend/util/client.clj` | `util/frontend` | Shared and frontend tests |
+| `util.frontend` | `shared/test/util/frontend/util/frontend.clj` | `util/frontend` | Shared and frontend tests |
+| `util.instrument-library` | `shared/test/util/backend/util/instrument_library.clj` | `util/backend` | Backend and shared tests |
+
+**Why the split?** `util.server` previously also contained client-side helpers (`register-client`, `with-clients`, `with-combined-system`). Those reference `ooloi.frontend.grpc.event-client` and `ooloi.shared.system` (which transitively pulls in the frontend), making `util.server` unloadable from backend-only tests. Splitting the client-side helpers into `util.client` under `util/frontend/` lets the classpath enforce the seam: backend's test profile maps `util/backend` and `util/common` but not `util/frontend`, so backend tests get only what they can use.
+
+Standard imports per project:
 
 ```clojure
-(require '[util.server :refer :all])
-(require '[util.frontend :as th])
+;; Backend test — only what's loadable from this project:
+(:require [util.server :refer :all]
+          [util.common :refer [wait-for-event wait-for-state]])
+
+;; Shared test exercising client-server integration:
+(:require [util.server :refer :all]
+          [util.client :refer :all]
+          [util.common :refer [wait-for-event wait-for-state]])
+
+;; Frontend UI test:
+(:require [util.frontend :as th]
+          [util.common :as tc])
 ```
 
 ### Choosing the Right Test Macro — Decision Table
@@ -504,6 +603,36 @@ The frontend `grpc-clients` component's `init-key` unconditionally `alter-var-ro
 
 The symptom of getting this wrong is identity-dependent server responses (`:own?` flipping unexpectedly, event subscribers not seeing broadcasts) with no exception and no stack trace pointing at client identity — the SRV calls succeed but route through the wrong client.
 
+**`register-client-with-server` forwards the full component.** When a test uses `:non-registered` in `with-clients` and then registers later, the function call is `(uc/register-client-with-server client server)`. The helper passes the entire client component as the config argument to `event-client/register-with-server` — it does not `select-keys` a curated subset. The receiving side's destructure picks the keys it needs (`:client-id`, `:transport`, `:tls`, `:cert-path`, `:insecure-dev-mode`, `:deadline-ms`, etc.) and ignores everything else. This is deliberate: a `select-keys` form had to be patched once when TLS keys were added and would have needed another patch for `:deadline-ms`. Passing the whole component is harmless and future-proof.
+
+**`:http false` opt-out — TEMPORARY WORKAROUND** — when `with-server`'s default behaviour (start an HTTP statistics server on port 10701 alongside the gRPC server) collides with a test that needs multiple gRPC servers running concurrently, pass `:http false` in the config to skip the HTTP server:
+
+```clojure
+(with-server [s-net {:transport :network :port net-port :http false}]
+  (with-server [s-ip {:transport :in-process :http false}]
+    ;; Two grpc-servers, zero http-servers — no port collision
+    ...))
+```
+
+This is a workaround for the current production-side coupling between `http-server` and `grpc-server` (see §2a worked example). **It is scheduled for removal once #211 Phase 0 lands the http-server decoupling.** After that:
+
+- `http-server` no longer holds a ref to any specific `grpc-server`; it depends on the shared `connection-registry`, `server-statistics`, and `health-manager` components directly
+- Tests can instantiate any number of gRPC servers with at most one shared `http-server` (or none) without port collision
+- The `:http false` flag will be deleted from `start-server`, and the few tests that use it will be updated to instantiate `http-server` separately (or not at all)
+
+If you find yourself reaching for `:http false` in a new test today, leave a comment indicating it's a temporary workaround so the migration sweep finds it.
+
+**Manual-lifecycle exceptions.** `with-server` is the canonical entry point, but some test patterns can't fit it and retain inline `ig/init-key` calls. These get the shared-component refs (`connection-registry`, `server-statistics`, and after Phase 0 expansion: `health-manager`) threaded through their hand-rolled configs via a file-local helper pair (`init-server-refs` / `halt-server-refs`):
+
+| Pattern | Why `with-server` doesn't fit |
+|---|---|
+| Binding-conflict tests | Need to assert that a second `ig/init-key` THROWS on port conflict; `with-server`'s startup-wait fires before the body can catch it |
+| Double-halt shutdown tests | Need direct access to halt-key's return value for assertions; want to halt twice in sequence |
+| Concurrent multi-server stress | Spin up N servers in `future` blocks; `with-server` is a single-server wrapper |
+| Init-failure tests | Assert that init fails under specific conditions; bundle leak from `start-server`'s partial init isn't problematic but explicit `ig/init-key` is cleaner |
+
+When you use this exception, declare it: a comment at the fact explaining why the test stays on manual lifecycle keeps the audit trail clear.
+
 ### `with-system`
 
 For testing the full backend Integrant system — component coordination, health reporting, configuration, TLS. Uses `backend/system.clj`'s `start-with-config`.
@@ -620,6 +749,52 @@ Defaults: `:pool-size 2`, `:ui-mode :headless`. `:extra-config` is merged into t
 
 Run with: `OOLOI_UI_VISUAL=true lein midje my.namespace`
 
+### Async helpers from `util.common`
+
+For tests that need to wait on asynchronous state changes (events arriving in an atom, a registry counting up or down, a flag flipping), `util.common` provides two helpers built on `promise` + `add-watch` + `(deref _ timeout-ms nil)`. They return as soon as the condition is satisfied, with a hard upper-bound timeout — replacing brittle `Thread/sleep N` waits.
+
+#### `wait-for-event` — predicate per element
+
+For collection-valued atoms (a vector of received events, a map of clients keyed by id) where the test asks **"did any matching element arrive?"**. Predicate is applied per element via `some`.
+
+```clojure
+(require '[util.common :refer [wait-for-event]])
+
+;; Wait up to 1 second for an event with :message "hello" to arrive
+(wait-for-event client-events #(= (:message %) "hello") 1000)
+
+;; Wait for a piece event with a specific piece-id
+(wait-for-event client-events #(= (:piece-id %) "symphony-1") 1000)
+```
+
+Use for the common case of "the test sends a message and waits for it to reach the destination atom".
+
+#### `wait-for-state` — predicate on whole atom value
+
+For assertions that can only be expressed against the entire atom value — counts, absences, structural checks. Predicate is applied to the full value, not to individual elements.
+
+```clojure
+(require '[util.common :refer [wait-for-state]])
+
+;; Wait for registry to shrink back to 1 entry after a client is halted
+(wait-for-state registry #(= 1 (count %)) 1000)
+
+;; Wait for a specific client-id to be removed from a registry
+(wait-for-state registry #(not (contains? % "test-client-x")) 1000)
+
+;; Wait for an atom to satisfy any whole-value condition
+(wait-for-state undo-stack #(<= 2 (count %)) 1000)
+```
+
+**Why two helpers, not one.** Per-element `(some pred coll)` cannot express absence or count: pred only sees one element at a time, with no view of the rest. To wait for "client X is gone", the predicate must inspect the whole collection. Conversely, `wait-for-event` is more terse for the common "did any matching event arrive?" case. The split avoids forcing every caller into a `#(some matching-pred %)` wrapper.
+
+Both helpers:
+- Add a watcher to the atom that delivers a promise the first time pred is satisfied
+- Cover the pre-watch race by also testing pred against the current value before deref
+- Always remove the watcher before returning, regardless of timeout or success
+
+This pattern replaces `CountDownLatch` (Java-style coordination forbidden in Ooloi tests per [§10](#10-deprecated-patterns)) and ad-hoc `(loop [tries] ... Thread/sleep ... recur)` polling loops.
+
 ---
 
 ## 9. Invariants and Pitfalls
@@ -639,8 +814,10 @@ If a component throws during init, the partial system (components that started s
 **Tests run sequentially — fixed ports are safe.**
 All servers use default ports (gRPC: 10700, HTTP: 10701). There is no need for random port allocation. The `with-combined-system` macro defaults to in-process transport (no port binding); when called with `{:transport :network}`, it binds the default 10700/10701, same as `with-server`.
 
-**`Thread/sleep 50` after event dispatch, not after registration.**
-Client registration with `register-client` is synchronous. gRPC event delivery is asynchronous. Sleep after sending an event; never after registering a client.
+**Prefer `wait-for-event` / `wait-for-state` over `Thread/sleep` for async assertions.**
+Client registration with `register-client` is synchronous. gRPC event delivery is asynchronous. After dispatching an event, wait for it to arrive at the destination — but `Thread/sleep N` is brittle (too short and the test flakes, too long and the suite slows down). The canonical replacement is `(wait-for-event events-atom pred timeout-ms)` for "did the matching event arrive in this atom?", or `(wait-for-state state-atom pred timeout-ms)` for whole-collection conditions like count or absence. Both helpers in `util.common` return as soon as the condition is met, with a hard upper-bound timeout. See [§8 Async helpers](#async-helpers-from-utilcommon).
+
+`Thread/sleep` is still appropriate when *modelling* delay (simulating a slow client's processing time, waiting for a known fixed-duration external event) — i.e. when the sleep IS the test's behaviour, not a workaround for asynchrony. In all other cases, prefer the helpers.
 
 **Component keys in `combined-config` are namespaced keywords matching their `init-key` dispatch.**
 The frontend event-router and fetch-coordinator use fully-qualified namespace keys:
@@ -652,6 +829,8 @@ This is intentional — it allows these components to coexist in a system with o
 ---
 
 ## 10. Deprecated Patterns
+
+### Manual `ig/init-key` / `ig/halt-key!` in test bodies
 
 The explicit `ig/init-key` / `ig/halt-key!` test pattern — creating and cleaning up components manually in `let` / `try` / `finally` blocks — is still valid Integrant but is no longer the recommended approach for new tests. The macros in §8 provide the same guarantees with far less boilerplate and no risk of missing cleanup on failure.
 
@@ -668,9 +847,25 @@ If you encounter existing tests that look like this:
       (ig/halt-key! :ooloi.backend.components/grpc-server server))))
 ```
 
-They are correct and will continue to work, but new tests should use `with-server` / `with-clients` instead. The explicit pattern remains the right choice for REPL exploration and for complex scenarios genuinely not covered by the macros.
+They are correct and will continue to work, but new tests should use `with-server` / `with-clients` instead. The explicit pattern remains the right choice for REPL exploration and for complex scenarios genuinely not covered by the macros (see §8 "Manual-lifecycle exceptions" for the named cases).
 
 The `start-server` / `stop-server` / `register-client` / `disconnect-client` functions are the procedural equivalents of the macros. They are useful at the REPL but not in tests.
+
+### `CountDownLatch` for async coordination
+
+`java.util.concurrent.CountDownLatch` is a legacy Java pattern and should never appear in new Ooloi tests. The canonical replacements:
+
+- For "wait until callback fires" (1 expected delivery): `(promise)` + `(deref p timeout-ms nil)`. The callback delivers the promise.
+- For "wait until N callbacks fire": an `atom` counting remaining deliveries plus a single `promise` delivered when the atom reaches zero.
+- For "wait until an atom satisfies a predicate" (events arriving, registry counts changing, flag flipping): `wait-for-event` (per-element pred) or `wait-for-state` (whole-value pred) from `util.common`. See [§8 Async helpers](#async-helpers-from-utilcommon).
+
+Why deprecated: `CountDownLatch` requires the caller to know the exact count in advance, doesn't compose with predicates, and conflates "thing happened" with "Java synchroniser tripped" — making test failures harder to diagnose. The promise-based replacements are idiomatic Clojure, compose with any condition, and produce clearer failure messages.
+
+### `Thread/sleep N` for async synchronisation
+
+`(Thread/sleep N)` is appropriate when *modelling* delay (a deliberately slow client, a known fixed-duration external event). It is **not** appropriate when used to "give the async thing time to happen" before an assertion — too short and the test flakes, too long and the suite is slow.
+
+Use `wait-for-event` / `wait-for-state` for the latter pattern (see §8). If neither fits, write a small inline polling loop with a deadline and a `Thread/sleep 10` between iterations — but in practice the helpers cover the vast majority of cases.
 
 ---
 
