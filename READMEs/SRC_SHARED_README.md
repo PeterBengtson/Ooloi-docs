@@ -496,9 +496,9 @@ Used in shared and backend IL tests.
 | `with-test-il-dir` | Redirects `platform/get-platform-directory` to a temporary directory, then deletes it. |
 | `with-loaded-test-bundle` | Replaces `load-bundle` with a stable test fixture covering all eight instrument families. |
 
-### `util.server` — gRPC and server test helpers
+### `util.server` — server-side gRPC test helpers
 
-Used in `shared/test/` and `backend/test/`.
+Used in shared and backend tests.
 
 ```clojure
 (require '[util.server :refer :all])
@@ -506,11 +506,33 @@ Used in `shared/test/` and `backend/test/`.
 
 | Macro / Function | Purpose |
 |---|---|
-| `with-server [s]` / `with-server [s :in-process]` | Starts server, runs body, stops server. Default 100ms startup delay. |
-| `with-clients s [[c1 "id1"] [c2 "id2"]]` | Creates and registers multiple clients with automatic cleanup. Clients inherit TLS settings from server. |
-| `with-srv-client c` | Binds client to `SRV/*` dynamic context so all `SRV/` calls use it automatically. |
+| `with-server [s]` / `with-server [s :in-process]` | Starts gRPC server + HTTP health server, runs body, stops both. Default 100ms startup delay. |
 | `with-system [sys {}]` | Full backend Integrant system with automatic halt. |
-| `with-combined-system [sys]` | All 11 application components, in-process gRPC transport, headless UI. Use for combined system integration tests. |
+
+### `util.client` — client-side gRPC and combined-system test helpers
+
+Used only in shared (integration) tests. The client-side helpers live in a
+separate namespace because their requires transitively pull in frontend code
+(`ooloi.frontend.grpc.event-client`, `ooloi.shared.system`). Both `util.server`
+and `util.client` sit in `shared/test/util/backend/`; the backend project
+reaches that root via `:resource-paths` (no Midje auto-discovery), so backend
+tests can require util.server but never auto-load util.client.
+
+```clojure
+(require '[util.client :refer :all])
+```
+
+| Macro / Function | Purpose |
+|---|---|
+| `with-clients s [[c1 "id1"] [c2 "id2"]]` | Creates and registers multiple clients with automatic cleanup. Clients inherit TLS settings from server. Add `:non-registered` to defer registration; add a config-override map to vary client config. |
+| `with-srv-client c` | Binds client to `SRV/*` dynamic context so all `SRV/` calls use it automatically. |
+| `register-client-with-server c s` | Explicit registration helper for `:non-registered` clients. Returns the gRPC streaming call (truthy on success). |
+| `create-client-component "id" s` + `disconnect-client c` | Manual client lifecycle for tests that need to halt the client mid-body. |
+| `with-combined-system [sys]` | All 11 application components, in-process gRPC transport, headless UI. Use for combined-system integration tests (frontend → backend pipeline, JAT callbacks). |
+
+For the full source-root layout, classpath consumption matrix, and the decision
+tree for where to put a new test helper, see
+[`shared/test/util/README.md`](../../../test/util/README.md).
 
 **Typical patterns:**
 

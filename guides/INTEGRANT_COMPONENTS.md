@@ -437,15 +437,15 @@ If the new component is reached from a `shared/ops/` impl during a gRPC request 
 
 Ooloi's test utilities are split into four namespaces, each in its own source root under `shared/test/util/`. The split is enforced by the classpath: backend tests load only what their test profile maps in, so backend-only tests cannot accidentally load frontend-coupled helpers.
 
-| Namespace | File location | Source root | Available from |
+| Namespace | File location | Source root | Auto-discovered by Midje in |
 |---|---|---|---|
-| `util.common` | `shared/test/util/common/util/common.clj` | `util/common` | All projects (backend, shared, frontend) |
-| `util.server` | `shared/test/util/backend/util/server.clj` | `util/backend` | Backend and shared tests |
-| `util.client` | `shared/test/util/frontend/util/client.clj` | `util/frontend` | Shared and frontend tests |
-| `util.frontend` | `shared/test/util/frontend/util/frontend.clj` | `util/frontend` | Shared and frontend tests |
-| `util.instrument-library` | `shared/test/util/backend/util/instrument_library.clj` | `util/backend` | Backend and shared tests |
+| `util.common` | `shared/test/util/common/util/common.clj` | `util/common` | shared, backend (via :resource-paths — no auto-discover), frontend |
+| `util.server` | `shared/test/util/backend/util/server.clj` | `util/backend` | shared; reachable from backend via :resource-paths (no auto-discover) |
+| `util.client` | `shared/test/util/backend/util/client.clj` | `util/backend` | shared only — `util.client` requires both backend and frontend code, so it can only load in the shared project (which has both on its classpath) |
+| `util.frontend` | `shared/test/util/frontend/util/frontend.clj` | `util/frontend` | shared, frontend |
+| `util.instrument-library` | `shared/test/util/backend/util/instrument_library.clj` | `util/backend` | shared; reachable from backend via :resource-paths |
 
-**Why the split?** `util.server` previously also contained client-side helpers (`register-client`, `with-clients`, `with-combined-system`). Those reference `ooloi.frontend.grpc.event-client` and `ooloi.shared.system` (which transitively pulls in the frontend), making `util.server` unloadable from backend-only tests. Splitting the client-side helpers into `util.client` under `util/frontend/` lets the classpath enforce the seam: backend's test profile maps `util/backend` and `util/common` but not `util/frontend`, so backend tests get only what they can use.
+**Why the split?** `util.server` previously also contained client-side helpers (`register-client`, `with-clients`, `with-combined-system`). Those reference `ooloi.frontend.grpc.event-client` and `ooloi.shared.system` (which transitively pulls in the frontend), making the combined file unloadable from backend-only tests. Splitting the client-side helpers into a separate `util.client` namespace lets the backend's test profile pull `util/backend` in via `:resource-paths` (classpath access without Midje auto-discovery) while leaving anything frontend-coupled out of the backend's loadable surface. The frontend project never references `util.client` (servers and clients are integration concerns and integration tests live in the shared project), so `util.client` sits under `util/backend/` alongside `util.server`: shared has `util/backend` on `:test-paths` and auto-loads it; backend has it on `:resource-paths` (reachable but not auto-loaded; backend tests don't require it); frontend doesn't have `util/backend` on its classpath at all.
 
 Standard imports per project:
 
