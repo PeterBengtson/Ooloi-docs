@@ -218,7 +218,7 @@ From here, we can expand the example — adding interaction, backend calls, and 
 
 Windows are the general lifecycle mechanism. Three other pieces complete the common interaction vocabulary.
 
-**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.core.confirmation-dialog` is the sole dialog helper. It takes the UI Manager and a message, materialises a standard cljfx `:alert` spec via `cljfx/create-component` + `cljfx/instance`, hands the dialog to `show-modal!` (which sets `initOwner` so the dialog joins the macOS menu-bar-host owner chain), blocks synchronously on the JAT via `.showAndWait`, and returns `true` if the user confirmed.
+**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.core.confirmation-dialog` is the sole dialog helper. It takes the UI Manager and a message, materialises a standard cljfx `:alert` spec via `cljfx/create-component` + `cljfx/instance`, hands the dialog to `show-modal!` (which sets `initOwner` so the dialog joins the macOS menu-bar-host owner chain), blocks synchronously on the JAT via `.showAndWait`, and returns `true` when the user clicks OK or `false` when the user clicks Cancel (or dismisses the dialog by closing it or pressing Escape).
 
 **Modal dialogs in general.** Any `javafx.scene.control.Dialog` shown modally must go through `show-modal!` on the UI Manager. Without `initOwner`, an unparented modal Stage on macOS causes the system menu bar to collapse to just the application menu while the dialog is shown — and the menu bar is not restored when focus returns to the previously focused managed window. `show-modal!` prefers the currently focused managed window as owner, falls back to the menu-bar-host Stage, and is a no-op for owner on non-macOS platforms.
 
