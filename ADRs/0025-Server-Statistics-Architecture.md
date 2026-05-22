@@ -192,8 +192,12 @@ Extend existing connection registry with separate top-level `:client-statistics`
 
 ```clojure
 {:client-id "client-uuid"
+ :server-id "grpc-server-uuid"  ; per-server identifier stamped at registration;
+                                ; used by halt-key! to scope cleanup to entries
+                                ; owned by this server (ADR-0036 §Hybrid
+                                ; Transport Architecture, #211 Tests 22a/22b)
  :observer stream-observer-ref
- :event-queue bounded-queue-ref  
+ :event-queue bounded-queue-ref
  :piece-subscriptions #{set-of-piece-ids}
  :metadata {
            ;; ==========================================

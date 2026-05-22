@@ -139,6 +139,24 @@ After the refactor:
 
 This is "extract a component" applied to the same code three times. The result is what Integrant was built to produce.
 
+### Sharing state across components with independent lifecycles
+
+Extracting shared state is half the job. The other half is making sure each consumer's `halt-key!` cleans up *its own* contribution to the shared state without touching contributions belonging to other consumers that are still running.
+
+`connection-registry` is the canonical Ooloi example. Two gRPC servers (in-process and on-demand network) consume the same registry atom. When the network server halts, the obvious-looking `halt-key!` — iterate `@registry`, close every observer, `(reset! registry {})` — silently breaks the lifecycle-independence guarantee: every in-process client's streaming observer also closes, and the in-process client's `:api-connection-pool` atom is nilled by the resulting `onCompleted` callback. The test passes (the registry is empty as the halting server expected) but the system is broken.
+
+The pattern that fixes this: **stamp each contribution with the contributing component's identity, and have `halt-key!` filter by that identity.**
+
+For `grpc-server` specifically:
+
+- `init-key` generates a fresh `:server-id` (UUID-based) per server instance.
+- The registry entry created for each client is stamped with the registering server's `:server-id`.
+- `halt-key!` filters the shared registry by its own `:server-id` — closes only its own clients' observers, stops only its own clients' drainer executors, `dissoc`s only its own keys from the registry atom. Other servers' entries are left intact.
+
+The same shape applies whenever multiple lifecycle-independent components write to a single shared atom: a per-writer identifier in each entry, filtered cleanup. The alternative — every consumer trying to remember which entries it owns in its own separate side-list — duplicates state and goes out of sync. The stamp lives with the entry; the entry knows who owns it.
+
+(#211 Tests 22a (halt) and 22b (start) verify the lifecycle-independence property for the dual-server case.)
+
 ### When to extract a component
 
 Promote a piece of state or capability to its own Integrant component when **any one** of the following is true:

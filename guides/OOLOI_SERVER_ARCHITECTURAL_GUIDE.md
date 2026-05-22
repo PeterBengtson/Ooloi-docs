@@ -306,7 +306,10 @@ The shared `:ooloi.backend.components/connection-registry` Integrant component o
 
 ```clojure
 ;; Registry structure
-{client-id {:observer stream-observer
+{client-id {:server-id "grpc-server-<uuid>"   ; stamped at registration; used by
+                                              ; halt-key! to find this server's
+                                              ; own clients (see below)
+           :observer stream-observer
            :metadata {:connected-at timestamp
                       :client-ip "127.0.0.1"
                       :client-port 54321}
@@ -320,6 +323,8 @@ The shared `:ooloi.backend.components/connection-registry` Integrant component o
            :event-queue bounded-queue
            :consumer-thread thread-ref}}
 ```
+
+**Per-server ownership (`:server-id`).** The registry is shared across every gRPC server in the JVM, but each entry belongs to exactly one server — the server through whose interceptor the client registered. When a `grpc-server` component initialises, it generates a fresh `:server-id` (UUID-based) and propagates it through to the interceptor that creates registry entries. The entry is stamped with that id. When the same component's `halt-key!` runs, it filters the shared registry by its own `:server-id`: it closes only its own clients' streaming observers, stops only its own drainer executors, and `dissoc`s only its own keys. Entries owned by other still-running servers stay intact. This is what makes ADR-0036's lifecycle-independence guarantee structural rather than aspirational — verified by #211 Tests 22a (halt) and 22b (start).
 
 ### Client Validation Security
 

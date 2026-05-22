@@ -98,7 +98,9 @@ Both gRPC servers — the in-process server (always active) and the network serv
 After the shared-state extraction, **`http-server` no longer holds an `ig/ref` to any individual gRPC server.** Its handlers read connection registry, statistics, and health status from the three shared components directly. Halting the on-demand network gRPC server does not touch `http-server`; the HTTP `/health` endpoint continues to serve uninterrupted. See [INTEGRANT_COMPONENTS §2a — Component Design Principles](../guides/INTEGRANT_COMPONENTS.md#2a-component-design-principles) for the dependency-graph-visibility heuristic that motivated the extraction.
 
 **Per-server state** (intentionally distinct):
-- The gRPC `Server` instance, transport configuration (port, TLS), lifecycle timestamps, and component status
+- The gRPC `Server` instance, transport configuration (port, TLS), lifecycle timestamps, component status, and a per-server identifier (`:server-id`)
+
+**Selective halt via `:server-id` stamping.** Because every server consumes the same connection-registry, `halt-key!` on one server must not close streaming observers or remove registry entries belonging to clients of another server. Each `grpc-server` component generates a fresh `:server-id` at `init-key` time. The interceptor that creates each client's registry entry stamps that entry with the originating server's `:server-id`. `halt-key!` then filters the shared registry by its own `:server-id`: it closes streaming observers and stops drainer executors only for matching entries, and `dissoc`s only those keys from the registry — leaving entries owned by other servers intact. Without this scoping, halting one server would clear every other server's clients' streaming observers and nil their `:api-connection-pool` atoms client-side, breaking the lifecycle-independence invariant above. (#211 Tests 22a/22b verify both halt and start cases.)
 
 ### Network Server Lifecycle
 
