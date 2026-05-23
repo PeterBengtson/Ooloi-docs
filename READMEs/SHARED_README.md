@@ -352,6 +352,7 @@ The combined application accepts the **union** of all backend and frontend CLI a
 | **Argument** | **Values** | **Default** | **Description** |
 |--------------|------------|-------------|-----------------|
 | `--peer-port PORT` | 1-65535 | 10702 | Peer-to-peer connection port |
+| `--auto-halt-seconds N` | integer | -1 (disabled) | Grace period before the on-demand network gRPC server halts after the last collaboration guest disconnects (per ADR-0036). Negative value = never auto-halt. Read at launch; not dynamic |
 
 **Note on Transport:** The combined application always uses in-process transport for maximum performance. Transport is not configurable - if you need network transport, run backend and frontend separately.
 
@@ -382,6 +383,7 @@ The combined application accepts the **union** of all backend and frontend envir
 | **Environment Variable** | **CLI Equivalent** | **Default** | **Description** |
 |-------------------------|-------------------|-------------|-----------------|
 | `OOLOI_PEER_CONNECTION_PORT` | --peer-port | 10702 | Peer-to-peer connection port |
+| `OOLOI_AUTO_HALT_SECONDS` | --auto-halt-seconds | -1 (disabled) | Grace period before the on-demand network gRPC server halts after the last collaboration guest disconnects (per ADR-0036). Negative value = never auto-halt. Read at launch; not dynamic |
 
 **Note on Transport:** The combined application always uses in-process transport. No transport-related environment variables are supported - if you need network transport, run backend and frontend separately.
 

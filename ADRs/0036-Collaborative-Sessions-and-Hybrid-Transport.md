@@ -139,9 +139,9 @@ stateDiagram-v2
     CollaborationActive --> [*]: Application exits
 ```
 
-### Auto-Halt Grace Period Setting
+### Auto-Halt Grace Period
 
-The `:collaboration/auto-halt-seconds` app setting controls how long the network gRPC server remains running after the last external guest disconnects.
+The auto-halt grace period controls how long the network gRPC server remains running after the last external guest disconnects.
 
 **Type**: integer (seconds).
 
@@ -151,7 +151,9 @@ The `:collaboration/auto-halt-seconds` app setting controls how long the network
 
 **Default**: `-1` (auto-halt disabled).
 
-The setting is surfaced declaratively in the application preferences editor alongside other app-level settings (per ADR-0043 Frontend Settings). Changing the value mid-session takes effect on the next disconnect event.
+**Configuration source**: launch-time only. CLI flag `--auto-halt-seconds`, environment variable `OOLOI_AUTO_HALT_SECONDS`, alongside other deployment configuration in `combined-cli-spec` / `combined-env-spec` (and the equivalents in the backend project). The value is read at process start and held for the process lifetime; changing it requires restarting the application.
+
+This is deployment configuration rather than user preference: a teacher's laptop, an institutional server, and a personal demo machine all want different values, set per deployment scenario and rarely changed thereafter. Reactive mid-session adjustment via a frontend app setting (per ADR-0043) was rejected as introducing cross-layer coupling (backend reading frontend app state) without a justifying user scenario; the explicit "Terminate Collaboration Session" menu action covers the immediate-stop case.
 
 ### Role-Based Permission System
 
@@ -422,7 +424,7 @@ This design prioritizes **ease of use over technical sophistication** - the righ
 **Connection Monitoring**:
 - Efficient client registry queries for auto-shutdown detection
 - Event-driven approach avoids polling
-- Configurable grace period (`:collaboration/auto-halt-seconds` app setting; integer seconds, with a negative value disabling auto-halt entirely) balances responsiveness and stability
+- Configurable grace period (launch-time `--auto-halt-seconds` / `OOLOI_AUTO_HALT_SECONDS`; integer seconds, with a negative value disabling auto-halt entirely) balances responsiveness and stability
 
 **Context Switching**:
 - Frontend reconnection requires brief UI pause (typically <500ms)

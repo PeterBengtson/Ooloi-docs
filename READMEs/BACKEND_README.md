@@ -276,6 +276,7 @@ lein run
 | **TLS Private Key** | `--key-path PATH` | `OOLOI_KEY_PATH` | platform default | Path to TLS private key file (created if missing) |
 | **Health Port** | `--health-port 10701` | `OOLOI_HEALTH_PORT` | 10701 | HTTP health endpoint port for monitoring |
 | **Thread Pool Size** | `--thread-pool-size 4` | `OOLOI_THREAD_POOL_SIZE` | -1 (cores−1) | Shared thread pool size |
+| **Auto-Halt Seconds** | `--auto-halt-seconds 60` | `OOLOI_AUTO_HALT_SECONDS` | -1 (disabled) | Grace period before the on-demand network gRPC server halts after the last collaboration guest disconnects (per ADR-0036). Negative value = never auto-halt. Read at launch; not dynamic |
 
 **Health Monitoring**:
 - **Health Port**: HTTP endpoint for external monitoring tools (load balancers, ops dashboards)
