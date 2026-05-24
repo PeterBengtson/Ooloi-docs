@@ -6,7 +6,7 @@ Accepted (July 2025)
 
 ## Context
 
-Ooloi requires a system architecture that can support multiple deployment modes (backend-only, frontend-only, combined) while providing production-ready operational capabilities. The architecture must handle component lifecycle management, configuration-driven deployment, error handling, and operational requirements like health monitoring and graceful shutdown.
+Ooloi requires a system architecture that can support multiple deployment modes (backend-only standalone server, combined desktop app bundling both layers) while providing production-ready operational capabilities. There is no frontend-only deployment — the frontend always runs together with an in-process backend in the combined app. The architecture must handle component lifecycle management, configuration-driven deployment, error handling, and operational requirements like health monitoring and graceful shutdown.
 
 Key architectural challenges:
 - **Component Dependencies**: gRPC server depends on piece manager; initialization order matters
@@ -64,7 +64,7 @@ We will use **Integrant for component lifecycle management** combined with **str
 
 ### Architectural Benefits
 
-1. **Deployment Flexibility**: Single codebase supports backend-only, frontend-only, and combined deployments through configuration changes
+1. **Deployment Flexibility**: Single codebase supports the standalone backend server and the combined desktop app deployments through configuration changes
 2. **Operational Integration**: Structured exit codes and error messages enable automated deployment tooling and operational monitoring
 3. **Resource Safety**: Automatic cleanup of partially initialized systems prevents resource leaks during failure scenarios
 4. **Development Productivity**: Components can be developed and tested independently; clear separation between system concerns and business logic

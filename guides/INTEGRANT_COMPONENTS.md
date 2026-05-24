@@ -217,18 +217,22 @@ This is the **primary product** — what end users download and run.
 
 ## 4. The Backend System
 
-When running as a standalone server, the backend starts five components:
+When running as a standalone server, the backend starts seven components:
 
 ```
-instrument-library   (no dependencies — starts independently)
+thread-pool          (no dependencies, lives in shared/)
+instrument-library   (no dependencies)
+undo-manager         (no dependencies)
 
 piece-manager
-    ├── grpc-server  (also depends on instrument-library)
+    ├── grpc-server  (also depends on instrument-library, undo-manager)
     │       └── http-server
     └── cache-daemon
 ```
 
-`instrument-library` has no dependencies and starts independently of `piece-manager`. `grpc-server` depends on both `piece-manager` and `instrument-library`. `cache-daemon` depends only on `piece-manager`. `http-server` depends on `grpc-server` for health manager access.
+`thread-pool`, `instrument-library`, and `undo-manager` each have no dependencies and start independently of `piece-manager`. `grpc-server` depends on `piece-manager`, `instrument-library`, and `undo-manager`. `cache-daemon` depends only on `piece-manager`. `http-server` depends on `grpc-server` for health-manager and shared-state access (the standalone backend keeps the pre-#211-Phase-0 wiring where `http-server` reaches into `grpc-server`'s component map; the Phase 0 decoupling — where `http-server` consumes `connection-registry`, `server-statistics`, and `health-manager` directly via Integrant refs — applies only to `combined-config` §5).
+
+The shared-state Integrant components introduced in #211 Phase 0 (`connection-registry`, `server-statistics`, `health-manager`) are NOT part of the standalone backend's config. In the standalone deployment, `grpc-server`'s `init-key` falls back to creating those instances locally inside its own component map when no Integrant refs are supplied. Sharing across multiple servers only matters in `combined-config` (and on-demand `network-grpc-server`), where two transport surfaces of the same Ooloi need to see one registry.
 
 **Entry point:** `ooloi.backend.system/start-with-config`
 

@@ -35,7 +35,7 @@ These decisions establish Ooloi as a **collaborative music notation system** wit
 - **Component-based architecture** with proper resource management
 
 ### Production Readiness
-- **Multi-deployment support**: backend-only, frontend-only, combined, and dev-engine modes
+- **Multi-deployment support**: standalone backend server and combined desktop app (frontend + backend in one JVM); no frontend-only deployment
 - **Security architecture**: TLS infrastructure with auto-generated certificates and pluggable authentication
 - **Operational integration**: structured error handling, health monitoring, graceful shutdown
 - **Resource safety**: comprehensive cleanup handling for partial initialization failures
