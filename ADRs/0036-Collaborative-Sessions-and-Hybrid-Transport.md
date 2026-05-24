@@ -277,6 +277,26 @@ In all three sub-cases, `subscription-state` is cleared defensively before re-re
 
 **Error handling.** `switch-to!` returning an error (target unreachable, TLS handshake failure, etc.) leaves the previous connection intact — the frontend never ends up in an unconnected state. If a remote connection is lost mid-session, the `grpc-clients` component invokes `switch-to! :in-process` automatically per ADR-0040's single-authority reversion model.
 
+### Notification Model
+
+Connect and disconnect events are surfaced to the user primarily through notifications, not through other UI surfaces. A future collaborators panel — listing currently connected guests with roles and permissions — is a separate, longer-lived view; it does not replace per-event notifications. Notifications fire unconditionally for every connect/disconnect transition so the user always knows what just happened, regardless of which windows or panels are open.
+
+**Deployment scope.** The notification model below applies to the **combined desktop app** deployment, which is the only Ooloi deployment that includes a frontend. The **standalone backend server** deployment has no UI Manager and therefore no notifications — connection events on that deployment are observable through HTTP statistics and the server's own logs, not via toasts. Code paths that fire notifications must be gated on UI Manager presence so the standalone backend never attempts to call notification functions that don't exist there.
+
+| Event | Side | Severity | Persistence | Source |
+|---|---|---|---|---|
+| Network server started | Host | success (green) | persistent until the server stops | "Host Collaboration Session…" action handler |
+| Network server stopped | Host | — | the persistent server-started notification is removed by UUID | "Terminate Collaboration Session" action / auto-halt expiry |
+| Guest joined | Host | info | ephemeral (default auto-dismiss) | event-bus subscriber on `:server-client-connected` from the shared connection-registry |
+| Guest left | Host | info | ephemeral | event-bus subscriber on `:server-client-disconnected` |
+| Connected to remote | Guest | success (green) | ephemeral | `switch-to!` success branch when target is a remote map |
+| Voluntary disconnect | Guest | info | ephemeral | "Disconnect" action handler after the intent confirmation completes the switch |
+| Involuntary disconnect | Guest | error (red) | persistent until the user dismisses it | `switch-to!` revert-fn (response-observer `onCompleted` from the remote server) |
+
+All notification text uses `tr` for i18n. Host-side joined/left notifications include the guest's display name (when supplied via the Connect dialog) or the remote IP/port as the fallback identifier. Connect/disconnect notifications on the guest side include the host:port the guest was connected to.
+
+The persistent severity tier (host-server-started, guest-involuntary-disconnect) is reserved for states the user must acknowledge: a host running a network server is exposing local state, and an involuntary disconnect is a loss of work-context. Ephemeral notifications cover routine transitions where dismissal-by-time is acceptable.
+
 ### Collaboration API
 
 New gRPC methods enable collaboration management:
