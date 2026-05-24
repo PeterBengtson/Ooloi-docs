@@ -54,12 +54,12 @@ These patterns have different concurrency characteristics and flow control requi
 
 ## Explicit App-Controlled Connection Architecture
 
-### Two-Phase Connection Sequence
+### Connection Sequence
 
-Ooloi clients use a **two-phase connection architecture** where component initialization prepares the gRPC infrastructure but applications explicitly control when network connections are established:
+Ooloi clients use a **bracketed connection architecture**: component initialization prepares the gRPC infrastructure without network activity, applications explicitly establish the connection via `register-with-server`, and explicit `Disconnect` calls (typically from `switch-to!`) close the connection symmetrically. The `setOnCancelHandler` backstop catches involuntary disconnects.
 
 ```
-Two-Phase Client Connection Sequence
+Client Connection Sequence
 ┌─────────────┐                           ┌─────────────────┐
 │   Client    │                           │    Server       │
 │             │                           │                 │
@@ -95,7 +95,32 @@ Two-Phase Client Connection Sequence
        │ ✓ Bidirectional communication ready       │
        │   when application needs it               │
        │                                          │
+       │ ... Client operates normally ...          │
+       │                                          │
+       │ PHASE 3: Graceful Disconnect (RPC)       │
+       │ disconnect-from-server() called          │
+       │ ──────────────────────────────────────── ▶│
+       │     Disconnect(empty),                   │
+       │     client-id from CLIENT_ID_HEADER       │
+       │     in gRPC context                      │
+       │                                          │
+       │                          Server handler:│
+       │                            dissoc entry │
+       │                            drainer down │
+       │                            broadcast    │
+       │                                          │
+       │              ◀ ──────────────────────────│
+       │         {success:true, error:""}         │
+       │                                          │
+       │ Client tears down channels               │
+       │ ──────────────────────────────────────── ▶│
+       │         (setOnCancelHandler backstop,    │
+       │          identity-aware: no-op if entry  │
+       │          already cleaned by Disconnect)  │
+       │                                          │
 ```
+
+Involuntary disconnect (network drop, JVM exit, server-initiated kick) skips PHASE 3 entirely; the `setOnCancelHandler` backstop is the only cleanup path. See [ADR-0024 §Connection Lifecycle](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) for the full six-phase model and the identity-aware handler design.
 
 ### Benefits of App-Controlled Architecture
 

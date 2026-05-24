@@ -78,15 +78,20 @@ We will implement **unified Clojure-aware gRPC architecture with server-to-clien
 
 ### 4. Service Architecture
 
-The unified `OoloiValue` design (above) reduces the service surface from hundreds of generated method messages to three RPCs: a single `ExecuteMethod` for all unary API calls, an `ExecuteBatch` for STM-coordinated atomic batches, and a `RegisterClient` server-streaming RPC for event delivery:
+The unified `OoloiValue` design (above) reduces the service surface from hundreds of generated method messages to four RPCs: a single `ExecuteMethod` for all unary API calls, an `ExecuteBatch` for STM-coordinated atomic batches, a `RegisterClient` server-streaming RPC for event delivery, and a `Disconnect` unary RPC for graceful session termination as the complementary peer of `RegisterClient`:
 
 ```protobuf
 service OoloiService {
   rpc ExecuteMethod(OoloiRequest) returns (OoloiResponse);
   rpc ExecuteBatch(stream OoloiRequest) returns (OoloiResponse);
   rpc RegisterClient(RegisterClientRequest) returns (stream EventMessage);
+  rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
 }
 ```
+
+The `Disconnect` RPC is identity-bound asymmetrically with `RegisterClient`: `RegisterClient` accepts the client-id in its request payload (the act of claiming the identity), while `Disconnect` reads the client-id from the gRPC context's `CLIENT_ID_HEADER` (injected by the client-side interceptor on every API call). This means a client can only disconnect itself — there is no wire-level mechanism for one client to disconnect another, even by knowing its id. The server's auth interceptor validates the header and populates the gRPC `Context` for both `ExecuteMethod` and `Disconnect`; `RegisterClient` is exempt because it bootstraps the identity.
+
+`DisconnectRequest` is intentionally an empty message; identity comes from context, not payload. `DisconnectResponse` carries `{success: bool, error: string}` so a no-op idempotent disconnect (client-id absent from registry) still returns success, while genuine errors (missing identity, server-side failure) surface explicitly. See [ADR-0036 §Frontend Reconnection: `switch-to!`](0036-Collaborative-Sessions-and-Hybrid-Transport.md) for the `Disconnect` lifecycle and [ADR-0024 §Connection Lifecycle](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) for the server-side handler and the `setOnCancelHandler` backstop that handles involuntary disconnects (network drops, server-initiated kicks) where no Disconnect RPC was made.
 
 ## Rationale
 

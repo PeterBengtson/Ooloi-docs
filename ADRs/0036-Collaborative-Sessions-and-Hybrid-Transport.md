@@ -190,13 +190,13 @@ Context switching is **asymmetric** by design.
 **Entering Collaboration** (in-process → remote, voluntary):
 1. User invokes "Connect to other Ooloi…"; dialog collects host, port, TLS flag, optional display name.
 2. **Outbound precondition gate**: if any piece is subscribed locally (non-empty Event Router `subscription-state`), `switch-to!` refuses and the UI surfaces a confirmation dialog explaining that local pieces must be closed first.
-3. With no local pieces open, `switch-to!` closes the in-process channels, opens network channels with JWT authentication, re-registers with the remote, and publishes `:instrument-library-changed`.
+3. With no local pieces open, `switch-to!` sends a graceful `Disconnect` RPC to the current (in-process) backend with a bounded deadline (default 2000ms), then closes the in-process channels, opens network channels with JWT authentication, re-registers with the remote, and publishes `:instrument-library-changed`. The Disconnect call is best-effort: `:ok` / `:timeout` / `:error` are all treated identically — `switch-to!` always proceeds to channel teardown and re-registration. The identity-aware setOnCancelHandler backstop (ADR-0024 §Connection Lifecycle, PHASE 7) protects any subsequent late server-side cancel processing from wiping the new entry.
 4. UI shows collaboration mode with host name and guest role.
 
 **Exiting Collaboration** (remote → in-process, voluntary Disconnect):
 1. User invokes "Disconnect".
 2. **Intent confirmation**: dialog asks "really disconnect from <host>?" — confirming proceeds, cancelling leaves the frontend on the remote backend.
-3. No precondition gate. `switch-to! :in-process` closes the remote channels, drops any remote piece subscriptions, clears `subscription-state` defensively, re-registers with the local backend, and publishes `:instrument-library-changed`.
+3. No precondition gate. `switch-to! :in-process` sends a graceful `Disconnect` RPC to the current (remote) backend with the same bounded deadline, closes the remote channels, drops any remote piece subscriptions, clears `subscription-state` defensively, re-registers with the local backend, and publishes `:instrument-library-changed`.
 4. UI returns to standalone mode.
 
 **Involuntary Reversion** (remote → in-process, ADR-0040):

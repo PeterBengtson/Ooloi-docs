@@ -105,15 +105,12 @@ The fix is to ensure `.onNext` runs inside the right gRPC context, while still l
                         (reify Runnable
                           (run [_] (drain!))))
 
-    ;; on client cancel, tear down and remove from registry, then tell everyone remaining
+    ;; on client cancel, tear down and remove from registry (identity-aware)
     (.setOnCancelHandler server-obs
                          (reify Runnable
                            (run [_]
-                             (try
-                               (.shutdownNow raw-exec)
-                               (finally
-                                 (swap! registry dissoc client-id)
-                                 (send-server-event server-component {:type :server-client-disconnected :client-count (count @registry)}))))))
+                             (handle-stream-cancel server-component client-id
+                                                   server-obs raw-exec))))
 
     ;; store handles for publishers and cleanup
     (swap! registry update client-id assoc
@@ -127,6 +124,73 @@ The fix is to ensure `.onNext` runs inside the right gRPC context, while still l
     ;; return drain function for immediate use
     drain!))
 ```
+
+The `setOnCancelHandler` delegates to a named, identity-aware function. Extracting this body matters: gRPC fires the cancel handler asynchronously when it observes the stream's cancellation, and there is no guarantee that the entry in the registry at fire time is still *this* stream's entry. A graceful Disconnect + re-register cycle (the canonical `switch-to!` flow) can install a fresh entry under the same client-id between the cancellation and the handler running; a non-identity-aware dissoc-by-client-id would wipe that fresh entry.
+
+```clojure
+(defn- handle-stream-cancel
+  "Per-stream cancellation cleanup, identity-aware.
+
+   The drainer executor is shut down unconditionally — its lifecycle is
+   per-stream regardless of whether the registry entry has been replaced.
+   The registry mutation and the :server-client-disconnected broadcast
+   run only if this cancellation is for the CURRENT entry, witnessed by
+   `identical?` on :server-obs. Protects re-registered entries from
+   stale cancellation handlers fired after a graceful Disconnect+
+   re-register cycle."
+  [server-component client-id server-obs raw-exec]
+  (try
+    (.shutdownNow raw-exec)
+    (finally
+      (let [registry  (:connection-registry server-component)
+            [old new] (swap-vals! registry
+                                  (fn [reg]
+                                    (if (identical? server-obs
+                                                    (:server-obs (get reg client-id)))
+                                      (dissoc reg client-id)
+                                      reg)))]
+        (when (not= old new)
+          (send-server-event server-component
+                             {:type :server-client-disconnected
+                              :client-count (count new)}))))))
+```
+
+The closure captures `server-obs` (this stream's `ServerCallStreamObserver`). At cancel time, `swap-vals!` reads the current registry, checks whether `(:server-obs (get reg client-id))` is `identical?` to the captured one, and only dissocs on match. The broadcast is gated on `(not= old new)` — so a no-op (entry already replaced or absent) emits no spurious `:server-client-disconnected` event.
+
+---
+
+## Graceful Disconnect (RPC)
+
+The unary `Disconnect` RPC is the *primary* path for client-initiated session termination, as a complementary peer of `RegisterClient` (see [ADR-0018 §Service Architecture](../ADRs/0018-API-gRPC-Interface-and-Events.md) and [ADR-0024 §Connection Lifecycle](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)). Used by `switch-to!` during transport switching and intended for any future client-side graceful-exit flows. The server-side handler:
+
+```clojure
+(defn- handle-disconnect
+  "Server-side handler for the Disconnect RPC.
+   Client-id is read from the gRPC context (CLIENT_ID_HEADER injected by
+   the api-client interceptor), never from the request payload — a client
+   can only disconnect itself."
+  [_request server-component]
+  (if-let [client-id (headers/get-client-id-from-context)]
+    (let [registry  (:connection-registry server-component)
+          [old new] (swap-vals! registry dissoc client-id)]
+      (when (not= old new)
+        (let [entry (get old client-id)]
+          (when-let [raw-exec (:exec entry)]
+            (.shutdownNow raw-exec))
+          (send-server-event server-component
+                             {:type :server-client-disconnected
+                              :client-count (count new)})))
+      {:success true :error ""})
+    {:success false :error "no client identity in gRPC context"}))
+```
+
+Three details matter:
+
+1. **Identity from context, not payload.** The auth interceptor (installed for both `ExecuteMethod` and `Disconnect`) extracts `CLIENT_ID_HEADER` and stores it in the gRPC `Context`. Handlers read it via `headers/get-client-id-from-context`. This closes the attack surface where a client could try to disconnect another client by sending its id in the body. A missing context (interceptor not run, or unauthenticated method invocation) returns `{:success false}` — the call fails loudly rather than silently doing nothing.
+
+2. **Idempotency via swap-vals!.** `swap-vals!` returns `[old new]` atomically. `(not= old new)` is true only when the dissoc actually removed something. So a no-op Disconnect (client-id already absent) returns success without firing the broadcast or shutting down a non-existent drainer.
+
+3. **No `.onCompleted` on the streaming call from this handler.** The intuitive design — have the Disconnect handler gracefully complete the `RegisterClient` server-streaming call via `.onCompleted` on its response observer — creates a *self-closing race*. The canonical caller is the same client that owns the streaming call (via `switch-to!`'s use of `disconnect-from-server`). A server-side `.onCompleted` fires the client's identity-aware `handle-stream-completed` callback, which calls `handle-server-disconnected`, which closes the API pool channels — and the unary Disconnect's response is still in flight on those very channels, causing `DEADLINE_EXCEEDED` on the client. The streaming call is cleaned up via `setOnCancelHandler` (the identity-aware backstop above) when the client tears down channels *after* `disconnect-from-server` returns. The PHASE 6 broadcast still fires from this handler, so disconnect observability is preserved.
 
 ---
 
