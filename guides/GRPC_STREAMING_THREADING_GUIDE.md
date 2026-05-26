@@ -256,19 +256,36 @@ Using STM keeps client registry updates consistent:
           registry (:connection-registry server-component)]
       ;; Validate client-id: format (^[a-zA-Z0-9_-]{3,64}$), uniqueness, send gRPC errors
       (when (validate-client-connection server-component client-info response-observer)
-        
-        ;; Set up registry entry and drainer infrastructure
+
+        ;; Set up registry entry and drainer infrastructure. The remote peer
+        ;; address is captured by create-event-connection-interceptor and read
+        ;; off a gRPC Context key inside setup-client-registry-and-drainer, so
+        ;; the registry entry's :metadata holds :client-ip / :client-port for
+        ;; network clients (nil for in-process).
         (let [drain! (setup-client-registry-and-drainer client-id server-component response-observer)
               registry-entry (get @registry client-id)
               event-queue (:event-queue registry-entry)]
-          
+
           ;; Send confirmation event through drainer (explicit in main flow)
           (send-confirmation-event client-id event-queue response-observer drain!)
-          
-          ;; Broadcast client connect event to all clients (including newly connected one)
-          (send-server-event server-component {:type :server-client-connected :client-count (count @registry)})
-          
-          ;; Return client-id on successful registration  
+
+          ;; Broadcast client connect event to all clients (including newly
+          ;; connected one). Payload carries transport + identifying metadata
+          ;; (client-id, transport, client-ip, client-port, display-name) so
+          ;; subscribers — notably the collaboration notification subscriber
+          ;; in shared/system.clj — can filter to network-server origin and
+          ;; render the guest's identifier without a registry lookup.
+          (let [meta (get-in @registry [client-id :metadata])]
+            (send-server-event server-component
+              {:type :server-client-connected
+               :client-count (count @registry)
+               :client-id client-id
+               :transport (:transport server-component)
+               :client-ip (:client-ip meta)
+               :client-port (:client-port meta)
+               :display-name (:display-name meta)}))
+
+          ;; Return client-id on successful registration
           client-id)))))
 ```
 

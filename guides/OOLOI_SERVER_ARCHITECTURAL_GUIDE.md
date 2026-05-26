@@ -311,8 +311,9 @@ The shared `:ooloi.backend.components/connection-registry` Integrant component o
                                               ; own clients (see below)
            :observer stream-observer
            :metadata {:connected-at timestamp
-                      :client-ip "127.0.0.1"
-                      :client-port 54321}
+                      :client-ip "127.0.0.1"     ; nil for in-process transport
+                      :client-port 54321         ; nil for in-process transport
+                      :display-name nil}         ; supplied via client_info at register time
            :client-statistics {;; 33 client statistics fields
                               :api-calls-total 0
                               :events-sent 0
