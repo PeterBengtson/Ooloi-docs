@@ -149,6 +149,28 @@ Backend plugins currently use piece settings (ADR-0016) with auto-generated UI v
 **`:window/style`** (keyword, optional)
 - JavaFX StageStyle: `:decorated` (default), `:undecorated`, `:transparent`, `:utility`
 - Example: `:undecorated` for splash screen and About window
+- When `:transparent` is chosen, `build-window!` automatically sets the Scene fill to `Color/TRANSPARENT`. This is the natural inference for the TRANSPARENT style (otherwise the Scene's default opaque fill would defeat the purpose of choosing TRANSPARENT). Used by the floating palette window to render a non-rectangular shape with a transparent surround.
+
+**`:window/resizable?`** (boolean, default true)
+- When `false`, calls `(.setResizable stage false)`. Use for fixed-size windows like the splash screen, the About window, and the floating palette.
+
+**`:window/always-on-top?`** (boolean, default false)
+- When `true`, calls `(.setAlwaysOnTop stage true)`. The window stays z-ordered above other application windows.
+- Always-on-top affects z-order only, not keyboard focus — the window does not steal focus while idle.
+- Used by the floating palette window so the session-presence indicator remains visible while the user works in piece or instrument-library windows.
+
+**`:window/preserve-previous-focus-on-open?`** (boolean, default false)
+- When `true`, `show-window!` captures the currently-focused window via the UI Manager's focus tracking, calls `.show()` on the new stage, then `fx/run-later!`s a `(.requestFocus previous-stage)` so opening the window does not steal focus from the user's current input context.
+- JavaFX has no `Window.setFocusable(false)`; this restore-on-open pattern is the JavaFX-idiomatic workaround for windows that must appear without disrupting an in-progress typing/editing flow.
+- Click-driven focus changes after open are normal Stage behavior — once the window is open, clicking into it (e.g., a text field, an icon button) takes focus as usual.
+- Used by the floating palette window. Future tool palettes housing text fields or icon controls will declare it too.
+
+**`:window/title-decorators`** (vector of maps, default `[]`)
+- Generic title-decoration mechanism, part of the standard `show-window!` machinery, auto-provided to every Ooloi window. A window opts in by declaring decorators; the default empty vector means no prefix.
+- Each entry: `{:glyph "<char>" :state <atom> :predicate (fn [state-value] boolean)}`. The UI Manager watches each entry's `:state`; on change, re-evaluates predicates and concatenates the glyphs of those returning truthy (in declaration order), prefixing the result to the tr-resolved `:window/title-key`.
+- The locale-change pipeline (already re-applying titles via `tr`) composes with this — the decorator prefix is re-prepended after each tr re-resolution.
+- Spec authors do not invent ad-hoc title prefixes; they declare decorators, and the UI Manager handles re-application on state change.
+- See "Established Usage Patterns: Window state glyph paradigm" below for the established glyph alphabet (`●` dirty, `⇄` shared) and ordering convention.
 
 **`:window/menu-bar`** (JavaFX MenuBar, optional)
 - Pre-built MenuBar instance to attach to the window's VBox root
@@ -1009,6 +1031,35 @@ Every type has its own constant. `notification-info-style` applies corner radius
 | Section heading | `Styles/TITLE_2` | Piece window placeholder |
 | De-emphasised text | `Styles/TEXT_MUTED` | Placeholder/hint text |
 | Combined heading + muted | `[Styles/TITLE_2 Styles/TEXT_MUTED]` | "Temporary Piece Window" label |
+
+**Floating windows** (ambient, always-on-top, decoration-less):
+
+Floating windows are the established pattern for small ambient indicators (session presence, future tool palettes, future inspectors). They go through the standard `show-window!` machinery — never bypass the UI Manager — and combine the following spec keys to produce a focus-quiet always-visible surface:
+
+| Spec key | Value | Purpose |
+|----------|-------|---------|
+| `:window/style` | `:transparent` | Allows the Scene fill to be transparent so non-rectangular shapes render cleanly. Auto-inferred Scene fill. |
+| `:window/resizable?` | `false` | Floating windows are content-sized; resizing is not a user need. |
+| `:window/always-on-top?` | `true` | Stays visible above primary content windows. |
+| `:window/preserve-previous-focus-on-open?` | `true` | Opening the window does not steal focus from the user's current input context. |
+| `:window/persist?` | `true` (default) | Position memory inherits the standard `wire-geometry-listeners!` mechanism — debounced continuous persistence across unclean exits and within-session close→reopen cycles. |
+
+Shape is achieved declaratively in the cljfx content spec via `-fx-background-radius` on the root container (pill, capsule, or full circle by parameter) plus `Styles/ELEVATED_2` for drop-shadow elevation against the transparent bounding box. The first instance — the collaboration floating palette — uses pill geometry and the `⇄` glyph (see §"Window state glyph paradigm" below). The pattern generalises to tool palettes and other ambient indicators as they're added.
+
+Animations attached to floating windows (the breathing opacity cycle on the collaboration palette) follow the notification-animation precedent: long-lived `Timeline` lifecycle in `ui_manager.clj`, animation references held on manager atoms keyed by window-id, lifecycle bound to window open/close, duration constants tunable for tests.
+
+**Window state glyph paradigm** (title-bar state indicators):
+
+The `:window/title-decorators` mechanism uses a stable glyph alphabet, common across all windows. Glyphs prefix the tr-resolved title; cross-platform per-character title-bar colouring is not possible without abandoning native chrome, so glyphs are monochrome (OS-determined colour) — colour signals for state live in dedicated UI surfaces (e.g., the floating palette's green pill), not in title bars.
+
+| Glyph | Codepoint | Meaning | First consumer |
+|-------|-----------|---------|----------------|
+| `●` | U+25CF | Modified / dirty (unsaved local changes) | Piece windows (future) |
+| `⇄` | U+21C4 | Shared (window's subject is participating in a collaboration session) | IL window |
+
+When multiple glyphs apply, they prefix in this canonical order: **dirty first, shared second**. Rationale: dirty is the more urgent, actionable state — the user can act on it (save); shared is a stable role marker. Piece windows showing both would render `● ⇄ Untitled Piece`.
+
+Windows opt in by declaring `:window/title-decorators` (see §Metadata Keys). The default `[]` means no prefix — the entire existing window population continues to render unchanged unless deliberately opted in. New state classes (e.g., read-only, view-only) should add to the alphabet here and document their ordering relative to existing glyphs before being adopted by individual windows.
 
 **Form controls** (settings window, input validation):
 

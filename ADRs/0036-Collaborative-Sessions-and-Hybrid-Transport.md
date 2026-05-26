@@ -297,6 +297,24 @@ All notification text uses `tr` for i18n. Host-side joined/left notifications in
 
 The persistent severity tier (host-server-started, guest-involuntary-disconnect) is reserved for states the user must acknowledge: a host running a network server is exposing local state, and an involuntary disconnect is a loss of work-context. Ephemeral notifications cover routine transitions where dismissal-by-time is acceptable.
 
+### Per-Window Indicators and Floating Palette
+
+Notifications fire on transitions. For *state* — "is this window participating in a collaboration session right now?", "is a session currently active?" — Ooloi uses two complementary surfaces that live alongside the notification model.
+
+**Title-bar decoration.** Any window whose subject participates in a collaboration session prefixes its title with the `⇄` glyph (U+21C4) for the duration of session activity. The IL window does this whenever at least one network guest is connected; piece windows will do the same once piece-level collaboration arrives (#136 Phase 3). The mechanism is the generic `:window/title-decorators` primitive defined in ADR-0042 §Metadata Keys, so opting in costs a window one spec entry and gains it the standard re-render-on-state-change behaviour. Cross-platform per-character title colouring is not possible without abandoning native chrome (ADR-0042 sanctions native chrome), so the glyph is monochrome. The colour signal for "active session" lives in the floating palette window described below, where styling is unrestricted.
+
+The full glyph alphabet (`●` modified, `⇄` shared) and ordering (`●` first when both apply) is documented in ADR-0042 §"Established Usage Patterns: Window state glyph paradigm."
+
+**Floating palette window.** While at least one network guest is connected, Ooloi shows a small floating window — pill-shaped, always-on-top, transparent-styled, decoration-less — containing the `⇄` glyph in `-color-success-fg` on a `-color-success-subtle` background with `Styles/ELEVATED_2` elevation. The whole window breathes via a continuously-varying opacity cycle (per-cycle randomised duration and amplitude — no metronome cadence), gesturing at the project's organic aesthetic without consuming additional UI real estate.
+
+Lifecycle: opens on the first network guest's `:server-client-connected` event (0→1 transition); closes on the last guest's `:server-client-disconnected` event (1→0, any cause — voluntary `Disconnect` RPC or channel close). This is deliberately decoupled from the host-session lifecycle: the host's persistent server-started notification (table row 1) tells the host "I have the door open"; the floating palette tells everyone in the session "someone is currently inside." A host whose collaboration session has no guests yet sees the persistent notification but not the floating palette.
+
+The palette is built via the standard `show-window!` machinery — never bypassing the UI Manager — using the floating-window spec-key combination documented in ADR-0042 §"Established Usage Patterns: Floating windows." Three small extensions to `build-window!` / `show-window!` support this and any future floating window (tool palettes, inspectors): `:window/always-on-top?`, `:window/preserve-previous-focus-on-open?`, and auto-transparent Scene fill inferred from `:window/style :transparent`. The focus-preservation key is the JavaFX-idiomatic workaround for the absence of `Window.setFocusable(false)`: a window opening must not steal focus from the user's current input context.
+
+Clicking the palette body dispatches `:collaboration/show-collaborators` — the future view enumerated in the Collaboration API below. A small corner `×` (styled `-color-fg-muted`) dispatches `:collaboration/dismiss-floating-palette`. The dismissal contract is controlled by the user via a new app setting `:collaboration/floating-palette-dismiss-behaviour` with three modes: `:this-run` (closed until next app start), `:until-next-connection` (closed until the next 0→1 transition — the default), and `:always` (closed across app restarts; user re-enables via Settings).
+
+Position memory inherits the standard `wire-geometry-listeners!` mechanism — geometry is persisted continuously (debounced) during the window's lifetime, so the palette reopens where it was, even across unclean app exits. All user-facing strings (the tooltip on the corner `×`, the body-click hint, the setting's label/description/choices) are tr-driven per ADR-0039.
+
 ### Collaboration API
 
 New gRPC methods enable collaboration management:
