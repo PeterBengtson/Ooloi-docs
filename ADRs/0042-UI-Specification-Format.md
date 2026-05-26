@@ -167,10 +167,11 @@ Backend plugins currently use piece settings (ADR-0016) with auto-generated UI v
 
 **`:window/title-decorators`** (vector of maps, default `[]`)
 - Generic title-decoration mechanism, part of the standard `show-window!` machinery, auto-provided to every Ooloi window. A window opts in by declaring decorators; the default empty vector means no prefix.
-- Each entry: `{:glyph "<char>" :state <atom> :predicate (fn [state-value] boolean)}`. The UI Manager watches each entry's `:state`; on change, re-evaluates predicates and concatenates the glyphs of those returning truthy (in declaration order), prefixing the result to the tr-resolved `:window/title-key`.
+- Each entry: `{:glyph "<char>" :watches [atom1 atom2 ...] :predicate (fn [v1 v2 ...] boolean)}`. The predicate's arity matches the number of `:watches` (each value passed in declaration order — the dereferenced contents at the moment of evaluation). The UI Manager adds a watch on every entry in `:watches`; on any change, re-evaluates predicates and concatenates the glyphs of those returning truthy (in declaration order), prefixing the result to the tr-resolved `:window/title-key`.
+- The predicate may consult additional state beyond its arguments (closing over `sys-atom`, helpers, etc.) — the `:watches` declaration is *what triggers re-evaluation*, not necessarily *what the predicate reads*. The decoupling lets a predicate be a function of broader system state while keeping the watch surface narrow.
 - The locale-change pipeline (already re-applying titles via `tr`) composes with this — the decorator prefix is re-prepended after each tr re-resolution.
 - Spec authors do not invent ad-hoc title prefixes; they declare decorators, and the UI Manager handles re-application on state change.
-- See "Established Usage Patterns: Window state glyph paradigm" below for the established glyph alphabet (`●` dirty, `⇄` shared) and ordering convention.
+- See "Established Usage Patterns: Window state glyph paradigm" below for the established glyph alphabet (`●` dirty, `⇄` shared) and ordering convention. The semantics of *when* a window is "shared" (the predicate body) are domain-specific and documented in ADR-0036 §"Per-Window Indicators and Floating Palette."
 
 **`:window/menu-bar`** (JavaFX MenuBar, optional)
 - Pre-built MenuBar instance to attach to the window's VBox root

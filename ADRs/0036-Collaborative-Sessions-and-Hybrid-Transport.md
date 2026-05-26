@@ -301,9 +301,28 @@ The persistent severity tier (host-server-started, guest-involuntary-disconnect)
 
 Notifications fire on transitions. For *state* — "is this window participating in a collaboration session right now?", "is a session currently active?" — Ooloi uses two complementary surfaces that live alongside the notification model.
 
-**Title-bar decoration.** Any window whose subject participates in a collaboration session prefixes its title with the `⇄` glyph (U+21C4) for the duration of session activity. The IL window does this whenever at least one network guest is connected; piece windows will do the same once piece-level collaboration arrives (#136 Phase 3). The mechanism is the generic `:window/title-decorators` primitive defined in ADR-0042 §Metadata Keys, so opting in costs a window one spec entry and gains it the standard re-render-on-state-change behaviour. Cross-platform per-character title colouring is not possible without abandoning native chrome (ADR-0042 sanctions native chrome), so the glyph is monochrome. The colour signal for "active session" lives in the floating palette window described below, where styling is unrestricted.
+**Title-bar decoration.** Any window whose subject participates in a collaboration session prefixes its title with the `⇄` glyph (U+21C4) for the duration of session activity. The mechanism is the generic `:window/title-decorators` primitive defined in ADR-0042 §Metadata Keys, so opting in costs a window one spec entry and gains it the standard re-render-on-state-change behaviour. Cross-platform per-character title colouring is not possible without abandoning native chrome (ADR-0042 sanctions native chrome), so the glyph is monochrome. The colour signal for "active session" lives in the floating palette window described below, where styling is unrestricted.
 
 The full glyph alphabet (`●` modified, `⇄` shared) and ordering (`●` first when both apply) is documented in ADR-0042 §"Established Usage Patterns: Window state glyph paradigm."
+
+**When is a window "shared"?** The predicate that drives the `⇄` decoration is *domain-specific* — different window types apply different rules. Two perspectives combine in an OR:
+
+| Window type | Guest-side (this user is a remote guest) | Host-side (this user is the host) |
+|---|---|---|
+| Instrument Library | Frontend is connected to a remote backend → IL is shared (the whole library belongs to the host) | Any network guest is connected → IL is shared (the library is the session's; no per-piece concept applies) |
+| Piece window (future, #136 Phase 3) | Frontend is connected to a remote backend → piece is shared (all pieces I see are the host's) | At least one network guest has subscribed to *this piece* — registry entries' `:piece-subscriptions` set membership, filtered by `:server-id` matching the network server's id → piece (and all its layouts) is shared |
+
+The OR composition means a remote guest sees all subjects (IL, pieces, layouts) as shared unconditionally; a host sees each subject as shared only when their guests have actually engaged with it.
+
+**Helpers** (live in `shared/system.clj` alongside `wire-domain-subscriptions!`):
+
+- **`frontend-on-network?`** — guest-side, shared across all window types. True when the combined-app's frontend grpc-clients is on `:transport :network` (after `switch-to!` to a remote backend). Read as: "am I a guest in someone else's session right now?"
+- **`network-client-count`** — host-side, IL-applicable. Counts registry entries whose `:server-id` matches the network gRPC server's `:server-id`; returns `0` when no network server is running.
+- **`il-shared?`** — IL composite: `(or (frontend-on-network? sys) (pos? (network-client-count sys)))`.
+
+Piece-window helpers (added when piece windows land) follow the same pattern: `frontend-on-network?` (re-used) plus a new host-side helper `piece-subscribed-by-network?` taking `(sys piece-id)`, returning true iff any registry entry with `:server-id` matching the network server has `piece-id` in its `:piece-subscriptions`. The composite `piece-shared?` mirrors `il-shared?`: `(or (frontend-on-network? sys) (piece-subscribed-by-network? sys piece-id))`. Layout windows derive from their parent piece's predicate — a layout is shared iff its piece is.
+
+The `:watches` declaration in each window's decorator narrows *what triggers re-evaluation* to the atoms whose changes can flip the predicate's result. For IL: the connection-registry atom (host-side changes) and the frontend's `api-connection-pool` atom (guest-side changes). For piece windows: the same two atoms. The predicate itself consults the live system map through the helpers — the watches and the predicate's reads are not the same set, by design (see ADR-0042 §Metadata Keys for the `:window/title-decorators` API).
 
 **Floating palette window.** While at least one network guest is connected, Ooloi shows a small floating window — pill-shaped, always-on-top, transparent-styled, decoration-less — containing the `⇄` glyph in `-color-success-fg` on a `-color-success-subtle` background with `Styles/ELEVATED_2` elevation. The whole window breathes via a continuously-varying opacity cycle (per-cycle randomised duration and amplitude — no metronome cadence), gesturing at the project's organic aesthetic without consuming additional UI real estate.
 
