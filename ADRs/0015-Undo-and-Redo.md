@@ -107,6 +107,7 @@ We will implement a **three-tier undo/redo architecture** that separates concern
 - **Coordination**: No coordination needed - purely local to each client
 - **Storage**: Frontend client memory (not persisted)
 - **Distribution**: Not distributed - each client manages its own UI history
+- **Out of scope — session-level actions**: Collaboration session control (Host / Terminate / Connect / Disconnect) is **not** part of the undo chain. These are session-topology actions with cross-machine effects (guest eviction, port binding, gRPC channel lifecycle) and asymmetric reversibility — undoing "Host" while guests are connected would kick them out, which is what Test 48's confirmation dialog deliberately gates against. The inverse-action pairs are already exposed as explicit menu items; Ctrl+Z must not silently bypass those confirmation surfaces. Collaboration-namespaced *app settings* (e.g. `:collaboration/floating-palette-dismiss-behaviour`) ARE in scope as ordinary Tier 2 entries — they go through `set-app-setting!` and the `:setting-changed` subscription like any other preference. The distinction is action-vs-setting, not domain-vs-domain.
 
 ### Tier 3: No Backend Application Settings Component
 - **Decision**: Backend will NOT implement an application settings component
