@@ -1155,6 +1155,8 @@ Instead:
 
 The settings window (`settings_window.clj`) follows the content builder pattern ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). `show-settings!` manages lifecycle through the UI Manager; `show-window!` ensures the window is a singleton — opening it twice brings the existing instance to the front. Internally, the window is a TabPane with one tab per settings category namespace, each tab holding a ScrollPane of setting rows. Controls derive from registry metadata: a `:choices` entry becomes a ComboBox inside an AtlantaFX Tile; a validator-equipped text setting becomes a TextField that commits on Enter or focus loss. Each field has a per-field reset button; a "Reset All to Defaults" button at the bottom resets every setting in the active tab category after confirmation.
 
+Each setting tile renders the translated description as a Label with `:wrap-text true` and `:max-width 480.0`. Long descriptions — a sentence or two — break to multiple lines instead of stretching the row beyond the scroll-pane viewport, and the cap keeps the tile column visually consistent even when the user resizes the window wide. In choice tiles the description Label also takes `:h-box/hgrow :always` so it claims horizontal space ahead of the control block on the right (no spacer needed); in text rows the surrounding VBox already provides the width constraint. New settings must keep this pattern — a Label without `:wrap-text` widens the row to its single-line preferred width and defeats the scroll-pane's `:fit-to-width true` constraint, surprising the user with horizontal scroll or a stretched window.
+
 The result is a window that is consistent by construction:
 
 * Every visible string is a localisation key (Section 9).

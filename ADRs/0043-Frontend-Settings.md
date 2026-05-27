@@ -302,7 +302,7 @@ The settings registry provides everything needed to generate a Settings window:
   - `:validator` + `:control :number` → numeric stepper
   - `:validator` + `:control :path` → path picker
   - `:validator` + no `:control` → text field (default)
-- **Labels**: setting name via `(tr :setting.ui.theme)`, description via `(tr :setting.ui.theme.desc)`
+- **Labels**: setting name via `(tr :setting.ui.theme)`, description via `(tr :setting.ui.theme.desc)`. Description Labels render with `:wrap-text true` and `:max-width 480.0` so long descriptions (a sentence or two) break to multiple lines instead of stretching the row beyond the scroll-pane viewport. New settings must keep this — a setting whose description Label omits `:wrap-text` widens the row to its single-line preferred width and defeats the scroll-pane's `:fit-to-width true` constraint.
 - **Choice labels**: `(tr :setting.ui.theme.nord-dark)` → "Dark"
 - **Validation feedback**: immediate validation on input change via the uniform closure interface (see [Validation Feedback Architecture](#validation-feedback-architecture)). Invalid fields receive `:error? true` styling; error messages display as persistent notifications.
 
