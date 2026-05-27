@@ -389,6 +389,21 @@ At load time, the `Plural-Forms` expression is matched against a lookup table of
 - Languages with complex plural rules (Russian: 4 forms; Arabic: 6 forms) are handled correctly
 - Plural logic stays in the translation layer, not scattered through code
 
+**Invariant: plural shape is per-locale, not uniform.**
+
+A given `msgctxt` may be declared with `msgid_plural` in some locale PO files and without it in others. The decision belongs to the locale's grammar, not to the key schema. The runtime `tr` API tolerates both shapes transparently:
+
+- A locale whose catalog entry is a single string → straight `%{name}` substitution.
+- A locale whose catalog entry is a vector of forms → plural-rule selection by `:n`, then `%{name}` substitution.
+
+This invariant overrides the strict gettext convention that `msgid_plural` is part of the key schema and must be uniform across locales. In Ooloi the source language (English) decides nothing about whether other languages need plural inflection for a given message — the grammar of each target language decides for itself. Concrete consequences:
+
+- If the **English source** (en_GB) has no singular/plural distinction for a string — e.g. "%{n} connected Ooloi." where "Ooloi" is invariant and "connected" is past-participle invariant — en_GB carries `msgid` + `msgstr` only. No `msgid_plural`. No `msgstr[0]/[1]` duplication.
+- If a **target locale** (e.g. Swedish "1 ansluten Ooloi" vs "2 anslutna Ooloi") does grammatically distinguish, that locale's PO file carries `msgid` + `msgid_plural` + `msgstr[0..N-1]` with one form per the locale's declared `nplurals`. Every form must be grammatically correct on its own.
+- If a locale (e.g. Dutch "%{n} verbonden Ooloi", invariant in numbered-noun construction; Hungarian "%{n} csatlakoztatott Ooloi", singular noun always with numerals; CJK languages, `nplurals=1`) doesn't grammatically distinguish, that locale also carries `msgid` + `msgstr` only. No padding with identical plural forms.
+
+The CANONICAL files in this repository ship out of the box for every locale — grammatically correct for every value of `n`, in every language we support. A human translator may refine wording. A human translator MUST NOT have to add plural-form structure to make a locale grammatical. If a locale's PO file is missing plural shape, that means the locale's grammar genuinely doesn't need it; if a translator believes otherwise, they fix the wording, not the structure.
+
 ## Plugin Localisation
 
 Plugins ship their own PO files in a dedicated directory within the plugin distribution:
