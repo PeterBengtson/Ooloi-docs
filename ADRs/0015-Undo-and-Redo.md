@@ -958,7 +958,8 @@ code shows one realisation of those requirements.
 ;; the Tier 2 reference implementation and are not repeated here.
 
 (require '[com.climate.claypoole :as cp]
-         '[ooloi.frontend.api.remote-api :as SRV])
+         '[ooloi.frontend.api.remote-api :as SRV]
+         '[ooloi.shared.srv-client :as srv-client])
 
 (def ^:private backend-cache (atom {}))
 
@@ -976,22 +977,32 @@ code shows one realisation of those requirements.
 
 (defn backend-state [resource-key] (get @backend-cache resource-key))
 
-(defn winning-undo-source
-  "Return :local, [:backend resource-key], or nil — highest timestamp wins."
+(defn- current-clock-offset
+  "Per-connection clock offset from *srv-client*, or 0 when unbound (ADR-0015
+   §Clock Skew Mitigation). Normalises backend timestamps to the client frame."
   []
-  (let [local-ts      (some-> (peek @undo-stack) :timestamp)
+  (or (some-> srv-client/*srv-client* :clock-offset deref) 0))
+
+(defn winning-undo-source
+  "Return :local, [:backend resource-key], or nil — highest timestamp wins.
+   Backend timestamps are normalised by the per-connection clock offset."
+  []
+  (let [offset        (current-clock-offset)
+        local-ts      (some-> (peek @undo-stack) :timestamp)
         backend-pairs (for [[k v] @backend-cache :when (:undo-timestamp v)]
-                        [[:backend k] (:undo-timestamp v)])
+                        [[:backend k] (- (:undo-timestamp v) offset)])
         all           (cond-> (vec backend-pairs)
                         local-ts (conj [:local local-ts]))]
     (when (seq all) (first (apply max-key second all)))))
 
 (defn winning-redo-source
-  "Mirror — lowest timestamp wins (reverses undo order)."
+  "Mirror — lowest timestamp wins (reverses undo order). Backend timestamps
+   normalised by the per-connection clock offset."
   []
-  (let [local-ts      (some-> (peek @redo-stack) :timestamp)
+  (let [offset        (current-clock-offset)
+        local-ts      (some-> (peek @redo-stack) :timestamp)
         backend-pairs (for [[k v] @backend-cache :when (:redo-timestamp v)]
-                        [[:backend k] (:redo-timestamp v)])
+                        [[:backend k] (- (:redo-timestamp v) offset)])
         all           (cond-> (vec backend-pairs)
                         local-ts (conj [:local local-ts]))]
     (when (seq all) (first (apply min-key second all)))))
@@ -1042,29 +1053,32 @@ code shows one realisation of those requirements.
       (and (vector? src) (= :backend (first src)))    (cp/future pool (SRV/redo-resource (second src))))))
 
 (defn ensure-fresh-description!
-  "If the winning undo entry is backend-side and its description is stale, dispatch
-   SRV/get-undo-description on the pool. On response, update cache and fire the
-   shared on-change callback (Frontend Wiring Invariant 1 — lazy-fetch completion
-   must trigger the menu refresh)."
+  "For each distinct backend resource-key behind the winning undo AND redo
+   sources whose cache entry is stale, dispatch SRV/get-undo-description on the
+   pool. Each response updates the cache (both the undo and redo descriptions)
+   and fires the shared on-change callback (Frontend Wiring Invariant 1 —
+   lazy-fetch completion must trigger the menu refresh). All fetches share one
+   pool task, so the returned future completes when every fetch is done."
   [pool]
-  (let [src (winning-undo-source)]
-    (when (and (vector? src) (= :backend (first src)))
-      (let [rk    (second src)
-            entry (get @backend-cache rk)]
-        (when (:stale entry)
-          (cp/future pool
-            (let [response (SRV/get-undo-description rk)]
-              (swap! backend-cache update rk
-                     (fn [e]
-                       (assoc e
-                              :undo-description (when-let [u (:undo response)]
-                                                  (select-keys u [:description-key :description-params]))
-                              :undo-own?        (get-in response [:undo :own?])
-                              :redo-description (when-let [r (:redo response)]
-                                                  (select-keys r [:description-key :description-params]))
-                              :redo-own?        (get-in response [:redo :own?])
-                              :stale            false)))
-              (when-let [cb @on-change-callback] (cb)))))))))
+  (let [stale-keys (->> [(winning-undo-source) (winning-redo-source)]
+                        (filter (fn [s] (and (vector? s) (= :backend (first s)))))
+                        (map second)
+                        (filter (fn [rk] (:stale (get @backend-cache rk))))
+                        distinct)]
+    (cp/future pool
+      (doseq [rk stale-keys]
+        (let [response (SRV/get-undo-description rk)]
+          (swap! backend-cache update rk
+                 (fn [e]
+                   (assoc e
+                          :undo-description (when-let [u (:undo response)]
+                                              (select-keys u [:description-key :description-params]))
+                          :undo-own?        (get-in response [:undo :own?])
+                          :redo-description (when-let [r (:redo response)]
+                                              (select-keys r [:description-key :description-params]))
+                          :redo-own?        (get-in response [:redo :own?])
+                          :stale            false)))
+          (when-let [cb @on-change-callback] (cb)))))))
 
 ;; wire-undo-redo! adds the :undo subscription alongside the :app-settings one.
 ;; The on-change callback is set once and shared by both tiers — Frontend Wiring
