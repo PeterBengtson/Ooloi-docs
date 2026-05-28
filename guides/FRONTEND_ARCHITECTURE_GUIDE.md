@@ -218,9 +218,9 @@ From here, we can expand the example — adding interaction, backend calls, and 
 
 Windows are the general lifecycle mechanism. Three other pieces complete the common interaction vocabulary.
 
-**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.core.confirmation-dialog` is the sole dialog helper. It takes the UI Manager and a message, materialises a standard cljfx `:alert` spec via `cljfx/create-component` + `cljfx/instance`, hands the dialog to `show-modal!` (which sets `initOwner` so the dialog joins the macOS menu-bar-host owner chain), blocks synchronously on the JAT via `.showAndWait`, and returns `true` when the user clicks OK or `false` when the user clicks Cancel (or dismisses the dialog by closing it or pressing Escape).
+**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.core.confirmation-dialog` is the blocking yes/no helper. It takes the UI Manager and a message, builds a message + OK/Cancel `ooloi-button-bar` spec, and shows it through the blocking entry point `show-modal!`; it blocks synchronously on the JAT via `.showAndWait` and returns `true` on OK or `false` on Cancel/Esc/close. The dialog is a transient application-modal `Stage` (not registered, no ongoing lifecycle); the former cljfx `:alert` / `Dialog` path is gone.
 
-**Modal dialogs in general.** Any `javafx.scene.control.Dialog` shown modally must go through `show-modal!` on the UI Manager. Without `initOwner`, an unparented modal Stage on macOS causes the system menu bar to collapse to just the application menu while the dialog is shown — and the menu bar is not restored when focus returns to the previously focused managed window. `show-modal!` prefers the currently focused managed window as owner, falls back to the menu-bar-host Stage, and is a no-op for owner on non-macOS platforms.
+**Modal dialogs in general.** A modal is a window with `:window/modality :application-modal`, built by the same core as any window. There are two entry points, distinguished by **control flow, not by modality**: `show-window!` for a registered, non-blocking modal (the normal path — e.g. the connect dialog), and `show-modal!` for a transient, blocking one (`.showAndWait`, synchronous return — used only by `show-confirmation!`). There is one modal node type, a `Stage`. Every modal is owned, on **every** platform, via `select-owner-stage` (focused managed window → macOS menu-bar-host → Windows/Linux showing non-always-on-top window); an ownerless `APPLICATION_MODAL` blocks input but loses stay-on-top-of-parent and iconify-with-parent and can render behind another window. Always-on-top decorations (the collaboration palette) never qualify as a modal's owner. *(Naming note: the operative axis is blocking-vs-async, not window-vs-modal — `show-window!` already shows modals — so `show-modal!` may be renamed to a blocking-dialog name in future.)* See [ADR‑0042](../ADRs/0042-UI-Specification-Format.md) §"Modal dialogs: one core, two entry points".
 
 **Notifications.** The UI Manager provides a non-blocking notification overlay through convenience functions: `show-info-notification!`, `show-warning-notification!`, `show-error-notification!`, and `show-success-notification!`. Notifications auto-dismiss after a configurable delay, stack vertically in a corner of the screen, and are backed by AtlantaFX `Notification` controls materialised via the `ooloi-notification` custom component function. Application code calls the convenience wrappers; the overlay lifecycle is managed entirely by the UI Manager.
 
@@ -270,11 +270,13 @@ This is not a full API reference, but the most commonly used frontend entry poin
 
 **Modal dialogs (UI Manager)**
 
-* `show-modal!` `[manager dialog]` — shows a `javafx.scene.control.Dialog` modally; sets `initOwner` on macOS so the dialog joins the menu-bar-host owner chain (focused managed window preferred, host as fallback). All modal dialogs must go through this primitive.
+* `show-window!` — the normal path for any managed window, modal or not (`:window/modality :application-modal`): registered, non-blocking, owned. Use for async modals (e.g. the connect dialog).
+* `show-modal!` `[manager spec]` — the blocking entry point: builds a *transient* modal `Stage` from a declarative spec, shows it via `.showAndWait`, and returns the outcome. Used only by `show-confirmation!`. (The real distinction from `show-window!` is blocking-vs-async, not window-vs-modal — see ADR‑0042.)
+* `run-interruptible!` (`ooloi.frontend.ui.core.modal-window`) — runs cancellable background work for an async modal: off-JAT pool run, `:in-flight?` flag, Cancel→registered-canceller, raw-result / `:on-cancelled`.
 
 **Confirmation dialogs**
 
-* `show-confirmation!` `[manager message]` (`ooloi.frontend.ui.core.confirmation-dialog`) — materialises a cljfx `:alert`, routes through `show-modal!`, blocks on the JAT via `.showAndWait`, and returns `true` if the user confirmed.
+* `show-confirmation!` `[manager message]` (`ooloi.frontend.ui.core.confirmation-dialog`) — builds a message + OK/Cancel button-bar spec, shows it through `show-modal!`, blocks on the JAT via `.showAndWait`, and returns `true` if the user confirmed.
 
 **Notifications (UI Manager)**
 
@@ -298,6 +300,7 @@ The recognised `:window/*` keys for `:window-open-requested` events:
 | `:window/style` | Stage style: `:decorated` (default), `:undecorated`, `:transparent`, `:utility` |
 | `:window/persist?` | Whether to save and restore window geometry across sessions (default `true`) |
 | `:window/resizable?` | Whether the window can be resized by the user (default `true`) |
+| `:window/modality` | `:none` (default) or `:application-modal`; a modal also defaults to non-persist + non-resizable and is owned via the owner chain |
 | `:window/default-position` | Default `{:x n :y n}` if no persisted state exists |
 | `:window/default-size` | Default `{:width n :height n}` if no persisted state exists |
 
@@ -478,7 +481,7 @@ These ensure consistent spatial rhythm throughout the application without repeat
 
 ### 4.5 Per-Window Reactive Renderer
 
-Every application window uses a **per-window reactive renderer** ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). The renderer manages the content Node reactively; the UI Manager manages the Stage. These two responsibilities are absolute and never overlap. One-time `cljfx/create-component` + `cljfx/instance` materialisation without a renderer is reserved exclusively for `show-confirmation!`, which materialises a blocking cljfx `:alert` spec and returns synchronously via `.showAndWait`. Confirmation dialogs bypass `show-window!` entirely and have no lifecycle after dismissal. All other windows use `cljfx/mount-renderer`.
+Every application window uses a **per-window reactive renderer** ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). The renderer manages the content Node reactively; the UI Manager manages the Stage. These two responsibilities are absolute and never overlap. One-time `cljfx/create-component` + `cljfx/instance` materialisation without a renderer is reserved exclusively for `show-confirmation!`, which materialises a message + OK/Cancel button-bar spec, shows it through the blocking `show-modal!`, and returns a boolean synchronously via `.showAndWait`. Confirmation dialogs are transient (not registered) and have no lifecycle after dismissal. All other windows use `cljfx/mount-renderer`.
 
 The architecture divides responsibility clearly:
 

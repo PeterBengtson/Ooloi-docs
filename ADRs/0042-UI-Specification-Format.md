@@ -187,13 +187,11 @@ Backend plugins currently use piece settings (ADR-0016) with auto-generated UI v
 - Example: `:window/title-key :window.tool-palette.title` → title "Tools"
 - When present, overrides any `:title` value in the spec
 
-**`:window/modal?`** (boolean, optional)
-- Reserved key — not currently in the recognised key set. Passing it to `show-window!`
-  will throw "Unknown window/* keys".
-- **Frontend modal dialogs** (e.g. confirmation dialogs) use cljfx's `:alert` type directly
-  and do not use this key.
-- **Backend-described modal windows** over gRPC: not implemented.
-- Documented for future use when a generic modal dialog infrastructure exists.
+**`:window/modality`** (keyword, default `:none`)
+- Declares the window's JavaFX modality: `:none` (default, non-modal) or `:application-modal` (blocks input to all other Ooloi windows while shown).
+- Keyword-valued (not boolean) so a future modality kind (e.g. window-modal, once multiple piece windows exist) is a non-breaking *addition* — a new value plus one branch — not a boolean→keyword contract migration. Only the values with consumers now are built.
+- `build-window!` translates `:application-modal` → `.initModality APPLICATION_MODAL` before the Stage is shown; `:none`/absent leaves JavaFX's default (`NONE`). Interop stays confined to the boundary files (`window.clj` / `ui_manager.clj`).
+- Modality is a **window property**, not a separate UI type — a modal is a window with `:window/modality`, opened through the same `show-window!` pipeline as any other window (distinct from the still-reserved `:window/type` semantic-kind hint). A modal window additionally receives an owner and non-persist/non-resizable defaults — see "Modal dialogs: one core, two entry points" below.
 
 **`:title`** (string, optional)
 - Raw JavaFX Stage title string, passed directly to `Stage.setTitle()`
@@ -201,6 +199,26 @@ Backend plugins currently use piece settings (ADR-0016) with auto-generated UI v
 - `:window/title-key` takes precedence: if both are present, the resolved translation replaces `:title`
 - Spec authors must use `:window/title-key` for all titles — all user-facing strings must be localisable per ADR-0039
 - No production code should pass hardcoded strings via `:title`; all window titles go through `tr-declare` + `:window/title-key`
+
+### Modal dialogs: one core, two entry points
+
+A modal is a window with `:window/modality` ≠ `:none`. Every modal Stage is built by the same core (`build-window!` + owner chain + modal defaults); there are two entry points, distinguished by **control flow**, not by modality:
+
+- **Async / registered — `show-window!`.** The normal path. Opens a managed, non-blocking window (modal or not), registered in the window-registry with geometry persistence and lifecycle events; returns the Stage. Used by every managed dialog, including the "Connect to other Ooloi…" modal. A window opened via `:window-open-requested` with `:window/modality :application-modal` is registered, application-modal, and owned.
+- **Blocking / transient — `show-modal!`.** A synchronous "ask, then continue" path: builds a transient modal Stage (not registered), shows it via `.showAndWait`, and returns the outcome when dismissed. Its sole consumer is `show-confirmation!` (a message + OK/Cancel button bar → boolean). There is exactly one modal node type — a `Stage`; the former cljfx `:alert` / `javafx.scene.control.Dialog` path is removed.
+
+**Naming note.** The axis distinguishing the two entry points is *blocking vs async*, not *window vs modal* — `show-window!` already shows modals. `show-modal!`'s name foregrounds modality rather than its actual nature (blocking, transient, synchronous-return), so a future revision may rename it to a "blocking dialog" name. The name is retained for now to avoid churn; the operative distinction is the one stated here.
+
+**Owner chain — a modal is always owned.** Per the JavaFX `Stage` contract an owned stage stays on top of its parent and iconifies/closes with it; an ownerless `APPLICATION_MODAL` still blocks input but loses stay-on-top-of-parent and iconify-with-parent and can render *behind* another window (JDK-8222456). Owner selection is therefore a z-order/parenting concern on **every** platform — not, as the legacy macOS `initOwner` was, only the menu-bar-inheritance concern. The shared helper `select-owner-stage` resolves the owner through a fallback chain, taking the first hit:
+1. the **focused managed window** (the window the user is acting in; always-on-top decorations never qualify, because they never take keyboard focus);
+2. **macOS only** — the menu-bar-host "mother" Stage (guarantees a macOS modal is never ownerless);
+3. **Windows/Linux only** — any showing, non-always-on-top managed window (last resort, when nothing is focused and there is no mother window).
+
+Always-on-top windows (e.g. the collaboration floating palette) never qualify as a modal's owner on any platform — owning a modal to a decoration that opens and closes on its own would tie the modal to the wrong lifecycle.
+
+**Modal defaults.** A modal window defaults to `:window/persist? false` and `:window/resizable? false` (each overridable per spec), applied before `show-window!`'s persistence read so a modal neither restores nor saves geometry — a prompt that never drifts.
+
+**Interruptible background work.** An async modal that runs an operation the user must be able to cancel mid-flight uses `run-interruptible!` in `ooloi.frontend.ui.core.modal-window`. It runs a supplied work fn off the JAT on the shared Claypoole pool, drives an `:in-flight?` flag in the dialog's state atom (so the spec can show a spinner and disable controls), wires a Cancel to a canceller the work registers, and on completion delivers the work's **raw** return value to `:on-result` (or calls `:on-cancelled` if cancelled). It is operation-agnostic — it knows nothing about what the work does, how to interrupt it, or how to classify the result; the consumer supplies the work, its canceller, and the result interpretation. Work that registers no canceller is simply non-interruptible.
 
 ### Content Builder Pattern
 
@@ -413,7 +431,7 @@ This keeps each window module a **self-contained dispatch world**: internal even
 
 **Use a renderer for all application windows.** Every window that goes through `show-window!` uses `cljfx/mount-renderer` + a private state atom. `swap!`ing the state atom from any source — user interactions, event bus subscriptions, or settings changes such as locale — causes the renderer to diff and patch the live scene graph without Stage recreation. This is what makes locale and theme reactivity automatic for free.
 
-**Use `cljfx/create-component` + `cljfx/instance` once** (no renderer) only for `show-confirmation!`, which materialises a blocking cljfx `:alert` spec and returns synchronously via `.showAndWait`. Confirmation dialogs are not full windows — they bypass `show-window!` entirely and have no ongoing lifecycle.
+**Use `cljfx/create-component` + `cljfx/instance` once** (no renderer) only for `show-confirmation!`, which materialises a message + OK/Cancel button-bar spec and shows it through the blocking entry point `show-modal!`, returning a boolean synchronously. Confirmation dialogs are transient — not registered, no ongoing lifecycle — and are built as a `Stage` like every modal (the former cljfx `:alert` / `Dialog` path is gone). See "Modal dialogs: one core, two entry points".
 
 **Locale reactivity pattern.** The declarative pipeline automatically registers each window's renderer with the UI Manager via `register-renderer!` during `show-window!`. When the UI Manager receives a `:setting-changed` event for `:ui/locale`, it calls `tr/set-locale!` synchronously on the event bus thread, then posts `(fx/run-later! ...)` to the JAT to call `(swap! *state identity)` on every registered renderer atom. The renderer re-evaluates the spec after the locale is already updated. Windows do not subscribe to `:app-settings` for locale — the UI Manager mediates locale reactivity through the renderer registry. On close, `close-window!` automatically unmounts the renderer, unsubscribes all declared event bus subscriptions, and removes all declared atom watches.
 
@@ -581,7 +599,7 @@ Content builders produce nodes. The UI Manager produces windows.
 
 **Invariant:** If code imports `javafx.stage.Stage` or `javafx.scene.Scene` to create new instances, it is violating this invariant. Only the windowing infrastructure (`window.clj`, `ui_manager.clj`) may do so.
 
-**macOS Platform Behaviour:** On macOS, `register-window!` automatically calls `.initOwner` on secondary windows, setting the first registered Stage as owner. This ensures secondary windows (About, tool palettes) inherit the system menu bar. Without this, focused secondary windows show a blank menu bar.
+**macOS Platform Behaviour:** On macOS, `register-window!` owns *non-modal* secondary windows to the menu-bar-host Stage so they inherit the system menu bar (without it, focused secondary windows show a blank menu bar). *Modal* windows are owned differently — via the all-platform `select-owner-stage` chain (focused window → menu-bar-host → showing non-always-on-top window), which is a z-order/parenting concern rather than a menu-bar one. See "Modal dialogs: one core, two entry points".
 
 **All Window Close Is Event-Driven**
 
