@@ -444,6 +444,7 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-ok-button` | `:text-key` (default `:button.ok`) | `:button` with `:default-button true` |
 | `ooloi-cancel-button` | `:text-key` (default `:button.cancel`) | `:button` with `:cancel-button true` |
 | `ooloi-label` | `:text-key` | `:label` |
+| `ooloi-checkbox` | `:text-key`, `:locale` (cache-buster) | `:check-box`; the one-method boolean control. Resolves `:text-key` via `tr`; omits `:text` when none given (label via `ooloi-labelled-field`); `:selected`/`:on-selected-changed` pass through |
 | `ooloi-menu-item` | `:text-key` | `:menu-item` |
 | `ooloi-menu` | `:text-key` | `:menu` |
 | `ooloi-command-item` | `:descriptor`, `:state` | `:menu-item` with resolved text and `:disable` |
@@ -460,7 +461,7 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 |-----------|---------------------|
 | `ooloi-button-bar` | Right-aligned HBox with a spacer Region; consistent button padding |
 | `ooloi-vscroll-pane` | Optionally titled ScrollPane with a muted border; title style via `TITLE_4` |
-| `ooloi-labelled-field` | HBox with fixed-width label and control; reusable in instrument and staff editors |
+| `ooloi-labelled-field` | HBox label + control; with optional `:description`, label + VBox[control, muted wrapped description] (tri-partite). Control-agnostic; reusable in editors and dialogs |
 | `ooloi-range-field` | HBox with label, low/high sub-labels and text fields |
 | `ooloi-transposition-controls` | HBox with direction/quality/interval combo-boxes and octave spinner; accepts `:locale` cache-buster |
 | `ooloi-transposition-field` | nil → unchecked checkbox; non-nil → VBox with transposition controls and clef override rows; accepts `:locale` |
@@ -1108,7 +1109,7 @@ The UI Manager is that something. When it receives a `:setting-changed` event fo
 
 The solution is to pass `@tr/current-locale` as a `:locale` prop through the formatter chain. When the locale changes, cljfx sees a different `:locale` value, re-invokes the component function, and the `tr` calls inside produce updated strings. Each component `dissoc`s `:locale` from its output and passes it to child custom components that also call `tr`. See the component table in Section 4.4 for which components accept `:locale`.
 
-**When to use `:locale` vs `:raw-text`:** Use `:raw-text` for leaf atomic components with a single translatable string. Use `:locale` for composite components that call `tr` internally on keyword maps. Both mechanisms coexist. Issue #195 tracks systematic adoption of `:locale` across all `tr`-calling formatters.
+**Choosing `:text-key` + `:locale` vs `:raw-text` — a three-way decision driven by what the string *is*:** (1) **Static keyed label** → pass `:text-key`, resolved internally, with `:locale @tr/current-locale` as the cache-buster — the standard for both leaf atomics (`ooloi-checkbox`) and composites; #195 migrates the rest onto it. (2) **Static keyed label, legacy leaf** (`ooloi-button`, `ooloi-label`) → still accept `:raw-text (tr :key)`; coexists pending #195. (3) **Dynamic / parameterised / runtime string** — `(tr :k {:n n})`, a `host:port`, a piece name, a notification/confirmation message → **must** use `:raw-text`; `:locale` only re-resolves a *static* keyword key and cannot carry a computed string, so `:raw-text` is **not vestigial** (notifications, confirmation dialogs, tests, one-shot materialisation). In short: `:locale` for keyed labels, `:raw-text` for strings that aren't keys.
 
 ---
 

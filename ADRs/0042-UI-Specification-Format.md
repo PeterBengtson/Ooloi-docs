@@ -294,6 +294,10 @@ cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to 
 
 **Why this matters for the ADR-0042 vision:** The spec format requires that backend plugins describe UI using keyword-based specs over gRPC — no frontend-specific code, no `tr` calls. The custom component functions are the resolution mechanism: plugins write `{:fx/type ooloi-button :text-key :some.key}`, the frontend's cljfx pipeline calls `ooloi-button` during materialisation, and `tr` runs at render time on the frontend where the locale is known.
 
+**Choosing the text mechanism — a three-way decision driven by what the string *is*:** (1) a **static keyed label** is passed as `:text-key`, resolved by the formatter internally, with `:locale @tr/current-locale` as the cache-buster forcing re-invocation on locale change — the standard for both leaf atomics (e.g. `ooloi-checkbox`) and composites; (2) older leaf atomics still accept `:raw-text (tr :key)` resolved at the call site (coexists, being migrated to `:locale`); (3) a **dynamic / parameterised / runtime string** — `(tr :k {:n n})`, a `host:port`, a notification or confirmation message — **must** use `:raw-text`, because `:locale` can only re-resolve a static keyword key, not an arbitrary computed string. `:raw-text` is therefore not vestigial; it is structurally required for dynamic text and for one-shot/test materialisation.
+
+**One boolean control.** Per the one-method principle, application code never uses a raw `:check-box`; the `ooloi-checkbox` formatter is the single boolean control (resolves `:text-key` via `tr`, accepts `:locale`, omits its label when an enclosing `ooloi-labelled-field` supplies one). A checkbox — most compact, pure cljfx spec, consistent with the dense control vocabulary — is the boolean paradigm, not a toggle switch (see [ADR-0043](0043-Frontend-Settings.md)).
+
 **Testing:** Custom component functions are pure — testable without JavaFX:
 
 ```clojure

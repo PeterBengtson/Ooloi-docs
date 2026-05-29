@@ -757,6 +757,7 @@ This flow control architecture builds upon and enhances several existing Ooloi a
 - Event streaming works transparently with TLS
 - Queue-based architecture doesn't interfere with certificate management
 - Performance characteristics maintained across all security configurations
+- **Known temporary limitation:** *direct peer-to-peer* encryption is not yet trustable — a peer's auto-generated certificate is self-signed and cannot be validated without insecure-dev-mode (a dev-cycle convenience, never shipped). Peer-to-peer sessions run unencrypted on a trusted LAN until a trust-on-first-use / automated certificate-distribution mechanism lands. Encryption-on works today against a CA-signed host (e.g. the shared Ooloi server). See ADR-0020 §"Known Temporary Limitation: Secure Peer-to-Peer Trust".
 
 ---
 

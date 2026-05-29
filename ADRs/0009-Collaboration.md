@@ -91,6 +91,7 @@ We will implement multi-client collaboration support in Ooloi by extending our e
 - Explore options for audio/video chat integration to enhance remote collaboration.
 - Regularly gather user feedback on the collaboration experience and iterate on the implementation.
 - Stay informed about advancements in distributed systems and real-time collaboration technologies.
+- **Secure peer-to-peer trust (known temporary limitation).** *Direct peer-to-peer* collaboration currently runs unencrypted on trusted local networks. Secure peer encryption awaits a trust-on-first-use / automated certificate-generation-and-distribution mechanism, so that establishing a trusted peer link needs no certificate-management knowledge from the user. Encryption-on works today against a CA-signed host — notably the shared Ooloi server, which the connect dialog targets by default with TLS on. See [ADR-0020](0020-TLS-Infrastructure-and-Deployment-Architecture.md) §"Known Temporary Limitation: Secure Peer-to-Peer Trust" and [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §"Security Considerations".
 
 ## Related Decisions
 

@@ -491,6 +491,8 @@ This design prioritizes **ease of use over technical sophistication** - the righ
 - TLS encryption required for all network server connections (ADR-0020)
 - Automatic shutdown prevents inadvertent persistent network exposure
 
+> **Known temporary limitation — peer-to-peer encryption.** "TLS required for all network connections" is the intended end state, but it is not yet achievable for *direct peer-to-peer* collaboration: a peer's auto-generated certificate is self-signed and cannot be validated through a trust chain, and the only accepter of a self-signed certificate — insecure-dev-mode — is a development-cycle convenience that is never shipped. Until a trust-on-first-use / automated certificate-distribution mechanism exists (see [ADR-0020](0020-TLS-Infrastructure-and-Deployment-Architecture.md) §"Known Temporary Limitation: Secure Peer-to-Peer Trust"), *direct peer-to-peer* sessions run **unencrypted** and are safe only on a trusted local network. Encryption-on is currently secure and effortless only against a **CA-signed** host — notably the shared Ooloi server (AWS Certificate Manager), which the connect dialog targets by default with TLS on. This is temporary — secure, effortless peer-to-peer encryption is planned future work.
+
 **Authentication**:
 - All network connections require valid JWT tokens (ADR-0021)
 - Invitation tokens are single-use, time-limited credentials

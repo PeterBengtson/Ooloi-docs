@@ -116,7 +116,7 @@ Two validation modes, mirroring [ADR-0016](0016-Settings.md)'s pattern:
 (def-app-setting :editor/auto-save
   {:default   true
    :validator boolean?
-   :control   :toggle})
+   :control   :checkbox})
 
 (def-app-setting :editor/font-size
   {:default   12
@@ -129,7 +129,7 @@ Two validation modes, mirroring [ADR-0016](0016-Settings.md)'s pattern:
 - `:validator` + `:control` → render the declared control
 - `:validator` without `:control` → text field (safe default)
 
-Supported control types: `:text`, `:toggle`, `:number`, `:path`. This is a small, closed set — extensible later if needed. Inferring control type from the predicate function (e.g. detecting `boolean?`) is unreliable because function equality is not guaranteed in Clojure; explicit declaration eliminates all ambiguity.
+Supported control types: `:text`, `:checkbox`, `:number`, `:path`. This is a small, closed set — extensible later if needed. The boolean control is a **checkbox**, not a toggle switch: it is the most compact control, a pure cljfx spec (`:check-box`, no interop), and consistent with Ooloi's uniformly dense control vocabulary. It is materialised through the `ooloi-checkbox` formatter, per ADR-0042's one-method principle (application code never uses a raw `:check-box`). Inferring control type from the predicate function (e.g. detecting `boolean?`) is unreliable because function equality is not guaranteed in Clojure; explicit declaration eliminates all ambiguity.
 
 Invalid values throw exceptions with clear error messages, matching [ADR-0016](0016-Settings.md)'s fail-fast behaviour.
 
@@ -279,7 +279,7 @@ A `defonce` atom holding metadata for all registered settings, including default
                :control   :text}
  :editor/auto-save {:default   true
                     :validator boolean?
-                    :control   :toggle}}
+                    :control   :checkbox}}
 ```
 
 Every `def-app-setting` call populates the registry with the default value, validation rules, and UI metadata. Since defaults and validation come from the same declaration, they cannot diverge.
@@ -298,7 +298,7 @@ The settings registry provides everything needed to generate a Settings window:
 - **Controls**: deterministic mapping from registry metadata:
   - `:choices` → dropdown (always)
   - `:validator` + `:control :text` → text field
-  - `:validator` + `:control :toggle` → toggle switch
+  - `:validator` + `:control :checkbox` → checkbox
   - `:validator` + `:control :number` → numeric stepper
   - `:validator` + `:control :path` → path picker
   - `:validator` + no `:control` → text field (default)

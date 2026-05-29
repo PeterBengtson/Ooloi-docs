@@ -476,6 +476,14 @@ What `/health` does include is documented in [ADR-0025 §Health Endpoint Archite
 - **Complete documentation** with examples for each deployment model
 - **Automatic fallbacks** reduce configuration burden (auto-generation, discovery, system trust store)
 
+## Known Temporary Limitation: Secure Peer-to-Peer Trust
+
+The three-tier trust strategy secures two scenarios cleanly: a **CA-signed** host (system trust store, zero configuration) and an **enterprise** host whose CA the guest is given explicitly (`cert-path`). It does **not** yet secure the **peer-to-peer** scenario — two Ooloi instances connecting directly, each with an auto-generated **self-signed** certificate.
+
+A self-signed certificate cannot be validated through a trust chain, so a guest's system trust store rejects it. The only mechanism that accepts a self-signed certificate is **insecure-dev-mode**, which bypasses all validation and is strictly a development-cycle convenience — it is never enabled in a released build. Consequently, a peer-to-peer connection with encryption enabled cannot currently establish trust in a shipped application; encryption-on works only against a CA-signed server. Peer-to-peer collaboration therefore runs unencrypted, which is safe only on a trusted local network.
+
+**Future work.** Frictionless *secure* peer-to-peer requires a trust mechanism this architecture does not provide: trust-on-first-use (the host's certificate is presented to the connecting peer for an explicit one-time accept, browser style), and/or automated certificate generation and distribution — a host able to hand its certificate to an invited peer through a single user action (a menu selection, an invitation that carries the certificate), so that establishing a trusted peer connection requires no certificate-management knowledge. The guiding principle is that secure peering must be as effortless for the user as unencrypted peering. This is a distinct feature with its own design; it is deferred to a future ADR and is out of scope for the initial collaboration work.
+
 ## Success Criteria
 
 ### Server-Side TLS
