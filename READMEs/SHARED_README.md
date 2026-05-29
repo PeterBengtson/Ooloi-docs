@@ -463,6 +463,7 @@ lein run
 - **One-Way TLS**: Clients verify server identity (server authentication only)
 - **System Trust Store**: Uses Java's built-in ~150 trusted CAs for production
 - **Custom Certificates**: Supports explicit certificate paths for enterprise deployments
+- **Address family (IPv4 and IPv6)**: the backend host may be a hostname, an IPv4 address, or an IPv6 literal — `NettyChannelBuilder/forAddress` takes host and port separately, so an IPv6 address needs no brackets; the development certificate's SANs cover `::1` for local IPv6 TLS
 
 **For detailed TLS scenarios, see:**
 - Backend README: Server-side TLS configuration and certificate generation

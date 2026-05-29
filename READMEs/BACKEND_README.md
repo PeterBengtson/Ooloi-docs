@@ -313,6 +313,7 @@ JAVA_OPTS="-Xmx24g" java -jar target/ooloi-backend-*-standalone.jar
 - **Development**: Auto-generates self-signed certificates for testing TLS functionality
 - **Production**: Supports CA-signed certificates with secure validation
 - **Enterprise**: Custom CA certificates with proper certificate chain validation
+- **Address family**: the server accepts IPv4 and IPv6 client connections; the auto-generated development certificate's SANs cover `localhost`, `127.0.0.1`, and `::1`
 
 **Development Scenarios**:
 

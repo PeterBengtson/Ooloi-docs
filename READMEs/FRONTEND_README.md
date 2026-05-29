@@ -145,7 +145,7 @@ lein run -- --backend-host localhost --backend-port 10700 --ui-mode graphical --
 
 | **Argument** | **Values** | **Default** | **Description** |
 |--------------|------------|-------------|-----------------|
-| `--backend-host HOST` | hostname/IP | localhost | Backend server hostname or IP address |
+| `--backend-host HOST` | hostname/IPv4/IPv6 | localhost | Backend server hostname, IPv4 address, or IPv6 literal (e.g. `::1`) |
 | `--backend-port PORT` | 1-65535 | 10700 | Backend server port number |
 | `--ui-mode MODE` | graphical, headless | graphical | User interface display mode |
 | `--timeout-ms MS` | milliseconds | 5000 | Backend connection timeout |
