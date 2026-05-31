@@ -270,24 +270,27 @@ Using STM keeps client registry updates consistent:
           (send-confirmation-event client-id event-queue response-observer drain!)
 
           ;; Broadcast client connect event to all clients (including newly
-          ;; connected one). Payload carries transport + non-credential
-          ;; identifying metadata (transport, client-ip, client-port,
-          ;; display-name) so subscribers — notably the collaboration
-          ;; notification subscriber in shared/system.clj — can filter to
-          ;; network-server origin and render the guest's identifier without
-          ;; a registry lookup. The joining client's :client-id is
+          ;; connected one). Collaboration broadcasts are network-transport-only:
+          ;; the always-on in-process backend (ADR-0040) serves a single local
+          ;; client, so a connect broadcast there carries no collaboration
+          ;; meaning and is suppressed. For :network the payload carries transport
+          ;; + non-credential identifying metadata (transport, client-ip,
+          ;; client-port, display-name) so the collaboration notification
+          ;; subscriber in shared/system.clj can render the guest's identifier
+          ;; without a registry lookup. The joining client's :client-id is
           ;; intentionally NOT broadcast — it is the sole authentication
           ;; credential used by the api-authentication interceptor
           ;; (CLIENT_ID_HEADER); leaking it to other clients would enable
           ;; impersonation.
-          (let [meta (get-in @registry [client-id :metadata])]
-            (send-server-event server-component
-              {:type :server-client-connected
-               :client-count (count @registry)
-               :transport (:transport server-component)
-               :client-ip (:client-ip meta)
-               :client-port (:client-port meta)
-               :display-name (:display-name meta)}))
+          (when (= :network (:transport server-component))
+            (let [meta (get-in @registry [client-id :metadata])]
+              (send-server-event server-component
+                {:type :server-client-connected
+                 :client-count (count @registry)
+                 :transport (:transport server-component)
+                 :client-ip (:client-ip meta)
+                 :client-port (:client-port meta)
+                 :display-name (:display-name meta)})))
 
           ;; Return client-id on successful registration
           client-id)))))
