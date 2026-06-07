@@ -889,6 +889,21 @@ Why deprecated: `CountDownLatch` requires the caller to know the exact count in 
 
 Use `wait-for-event` / `wait-for-state` for the latter pattern (see §8). If neither fits, write a small inline polling loop with a deadline and a `Thread/sleep 10` between iterations — but in practice the helpers cover the vast majority of cases.
 
+### `requiring-resolve` (or runtime `resolve`) to break a dependency cycle
+
+Reaching another namespace's var at call time via `requiring-resolve` / `resolve` to avoid a compile-time `:require` is, in most cases, a smell — coupling solved by substandard means. It hides the real edge from the namespace graph and from tooling, and the next maintainer works around it instead of questioning it. When you find one (outside the two exceptions below), the fix is almost always structural, and which structure depends on *why* the direct call was avoided:
+
+- **A genuine cycle** (A depends on B which transitively depends on A) → break it with the **event bus**: the producer publishes a fact on a frontend event-bus category (ADR-0031), and the owner of the affected state subscribes and reacts. This is how the collaboration menu (`:collaboration-state-changed`) and the undo cache (`:backend-changed`) were decoupled from `switch-to!`.
+- **A misplaced function** → **relocate** it to a lower namespace both callers can `:require`. If a function has no dependency on the namespace it currently lives in, it does not belong there, and moving it removes the need for resolution entirely.
+- **A late-binding need** (the collaborator only exists at runtime, after this component inits) → **inject** it as an Integrant dependency at `init-key`, or share the underlying state component (e.g. inject the connection-registry rather than reaching the whole running server).
+
+**Legitimate exceptions — not smells:**
+
+- **By-name dispatch** where the symbol genuinely is not known at compile time: the gRPC method dispatcher (`ns-resolve 'ooloi.shared.api` by method-name string) and record deserialization (`map->Record`). These are exactly what make the API surface and the record set plugin-extensible.
+- **The `*server-component*` late-binding seam**, documented in `ooloi.backend.grpc.server`: shared-tier op implementations reach injected backend components via `@(resolve '…*server-component*)` because the shared tier must not compile-depend on the backend tier. The rule there is fixed — *"never introduce a new per-component dynamic var."*
+
+If a runtime resolution is not one of those two exceptions, treat it as debt to be removed structurally.
+
 ---
 
 ## Cross-References
