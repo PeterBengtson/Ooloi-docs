@@ -903,9 +903,9 @@ sequenceDiagram
 
 #### Frontend Wiring Invariants
 
-Two design constraints govern how the Tier 1 cache integrates with the existing Tier 2
-menu refresh path. Both must hold for the menu to reflect Tier 1 state changes in real
-life — they describe the architectural contract, not implementation detail.
+These design constraints govern how the Tier 1 cache integrates with the rest of the
+frontend — the menu refresh path, the shared thread pool, and the backend-switch
+lifecycle. They describe the architectural contract, not implementation detail.
 
 1. **Single on-change callback shared by both tiers.** `wire-undo-redo!` accepts an
    `on-change` callback that fires after any stack mutation, queuing `refresh-menu-text!`
@@ -940,6 +940,21 @@ life — they describe the architectural contract, not implementation detail.
    `ooloi.frontend.api.remote-api` throws with the message *"called on the JAT — use
    cp/future to dispatch on a pool thread"* if a `SRV/*` invocation ever escapes
    onto the JavaFX Application Thread.
+
+4. **The Tier 1 backend cache is cleared on a backend switch.** The cache's
+   per-resource timestamps and descriptions are backend-scoped — they belong to the
+   backend that issued the `:undo-state-changed` notifications. When `switch-to!`
+   changes the frontend's backend (ADR-0036 §Frontend Reconnection) it publishes
+   `:backend-changed` on the `:backend` event-bus category; `wire-undo-redo!`
+   subscribes there and clears the cache, then fires the on-change callback so the
+   menu drops the previous backend's "Undo …" label. The cross-backend
+   `:instrument-library` resource key is the visible case: it is identical across
+   backends, so without the clear the menu would show the previous backend's last IL
+   undo description until the new backend's first notification arrived. The clear is
+   reactive — the producer (`switch-to!`) only announces the switch; `undo-redo` owns
+   and clears its own cache — so there is no transport→undo-redo dependency. Only the
+   success branch publishes; a failed switch stays on the previous backend, whose
+   cache is still valid.
 
 #### Routing Layer — Reference Implementation
 

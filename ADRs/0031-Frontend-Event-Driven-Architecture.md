@@ -144,11 +144,14 @@ Category-based pub/sub for all frontend event delivery, backed by a shared Clayp
 | `:app-lifecycle` | `:app-ready`, `:app-shutting-down` | `start-app!`, shutdown handler |
 | `:window-lifecycle` | `:window-opened`, `:window-closed`, `:window-hidden`, `:window-state-persisted` | `show-window!`, `close-window!`, `persist-stage-geometry!` |
 | `:app-settings` | `:setting-changed` | `set-app-setting!` (ADR-0043) |
-| `:instrument-library` | `:instrument-library-changed` | Event Router (routed from backend; ADR-0045) |
+| `:instrument-library` | `:instrument-library-changed` | Event Router (routed from backend; ADR-0045); also `switch-to!` on a backend switch, so the IL handler refetches from the new backend (ADR-0036) |
 | `:undo` | `:undo-state-changed` | Event Router (routed from backend; ADR-0015) |
 | `:collaboration` | `:collaboration-state-changed` | `switch-to!` (transport changes), host-session / terminate handlers (network-server presence) — see [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Collaboration Menu Enablement |
+| `:backend` | `:backend-changed` | `switch-to!` on a completed transport switch (ADR-0036 §Frontend Reconnection) — signals that backend-scoped frontend caches are now invalid |
 
 The `:collaboration` category is frontend-originated and carries *this client's own* collaboration involvement — its transport, and whether it is hosting. It is distinct from the backend-routed `:presence` / `:collaboration-user-*` events listed below, which describe *other participants* in a session and reach the bus through the Event Router.
+
+The `:backend` category is the orthogonal "I switched backends" signal: `switch-to!` publishes `:backend-changed` on every completed switch, and `undo-redo` subscribes to clear its backend-scoped Tier 1 undo cache (ADR-0015 Tier 1) — the cached timestamps and descriptions belonged to the previous backend. It is distinct from `:instrument-library-changed` (which also fires on backend-side IL edits) and `:collaboration-state-changed` (which also fires on host/terminate, when the frontend's backend has *not* changed).
 
 Categories are arbitrary keywords — any component can define new ones. Backend-originated
 categories (`:cache-invalidation`, `:presence`, `:playback`, `:system`, `:notification`,

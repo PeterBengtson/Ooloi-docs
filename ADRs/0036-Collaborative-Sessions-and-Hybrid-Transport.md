@@ -108,7 +108,7 @@ The network gRPC server is managed through standard Integrant lifecycle methods,
 
 **Menu items.** Two menu items in the application's File menu drive the network server lifecycle: **"Host Collaboration Session…"** (host action — starts the server) and **"Terminate Collaboration Session"** (host action — stops the server). Both menu items are handled in the combined application's `start-app!` action-handler map. The "Host Collaboration Session…" menu item is enabled whenever the network server is not running; the "Terminate Collaboration Session" menu item is enabled whenever it is.
 
-**Start.** The host selects the **"Host Collaboration Session…"** menu item from the application's UI. This menu action calls the backend API which adds the `network-grpc-server` component to the running Integrant system via `ig/init-key`. The new component shares all backend state with the in-process server through Integrant refs to the shared components named in §Hybrid Transport Architecture above.
+**Start.** The host selects the **"Host Collaboration Session…"** menu item from the application's UI. This menu action calls the backend API which adds the `network-grpc-server` component to the running Integrant system via `ig/init-key`. The new component shares all backend state with the in-process server through Integrant refs to the shared components named in §Hybrid Transport Architecture above. Start and stop each publish `:collaboration-state-changed` on the frontend event bus so the menu-enablement seam re-evaluates (§Collaboration Menu Enablement); the full per-transition event flow is tabulated in §Connect / Disconnect Event Sequence.
 
 **Stop.** The network server stops via `ig/halt-key!` under either of two triggers:
 
@@ -190,26 +190,26 @@ Context switching is **asymmetric** by design.
 **Entering Collaboration** (in-process → remote, voluntary):
 1. User invokes "Connect to other Ooloi…"; dialog collects host, port, TLS flag, optional display name.
 2. **Outbound precondition gate**: if any piece is subscribed locally (non-empty Event Router `subscription-state`), `switch-to!` refuses and the UI surfaces a confirmation dialog explaining that local pieces must be closed first.
-3. With no local pieces open, `switch-to!` sends a graceful `Disconnect` RPC to the current (in-process) backend with a bounded deadline (default 2000ms), then closes the in-process channels, opens network channels with JWT authentication, re-registers with the remote, and publishes `:instrument-library-changed`. The Disconnect call is best-effort: `:ok` / `:timeout` / `:error` are all treated identically — `switch-to!` always proceeds to channel teardown and re-registration. The identity-aware setOnCancelHandler backstop (ADR-0024 §Connection Lifecycle, PHASE 7) protects any subsequent late server-side cancel processing from wiping the new entry.
+3. With no local pieces open, `switch-to!` sends a graceful `Disconnect` RPC to the current (in-process) backend with a bounded deadline (default 2000ms), then closes the in-process channels, opens network channels with JWT authentication, re-registers with the remote, and publishes the three switch events (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection). The Disconnect call is best-effort: `:ok` / `:timeout` / `:error` are all treated identically — `switch-to!` always proceeds to channel teardown and re-registration. The identity-aware setOnCancelHandler backstop (ADR-0024 §Connection Lifecycle, PHASE 7) protects any subsequent late server-side cancel processing from wiping the new entry.
 4. UI shows collaboration mode with host name and guest role.
 
 **Exiting Collaboration** (remote → in-process, voluntary Disconnect):
 1. User invokes "Disconnect".
 2. **Intent confirmation**: dialog asks "really disconnect from <host>?" — confirming proceeds, cancelling leaves the frontend on the remote backend.
-3. No precondition gate. `switch-to! :in-process` sends a graceful `Disconnect` RPC to the current (remote) backend with the same bounded deadline, closes the remote channels, drops any remote piece subscriptions, clears `subscription-state` defensively, re-registers with the local backend, and publishes `:instrument-library-changed`.
+3. No precondition gate. `switch-to! :in-process` sends a graceful `Disconnect` RPC to the current (remote) backend with the same bounded deadline, closes the remote channels, drops any remote piece subscriptions, clears `subscription-state` defensively, re-registers with the local backend, and publishes the three switch events (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection).
 4. UI returns to standalone mode.
 
 **Switching Between Remote Hosts** (network → network, voluntary):
 1. User invokes "Connect to other Ooloi…" while already on a remote backend (e.g. currently a guest on Ooloi A, wants to join Ooloi B's session instead).
 2. No precondition gate. The current subscriptions are remote views, not save-state-bearing local work — the gate's purpose does not apply.
-3. `switch-to!` sends a graceful `Disconnect` RPC to the current remote backend, closes its channels, drops the prior backend's piece subscriptions, clears `subscription-state` defensively, opens network channels to the new remote, re-registers, and publishes `:instrument-library-changed`.
+3. `switch-to!` sends a graceful `Disconnect` RPC to the current remote backend, closes its channels, drops the prior backend's piece subscriptions, clears `subscription-state` defensively, opens network channels to the new remote, re-registers, and publishes the three switch events (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection).
 4. UI shows collaboration mode with the new host name and guest role.
 
 **Involuntary Reversion** (remote → in-process, ADR-0040):
-1. Remote connection is lost (server shutdown, network partition, etc.).
-2. `grpc-clients` invokes `switch-to! :in-process` automatically. No intent confirmation; no gate.
-3. Subscription state is cleared as in voluntary Disconnect.
-4. UI returns to standalone mode with a notification indicating the host disconnected.
+1. Remote connection is lost (server shutdown, network partition, etc.); the response-observer's `onCompleted` fires on the client.
+2. The observer's `revert-fn` posts a persistent red "host disconnected" notification, then invokes `switch-to! :in-process` automatically. No intent confirmation; no gate.
+3. The recursive `switch-to!` clears `subscription-state` and publishes the same three switch events as a voluntary Disconnect (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection), so the collaboration menu reverts to `:local` enablement and the Tier 1 backend cache clears.
+4. UI returns to standalone mode; the red notification persists until the user dismisses it.
 
 **Rationale for the asymmetry.** The gate exists to protect the user's own work. Local pieces (those open against the in-process backend) are save-state-bearing and irreplaceable; silently leaving them when switching to a remote context is unacceptable, so the gate forces a deliberate close. Remote pieces, conversely, are the host's work; the guest holds only a view. Dropping that view on Disconnect (or when switching to another remote host) is exactly equivalent to closing a tab on a collaborative document, and adding a "close all remote pieces first" step would be friction without semantic value.
 
@@ -254,9 +254,17 @@ stateDiagram-v2
     RemoteCollaboration --> [*]: Application exits
 ```
 
+This diagram shows the *states* and the user actions that move between them; the gRPC wire events, frontend event-bus publishes, and notifications fired on each transition are tabulated in §Connect / Disconnect Event Sequence.
+
 ### Frontend Reconnection: `switch-to!`
 
-Transport switching from the frontend is mediated by a single named operation on the `grpc-clients` component: `switch-to!`. The operation atomically replaces the client's transport — closing the existing API pool and event-stream, opening new ones against the target, re-registering with the target backend, and clearing the Event Router's `subscription-state` (piece-ids are server-local and do not carry across backends). On every completed switch it publishes two events on the frontend event bus: `:instrument-library-changed` so the existing handler refetches state from the new backend, and `:collaboration-state-changed` so the menu-enablement seam re-evaluates (see §Collaboration Menu Enablement).
+Transport switching from the frontend is mediated by a single named operation on the `grpc-clients` component: `switch-to!`. The operation atomically replaces the client's transport — closing the existing API pool and event-stream, opening new ones against the target, re-registering with the target backend, and clearing the Event Router's `subscription-state` (piece-ids are server-local and do not carry across backends). On every completed switch it publishes **three events** on the frontend event bus (ADR-0031 §Frontend Event Categories):
+
+- `:instrument-library-changed` (category `:instrument-library`) — the IL handler refetches state from the new backend.
+- `:collaboration-state-changed` (category `:collaboration`) — the menu-enablement seam re-evaluates (see §Collaboration Menu Enablement).
+- `:backend-changed` (category `:backend`) — backend-scoped frontend caches invalidate; `undo-redo` subscribes to clear its Tier 1 backend undo cache, whose timestamps and descriptions belonged to the previous backend (ADR-0015 §Tier 1).
+
+These are frontend-internal event-bus publishes that fire *after* the gRPC re-registration completes; they are distinct from the gRPC wire events of the connection handshake itself (ADR-0024 §Connection Lifecycle). The end-to-end client/server sequence for a guest connect and disconnect — wire handshake plus these frontend publishes plus the user notification — is shown in §Connect / Disconnect Event Sequence below.
 
 ADR-0031 §Subscription State Management's resubscribe flow is for **single-backend reconnection** after a network blip (same backend, restored channel) — not for transport switching. The piece-ids tracked there are meaningful only against the backend that issued them.
 
@@ -276,6 +284,58 @@ ADR-0031 §Subscription State Management's resubscribe flow is for **single-back
 In all three sub-cases, `subscription-state` is cleared defensively before re-registration — the piece-ids tracked there refer only to the backend that issued them, and are meaningless against any other backend.
 
 **Error handling.** `switch-to!` returning an error (target unreachable, TLS handshake failure, etc.) leaves the previous connection intact — the frontend never ends up in an unconnected state. If a remote connection is lost mid-session, the `grpc-clients` component invokes `switch-to! :in-process` automatically per ADR-0040's single-authority reversion model.
+
+### Connect / Disconnect Event Sequence
+
+Each collaboration transition produces a fixed sequence of gRPC wire events (the ADR-0024 §Connection Lifecycle handshake), frontend event-bus publishes (ADR-0031 §Frontend Event Categories), and a user notification (§Notification Model). The table is the per-transition summary; the sequence diagram below shows the guest-side ordering.
+
+| Transition | gRPC wire events | Frontend event-bus publishes | Notification |
+|---|---|---|---|
+| Guest connect (in-process → remote) | `Disconnect`(in-process, best-effort); `registerClient`(remote); `client-registration-confirmed`; `server-client-connected` broadcast | `:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` | green "Connected to <host>" (guest) |
+| Switch hosts (remote → remote) | `Disconnect`(old remote); `registerClient`(new remote); `client-registration-confirmed`; `server-client-connected` broadcast | the same three | green "Connected to <host>" (guest) |
+| Voluntary disconnect (remote → in-process) | `Disconnect`(remote); `server-client-disconnected` broadcast; `registerClient`(in-process) | the same three | info "Disconnected from <host>" (guest) |
+| Involuntary reversion (remote → in-process) | `onCompleted` (server closed the stream); `registerClient`(in-process) | the same three | red "Host disconnected", persistent (guest) |
+| Host start | none on the wire — `network-grpc-server` added to the running system | `:collaboration-state-changed` | green "Hosting at <host:port>", persistent (host) |
+| Terminate / auto-halt | none on the wire — `network-grpc-server` removed | `:collaboration-state-changed` | green "Session stopped" (+ red ousted-guests, if any) (host) |
+
+The three frontend publishes fire *after* the gRPC re-registration completes, on the guest's own event bus; their subscribers are the IL refetch handler, the collaboration menu-enablement seam, and the `undo-redo` Tier 1 cache clear. The `server-client-connected` / `server-client-disconnected` broadcasts are *network-only* and reach the **host's** event bus (driving the host-side guest joined/left notifications); the always-on in-process backend suppresses them (ADR-0040), so re-registering on the in-process backend produces no such broadcast.
+
+```mermaid
+sequenceDiagram
+    participant U as Guest user
+    participant FE as Guest frontend<br/>(switch-to!)
+    participant SRV as Remote server
+    participant BUS as Guest event bus
+    participant SUB as Bus subscribers<br/>(IL · menu · undo-redo)
+
+    Note over U,SUB: Guest connect (in-process → remote)
+    U->>FE: "Connect to other Ooloi…" (host, port, TLS)
+    FE->>SRV: Disconnect RPC to in-process backend (best-effort)
+    FE->>SRV: registerClient(client-id)  [ADR-0024 PHASE 2]
+    SRV-->>FE: client-registration-confirmed  [PHASE 3]
+    SRV-->>FE: server-client-connected broadcast  [PHASE 4]
+    FE->>BUS: publish :instrument-library-changed
+    FE->>BUS: publish :collaboration-state-changed
+    FE->>BUS: publish :backend-changed
+    BUS->>SUB: IL refetch · menu → :guest · clear Tier 1 cache
+    FE->>U: green "Connected to <host>"
+
+    Note over U,SUB: Voluntary disconnect (remote → in-process)
+    U->>FE: "Disconnect" (confirmed)
+    FE->>SRV: Disconnect RPC to remote backend  [PHASE 5]
+    SRV-->>SRV: server-client-disconnected broadcast to others  [PHASE 6]
+    FE->>SRV: registerClient on in-process backend
+    FE->>BUS: publish :instrument-library-changed, :collaboration-state-changed, :backend-changed
+    BUS->>SUB: IL refetch · menu → :local · clear Tier 1 cache
+    FE->>U: info "Disconnected from <host>"
+
+    Note over U,SUB: Involuntary reversion (server closed the stream)
+    SRV-->>FE: onCompleted  [PHASE 7 backstop]
+    FE->>U: red "Host disconnected" (persistent)
+    FE->>SRV: registerClient on in-process backend
+    FE->>BUS: publish :instrument-library-changed, :collaboration-state-changed, :backend-changed
+    BUS->>SUB: IL refetch · menu → :local · clear Tier 1 cache
+```
 
 ### Collaboration Menu Enablement
 
