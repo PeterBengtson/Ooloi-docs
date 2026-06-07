@@ -9,15 +9,16 @@
 ## Table of Contents
 
 1. [What Integrant Does](#1-what-integrant-does)
-2. [The Component Lifecycle](#2-the-component-lifecycle)
-3. [The Three-Project Structure](#3-the-three-project-structure)
+2. [The Three-Project Structure](#2-the-three-project-structure)
+3. [The Component Lifecycle](#3-the-component-lifecycle)
 4. [The Backend System](#4-the-backend-system)
 5. [The Combined Application System](#5-the-combined-application-system)
-6. [How `ig/build` Differs from `ig/init`](#6-how-igbuild-differs-from-iginit)
-7. [Adding a New Component](#7-adding-a-new-component)
-8. [Testing Components](#8-testing-components)
-9. [Invariants and Pitfalls](#9-invariants-and-pitfalls)
-10. [Deprecated Patterns](#10-deprecated-patterns)
+6. [Component Design Principles](#6-component-design-principles)
+7. [How `ig/build` Differs from `ig/init`](#7-how-igbuild-differs-from-iginit)
+8. [Adding a New Component](#8-adding-a-new-component)
+9. [Testing Components](#9-testing-components)
+10. [Invariants and Pitfalls](#10-invariants-and-pitfalls)
+11. [Deprecated Patterns](#11-deprecated-patterns)
 
 ---
 
@@ -33,7 +34,52 @@ The result: components know nothing about each other's startup order, and tests 
 
 ---
 
-## 2. The Component Lifecycle
+## 2. The Three-Project Structure
+
+The three projects use Integrant differently, and understanding the asymmetry is essential.
+
+### Backend — standalone deployable
+
+The backend has its own `system.clj` and can run as a standalone gRPC server. It starts with `start-with-config`, which calls `ig/init` on the backend component set directly.
+
+```
+backend/src/main/clojure/ooloi/backend/system.clj
+backend/src/main/clojure/ooloi/backend/components/
+  piece_manager.clj
+  grpc_server.clj
+  http_server.clj
+  cache_daemon.clj
+  instrument_library.clj
+```
+
+### Frontend — components only, not deployed as an application
+
+The frontend defines Integrant components but is **never deployed standalone**. Its components exist to be assembled by the shared combined system in `shared/system.clj` — the only shipped Ooloi desktop product. The frontend project's `project.clj` has no `:main` entry; running `lein run` in `frontend/` does not start an application.
+
+```
+frontend/src/main/clojure/ooloi/frontend/components/
+  event_bus.clj
+  ui_manager.clj
+  grpc_clients.clj
+  event_router.clj
+  fetch_coordinator.clj
+```
+
+**`frontend/system.clj` exists as a test harness only.** It assembles the same frontend components the combined system uses (mirror of the frontend portion of `combined-config`) so the frontend project's own test suite can exercise component lifecycle in isolation without booting the full combined application. Production runs go through `shared/system.clj`.
+
+### Shared — the combined application
+
+The `src/app/clojure` source tree (only on the shared project's classpath) contains `ooloi.shared.system` — the combined application entry point. It assembles all backend and all frontend components into a single Integrant system, always using in-process gRPC transport.
+
+```
+shared/src/app/clojure/ooloi/shared/system.clj   ← combined-config, start-system!, start-app!
+```
+
+This is the **primary product** — what end users download and run.
+
+---
+
+## 3. The Component Lifecycle
 
 Every Integrant component is a Clojure multimethod pair dispatching on a namespaced keyword:
 
@@ -73,11 +119,204 @@ When `init-key` for `:grpc-server` is called, `:piece-manager` in its config map
 (ig/halt! system)
 ```
 
-In practice, Ooloi never calls `ig/init` directly — it uses `ig/build` for the combined app (see §6) and `start-with-config` for the backend. But the mental model is the same.
+In practice, Ooloi never calls `ig/init` directly — it uses `ig/build` for the combined app (see §7) and `start-with-config` for the backend. But the mental model is the same.
 
 ---
 
-## 2a. Component Design Principles
+## 4. The Backend System
+
+The standalone backend runs the same backend components as the combined app — it simply omits the frontend layer. It starts ten components:
+
+```
+thread-pool          (no dependencies, lives in shared/)
+instrument-library   (no dependencies)
+undo-manager         (no dependencies)
+piece-manager        (no dependencies)
+connection-registry  ← shared state   (no dependencies)
+server-statistics    ← shared state   (no dependencies)
+health-manager       ← shared state   (no dependencies)
+grpc-server          [piece-manager, instrument-library, undo-manager,
+                      connection-registry, server-statistics, health-manager]
+http-server          [connection-registry, server-statistics, health-manager]
+cache-daemon         [piece-manager]
+```
+
+**The ten components:**
+
+| Component | Purpose |
+|---|---|
+| `thread-pool` | Shared Claypoole thread pool (lives in `shared/`). |
+| `instrument-library` | The bundled instrument catalogue (the instrument-library atom; undo-managed). |
+| `undo-manager` | Backend coordinated undo/redo manager (ADR-0015 Tier 1). |
+| `piece-manager` | Lifecycle management for the piece storage system (STM). |
+| `connection-registry` | Shared client connection registry (O(1) lookup). |
+| `server-statistics` | Shared server-statistics counters (ADR-0025). |
+| `health-manager` | Shared gRPC `HealthStatusManager`. |
+| `grpc-server` | The backend's gRPC server (network transport). |
+| `http-server` | HTTP health / statistics endpoint (multi-format monitoring). |
+| `cache-daemon` | Background cache-optimisation daemon. |
+
+The three shared-state components — `connection-registry`, `server-statistics`, `health-manager` — are their own Integrant components, depended on by `grpc-server` and `http-server` via refs. `http-server` reads health and statistics from those components directly and holds no dependency on `grpc-server`; `cache-daemon` depends only on `piece-manager`. The same wiring holds in the combined app (§5), which adds only the frontend layer and, for splash ordering, a `ui-manager` dependency on each backend component (a `combined-config`-only concern — the standalone backend has no frontend). A component is wired one way; only the *set* of components present differs between the two deployments.
+
+**Entry point:** `ooloi.backend.system/start-with-config`
+
+```clojure
+;; Starts the backend system with configuration merged from CLI/env
+(def system (ooloi.backend.system/start-with-config {}))
+
+;; Stop
+(ooloi.backend.system/stop system)
+```
+
+`start-with-config` calls `ig/init` on the backend config after merging CLI arguments and environment variables into the component configs via the injection spec.
+
+---
+
+## 5. The Combined Application System
+
+The combined app's baseline `combined-config` initialises 15 components, plus an on-demand 16th (the network gRPC server) that the application adds at runtime when the host enables collaboration. The baseline divides into four initialisation groups that must run in order:
+
+```
+SHARED FOUNDATION
+  thread-pool                              (no dependencies)
+
+FRONTEND EARLY  — splash screen must exist before backend reports progress
+  event-bus                                [thread-pool]
+  ui-manager          ← shows splash       [thread-pool, event-bus]
+
+BACKEND
+  instrument-library                       [ui-manager]
+  piece-manager                            [ui-manager]
+  undo-manager                             [ui-manager]
+  connection-registry  ← shared state      [ui-manager]
+  server-statistics    ← shared state      [ui-manager]
+  health-manager       ← shared state      [ui-manager]
+  grpc-server         ← in-process only    [piece-manager, instrument-library,
+                                            undo-manager, connection-registry,
+                                            server-statistics, health-manager]
+  http-server                              [connection-registry, server-statistics,
+                                            health-manager]
+  cache-daemon                             [piece-manager]
+
+FRONTEND LATE  — connect to backend after it is running
+  grpc-clients                             [ui-manager, grpc-server]
+  event-router                             [grpc-clients, event-bus]
+  fetch-coordinator                        [thread-pool, grpc-clients]
+```
+
+**The 15 baseline components, plus the on-demand network server:**
+
+| Component | Layer | Purpose |
+|---|---|---|
+| `thread-pool` | shared | Shared Claypoole thread pool used across frontend and backend. |
+| `event-bus` | frontend | Category-based pub/sub bus for all frontend event delivery. |
+| `ui-manager` | frontend | Orchestrates all UI infrastructure — windows, dialogs, notifications, splash, theme. |
+| `instrument-library` | backend | The bundled instrument catalogue (the instrument-library atom; undo-managed). |
+| `piece-manager` | backend | Lifecycle management for the piece storage system (STM). |
+| `undo-manager` | backend | Backend coordinated undo/redo manager (ADR-0015 Tier 1). |
+| `connection-registry` | backend | Shared cross-transport client connection registry (O(1) lookup). |
+| `server-statistics` | backend | Shared cross-transport server-statistics counters (ADR-0025). |
+| `health-manager` | backend | Shared cross-transport gRPC `HealthStatusManager`. |
+| `grpc-server` | backend | In-process gRPC server — the combined app's local backend transport. |
+| `http-server` | backend | HTTP health / statistics endpoint (multi-format monitoring). |
+| `cache-daemon` | backend | Background cache-optimisation daemon. |
+| `grpc-clients` | frontend | The frontend's gRPC client(s) to the backend (in-process transport in the combined app). |
+| `event-router` | frontend | Routes backend events onto the frontend event bus. |
+| `fetch-coordinator` | frontend | Priority-based paintlist fetching via the shared Claypoole pool. |
+| `network-grpc-server` *(on-demand)* | backend | Second gRPC transport surface, added at runtime when the host enables collaboration (ADR-0036). |
+
+Backend components' dependency on `ui-manager` is the load-bearing design in `combined-config`: it forces them to start *after* the UI manager (and thus after the splash screen is showing and i18n is loaded). Without it, a backend component might init before i18n is ready and crash when it calls `tr`. This dependency exists **only** in `combined-config` — in the standalone backend config (§4), the same components have no frontend dependencies. The shared-state components (`connection-registry`, `server-statistics`, `health-manager`) carry the dependency uniformly with every other backend component even though their `init-key` does no `tr`-touching work; the rule is uniform precisely so the topological invariant is not contingent on what each component happens to do today.
+
+**Shared backend state has its own components.** `connection-registry` (the single map of registered clients), `server-statistics` (the single set of counters reported via the HTTP statistics endpoint), and `health-manager` (the gRPC `HealthStatusManager`) live in their own Integrant components, depended on by both gRPC servers and by `http-server` via refs. In `combined-config`, `http-server` holds **no** ref to `grpc-server` — it reads the three shared components directly (see §6 "Worked example: extracting shared state from grpc-server"). This is the spec ADR-0036 §Hybrid Transport Architecture commits to: shared state with lifecycle is its own component, depended on by every consumer; no server owns it. The on-demand network gRPC server documented below depends on the same refs, which is what guarantees broadcasts triggered on either transport reach all registered clients and statistics counters report system totality across all transports.
+
+**The complete dependency graph as declared in `combined-config`:**
+
+```clojure
+(defn combined-config []
+  {;; Shared
+   :ooloi.shared.components/thread-pool {}
+
+   ;; Frontend early
+   :ooloi.frontend.components/event-bus
+   {:thread-pool (ig/ref :ooloi.shared.components/thread-pool)}
+
+   :ooloi.frontend.components/ui-manager
+   {:thread-pool (ig/ref :ooloi.shared.components/thread-pool)
+    :event-bus   (ig/ref :ooloi.frontend.components/event-bus)}
+
+   ;; Backend
+   :ooloi.backend.components/instrument-library
+   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
+
+   :ooloi.backend.components/piece-manager
+   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
+
+   :ooloi.backend.components/undo-manager
+   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
+
+   ;; Shared backend state — see ADR-0036 §Hybrid Transport Architecture.
+   ;; Depended on by every transport surface so broadcasts and statistics counters
+   ;; are single sources of truth regardless of which transport a client joined through.
+   :ooloi.backend.components/connection-registry
+   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
+
+   :ooloi.backend.components/server-statistics
+   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
+
+   :ooloi.backend.components/health-manager
+   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
+
+   :ooloi.backend.components/grpc-server
+   {:piece-manager                (ig/ref :ooloi.backend.components/piece-manager)
+    :instrument-library-component (ig/ref :ooloi.backend.components/instrument-library)
+    :undo-manager-component       (ig/ref :ooloi.backend.components/undo-manager)
+    :connection-registry          (ig/ref :ooloi.backend.components/connection-registry)
+    :server-statistics            (ig/ref :ooloi.backend.components/server-statistics)
+    :health-manager               (ig/ref :ooloi.backend.components/health-manager)
+    :transport                    :in-process}
+
+   :ooloi.backend.components/http-server
+   {:connection-registry (ig/ref :ooloi.backend.components/connection-registry)
+    :server-statistics   (ig/ref :ooloi.backend.components/server-statistics)
+    :health-manager      (ig/ref :ooloi.backend.components/health-manager)}
+
+   :ooloi.backend.components/cache-daemon
+   {:piece-manager (ig/ref :ooloi.backend.components/piece-manager)}
+
+   ;; Frontend late
+   :ooloi.frontend.components/grpc-clients
+   {:transport   :in-process
+    :grpc-server (ig/ref :ooloi.backend.components/grpc-server)
+    :ui-manager  (ig/ref :ooloi.frontend.components/ui-manager)}
+
+   :ooloi.frontend.components.event-router/event-router
+   {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients)
+    :event-bus    (ig/ref :ooloi.frontend.components/event-bus)}
+
+   :ooloi.frontend.components.fetch-coordinator/fetch-coordinator
+   {:thread-pool  (ig/ref :ooloi.shared.components/thread-pool)
+    :grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients)}})
+```
+
+### Dynamic (On-Demand) Components
+
+Some components are not part of `combined-config` and therefore do not start with the application. They are added to the running Integrant system through an application-level API, then removed when no longer needed. The component itself is a full Integrant component — it implements `ig/init-key` and `ig/halt-key!` and complies with the `:status :running` invariant — but its lifecycle is driven by application logic rather than the system bootstrap.
+
+**`:ooloi.backend.components/network-grpc-server`** — second gRPC transport surface, started when the host enables a collaboration session and stopped on manual termination or after a configurable grace period of no connected guests (ADR-0036 §Hybrid Transport Architecture). It declares the same shared-state dependencies as the in-process `grpc-server` — `piece-manager`, `instrument-library`, `undo-manager`, `connection-registry`, `server-statistics`, `health-manager` — and points its config to the **same refs**. The in-process server is unaffected by the network server's lifecycle.
+
+The pattern for dynamic components:
+
+- Their config keys live alongside the static `combined-config` keys; the `init-key` and `halt-key!` methods are normal Integrant methods.
+- The application's backend API adds the component to the running system map by calling `ig/init-key` directly, threading the live refs from the running system into the new component's config.
+- `ig/halt-key!` removes the component when its lifecycle ends; the next reference to the system map omits the entry.
+- The `:status :running` invariant applies while the component is running; the system-health functions (§10) walk every key in the system map uniformly — they need no special handling for dynamic components.
+- The §30 conformance test enforces the invariant on whatever is present in the running system: components added dynamically during the test must comply too.
+
+The same pattern can host future dynamic components — a future HTTP REST gateway, a future MIDI listener, anything that is not part of every application run but follows the Integrant lifecycle when it does run.
+
+---
+
+## 6. Component Design Principles
 
 Integrant gives you the tools to express dependencies cleanly. The framework doesn't enforce good design — it makes good design *possible*. Three principles guide how Ooloi uses Integrant.
 
@@ -170,241 +409,7 @@ The bar is intentionally low. Tiny components (an atom + `:status :running`) are
 
 ---
 
-## 3. The Three-Project Structure
-
-The three projects use Integrant differently, and understanding the asymmetry is essential.
-
-### Backend — standalone deployable
-
-The backend has its own `system.clj` and can run as a standalone gRPC server. It starts with `start-with-config`, which calls `ig/init` on the backend component set directly.
-
-```
-backend/src/main/clojure/ooloi/backend/system.clj
-backend/src/main/clojure/ooloi/backend/components/
-  piece_manager.clj
-  grpc_server.clj
-  http_server.clj
-  cache_daemon.clj
-  instrument_library.clj
-```
-
-### Frontend — components only, not deployed as an application
-
-The frontend defines Integrant components but is **never deployed standalone**. Its components exist to be assembled by the shared combined system in `shared/system.clj` — the only shipped Ooloi desktop product. The frontend project's `project.clj` has no `:main` entry; running `lein run` in `frontend/` does not start an application.
-
-```
-frontend/src/main/clojure/ooloi/frontend/components/
-  event_bus.clj
-  ui_manager.clj
-  grpc_clients.clj
-  event_router.clj
-  fetch_coordinator.clj
-```
-
-**`frontend/system.clj` exists as a test harness only.** It assembles the same frontend components the combined system uses (mirror of the frontend portion of `combined-config`) so the frontend project's own test suite can exercise component lifecycle in isolation without booting the full combined application. Production runs go through `shared/system.clj`.
-
-### Shared — the combined application
-
-The `src/app/clojure` source tree (only on the shared project's classpath) contains `ooloi.shared.system` — the combined application entry point. It assembles all backend and all frontend components into a single Integrant system, always using in-process gRPC transport.
-
-```
-shared/src/app/clojure/ooloi/shared/system.clj   ← combined-config, start-system!, start-app!
-```
-
-This is the **primary product** — what end users download and run.
-
----
-
-## 4. The Backend System
-
-When running as a standalone server, the backend starts seven components:
-
-```
-thread-pool          (no dependencies, lives in shared/)
-instrument-library   (no dependencies)
-undo-manager         (no dependencies)
-
-piece-manager
-    ├── grpc-server  (also depends on instrument-library, undo-manager)
-    │       └── http-server
-    └── cache-daemon
-```
-
-**The seven components:**
-
-| Component | Purpose |
-|---|---|
-| `thread-pool` | Shared Claypoole thread pool (lives in `shared/`). |
-| `instrument-library` | The bundled instrument catalogue (the instrument-library atom; undo-managed). |
-| `undo-manager` | Backend coordinated undo/redo manager (ADR-0015 Tier 1). |
-| `piece-manager` | Lifecycle management for the piece storage system (STM). |
-| `grpc-server` | The backend's gRPC server; in this deployment it also holds the connection-registry, server-statistics, and health-manager instances internally rather than as separate components. |
-| `http-server` | HTTP health / statistics endpoint (multi-format monitoring). |
-| `cache-daemon` | Background cache-optimisation daemon. |
-
-`thread-pool`, `instrument-library`, and `undo-manager` each have no dependencies and start independently of `piece-manager`. `grpc-server` depends on `piece-manager`, `instrument-library`, and `undo-manager`. `cache-daemon` depends only on `piece-manager`. `http-server` depends on `grpc-server` for health-manager and shared-state access (the standalone backend keeps the pre-#211-Phase-0 wiring where `http-server` reaches into `grpc-server`'s component map; the Phase 0 decoupling — where `http-server` consumes `connection-registry`, `server-statistics`, and `health-manager` directly via Integrant refs — applies only to `combined-config` §5).
-
-The shared-state Integrant components introduced in #211 Phase 0 (`connection-registry`, `server-statistics`, `health-manager`) are NOT part of the standalone backend's config. In the standalone deployment, `grpc-server`'s `init-key` falls back to creating those instances locally inside its own component map when no Integrant refs are supplied. Sharing across multiple servers only matters in `combined-config` (and on-demand `network-grpc-server`), where two transport surfaces of the same Ooloi need to see one registry.
-
-**Entry point:** `ooloi.backend.system/start-with-config`
-
-```clojure
-;; Starts the backend system with configuration merged from CLI/env
-(def system (ooloi.backend.system/start-with-config {}))
-
-;; Stop
-(ooloi.backend.system/stop system)
-```
-
-`start-with-config` calls `ig/init` on the backend config after merging CLI arguments and environment variables into the component configs via the injection spec.
-
----
-
-## 5. The Combined Application System
-
-The combined app's baseline `combined-config` initialises 15 components, plus an on-demand 16th (the network gRPC server) that the application adds at runtime when the host enables collaboration. The baseline divides into four initialisation groups that must run in order:
-
-```
-SHARED FOUNDATION
-  thread-pool                              (no dependencies)
-
-FRONTEND EARLY  — splash screen must exist before backend reports progress
-  event-bus                                [thread-pool]
-  ui-manager          ← shows splash       [thread-pool, event-bus]
-
-BACKEND
-  instrument-library                       [ui-manager]
-  piece-manager                            [ui-manager]
-  undo-manager                             [ui-manager]
-  connection-registry  ← shared state      [ui-manager]
-  server-statistics    ← shared state      [ui-manager]
-  health-manager       ← shared state      [ui-manager]
-  grpc-server         ← in-process only    [piece-manager, instrument-library,
-                                            undo-manager, connection-registry,
-                                            server-statistics, health-manager]
-  http-server                              [connection-registry, server-statistics,
-                                            health-manager]
-  cache-daemon                             [piece-manager]
-
-FRONTEND LATE  — connect to backend after it is running
-  grpc-clients                             [ui-manager, grpc-server]
-  event-router                             [grpc-clients, event-bus]
-  fetch-coordinator                        [thread-pool, grpc-clients]
-```
-
-**The 15 baseline components, plus the on-demand network server:**
-
-| Component | Layer | Purpose |
-|---|---|---|
-| `thread-pool` | shared | Shared Claypoole thread pool used across frontend and backend. |
-| `event-bus` | frontend | Category-based pub/sub bus for all frontend event delivery. |
-| `ui-manager` | frontend | Orchestrates all UI infrastructure — windows, dialogs, notifications, splash, theme. |
-| `instrument-library` | backend | The bundled instrument catalogue (the instrument-library atom; undo-managed). |
-| `piece-manager` | backend | Lifecycle management for the piece storage system (STM). |
-| `undo-manager` | backend | Backend coordinated undo/redo manager (ADR-0015 Tier 1). |
-| `connection-registry` | backend | Shared cross-transport client connection registry (O(1) lookup). |
-| `server-statistics` | backend | Shared cross-transport server-statistics counters (ADR-0025). |
-| `health-manager` | backend | Shared cross-transport gRPC `HealthStatusManager`. |
-| `grpc-server` | backend | In-process gRPC server — the combined app's local backend transport. |
-| `http-server` | backend | HTTP health / statistics endpoint (multi-format monitoring). |
-| `cache-daemon` | backend | Background cache-optimisation daemon. |
-| `grpc-clients` | frontend | The frontend's gRPC client(s) to the backend (in-process transport in the combined app). |
-| `event-router` | frontend | Routes backend events onto the frontend event bus. |
-| `fetch-coordinator` | frontend | Priority-based paintlist fetching via the shared Claypoole pool. |
-| `network-grpc-server` *(on-demand)* | backend | Second gRPC transport surface, added at runtime when the host enables collaboration (ADR-0036). |
-
-Backend components' dependency on `ui-manager` is the load-bearing design in `combined-config`: it forces them to start *after* the UI manager (and thus after the splash screen is showing and i18n is loaded). Without it, a backend component might init before i18n is ready and crash when it calls `tr`. This dependency exists **only** in `combined-config` — in the standalone backend config (§4), the same components have no frontend dependencies. The shared-state components (`connection-registry`, `server-statistics`, `health-manager`) carry the dependency uniformly with every other backend component even though their `init-key` does no `tr`-touching work; the rule is uniform precisely so the topological invariant is not contingent on what each component happens to do today.
-
-**Shared backend state has its own components.** `connection-registry` (the single map of registered clients), `server-statistics` (the single set of counters reported via the HTTP statistics endpoint), and `health-manager` (the gRPC `HealthStatusManager`) live in their own Integrant components, depended on by both gRPC servers and by `http-server` via refs. In `combined-config`, `http-server` holds **no** ref to `grpc-server` — it reads the three shared components directly (the #211 Phase 0 decoupling; see §2a "Worked example: extracting shared state from grpc-server"). This is the spec ADR-0036 §Hybrid Transport Architecture commits to: shared state with lifecycle is its own component, depended on by every consumer; no server owns it. The on-demand network gRPC server documented below depends on the same refs, which is what guarantees broadcasts triggered on either transport reach all registered clients and statistics counters report system totality across all transports.
-
-**The complete dependency graph as declared in `combined-config`:**
-
-```clojure
-(defn combined-config []
-  {;; Shared
-   :ooloi.shared.components/thread-pool {}
-
-   ;; Frontend early
-   :ooloi.frontend.components/event-bus
-   {:thread-pool (ig/ref :ooloi.shared.components/thread-pool)}
-
-   :ooloi.frontend.components/ui-manager
-   {:thread-pool (ig/ref :ooloi.shared.components/thread-pool)
-    :event-bus   (ig/ref :ooloi.frontend.components/event-bus)}
-
-   ;; Backend
-   :ooloi.backend.components/instrument-library
-   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
-
-   :ooloi.backend.components/piece-manager
-   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
-
-   :ooloi.backend.components/undo-manager
-   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
-
-   ;; Shared backend state — see ADR-0036 §Hybrid Transport Architecture.
-   ;; Depended on by every transport surface so broadcasts and statistics counters
-   ;; are single sources of truth regardless of which transport a client joined through.
-   :ooloi.backend.components/connection-registry
-   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
-
-   :ooloi.backend.components/server-statistics
-   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
-
-   :ooloi.backend.components/health-manager
-   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
-
-   :ooloi.backend.components/grpc-server
-   {:piece-manager                (ig/ref :ooloi.backend.components/piece-manager)
-    :instrument-library-component (ig/ref :ooloi.backend.components/instrument-library)
-    :undo-manager-component       (ig/ref :ooloi.backend.components/undo-manager)
-    :connection-registry          (ig/ref :ooloi.backend.components/connection-registry)
-    :server-statistics            (ig/ref :ooloi.backend.components/server-statistics)
-    :health-manager               (ig/ref :ooloi.backend.components/health-manager)
-    :transport                    :in-process}
-
-   :ooloi.backend.components/http-server
-   {:connection-registry (ig/ref :ooloi.backend.components/connection-registry)
-    :server-statistics   (ig/ref :ooloi.backend.components/server-statistics)
-    :health-manager      (ig/ref :ooloi.backend.components/health-manager)}
-
-   :ooloi.backend.components/cache-daemon
-   {:piece-manager (ig/ref :ooloi.backend.components/piece-manager)}
-
-   ;; Frontend late
-   :ooloi.frontend.components/grpc-clients
-   {:transport   :in-process
-    :grpc-server (ig/ref :ooloi.backend.components/grpc-server)
-    :ui-manager  (ig/ref :ooloi.frontend.components/ui-manager)}
-
-   :ooloi.frontend.components.event-router/event-router
-   {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients)
-    :event-bus    (ig/ref :ooloi.frontend.components/event-bus)}
-
-   :ooloi.frontend.components.fetch-coordinator/fetch-coordinator
-   {:thread-pool  (ig/ref :ooloi.shared.components/thread-pool)
-    :grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients)}})
-```
-
-### Dynamic (On-Demand) Components
-
-Some components are not part of `combined-config` and therefore do not start with the application. They are added to the running Integrant system through an application-level API, then removed when no longer needed. The component itself is a full Integrant component — it implements `ig/init-key` and `ig/halt-key!` and complies with the `:status :running` invariant — but its lifecycle is driven by application logic rather than the system bootstrap.
-
-**`:ooloi.backend.components/network-grpc-server`** — second gRPC transport surface, started when the host enables a collaboration session and stopped on manual termination or after a configurable grace period of no connected guests (ADR-0036 §Hybrid Transport Architecture). It declares the same shared-state dependencies as the in-process `grpc-server` — `piece-manager`, `instrument-library`, `undo-manager`, `connection-registry`, `server-statistics`, `health-manager` — and points its config to the **same refs**. The in-process server is unaffected by the network server's lifecycle.
-
-The pattern for dynamic components:
-
-- Their config keys live alongside the static `combined-config` keys; the `init-key` and `halt-key!` methods are normal Integrant methods.
-- The application's backend API adds the component to the running system map by calling `ig/init-key` directly, threading the live refs from the running system into the new component's config.
-- `ig/halt-key!` removes the component when its lifecycle ends; the next reference to the system map omits the entry.
-- The `:status :running` invariant applies while the component is running; the system-health functions (§9) walk every key in the system map uniformly — they need no special handling for dynamic components.
-- The §30 conformance test enforces the invariant on whatever is present in the running system: components added dynamically during the test must comply too.
-
-The same pattern can host future dynamic components — a future HTTP REST gateway, a future MIDI listener, anything that is not part of every application run but follows the Integrant lifecycle when it does run.
-
----
-
-## 6. How `ig/build` Differs from `ig/init`
+## 7. How `ig/build` Differs from `ig/init`
 
 The combined app uses `ig/build` rather than `ig/init`. The distinction matters.
 
@@ -432,7 +437,7 @@ This means:
 
 ---
 
-## 7. Adding a New Component
+## 8. Adding a New Component
 
 Every new backend component added to `combined-config` requires all of the following. The first two are genuinely unintuitive and cause failures with no obvious connection to the missing item.
 
@@ -494,7 +499,7 @@ If the new component is reached from a `shared/ops/` impl during a gRPC request 
 
 ---
 
-## 8. Testing Components
+## 9. Testing Components
 
 ### Test utility namespaces
 
@@ -677,7 +682,7 @@ The symptom of getting this wrong is identity-dependent server responses (`:own?
     ...))
 ```
 
-This is a workaround for the current production-side coupling between `http-server` and `grpc-server` (see §2a worked example). **It is scheduled for removal once #211 Phase 0 lands the http-server decoupling.** After that:
+This is a workaround for the current production-side coupling between `http-server` and `grpc-server` (see §6 worked example). **It is scheduled for removal once #211 Phase 0 lands the http-server decoupling.** After that:
 
 - `http-server` no longer holds a ref to any specific `grpc-server`; it depends on the shared `connection-registry`, `server-statistics`, and `health-manager` components directly
 - Tests can instantiate any number of gRPC servers with at most one shared `http-server` (or none) without port collision
@@ -856,11 +861,11 @@ Both helpers:
 - Cover the pre-watch race by also testing pred against the current value before deref
 - Always remove the watcher before returning, regardless of timeout or success
 
-This pattern replaces `CountDownLatch` (Java-style coordination forbidden in Ooloi tests per [§10](#10-deprecated-patterns)) and ad-hoc `(loop [tries] ... Thread/sleep ... recur)` polling loops.
+This pattern replaces `CountDownLatch` (Java-style coordination forbidden in Ooloi tests per [§11](#11-deprecated-patterns)) and ad-hoc `(loop [tries] ... Thread/sleep ... recur)` polling loops.
 
 ---
 
-## 9. Invariants and Pitfalls
+## 10. Invariants and Pitfalls
 
 **Every map-type component must return `:status :running`.**
 All three system-health functions (`get-backend-system-health`, `get-frontend-system-health`, `get-combined-system-health`) check this uniformly for every value in the system map. Omitting it produces silent `:unhealthy` status with no error. The combined system enforces this invariant via the Section 30 conformance test.
@@ -878,7 +883,7 @@ If a component throws during init, the partial system (components that started s
 All servers use default ports (gRPC: 10700, HTTP: 10701). There is no need for random port allocation. The `with-combined-system` macro defaults to in-process transport (no port binding); when called with `{:transport :network}`, it binds the default 10700/10701, same as `with-server`.
 
 **Prefer `wait-for-event` / `wait-for-state` over `Thread/sleep` for async assertions.**
-Client registration with `register-client` is synchronous. gRPC event delivery is asynchronous. After dispatching an event, wait for it to arrive at the destination — but `Thread/sleep N` is brittle (too short and the test flakes, too long and the suite slows down). The canonical replacement is `(wait-for-event events-atom pred timeout-ms)` for "did the matching event arrive in this atom?", or `(wait-for-state state-atom pred timeout-ms)` for whole-collection conditions like count or absence. Both helpers in `util.common` return as soon as the condition is met, with a hard upper-bound timeout. See [§8 Async helpers](#async-helpers-from-utilcommon).
+Client registration with `register-client` is synchronous. gRPC event delivery is asynchronous. After dispatching an event, wait for it to arrive at the destination — but `Thread/sleep N` is brittle (too short and the test flakes, too long and the suite slows down). The canonical replacement is `(wait-for-event events-atom pred timeout-ms)` for "did the matching event arrive in this atom?", or `(wait-for-state state-atom pred timeout-ms)` for whole-collection conditions like count or absence. Both helpers in `util.common` return as soon as the condition is met, with a hard upper-bound timeout. See [§9 Async helpers](#async-helpers-from-utilcommon).
 
 `Thread/sleep` is still appropriate when *modelling* delay (simulating a slow client's processing time, waiting for a known fixed-duration external event) — i.e. when the sleep IS the test's behaviour, not a workaround for asynchrony. In all other cases, prefer the helpers.
 
@@ -891,11 +896,11 @@ This is intentional — it allows these components to coexist in a system with o
 
 ---
 
-## 10. Deprecated Patterns
+## 11. Deprecated Patterns
 
 ### Manual `ig/init-key` / `ig/halt-key!` in test bodies
 
-The explicit `ig/init-key` / `ig/halt-key!` test pattern — creating and cleaning up components manually in `let` / `try` / `finally` blocks — is still valid Integrant but is no longer the recommended approach for new tests. The macros in §8 provide the same guarantees with far less boilerplate and no risk of missing cleanup on failure.
+The explicit `ig/init-key` / `ig/halt-key!` test pattern — creating and cleaning up components manually in `let` / `try` / `finally` blocks — is still valid Integrant but is no longer the recommended approach for new tests. The macros in §9 provide the same guarantees with far less boilerplate and no risk of missing cleanup on failure.
 
 If you encounter existing tests that look like this:
 
@@ -910,7 +915,7 @@ If you encounter existing tests that look like this:
       (ig/halt-key! :ooloi.backend.components/grpc-server server))))
 ```
 
-They are correct and will continue to work, but new tests should use `with-server` / `with-clients` instead. The explicit pattern remains the right choice for REPL exploration and for complex scenarios genuinely not covered by the macros (see §8 "Manual-lifecycle exceptions" for the named cases).
+They are correct and will continue to work, but new tests should use `with-server` / `with-clients` instead. The explicit pattern remains the right choice for REPL exploration and for complex scenarios genuinely not covered by the macros (see §9 "Manual-lifecycle exceptions" for the named cases).
 
 The `start-server` / `stop-server` / `register-client` / `disconnect-client` functions are the procedural equivalents of the macros. They are useful at the REPL but not in tests.
 
@@ -920,7 +925,7 @@ The `start-server` / `stop-server` / `register-client` / `disconnect-client` fun
 
 - For "wait until callback fires" (1 expected delivery): `(promise)` + `(deref p timeout-ms nil)`. The callback delivers the promise.
 - For "wait until N callbacks fire": an `atom` counting remaining deliveries plus a single `promise` delivered when the atom reaches zero.
-- For "wait until an atom satisfies a predicate" (events arriving, registry counts changing, flag flipping): `wait-for-event` (per-element pred) or `wait-for-state` (whole-value pred) from `util.common`. See [§8 Async helpers](#async-helpers-from-utilcommon).
+- For "wait until an atom satisfies a predicate" (events arriving, registry counts changing, flag flipping): `wait-for-event` (per-element pred) or `wait-for-state` (whole-value pred) from `util.common`. See [§9 Async helpers](#async-helpers-from-utilcommon).
 
 Why deprecated: `CountDownLatch` requires the caller to know the exact count in advance, doesn't compose with predicates, and conflates "thing happened" with "Java synchroniser tripped" — making test failures harder to diagnose. The promise-based replacements are idiomatic Clojure, compose with any condition, and produce clearer failure messages.
 
@@ -928,7 +933,7 @@ Why deprecated: `CountDownLatch` requires the caller to know the exact count in 
 
 `(Thread/sleep N)` is appropriate when *modelling* delay (a deliberately slow client, a known fixed-duration external event). It is **not** appropriate when used to "give the async thing time to happen" before an assertion — too short and the test flakes, too long and the suite is slow.
 
-Use `wait-for-event` / `wait-for-state` for the latter pattern (see §8). If neither fits, write a small inline polling loop with a deadline and a `Thread/sleep 10` between iterations — but in practice the helpers cover the vast majority of cases.
+Use `wait-for-event` / `wait-for-state` for the latter pattern (see §9). If neither fits, write a small inline polling loop with a deadline and a `Thread/sleep 10` between iterations — but in practice the helpers cover the vast majority of cases.
 
 ### `requiring-resolve` (or runtime `resolve`) to break a dependency cycle
 

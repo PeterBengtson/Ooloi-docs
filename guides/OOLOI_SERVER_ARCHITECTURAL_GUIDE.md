@@ -298,7 +298,7 @@ The three shared components:
 
 After this extraction, **`http-server` no longer holds an `ig/ref` to `grpc-server`** — its handlers read from the three shared components directly. This eliminates the coupling where `http-server`'s stats and health handlers had to drill into `grpc-server`'s component map for fields that weren't really `grpc-server`'s responsibility, and makes `http-server` truly system-singleton: it serves stats from the shared atoms regardless of which gRPC servers are currently running. Halting the on-demand network gRPC server does not touch `http-server` at all.
 
-See [INTEGRANT_COMPONENTS §2a — Component Design Principles](INTEGRANT_COMPONENTS.md#2a-component-design-principles) for the design heuristic behind these extractions.
+See [INTEGRANT_COMPONENTS §6 — Component Design Principles](INTEGRANT_COMPONENTS.md#6-component-design-principles) for the design heuristic behind these extractions.
 
 ### Connection Registry
 
