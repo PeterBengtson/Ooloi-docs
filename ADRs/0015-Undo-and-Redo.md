@@ -915,7 +915,13 @@ lifecycle. They describe the architectural contract, not implementation detail.
    does not trigger the callback leaves the menu showing stale text even though the
    cache is correct: a class of bug that passes internal-state tests while failing in
    practice. The single callback is the contract; tier-specific menu refresh paths are
-   an anti-pattern.
+   an anti-pattern. `refresh-menu-text!` reads the live combined-app system map from the
+   UI Manager's single system-state provider ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md)
+   §Collaboration Menu Enablement), so this shared, stateless-looking call correctly
+   re-evaluates *every* dynamic menu item — including state-dependent ones such as the
+   collaboration items — rather than against an empty map. That is what makes one shared
+   callback safe across features: the refresh is idempotent regardless of which tier or
+   feature triggered it.
 
 2. **Menu `text-key` and `enabled?` functions consult the routing layer, not Tier 2
    alone.** The undo and redo `MenuItem`s store their `text-key` and `enabled?`
