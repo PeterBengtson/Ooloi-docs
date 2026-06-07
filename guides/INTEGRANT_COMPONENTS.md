@@ -230,6 +230,18 @@ piece-manager
     └── cache-daemon
 ```
 
+**The seven components:**
+
+| Component | Purpose |
+|---|---|
+| `thread-pool` | Shared Claypoole thread pool (lives in `shared/`). |
+| `instrument-library` | The bundled instrument catalogue (the instrument-library atom; undo-managed). |
+| `undo-manager` | Backend coordinated undo/redo manager (ADR-0015 Tier 1). |
+| `piece-manager` | Lifecycle management for the piece storage system (STM). |
+| `grpc-server` | The backend's gRPC server; in this deployment it also holds the connection-registry, server-statistics, and health-manager instances internally rather than as separate components. |
+| `http-server` | HTTP health / statistics endpoint (multi-format monitoring). |
+| `cache-daemon` | Background cache-optimisation daemon. |
+
 `thread-pool`, `instrument-library`, and `undo-manager` each have no dependencies and start independently of `piece-manager`. `grpc-server` depends on `piece-manager`, `instrument-library`, and `undo-manager`. `cache-daemon` depends only on `piece-manager`. `http-server` depends on `grpc-server` for health-manager and shared-state access (the standalone backend keeps the pre-#211-Phase-0 wiring where `http-server` reaches into `grpc-server`'s component map; the Phase 0 decoupling — where `http-server` consumes `connection-registry`, `server-statistics`, and `health-manager` directly via Integrant refs — applies only to `combined-config` §5).
 
 The shared-state Integrant components introduced in #211 Phase 0 (`connection-registry`, `server-statistics`, `health-manager`) are NOT part of the standalone backend's config. In the standalone deployment, `grpc-server`'s `init-key` falls back to creating those instances locally inside its own component map when no Integrant refs are supplied. Sharing across multiple servers only matters in `combined-config` (and on-demand `network-grpc-server`), where two transport surfaces of the same Ooloi need to see one registry.
@@ -279,6 +291,27 @@ FRONTEND LATE  — connect to backend after it is running
   event-router                             [grpc-clients, event-bus]
   fetch-coordinator                        [thread-pool, grpc-clients]
 ```
+
+**The 15 baseline components, plus the on-demand network server:**
+
+| Component | Layer | Purpose |
+|---|---|---|
+| `thread-pool` | shared | Shared Claypoole thread pool used across frontend and backend. |
+| `event-bus` | frontend | Category-based pub/sub bus for all frontend event delivery. |
+| `ui-manager` | frontend | Orchestrates all UI infrastructure — windows, dialogs, notifications, splash, theme. |
+| `instrument-library` | backend | The bundled instrument catalogue (the instrument-library atom; undo-managed). |
+| `piece-manager` | backend | Lifecycle management for the piece storage system (STM). |
+| `undo-manager` | backend | Backend coordinated undo/redo manager (ADR-0015 Tier 1). |
+| `connection-registry` | backend | Shared cross-transport client connection registry (O(1) lookup). |
+| `server-statistics` | backend | Shared cross-transport server-statistics counters (ADR-0025). |
+| `health-manager` | backend | Shared cross-transport gRPC `HealthStatusManager`. |
+| `grpc-server` | backend | In-process gRPC server — the combined app's local backend transport. |
+| `http-server` | backend | HTTP health / statistics endpoint (multi-format monitoring). |
+| `cache-daemon` | backend | Background cache-optimisation daemon. |
+| `grpc-clients` | frontend | The frontend's gRPC client(s) to the backend (in-process transport in the combined app). |
+| `event-router` | frontend | Routes backend events onto the frontend event bus. |
+| `fetch-coordinator` | frontend | Priority-based paintlist fetching via the shared Claypoole pool. |
+| `network-grpc-server` *(on-demand)* | backend | Second gRPC transport surface, added at runtime when the host enables collaboration (ADR-0036). |
 
 Backend components' dependency on `ui-manager` is the load-bearing design in `combined-config`: it forces them to start *after* the UI manager (and thus after the splash screen is showing and i18n is loaded). Without it, a backend component might init before i18n is ready and crash when it calls `tr`. This dependency exists **only** in `combined-config` — in the standalone backend config (§4), the same components have no frontend dependencies. The shared-state components (`connection-registry`, `server-statistics`, `health-manager`) carry the dependency uniformly with every other backend component even though their `init-key` does no `tr`-touching work; the rule is uniform precisely so the topological invariant is not contingent on what each component happens to do today.
 
