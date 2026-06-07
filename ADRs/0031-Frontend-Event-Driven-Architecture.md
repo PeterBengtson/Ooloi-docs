@@ -146,6 +146,9 @@ Category-based pub/sub for all frontend event delivery, backed by a shared Clayp
 | `:app-settings` | `:setting-changed` | `set-app-setting!` (ADR-0043) |
 | `:instrument-library` | `:instrument-library-changed` | Event Router (routed from backend; ADR-0045) |
 | `:undo` | `:undo-state-changed` | Event Router (routed from backend; ADR-0015) |
+| `:collaboration` | `:collaboration-state-changed` | `switch-to!` (transport changes), host-session / terminate handlers (network-server presence) — see [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Collaboration Menu Enablement |
+
+The `:collaboration` category is frontend-originated and carries *this client's own* collaboration involvement — its transport, and whether it is hosting. It is distinct from the backend-routed `:presence` / `:collaboration-user-*` events listed below, which describe *other participants* in a session and reach the bus through the Event Router.
 
 Categories are arbitrary keywords — any component can define new ones. Backend-originated
 categories (`:cache-invalidation`, `:presence`, `:playback`, `:system`, `:notification`,
