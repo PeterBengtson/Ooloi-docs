@@ -384,7 +384,7 @@ The hybrid transport architecture, the permission model, and the invitation flow
 - JWT generation and validation per ADR-0021
 - Role-based permission gating in the existing interceptor
 - Email-based invitation flow with `ooloi://` deep links
-- Piece-identity-as-access-key (per the planned identity ADR)
+- Piece-identity-as-access-key (piece-level UUID identity ratified as an amendment to ADR-0012; the access model itself is specified in this ADR and ADR-0021 — no separate identity ADR is written)
 - Persistent collaborator registry and audit log
 
 The Stage 1 stubbed interceptor is the exact surface that Stage 2 replaces with real permission logic; Stage 2 is decision logic layered into an existing interceptor pipeline, not a re-architecture of the transport.
