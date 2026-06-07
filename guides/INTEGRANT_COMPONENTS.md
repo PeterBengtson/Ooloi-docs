@@ -250,7 +250,7 @@ The shared-state Integrant components introduced in #211 Phase 0 (`connection-re
 
 ## 5. The Combined Application System
 
-The combined app's baseline `combined-config` initialises 14 components, plus an on-demand 15th (the network gRPC server) that the application adds at runtime when the host enables collaboration. The baseline divides into four initialisation groups that must run in order:
+The combined app's baseline `combined-config` initialises 15 components, plus an on-demand 16th (the network gRPC server) that the application adds at runtime when the host enables collaboration. The baseline divides into four initialisation groups that must run in order:
 
 ```
 SHARED FOUNDATION
@@ -266,10 +266,12 @@ BACKEND
   undo-manager                             [ui-manager]
   connection-registry  ← shared state      [ui-manager]
   server-statistics    ← shared state      [ui-manager]
+  health-manager       ← shared state      [ui-manager]
   grpc-server         ← in-process only    [piece-manager, instrument-library,
                                             undo-manager, connection-registry,
-                                            server-statistics]
-  http-server                              [grpc-server]
+                                            server-statistics, health-manager]
+  http-server                              [connection-registry, server-statistics,
+                                            health-manager]
   cache-daemon                             [piece-manager]
 
 FRONTEND LATE  — connect to backend after it is running
@@ -278,9 +280,9 @@ FRONTEND LATE  — connect to backend after it is running
   fetch-coordinator                        [thread-pool, grpc-clients]
 ```
 
-Backend components' dependency on `ui-manager` is the load-bearing design in `combined-config`: it forces them to start *after* the UI manager (and thus after the splash screen is showing and i18n is loaded). Without it, a backend component might init before i18n is ready and crash when it calls `tr`. This dependency exists **only** in `combined-config` — in the standalone backend config (§4), the same components have no frontend dependencies. The shared-state components (`connection-registry`, `server-statistics`) carry the dependency uniformly with every other backend component even though their `init-key` does no `tr`-touching work; the rule is uniform precisely so the topological invariant is not contingent on what each component happens to do today.
+Backend components' dependency on `ui-manager` is the load-bearing design in `combined-config`: it forces them to start *after* the UI manager (and thus after the splash screen is showing and i18n is loaded). Without it, a backend component might init before i18n is ready and crash when it calls `tr`. This dependency exists **only** in `combined-config` — in the standalone backend config (§4), the same components have no frontend dependencies. The shared-state components (`connection-registry`, `server-statistics`, `health-manager`) carry the dependency uniformly with every other backend component even though their `init-key` does no `tr`-touching work; the rule is uniform precisely so the topological invariant is not contingent on what each component happens to do today.
 
-**Shared backend state has its own components.** `connection-registry` (the single map of registered clients) and `server-statistics` (the single set of counters reported via the HTTP statistics endpoint) live in their own Integrant components, depended on by the `grpc-server` via refs. This is the spec ADR-0036 §Hybrid Transport Architecture commits to: shared state with lifecycle is its own component, depended on by every consumer; no server owns it. The on-demand network gRPC server documented below depends on the same refs, which is what guarantees broadcasts triggered on either transport reach all registered clients and statistics counters report system totality across all transports.
+**Shared backend state has its own components.** `connection-registry` (the single map of registered clients), `server-statistics` (the single set of counters reported via the HTTP statistics endpoint), and `health-manager` (the gRPC `HealthStatusManager`) live in their own Integrant components, depended on by both gRPC servers and by `http-server` via refs. In `combined-config`, `http-server` holds **no** ref to `grpc-server` — it reads the three shared components directly (the #211 Phase 0 decoupling; see §2a "Worked example: extracting shared state from grpc-server"). This is the spec ADR-0036 §Hybrid Transport Architecture commits to: shared state with lifecycle is its own component, depended on by every consumer; no server owns it. The on-demand network gRPC server documented below depends on the same refs, which is what guarantees broadcasts triggered on either transport reach all registered clients and statistics counters report system totality across all transports.
 
 **The complete dependency graph as declared in `combined-config`:**
 
@@ -316,16 +318,22 @@ Backend components' dependency on `ui-manager` is the load-bearing design in `co
    :ooloi.backend.components/server-statistics
    {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
 
+   :ooloi.backend.components/health-manager
+   {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
+
    :ooloi.backend.components/grpc-server
    {:piece-manager                (ig/ref :ooloi.backend.components/piece-manager)
     :instrument-library-component (ig/ref :ooloi.backend.components/instrument-library)
     :undo-manager-component       (ig/ref :ooloi.backend.components/undo-manager)
     :connection-registry          (ig/ref :ooloi.backend.components/connection-registry)
     :server-statistics            (ig/ref :ooloi.backend.components/server-statistics)
+    :health-manager               (ig/ref :ooloi.backend.components/health-manager)
     :transport                    :in-process}
 
    :ooloi.backend.components/http-server
-   {:grpc-server (ig/ref :ooloi.backend.components/grpc-server)}
+   {:connection-registry (ig/ref :ooloi.backend.components/connection-registry)
+    :server-statistics   (ig/ref :ooloi.backend.components/server-statistics)
+    :health-manager      (ig/ref :ooloi.backend.components/health-manager)}
 
    :ooloi.backend.components/cache-daemon
    {:piece-manager (ig/ref :ooloi.backend.components/piece-manager)}
@@ -349,7 +357,7 @@ Backend components' dependency on `ui-manager` is the load-bearing design in `co
 
 Some components are not part of `combined-config` and therefore do not start with the application. They are added to the running Integrant system through an application-level API, then removed when no longer needed. The component itself is a full Integrant component — it implements `ig/init-key` and `ig/halt-key!` and complies with the `:status :running` invariant — but its lifecycle is driven by application logic rather than the system bootstrap.
 
-**`:ooloi.backend.components/network-grpc-server`** — second gRPC transport surface, started when the host enables a collaboration session and stopped on manual termination or after a configurable grace period of no connected guests (ADR-0036 §Hybrid Transport Architecture). It declares the same shared-state dependencies as the in-process `grpc-server` — `piece-manager`, `instrument-library`, `undo-manager`, `connection-registry`, `server-statistics` — and points its config to the **same refs**. The in-process server is unaffected by the network server's lifecycle.
+**`:ooloi.backend.components/network-grpc-server`** — second gRPC transport surface, started when the host enables a collaboration session and stopped on manual termination or after a configurable grace period of no connected guests (ADR-0036 §Hybrid Transport Architecture). It declares the same shared-state dependencies as the in-process `grpc-server` — `piece-manager`, `instrument-library`, `undo-manager`, `connection-registry`, `server-statistics`, `health-manager` — and points its config to the **same refs**. The in-process server is unaffected by the network server's lifecycle.
 
 The pattern for dynamic components:
 
@@ -494,7 +502,7 @@ Ooloi provides four primary test macros covering distinct test scopes. Pick the 
 |---|---|---|
 | gRPC client-server API calls — wire protocol, headers, interceptors, event streaming, security | `with-server` + `with-clients` + `with-srv-client` | `grpc-server` + `http-server` only; backend state components passed as `nil` |
 | Full backend Integrant system — multi-client integration with real piece/IL/undo state | `with-system` | All backend components (piece-manager, instrument-library, undo-manager, grpc-server, http-server, cache-daemon) |
-| Full combined application — frontend → backend pipeline, JAT callbacks, UI manager state | `with-combined-system` | All 14 baseline components (every backend + every frontend), headless UI by default |
+| Full combined application — frontend → backend pipeline, JAT callbacks, UI manager state | `with-combined-system` | All 15 baseline components (every backend + every frontend), headless UI by default |
 | Frontend UI manager and individual frontend components | `with-ui-manager` | Just thread-pool, event-bus, ui-manager |
 
 The §Component init scope below has the detail on which components each macro actually starts, the consequence for tests that reach into nil dependencies, and the macro signatures and options.
@@ -674,13 +682,13 @@ The system map contains all Integrant components as returned by `start-with-conf
 
 ### `with-combined-system`
 
-For testing the full combined application — all 14 baseline components, in-process transport, headless UI by default. This is the heaviest macro and the most faithful to production.
+For testing the full combined application — all 15 baseline components, in-process transport, headless UI by default. This is the heaviest macro and the most faithful to production.
 
 **Macro signature**: `[[system-symbol opts] & body]`. The `opts` map is optional and accepts the following keys: `:transport` (`:in-process` default, or `:network` for real gRPC channels with header propagation), `:extra-config` (a map merged into the Integrant config at component granularity to override any component's settings — port, `:ui-mode`, TLS, etc.), `:on-progress` (called before each component inits), and `:on-ready` (called after each component inits). See §Options below for the full table.
 
 ```clojure
 (with-combined-system [sys]
-  ;; All 14 baseline components are running
+  ;; All 15 baseline components are running
   (get-in sys [:ooloi.backend.components/grpc-server :status]) => :running
   (get-in sys [:ooloi.frontend.components/ui-manager :status]) => :running
 
