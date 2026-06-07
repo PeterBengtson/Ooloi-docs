@@ -1,4 +1,4 @@
-# ADR-0012: Persisting the Pure Tree Structure with Integer ID References
+# ADR-0012: Persisting the Pure Tree Structure — Integer ID References and Piece Identity
 
 ## Table of Contents
 - [Status](#status)
@@ -8,6 +8,7 @@
   - [Pure Tree Structure](#1-pure-tree-structure)
   - [Integer ID Reference Management](#2-integer-id-reference-management)
   - [Serialization and Deserialization](#3-serialization-and-deserialization)
+  - [Piece Identity: UUID as Primary Key](#4-piece-identity-uuid-as-primary-key)
 - [Rationale](#rationale)
 - [Consequences](#consequences)
 - [Related Decisions](#related-decisions)
@@ -37,6 +38,7 @@ We will implement a comprehensive approach to managing the pure tree structure w
 1. A pure tree structure for representing the musical piece.
 2. Integer IDs for referencing elements across the tree.
 3. A system for managing relationships between musical elements using these integer IDs.
+4. A piece-level string UUID as the piece's stable primary key, embedded in the piece data and regenerated only on explicit transfer to a different server.
 
 This approach will maintain the benefits of Clojure's immutable data structures while pragmatically handling references between elements.
 
@@ -65,6 +67,33 @@ Elements that can be referenced implement the TakesAttachment trait:
 - Serialization: The entire piece structure, including all integer ID references, is serialized directly using Nippy.
 - Deserialization: The piece structure is deserialized directly using Nippy, with all integer ID references intact.
 - **Hash-Consing Optimization**: Registry-based file size optimization leverages selective hash-consing to achieve substantial performance gains during serialization/deserialization while preserving all ID references and structural integrity (see [ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md)).
+
+### 4. Piece Identity: UUID as Primary Key
+
+The integer ID references above identify elements *within* a piece. A separate identifier names the **piece itself**: a string UUID that is the piece's stable primary key.
+
+**Assigned at creation, never changed.** Every piece gets a UUID when it is created. It does not change when the piece is renamed, transposed, restructured, or has its content replaced — identity is decoupled from representation; name, location, format, and content are metadata layered on a stable identity. The UUID is Ooloi's equivalent of a DOI: external references (a publisher's catalogue entry, a plugin's per-piece configuration, a rights-management record, a collaboration invitation) can hold a UUID and trust it indefinitely.
+
+**Embedded in the piece, not an external registry.** The UUID lives in the piece data itself and is serialized with it, on the same Nippy path as everything else above. A piece is therefore self-describing: loading a file on any server immediately yields its UUID with no external lookup, so file-and-registry desynchronisation is impossible by construction. The Piece Manager's registry key is *derived from* the embedded UUID, not assigned alongside it.
+
+**Server-persistent.** The same file loaded on the same server always yields the same UUID; the UUID survives save/load round-trips unchanged.
+
+**Regenerated only on server transfer — explicitly.** When a piece is registered on a *different* server (uploaded, or copied into a new pool), its UUID is regenerated, the old UUID is discarded, and the new UUID is written back to the file before registration. This is an explicit, auditable act, not automatic: two copies of one original file on two servers are correctly two different pieces with different UUIDs. Forking — duplicating a piece — likewise produces a new UUID; the copy is a different piece that merely shares content at the moment of forking, and their histories diverge from that point.
+
+**Collision handling.** The UUID's permanence is a guarantee *within* the system; the filesystem is outside it. A raw file copy — duplicating an `.ooloi` file in Finder or Explorer, bypassing Ooloi — produces a duplicate UUID. Two mitigations keep the model coherent:
+
+- **Collision detection on open** — the Piece Manager detects when a piece being opened carries a UUID already held by a different, currently-managed piece, and warns the user rather than producing undefined behaviour.
+- **UUID regeneration command** — a user command (file menu / piece settings) that assigns a fresh UUID and saves the file. It is the prescribed resolution for every collision scenario: an out-of-band file copy, distributing a template (each recipient regenerates before treating the file as their own), restoring a backup beside a live version, or importing/converting from another format (assignment on import is the same operation as regeneration).
+
+**Storage-backend opacity.** The identity model is independent of how pieces are stored — local filesystem, S3 / object storage, or a database. The UUID is embedded in the piece data; where that data is stored is irrelevant to identity.
+
+**Three distinct identifiers — do not conflate.** This ADR defines two of them; the third lives elsewhere:
+
+1. **Integer ID references** (§2) — cross-element references *within* a piece (slurs, ties, dynamics), scoped per Instrument. Internal referencing, not identity.
+2. **Piece-level UUID** (this section) — the piece's primary key; the collaboration access key and the authorised-access target for JWT claims.
+3. **Structural entity UUIDs** ([ADR-0010](0010-Pure-Trees.md) / [ADR-0011](0011-Shared-Structure.md)) — string `:id` slots on Musicians, Instruments, Staves, and Layouts, generated at creation, whose purpose is GUI selection and drag-and-drop survival across the invalidate/refetch cycle. UI identity — neither piece identity nor cross-element reference.
+
+The access model that uses the piece-level UUID as a collaboration key, and the two-tier authentication boundary (in-process: no authentication; network: full JWT/TLS), are specified in [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) and [ADR-0021](0021-Authentication.md) and are not restated here.
 
 ## Rationale
 
@@ -95,6 +124,8 @@ Elements that can be referenced implement the TakesAttachment trait:
 - [ADR-0007: Nippy](0007-Nippy.md) - Serialization technology chosen for persistence implementation
 - [ADR-0008: VPDs](0008-VPDs.md) - VPD addressing system that gets persisted as part of the structure
 - [ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md) - Hash-consing optimization system that dramatically improves serialization performance while maintaining ID reference integrity
+- [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) - Uses the piece-level UUID as the collaboration access key
+- [ADR-0021: Authentication](0021-Authentication.md) - JWT claims target the piece-level UUID for authorised access
 
 ### Neutral
 
