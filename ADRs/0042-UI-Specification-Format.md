@@ -136,15 +136,8 @@ Backend plugins currently use piece settings (ADR-0016) with auto-generated UI v
   (e.g. `:stage`, `:dialog`, `:notification`).
 - Not required — `:fx/type` is authoritative for rendering
 
-**`:window/default-position`** (map, optional)
-- Default position if no saved state: `{:x int :y int}`
-- Used on first open or when saved state invalid
-
-**`:window/default-size`** (map, optional)
-- Default size if no saved state: `{:width int :height int}`
-
-**`:window/default-scale`** (double, optional)
-- Default zoom/scale factor: `1.0`, `1.5`, etc.
+**First-open position and size** (plain `:x` / `:y` / `:width` / `:height`, optional)
+- A window's position and size before any persisted geometry exist are ordinary `:x` / `:y` / `:width` / `:height` in the spec — not `:window/*` keys. `show-window!` merges persisted geometry over them, so they govern only the first-ever open (see §"Established Usage Patterns: Floating windows → Ambient indicators" for how the collaboration palette computes its first-open `:x` / `:y`). There is no dedicated `:window/default-*` key.
 
 **`:window/style`** (keyword, optional)
 - JavaFX StageStyle: `:decorated` (default), `:undecorated`, `:transparent`, `:utility`
@@ -1258,18 +1251,8 @@ The menu bar itself is also pure data. A function assembles descriptors into a c
     (throw (ex-info "Window spec must be a map" {:spec spec})))
 
   (when (and (not (false? (:window/persist? spec))) (not (:window/id spec)))
-    (throw (ex-info "Persistent window must have :window/id" {:spec spec})))  
-  
-  ;; Validate position structure if present  
-  (when-let [pos (:window/default-position spec)]  
-    (when-not (and (map? pos) (int? (:x pos)) (int? (:y pos)))  
-      (throw (ex-info "Invalid :window/default-position format" {:spec spec :position pos}))))  
-  
-  ;; Validate size structure if present  
-  (when-let [size (:window/default-size spec)]
-    (when-not (and (map? size) (int? (:width size)) (int? (:height size)))
-      (throw (ex-info "Invalid :window/default-size format" {:spec spec :size size}))))
-  
+    (throw (ex-info "Persistent window must have :window/id" {:spec spec})))
+
   spec)  
 ```  
   

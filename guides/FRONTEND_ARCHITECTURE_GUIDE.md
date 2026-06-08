@@ -301,8 +301,7 @@ The recognised `:window/*` keys for `:window-open-requested` events:
 | `:window/persist?` | Whether to save and restore window geometry across sessions (default `true`) |
 | `:window/resizable?` | Whether the window can be resized by the user (default `true`) |
 | `:window/modality` | `:none` (default) or `:application-modal`; a modal also defaults to non-persist + non-resizable and is owned via the owner chain |
-| `:window/default-position` | Default `{:x n :y n}` if no persisted state exists |
-| `:window/default-size` | Default `{:width n :height n}` if no persisted state exists |
+| `:window/draggable?` | Chrome-less windows only (default `true`): synthesised whole-body window drag, unless `false` (e.g. the splash) |
 
 **Declarative window pipeline keys** — when `:window/spec-fn` is present, the UI Manager builds a cljfx renderer with full lifecycle management (see §4.5):
 
