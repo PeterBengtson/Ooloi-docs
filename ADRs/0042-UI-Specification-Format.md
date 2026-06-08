@@ -1057,11 +1057,15 @@ Every type has its own constant. `notification-info-style` applies corner radius
 
 **Floating windows** (small auxiliary windows shown via `show-window!` — never bypassing the UI Manager):
 
-The floating-window family contains **two distinct categories** that diverge on chrome, resizing, and how the user moves them. The dividing question is whether the window's surface is *expressive* (a single shaped, coloured indicator) or *operational* (a grid of controls). They do not share a spec-key profile and are not variants of one another.
+*The baseline: most floating windows are not a category at all.* A floating window *with* chrome is simply a **non-modal decorated window** — the ordinary `show-window!` default (the blocking variety is `show-modal!`). Ooloi already has these: About, Settings, the Instrument Library, Piece windows. A MIDI-playback transport, a non-blocking inspector, or any "floating controls" window is the same thing — a decorated, non-modal, possibly `:window/always-on-top?` window. The OS chrome provides move, resize, and close for free; nothing special is needed, and such windows need no entry here. They are non-blocking dialogs, and the baseline already serves them.
+
+Only **two patterns depart from that baseline**, and they diverge on chrome, resizing, and how the user moves them. The dividing question is whether the window's surface is *expressive* (a single shaped, coloured indicator) or *operational* (a grid of controls). They do not share a spec-key profile, with each other or with the baseline.
 
 ---
 
 **1. Ambient indicators** (status presence — chrome-less, shaped, always-on-top):
+
+This is the one genuine departure from the baseline — a window with *no* chrome.
 
 The established pattern for small ambient indicators (session presence; future status pips). Chrome-less by design: the shape and colour *are* the signal, which native chrome forbids — this is the surface where styling is unrestricted, the deliberate counterpart to the monochrome title-bar glyph (see §"Window state glyph paradigm"). Spec-key profile:
 
@@ -1097,7 +1101,7 @@ Animations (the breathing opacity cycle on the collaboration palette) follow the
 
 **2. Tool palettes** (operational — decorated, resizable, reflowing):
 
-A tool palette's surface is entirely clickable controls — icons that insert notes, accidentals, key changes, dynamics, and so on. The ambient indicator's chrome-less whole-body drag cannot apply: there is no free surface to grab, and every pixel is an action target. Tool palettes therefore use **native decorated chrome** (this ADR sanctions native chrome): the OS title bar is the move handle, the window edges are the resize handles, and the OS provides minimise/close. None of it is synthesised; all of it is cross-platform. Spec-key profile:
+This is not a departure from the baseline but a *specialisation* of it — a non-modal decorated window that adds resizing and reflowing-grid content. A tool palette's surface is entirely clickable controls — icons that insert notes, accidentals, key changes, dynamics, and so on. The ambient indicator's chrome-less whole-body drag cannot apply: there is no free surface to grab, and every pixel is an action target. Tool palettes therefore use **native decorated chrome** (this ADR sanctions native chrome): the OS title bar is the move handle, the window edges are the resize handles, and the OS provides minimise/close. None of it is synthesised; all of it is cross-platform. Spec-key profile:
 
 | Spec key | Value | Purpose |
 |----------|-------|---------|
