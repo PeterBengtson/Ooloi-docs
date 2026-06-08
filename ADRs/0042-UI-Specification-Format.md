@@ -1075,27 +1075,27 @@ The established pattern for small ambient indicators (session presence; future s
 | `:window/preserve-previous-focus-on-open?` | `true` | Opening the window does not steal focus from the user's current input context. |
 | `:window/persist?` | `true` (default) | Position memory inherits the standard `wire-geometry-listeners!` mechanism — debounced continuous persistence across unclean exits and within-session close→reopen cycles. |
 
-Shape is achieved declaratively in the cljfx content spec via `-fx-background-radius` on the root container (pill, capsule, or full circle by parameter) plus `Styles/ELEVATED_2` for drop-shadow elevation against the transparent bounding box. The first instance — the **collaboration palette** (`frontend/ui/app/collaboration_palette.clj`) — uses pill geometry and the `⇄` glyph. Each ambient indicator lives in a sibling `frontend/ui/app/<name>_palette.clj` namespace publishing its own `show-…!` / `close-…!` helpers against this profile.
+Shape is achieved declaratively in the cljfx content spec via `-fx-background-radius` on the root container (pill, capsule, or full circle by parameter) plus `Styles/ELEVATED_3` for drop-shadow elevation. The shadow renders into a transparent margin around the painted shape — a uniform `:padding` on the outer StackPane — so it does not clip at the window edge. The first instance — the **collaboration palette** (`frontend/ui/app/collaboration_palette.clj`) — uses pill geometry and the `⇄` glyph. Each ambient indicator lives in a sibling `frontend/ui/app/<name>_palette.clj` namespace publishing its own `show-…!` / `close-…!` helpers against this profile.
 
 *First-open position.* A chrome-less window gets no usable default placement — the OS/JavaFX auto-centres it, which is wrong for an ambient surface — so an ambient indicator **must supply explicit `:x` / `:y`** in its spec. The persisted-geometry merge in `show-window!` overrides these whenever saved geometry exists, so the explicit coordinates govern only the first-ever open. The *policy* for computing them is per-indicator: the collaboration palette mirrors the notification overlay to the opposite right-hand corner (ADR-0036).
 
-*Drag-to-reposition.* A chrome-less window has no title bar, so the UI Manager synthesises window movement for chrome-less styles: a press-and-drag anywhere on the body translates the Stage, feeding the same `wire-geometry-listeners!` persistence path. A small movement threshold separates a drag from a click, so a stationary click still dispatches the body action; presses landing on an interactive control (the corner ×, any button) do not initiate a drag (the `inside-interactive-control?` guard). The hover cursor switches to an open/closed hand over the draggable surface, replacing the missing title-bar affordance. This lives in `register-window!` in the UI Manager, keyed off chrome-less style, so every ambient indicator is repositionable with no per-palette code.
+*Drag-to-reposition.* A chrome-less window has no title bar, so the UI Manager synthesises window movement for chrome-less styles: a press-and-drag anywhere on the body translates the Stage, feeding the same `wire-geometry-listeners!` persistence path. A small movement threshold separates a drag from a click, so a stationary click still dispatches the body action; presses landing on an interactive control (the close badge, any button) do not initiate a drag (the `inside-interactive-control?` guard). The hover cursor switches to an open/closed hand over the draggable surface, replacing the missing title-bar affordance. This lives in `register-window!` in the UI Manager, keyed off chrome-less style, so every ambient indicator is repositionable with no per-palette code.
 
 A chrome-less window opts out of dragging with **`:window/draggable? false`** (default `true`; the key is consulted only for chrome-less windows — decorated windows are always moved by their native title bar). The opt-out exists for transient chrome-less windows that must not be repositioned: the splash screen (`:undecorated`) sets it, since it is centred and short-lived. Ambient indicators leave it at the default and are draggable.
 
-*Generic frame helper.* The StackPane wrapper, `Styles/ELEVATED_2` elevation, and corner × dismiss button are provided as a single reusable function `palette-frame-spec` in `frontend/ui/core/palette.clj`. Concrete indicators call it with caller-supplied pieces:
+*Generic frame helper.* The StackPane wrapper, `Styles/ELEVATED_3` elevation, and hover-reveal close badge are provided as a single reusable function `palette-frame-spec` in `frontend/ui/core/palette.clj`. Concrete indicators call it with caller-supplied pieces:
 
 | Key | Meaning |
 |---|---|
 | `:content` | cljfx node spec for the centre (a Label, a meter — anything). |
 | `:background-style` | inline `:style` string for the StackPane (background colour, corner radius). Use a `styles.clj` constant. |
-| `:dispatch-fn` | action dispatcher; the corner × calls it with `{:ooloi/event …}`. |
-| `:dismiss-event` | keyword the corner × publishes on click. |
+| `:dispatch-fn` | action dispatcher; the close badge calls it with `{:ooloi/event …}`. |
+| `:dismiss-event` | keyword the close badge publishes on click. |
 | `:close-button-id` | string node id (must be unique per Scene; convention `"<palette-name>-close"`). |
 
-The frame helper exists so a new ambient indicator costs only the indicator-specific concerns (content, colours, dismiss event, lifecycle wiring) — never the corner-× plumbing or the StackPane scaffolding. The collaboration palette is the canonical worked example.
+The frame helper exists so a new ambient indicator costs only the indicator-specific concerns (content, colours, dismiss event, lifecycle wiring) — never the close-badge plumbing or the StackPane scaffolding. The collaboration palette is the canonical worked example.
 
-Animations (the breathing opacity cycle on the collaboration palette) follow the notification-animation precedent: long-lived `Timeline` lifecycle in `ui_manager.clj`, animation references held on manager atoms keyed by window-id, lifecycle bound to window open/close, duration constants tunable for tests.
+Animations (the breathing opacity cycle on the collaboration palette's glyph) follow the notification-animation precedent: long-lived `Timeline` lifecycle in `ui_manager.clj`, animation references held on manager atoms keyed by window-id, lifecycle bound to window open/close, duration constants tunable for tests.
 
 ---
 
