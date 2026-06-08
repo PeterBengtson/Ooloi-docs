@@ -1055,33 +1055,62 @@ Every type has its own constant. `notification-info-style` applies corner radius
 | De-emphasised text | `Styles/TEXT_MUTED` | Placeholder/hint text |
 | Combined heading + muted | `[Styles/TITLE_2 Styles/TEXT_MUTED]` | "Temporary Piece Window" label |
 
-**Floating windows** (ambient, always-on-top, decoration-less):
+**Floating windows** (small auxiliary windows shown via `show-window!` — never bypassing the UI Manager):
 
-Floating windows are the established pattern for small ambient indicators (session presence, future tool palettes, future inspectors). They go through the standard `show-window!` machinery — never bypass the UI Manager — and combine the following spec keys to produce a focus-quiet always-visible surface:
+The floating-window family contains **two distinct categories** that diverge on chrome, resizing, and how the user moves them. The dividing question is whether the window's surface is *expressive* (a single shaped, coloured indicator) or *operational* (a grid of controls). They do not share a spec-key profile and are not variants of one another.
+
+---
+
+**1. Ambient indicators** (status presence — chrome-less, shaped, always-on-top):
+
+The established pattern for small ambient indicators (session presence; future status pips). Chrome-less by design: the shape and colour *are* the signal, which native chrome forbids — this is the surface where styling is unrestricted, the deliberate counterpart to the monochrome title-bar glyph (see §"Window state glyph paradigm"). Spec-key profile:
 
 | Spec key | Value | Purpose |
 |----------|-------|---------|
 | `:window/style` | `:transparent` | Allows the Scene fill to be transparent so non-rectangular shapes render cleanly. Auto-inferred Scene fill. |
-| `:window/resizable?` | `false` | Floating windows are content-sized; resizing is not a user need. |
+| `:window/resizable?` | `false` | Content-sized; resizing is not a user need. |
 | `:window/always-on-top?` | `true` | Stays visible above primary content windows. |
 | `:window/preserve-previous-focus-on-open?` | `true` | Opening the window does not steal focus from the user's current input context. |
 | `:window/persist?` | `true` (default) | Position memory inherits the standard `wire-geometry-listeners!` mechanism — debounced continuous persistence across unclean exits and within-session close→reopen cycles. |
 
-Shape is achieved declaratively in the cljfx content spec via `-fx-background-radius` on the root container (pill, capsule, or full circle by parameter) plus `Styles/ELEVATED_2` for drop-shadow elevation against the transparent bounding box. The first instance — the **collaboration palette** (`frontend/ui/app/collaboration_palette.clj`) — uses pill geometry and the `⇄` glyph (see §"Window state glyph paradigm" below). The pattern generalises to tool palettes and other ambient indicators as they're added; each lives in a sibling `frontend/ui/app/<name>_palette.clj` namespace that publishes its own `show-…!` / `close-…!` helpers against the same generic spec-key profile above.
+Shape is achieved declaratively in the cljfx content spec via `-fx-background-radius` on the root container (pill, capsule, or full circle by parameter) plus `Styles/ELEVATED_2` for drop-shadow elevation against the transparent bounding box. The first instance — the **collaboration palette** (`frontend/ui/app/collaboration_palette.clj`) — uses pill geometry and the `⇄` glyph. Each ambient indicator lives in a sibling `frontend/ui/app/<name>_palette.clj` namespace publishing its own `show-…!` / `close-…!` helpers against this profile.
 
-**Generic frame helper.** The StackPane wrapper, `Styles/ELEVATED_2` elevation, and corner × dismiss button are provided as a single reusable function `palette-frame-spec` in `frontend/ui/core/palette.clj`. Concrete palettes call it with five caller-supplied pieces:
+*First-open position.* A chrome-less window gets no usable default placement — the OS/JavaFX auto-centres it, which is wrong for an ambient surface — so an ambient indicator **must supply explicit `:x` / `:y`** in its spec. The persisted-geometry merge in `show-window!` overrides these whenever saved geometry exists, so the explicit coordinates govern only the first-ever open. The *policy* for computing them is per-indicator: the collaboration palette mirrors the notification overlay to the opposite right-hand corner (ADR-0036).
+
+*Drag-to-reposition.* A chrome-less window has no title bar, so the UI Manager synthesises window movement for chrome-less styles: a press-and-drag anywhere on the body translates the Stage, feeding the same `wire-geometry-listeners!` persistence path. A small movement threshold separates a drag from a click, so a stationary click still dispatches the body action; presses landing on an interactive control (the corner ×, any button) do not initiate a drag (the `inside-interactive-control?` guard). The hover cursor switches to an open/closed hand over the draggable surface, replacing the missing title-bar affordance. This lives in the UI Manager keyed off chrome-less style, so every ambient indicator is repositionable with no per-palette code.
+
+*Generic frame helper.* The StackPane wrapper, `Styles/ELEVATED_2` elevation, and corner × dismiss button are provided as a single reusable function `palette-frame-spec` in `frontend/ui/core/palette.clj`. Concrete indicators call it with caller-supplied pieces:
 
 | Key | Meaning |
 |---|---|
-| `:content` | cljfx node spec for the centre (a Label, an HBox of icons, a meter — anything). |
+| `:content` | cljfx node spec for the centre (a Label, a meter — anything). |
 | `:background-style` | inline `:style` string for the StackPane (background colour, corner radius). Use a `styles.clj` constant. |
 | `:dispatch-fn` | action dispatcher; the corner × calls it with `{:ooloi/event …}`. |
 | `:dismiss-event` | keyword the corner × publishes on click. |
 | `:close-button-id` | string node id (must be unique per Scene; convention `"<palette-name>-close"`). |
 
-The frame helper exists so a new floating palette costs only the palette-specific concerns (content, colours, dismiss event, lifecycle wiring) — never the corner-× plumbing or the StackPane scaffolding. The collaboration palette is the canonical worked example.
+The frame helper exists so a new ambient indicator costs only the indicator-specific concerns (content, colours, dismiss event, lifecycle wiring) — never the corner-× plumbing or the StackPane scaffolding. The collaboration palette is the canonical worked example.
 
-Animations attached to floating palettes (the breathing opacity cycle on the collaboration palette) follow the notification-animation precedent: long-lived `Timeline` lifecycle in `ui_manager.clj`, animation references held on manager atoms keyed by window-id, lifecycle bound to window open/close, duration constants tunable for tests.
+Animations (the breathing opacity cycle on the collaboration palette) follow the notification-animation precedent: long-lived `Timeline` lifecycle in `ui_manager.clj`, animation references held on manager atoms keyed by window-id, lifecycle bound to window open/close, duration constants tunable for tests.
+
+---
+
+**2. Tool palettes** (operational — decorated, resizable, reflowing):
+
+A tool palette's surface is entirely clickable controls — icons that insert notes, accidentals, key changes, dynamics, and so on. The ambient indicator's chrome-less whole-body drag cannot apply: there is no free surface to grab, and every pixel is an action target. Tool palettes therefore use **native decorated chrome** (this ADR sanctions native chrome): the OS title bar is the move handle, the window edges are the resize handles, and the OS provides minimise/close. None of it is synthesised; all of it is cross-platform. Spec-key profile:
+
+| Spec key | Value | Purpose |
+|----------|-------|---------|
+| `:window/style` | `:decorated` | Native title bar = move handle; window edges = resize handles. No synthesised gesture. |
+| `:window/resizable?` | `true` | The palette is reshaped by the user; content reflows. |
+| `:window/persist?` | `true` (default) | Both size and position are remembered. |
+| `:window/always-on-top?` | optional | A palette may float above content or sit among windows, per palette. |
+
+Content is a reflowing grid — a JavaFX `FlowPane` / `TilePane` of icon buttons — so **orientation is emergent from the window's aspect ratio**: dragging the palette wide-and-short flows the icons into a horizontal strip, narrow-and-tall into a vertical strip, square into a grid. No explicit orientation control is needed; the window's shape is the orientation control.
+
+A tool palette is a free-floating decorated window like every other Ooloi window. Ooloi is a multi-window application — each window is an independent top-level Stage managed by the UI Manager, with no shell or dock host — so tool palettes do not dock; there is no main window to dock into.
+
+Tool palettes are a separate category with their own concrete namespace pattern (`frontend/ui/app/<name>_tool_palette.clj`). They do **not** use the ambient `palette-frame-spec` helper, the chrome-less drag gesture, or the explicit-`:x`/`:y` first-open rule (a decorated window places and sizes sensibly without help). Their specification and first implementation are tracked separately; this entry records the architectural decision that they are a distinct category from the ambient indicator, not a variant of it.
 
 **Window state glyph paradigm** (title-bar state indicators):
 
