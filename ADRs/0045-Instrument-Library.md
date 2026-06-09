@@ -609,6 +609,15 @@ staff selection (`:selected-staves`) use **vectors**, not sets — the first ele
 `(first set)` returns an arbitrary element; vectors preserve insertion order and provide a
 stable anchor. Selection state is held in the window's view-state atom.
 
+The selection operations are four pure functions — `select-one`, `toggle-selection`,
+`move-selection`, `extend-selection` — over a bare anchor-first id-vector, with no instrument-
+or staff-specific knowledge. Each handler supplies the id-vector and its constraint group: for
+instruments, the visible (filtered) flat list, and the anchor's family for range extension; for
+staves, the parent instrument's staves vector. Because the algebra is type-agnostic, the same
+four primitives serve the whole `Layouts ⊃ Musicians ⊃ Instruments ⊃ Staves` nesting — Musicians
+and Layouts selection in the Piece window reuses them unchanged, each supplying its own id-vector
+and constraint group.
+
 **Instrument selection** (`:selected` — vector of instrument `:id` keywords):
 
 - **Click** selects one instrument, clearing previous selection and any staff selection.

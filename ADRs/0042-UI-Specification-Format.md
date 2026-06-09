@@ -512,9 +512,9 @@ The pipeline separates state reading from state writing, making the handler a pu
 
 **The problem:** a handler that derefs atoms to read state and calls `reset!` to write it is impure — it cannot be tested without constructing real atoms, and its dependencies are invisible.
 
-**Co-effects** solve the read side. Instead of the handler derefing `*state` directly, the pipeline derefs it and injects the current value into the event map under a named key. The handler receives `{:event/type :click :state {:selected #{:oboe}}}` — pure data, no atoms.
+**Co-effects** solve the read side. Instead of the handler derefing `*state` directly, the pipeline derefs it and injects the current value into the event map under a named key. The handler receives `{:event/type :click :state {:selected [:oboe]}}` — pure data, no atoms.
 
-**Effects** solve the write side. Instead of the handler calling `reset!`, it returns a map describing what should change: `{:state {:selected #{:flute :oboe}}}`. The pipeline reads each key, finds the corresponding atom, and resets it. The handler never touches mutable state.
+**Effects** solve the write side. Instead of the handler calling `reset!`, it returns a map describing what should change: `{:state {:selected [:flute :oboe]}}`. The pipeline reads each key, finds the corresponding atom, and resets it. The handler never touches mutable state.
 
 The result: `(event-map → effects-map)`. Input is data, output is data. The handler is a pure function — testable with ordinary `=` assertions, no JavaFX, no mocking, no threading. This is the same pattern as re-frame (ClojureScript) and the Elm architecture; cljfx provides the composition machinery natively via `wrap-co-effects` and `wrap-effects`.
 
@@ -549,7 +549,7 @@ The handler function is pure: it receives the event map with co-effect values me
 ;; Returns effects map — keys correspond to :window/effects entries.
 (fn [{:keys [event/type value]}]
   (case type
-    :instrument-clicked {:state (assoc value :selected #{(:id event)})}
+    :instrument-clicked {:state (assoc value :selected [(:id event)])}
     {}))
 ```
 
