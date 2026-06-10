@@ -91,7 +91,7 @@ Implement comprehensive TLS support for both gRPC server and client components:
 - Complete environment variable and CLI switch support for all TLS configuration (server and client)
 - TLS disabled by default for immediate developer productivity
 - `OOLOI_TLS=true` or `--tls true` enables TLS with intelligent certificate management
-- TLS-specific CLI overrides: `--tls true/false`, `--cert-path` (server's public certificate), `--key-path` (server's private key, backend only)
+- TLS-specific CLI overrides: `--tls true/false`, `--cert-path` (server's public certificate), `--key-path` (server's private key, server-side only — standalone backend or combined-app collaboration host)
 - Auto-generated self-signed certificates for development and testing (server-side)
 - Custom certificate support for production and enterprise deployments
 - Certificate creation at specified paths or platform-appropriate defaults
@@ -219,12 +219,12 @@ This design ensures:
 # Combined desktop application - in-process transport, no network communication
 ./ooloi
 
-# TLS flags do not apply to the in-process channel (no network transport)
-OOLOI_TLS=true ./ooloi  # no effect on local frontend↔backend communication
-./ooloi --tls true      # (combined-app TLS applies only when hosting a collaboration session — see below)
+# The combined app's frontend↔backend channel is in-process and plaintext by
+# construction; the combined app does not honour --tls / OOLOI_TLS. Encryption
+# is relevant only when hosting a collaboration session — see below.
 ```
 
-**Collaboration hosting.** The combined app additionally runs an *on-demand network gRPC server* when the user hosts a collaboration session (see [ADR-0036 §Hybrid Transport Architecture](0036-Collaborative-Sessions-and-Hybrid-Transport.md)). That network server is TLS-capable exactly like the standalone backend, and combined-app TLS configuration (`--tls` / `OOLOI_TLS`, `--cert-path`, `--key-path`) applies to **it** — not to the in-process channel, which is plaintext by construction. TLS is therefore meaningful for the combined app only in its collaboration-host role; it has no effect on local frontend↔backend communication.
+**Collaboration hosting.** The combined app additionally runs an *on-demand network gRPC server* when the user hosts a collaboration session (see [ADR-0036 §Hybrid Transport Architecture](0036-Collaborative-Sessions-and-Hybrid-Transport.md)). That network server is TLS-capable exactly like the standalone backend. **Whether it serves TLS is the in-app "Host encryption" setting** (`:collaboration/host-tls?`, off by default), read when hosting starts — the combined app does **not** honour `--tls` / `OOLOI_TLS`. The host server's certificate and key come from launch config (`--cert-path` / `--key-path`, `OOLOI_CERT_PATH` / `OOLOI_KEY_PATH`) — the same switches and variables as the standalone backend — or are auto-generated (self-signed) when encryption is on with no path supplied. TLS is therefore meaningful for the combined app only in its collaboration-host role; the in-process channel is plaintext by construction.
 
 **In-Process Transport Characteristics**:
 - **Communication**: Direct Java method calls within same JVM process

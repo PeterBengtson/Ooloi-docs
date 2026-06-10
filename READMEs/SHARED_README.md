@@ -335,9 +335,8 @@ The combined application accepts the **union** of all backend and frontend CLI a
 |--------------|------------|-------------|-----------------|
 | `--port PORT` | 1-65535 | 10700 | Backend gRPC server port |
 | `--timeout-ms MS` | milliseconds | 5000 | Network timeout in milliseconds |
-| `--tls FLAG` | true, false | false | Enable/disable TLS encryption (backend) |
-| `--cert-path PATH` | file path | platform default | Path to server's public certificate |
-| `--key-path PATH` | file path | platform default | Path to server's private key (backend only) |
+| `--cert-path PATH` | file path | platform default | Collaboration-host server's public certificate (hosting TLS on/off is the in-app "Host encryption" setting) |
+| `--key-path PATH` | file path | platform default | Collaboration-host server's private key |
 | `--health-port PORT` | 1-65535 | 10701 | HTTP health endpoint port |
 | `--thread-pool-size N` | integer | -1 (cores−1) | Shared thread pool size |
 
@@ -366,9 +365,8 @@ The combined application accepts the **union** of all backend and frontend envir
 |-------------------------|-------------------|-------------|-----------------|
 | `OOLOI_PORT` | --port | 10700 | Backend gRPC server port |
 | `OOLOI_TIMEOUT_MS` | --timeout-ms | 5000 | Network timeout in milliseconds |
-| `OOLOI_TLS` | --tls | false | Enable/disable TLS encryption (backend) |
-| `OOLOI_CERT_PATH` | --cert-path | platform default | Path to server's public certificate |
-| `OOLOI_KEY_PATH` | --key-path | platform default | Path to server's private key (backend only) |
+| `OOLOI_CERT_PATH` | --cert-path | platform default | Collaboration-host server's public certificate (hosting TLS on/off is the in-app "Host encryption" setting) |
+| `OOLOI_KEY_PATH` | --key-path | platform default | Collaboration-host server's private key |
 | `OOLOI_HEALTH_PORT` | --health-port | 10701 | HTTP health endpoint port |
 | `OOLOI_THREAD_POOL_SIZE` | --thread-pool-size | -1 (cores−1) | Shared thread pool size |
 
@@ -404,7 +402,7 @@ JAVA_OPTS="-Xmx24g" java -jar target/ooloi-shared-*-standalone.jar
 
 ### TLS Configuration
 
-The combined application supports secure TLS connections for internal client-server communication.
+The combined application's internal frontend↔backend channel is in-process and plaintext by construction; TLS does not apply to it. TLS is relevant to the combined app only when it **hosts a collaboration session** — the on-demand network server can serve TLS, switched by the in-app "Host encryption" setting, with cert/key supplied via launch config (the same switches/variables as the standalone backend). The shared project provides the complete TLS infrastructure used by the standalone backend (server) and guest connections (client).
 
 #### TLS Infrastructure Overview
 
@@ -433,22 +431,27 @@ The shared project provides the **complete TLS infrastructure** used by both bac
 
 #### Common Scenarios
 
-**Combined Mode - No TLS Needed**
+**Combined Mode - Internal Channel (No TLS)**
 
-Combined mode always uses in-process transport with no network communication:
+The combined app's frontend↔backend channel always uses in-process transport with no network communication:
 
 ```bash
 # Combined mode - in-process communication (always)
 lein run
 ```
 
-**No TLS overhead** - components communicate directly in same JVM via method calls, not network.
+**No TLS overhead** - components communicate directly in same JVM via method calls, not network. TLS does not apply to this channel.
+
+**Combined Mode - Hosting a Collaboration Session**
+
+When the combined app hosts a session it runs an on-demand network gRPC server (ADR-0036). That server can serve TLS: encryption on/off is the in-app **"Host encryption"** setting (off by default), and the host server's cert/key come from launch config (`--cert-path`/`--key-path`, `OOLOI_CERT_PATH`/`OOLOI_KEY_PATH`) — the same switches/variables as the standalone backend — or are auto-generated when on with no path supplied. The combined app does **not** honour `--tls` / `OOLOI_TLS`.
 
 #### TLS Configuration Summary
 
-| **Scenario** | **Transport** | **Backend TLS** | **Frontend TLS** | **Security** |
-|--------------|---------------|-----------------|------------------|--------------|
-| Combined (Always) | in-process | N/A | N/A | N/A (no network) |
+| **Scenario** | **Transport** | **Encryption** | **Cert/key** | **Security** |
+|--------------|---------------|----------------|--------------|--------------|
+| Combined — internal channel | in-process | N/A | N/A | N/A (no network) |
+| Combined — hosting a session | network (on-demand) | "Host encryption" setting | launch config, or auto-generated | per certificate (see tiers above) |
 
 #### TLS Implementation Details
 
