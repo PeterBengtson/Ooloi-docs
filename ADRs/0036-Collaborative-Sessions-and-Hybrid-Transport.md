@@ -376,6 +376,16 @@ All notification text uses `tr` for i18n. Host-side joined/left notifications in
 
 The persistent severity tier (host-server-started, guest-involuntary-disconnect) is reserved for states the user must acknowledge: a host running a network server is exposing local state, and an involuntary disconnect is a loss of work-context. Ephemeral notifications cover routine transitions where dismissal-by-time is acceptable.
 
+**Connection-attempt failure (guest).** The table above covers completed transitions; a guest's *failed* attempt — `switch-to!` never reaches a remote backend — is a separate surface. The Connect dialog stays open and a red ephemeral notification names the likely cause, classified from the gRPC connection error (`ooloi.shared.grpc.errors`; see ADR-0020 §Client-Side TLS). The classification keyword is a dispatch value, and the dialog owns the wording via `tr`:
+
+| Classification | Severity | What the message conveys (via `tr`) |
+|---|---|---|
+| TLS mismatch, either direction (`:server-requires-tls` / `:server-does-not-accept-tls`) | error (red), ephemeral | the Encryption setting does not match the host; toggle it and retry |
+| Connection timeout (`:connection-timeout`) | error (red), ephemeral | the host did not respond in time; it may be busy |
+| Unreachable or unknown (`:server-unreachable` / `:unknown-connection-error`) | error (red), ephemeral | check the address, and that Encryption matches the host |
+
+An attempt failure differs from the involuntary-disconnect toast in being recoverable in place: the dialog stays open so the user can correct a field and try again, and the notification self-dismisses. The two TLS keywords deliberately share one message; which direction it was survives in the classification keyword and the logged cause, available should direction-specific guidance ever be wanted.
+
 ### Per-Window Indicators and Collaboration Palette
 
 Notifications fire on transitions. For *state* — "is this window participating in a collaboration session right now?", "is a session currently active?" — Ooloi uses two complementary surfaces that live alongside the notification model.
