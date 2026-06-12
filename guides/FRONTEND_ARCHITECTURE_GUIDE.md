@@ -1482,7 +1482,7 @@ The `with-ui-manager` macro wires the event bus (required for `set-app-setting!`
 
 Tests in `shared/test/app/clojure/ooloi/shared/system_test.clj` exercise the full combined application lifecycle via `start-app!`. These differ from `with-ui-manager` and `with-combined-system` tests in one critical way: **`start-app!` returns before the piece window is registered**. The startup sequence — splash display, startup work, splash fade-out, piece window open — is fully asynchronous. Halting the system before the piece window is registered causes `register-window!` to run against an already-terminated pool, wiring focus-change `ChangeListener`s that throw `RejectedExecutionException` into every subsequent test.
 
-**Five rules for all `start-app!` tests:**
+**Six rules for all `start-app!` tests:**
 
 1. **Always wrap with `with-test-config {}`** — prevents platform directory contamination and settings atom bleed between tests.
 
@@ -1507,6 +1507,8 @@ Tests in `shared/test/app/clojure/ooloi/shared/system_test.clj` exercise the ful
 
 5. **Platform guard for macOS-specific features** — tests that read `@(:macos-menu-items mgr)` must be wrapped in `(when (platform/macos?) (fact ...))`. This atom is populated by NSMenuFX and is only available on actual macOS. Mocking `platform/macos?` with `with-redefs` makes the system *behave* as if on macOS but does not populate the NSMenuFX atoms. Tests for Linux and Windows embedded menu bars do not need a guard — they access standard JavaFX structures and run correctly on any platform.
 
+6. **Force `:ui-mode :headless`** — wrap the config in `th/force-headless`: `(system/start-app! (th/force-headless (system/combined-config)))`. Unlike `with-ui-manager` and `with-combined-system`, which default to headless, a direct `start-app!` on `combined-config` inherits production's `:graphical` default — so without this, every test shows a real splash and piece window on screen, flashing windows and stealing keyboard focus during runs. `th/force-headless` sets `[:ooloi.frontend.components/ui-manager :ui-mode] :headless`, which suppresses only `window/show!`; registration, scene assembly, menu wiring, and lifecycle events are unchanged. **Exception — tests that genuinely require a real, shown window stay graphical:** modal-gating tests (the application-modal dialog's owner is the piece-window Stage, which must be shown for the gate to engage) and robot tests (`javafx.scene.robot.Robot` needs real on-screen input). On-screen visibility verification belongs in the `OOLOI_UI_VISUAL` path, not the default suite. Note that `th/force-headless` does **not** suppress notification toasts — the notification overlay is a `Popup`, not `:ui-mode`-gated.
+
 A complete `start-app!` test skeleton:
 
 ```clojure
@@ -1515,7 +1517,7 @@ A complete `start-app!` test skeleton:
     (with-redefs [platform/macos?   (constantly true)
                   platform/windows? (constantly false)
                   platform/linux?   (constantly false)]
-      (let [sys (system/start-app! (system/combined-config))]
+      (let [sys (system/start-app! (th/force-headless (system/combined-config)))]
         (try
           ;; Wait for piece window to be fully registered before assertions or halt
           (let [mgr    (:ooloi.frontend.components/ui-manager sys)

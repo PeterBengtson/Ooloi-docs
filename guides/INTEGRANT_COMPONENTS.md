@@ -817,6 +817,16 @@ Defaults: `:pool-size 2`, `:ui-mode :headless`. `:extra-config` is merged into t
 
 Run with: `OOLOI_UI_VISUAL=true lein midje my.namespace`
 
+### `force-headless`
+
+A one-line config transform for combined-system `start-app!` tests. `(th/force-headless config)` returns `config` with `[:ooloi.frontend.components/ui-manager :ui-mode] :headless`. Wrap it around the config at every `start-app!` call site in the shared application test suites:
+
+```clojure
+(system/start-app! (th/force-headless (system/combined-config)))
+```
+
+`with-ui-manager` and `with-combined-system` already default to headless, but a direct `start-app!` on `combined-config` does not — it inherits production's `:graphical` default — so its tests must opt in explicitly or they flash a real splash and piece window on screen and steal keyboard focus during runs. Headless suppresses only `window/show!`; registration, scene assembly, menu wiring, and lifecycle events are unchanged. Tests that genuinely need a shown window (modal-gating, where the modal's owner is the piece-window Stage; robot input) stay graphical. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model) for the full `start-app!` test rules.
+
 ### Async helpers from `util.common`
 
 For tests that need to wait on asynchronous state changes (events arriving in an atom, a registry counting up or down, a flag flipping), `util.common` provides two helpers built on `promise` + `add-watch` + `(deref _ timeout-ms nil)`. They return as soon as the condition is satisfied, with a hard upper-bound timeout — replacing brittle `Thread/sleep N` waits.
