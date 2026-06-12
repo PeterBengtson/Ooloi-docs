@@ -396,6 +396,14 @@ The same shape applies whenever multiple lifecycle-independent components write 
 
 (#211 Tests 22a (halt) and 22b (start) verify the lifecycle-independence property for the dual-server case.)
 
+### Self-stopping on a dedicated thread: reap it with `.shutdown`, not `.shutdownNow`
+
+A component that schedules its own halt on a dedicated executor must reap that executor with `.shutdown` (graceful), never `.shutdownNow` (forceful) — whenever the scheduled task routes back through the component's own `halt-key!`.
+
+The `grpc-server` auto-halt grace timer (ADR-0036 §Auto-Halt Grace Period) is the canonical example. A single-thread scheduled executor fires a self-halt after the grace period; that self-halt runs the component's `halt-key!` (via `stop-collaboration-server!`) on the **same scheduler thread**, and `halt-key!` does interrupt-sensitive blocking work (`.awaitTermination` on the gRPC server). If the self-halt (or `halt-key!`) reaps the scheduler with `.shutdownNow`, that call **interrupts its own running task** — the current thread — and `.awaitTermination` then throws `InterruptedException` the moment it has to wait, aborting the rest of the shutdown: the server is never removed and the green session-stopped notification is never posted. The bug is invisible in isolation (the server is already terminated when the await runs, so it returns without checking the interrupt) and surfaces only under load.
+
+`.shutdown` marks the executor for orderly shutdown but lets the current task finish without interrupting it; the single-thread executor then terminates on its own. Rule of thumb: **never `.shutdownNow` an executor from a task running on that same executor if anything after the call can be aborted by an interrupt.**
+
 ### When to extract a component
 
 Promote a piece of state or capability to its own Integrant component when **any one** of the following is true:
