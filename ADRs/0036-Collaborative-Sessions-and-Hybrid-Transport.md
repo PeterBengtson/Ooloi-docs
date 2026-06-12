@@ -383,6 +383,9 @@ The persistent severity tier (host-server-started, guest-involuntary-disconnect)
 | TLS mismatch, either direction (`:server-requires-tls` / `:server-does-not-accept-tls`) | error (red), ephemeral | the Encryption setting does not match the host; toggle it and retry |
 | Connection timeout (`:connection-timeout`) | error (red), ephemeral | the host did not respond in time; it may be busy |
 | Unreachable or unknown (`:server-unreachable` / `:unknown-connection-error`) | error (red), ephemeral | check the address, and that Encryption matches the host |
+| Registration rejected (`:duplicate-client-id` / `:invalid-client-id`) | error (red), ephemeral | currently the generic connect-failed message — client-ids are app-generated, so guests rarely hit these; distinct wording is a deferred refinement |
+
+The last row is the *registration-rejection* axis rather than a transport failure: the connection reaches the server, which then rejects the registration with `ALREADY_EXISTS` (a client-id already registered) or `INVALID_ARGUMENT` (a malformed client-id). The dialog's classification `case` has no specific branch for these keywords, so they fall through to the generic connect-failed message; the precise cause survives in the classification keyword and the logged gRPC status.
 
 An attempt failure differs from the involuntary-disconnect toast in being recoverable in place: the dialog stays open so the user can correct a field and try again, and the notification self-dismisses. The two TLS keywords deliberately share one message; which direction it was survives in the classification keyword and the logged cause, available should direction-specific guidance ever be wanted.
 
