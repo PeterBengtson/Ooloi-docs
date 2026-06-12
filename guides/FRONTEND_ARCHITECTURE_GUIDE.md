@@ -60,7 +60,7 @@ Authority, in Ooloi, is defined by who decides the shape of musical truth.
 
 The frontend does **not** hold semantic authority.
 
-It may construct local copies of musical data, transform them, prepare command payloads, batch mutations, or even perform optimistic UI updates in order to interact smoothly with the backend. It may mutate these local representations freely. But those mutations are provisional and have no authoritative status.
+It may construct local copies of musical data, transform them, prepare command payloads, and batch mutations in order to interact smoothly with the backend. It may mutate these local representations freely. But those mutations are provisional and have no authoritative status.
 
 Only the backend decides whether a mutation becomes part of musical truth.
 
@@ -102,7 +102,7 @@ The same principle ripples through the entire frontend:
 
 None of this requires the plugin to import JavaFX classes, manipulate scene graphs, or manage threads. The frontend infrastructure handles materialisation. The plugin speaks in data.
 
-To make this possible, all Java interop is confined to a minimal set of boundary files — currently `cljfx.clj` (component lifecycle: event filters, property listeners, style mirroring, drag-over handlers) and `ui_manager.clj` (Stage lifecycle: creation, geometry persistence, window registry). Every window module, event handler, and spec function outside these boundaries operates exclusively on Clojure data. Specs compose freely from standard cljfx types (`:h-box`, `:v-box`, `:region`, `:label`, etc.) for layout and static content, plus `ooloi-*` component functions for responsive, interactive components that require JavaFX interop underneath. This vocabulary, together with the map-form event dispatch pipeline, is the complete interface between the application layer and JavaFX. Everything above it is data — generatable, testable, and portable across all transport modes. See [UI Architecture §1](../research/UI_ARCHITECTURE.md) for the full specification.
+To make this possible, Java interop is confined to a minimal set of infrastructure files along two axes. **Window content** — the widgets and formatting inside a window — carries the only content-level interop, in `cljfx.clj` (the `ooloi-*` component internals: event filters, property listeners, style mirroring, drag-over handlers); everything else describing window content is pure cljfx data. **Window creation and management** — Stage/Scene construction, modality, geometry, lifecycle, and the window registry — is the materialisation layer, in `window.clj` (Stage/Scene building) and `ui_manager.clj` (Stage lifecycle, owner chain, registry). Every window module, event handler, and spec function outside these files operates exclusively on Clojure data. Specs compose freely from standard cljfx types (`:h-box`, `:v-box`, `:region`, `:label`, etc.) for layout and static content, plus `ooloi-*` component functions for responsive, interactive components that require JavaFX interop underneath. This vocabulary, together with the map-form event dispatch pipeline, is the complete interface between the application layer and JavaFX. Everything above it is data — generatable, testable, and portable across all transport modes. See [UI Architecture §1](../research/UI_ARCHITECTURE.md) for the full specification.
 
 This is what the apparent rigidity protects. It is not rigidity for its own sake. It is the structural precondition for a plugin system where third‑party extensions operate at the same level of architectural integrity as core code — across process boundaries, across network boundaries, and across trust boundaries.
 
@@ -349,7 +349,7 @@ At first glance it can look like a stylistic preference: describe UI as data, th
 When UI structure is expressed as pure data, most of it can be constructed and inspected without launching JavaFX at all. Builder functions can be evaluated in isolation. Specs can be validated. Structural invariants can be asserted. Around 80% of frontend logic becomes ordinary functional code, not thread‑bound widget manipulation. The JavaFX Application Thread (JAT) is only required at the final step: materialising nodes and attaching them to a scene.
 
 **JAT discipline.**
-JavaFX enforces a single UI thread. By keeping specification pure and deferring all object creation to clearly defined materialisation boundaries — `cljfx/create-component` + `cljfx/instance` for content, `show-window!` for lifecycle — the architecture makes the JAT boundary explicit. There is one bridge (`fx/run-later!`, see Section 6), and it is visible. This clarity prevents accidental blocking, hidden cross‑thread mutation, and subtle race conditions.
+JavaFX enforces a single UI thread. By keeping specification pure and deferring all object creation to clearly defined materialisation boundaries — `cljfx/create-component` + `cljfx/instance` for content, `show-window!` for lifecycle — the architecture makes the JAT boundary explicit. There is one production bridge (`fx/run-later!`, see Section 6), and it is visible. This clarity prevents accidental blocking, hidden cross‑thread mutation, and subtle race conditions.
 
 **Backend‑authoritative rendering ([ADR‑0038](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)).**
 The backend produces authoritative paintlists. The frontend turns those into GPU pictures. Because UI description and rendering preparation are separated from semantic authority, the frontend can aggressively cache, batch, parallelise, and discard derived state without risking semantic drift. If all frontend state is dropped and reconstructed from backend data, the visible result must be identical. The spec → materialisation model reinforces that guarantee.
@@ -360,7 +360,7 @@ Plugins operate at the same declarative level as core code. They contribute spec
 **Transport independence.**
 Whether the backend runs in‑process, over gRPC to a local server, or across a network to a collaboration host ([ADR‑0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md)), the frontend’s responsibility is the same: render what it receives, express user intent as API calls, and react to invalidation events. Because semantic authority is never embedded in widget state, switching transport modes does not require architectural reinterpretation.
 
-Taken together, this separation produces a frontend that is both powerful and calm. It can mutate local copies, prepare payloads, stage optimistic updates, and manage large rendering caches — yet its structural contract remains simple: describe, materialise, execute, discard, regenerate. The musical truth remains elsewhere, and that clarity keeps the whole system coherent.
+Taken together, this separation produces a frontend that is both powerful and calm. It can mutate local copies, prepare payloads, and manage large rendering caches — yet its structural contract remains simple: describe, materialise, execute, discard, regenerate. The musical truth remains elsewhere, and that clarity keeps the whole system coherent.
 
 ### 4.3 cljfx Spec Over Java Interop
 
@@ -717,7 +717,7 @@ Ooloi does not fight this rule. It makes it visible.
 
 Rather than letting thread boundaries leak unpredictably into application code, the frontend architecture draws a clear line between pure computation and UI materialisation. Almost everything can happen off the JAT. The final step — touching JavaFX objects — happens in one controlled place.
 
-### 6.1 The Sole Bridge: `fx/run-later!`
+### 6.1 The Sole Production Bridge: `fx/run-later!`
 
 The primary bridge between background work and UI execution is `fx/run-later!`, a thin wrapper around `Platform/runLater`.
 
@@ -1581,7 +1581,7 @@ Each of the following invariants appears throughout this guide. Gathered togethe
 
 All musical truth lives in the backend.
 
-The frontend may prepare mutations, stage optimistic updates, transform local copies, and batch API calls — but only the backend decides what a change *means*. Rendering, layout, accidentals, spacing, and structural relationships are never inferred in the UI.
+The frontend may prepare mutations, transform local copies, and batch API calls — but only the backend decides what a change *means*. Rendering, layout, accidentals, spacing, and structural relationships are never inferred in the UI.
 
 If the frontend is destroyed and rebuilt from backend state, the musical result must be identical.
 
