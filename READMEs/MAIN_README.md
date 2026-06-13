@@ -79,17 +79,20 @@ By naming the project Ooloi as it goes public and open-source, we signal a new d
 
 ### Core
 
-Ooloi is licensed under the Mozilla Public License (MPL) 2.0. This means that any modifications to the core code must be shared under the same license. However, plugins developed using the interfaces and APIs provided by Ooloi can be proprietary. See the [LICENSE](LICENSE.md) file for more details.
+This project's core engine is distributed under the Mozilla Public License, v. 2.0. 
+Pursuant to Section 3.3, all core source files explicitly carry the Exhibit B notice 
+designating them as **Incompatible With Secondary Licenses** (MPL-2.0-no-copyleft-exception) 
+to prevent forced conversion or absorption into GNU GPL/LGPL/AGPL code paths.
+
+This means that any modifications to the core code must be shared under the same license. However, plugins developed using the interfaces and APIs provided by Ooloi can be proprietary. See the [LICENSE](LICENSE.md) file for more details.
 
 ### Plugins
 
 Plugins for Ooloi can be closed-source and proprietary. Developers are free to create and distribute plugins under their own licensing terms. They can create commercial plugins and sell them without any obligation to open-source the plugin code. We are planning a CRM interface via Cryptolens, so plugin developers have full control of installations through flexible license keys.
 
-Copyright © 2024-2026 Peter Bengtson
-
 ## Contributions
 
-We welcome contributions to Ooloi from the community! By contributing to to the core of Ooloi, you agree that your contributions will be licensed under the MPL 2.0. Please see our [CONTRIBUTING.md](CONTRIBUTING.md) file for more details on how to contribute.
+We welcome contributions to Ooloi from the community! By contributing to the core of Ooloi, you agree that your contributions will be licensed under the Mozilla Public License 2.0, with the explicit condition that they are Incompatible With Secondary Licenses. Please see our [CONTRIBUTING.md](CONTRIBUTING.md) file for more details on how to contribute.
 
 ## Languages
 
