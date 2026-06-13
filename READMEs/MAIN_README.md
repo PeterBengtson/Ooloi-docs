@@ -88,7 +88,7 @@ This means that any modifications to the core code must be shared under the same
 
 ### Plugins
 
-Plugins for Ooloi can be closed-source and proprietary. Developers are free to create and distribute plugins under their own licensing terms. They can create commercial plugins and sell them without any obligation to open-source the plugin code. We are planning a CRM interface via Cryptolens, so plugin developers have full control of installations through flexible license keys.
+Plugins for Ooloi can be closed-source and proprietary. Developers are free to create and distribute plugins under their own licensing terms. They can create commercial plugins and sell them without any obligation to open-source the plugin code.
 
 ## Contributions
 
