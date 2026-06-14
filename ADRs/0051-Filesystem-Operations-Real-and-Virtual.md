@@ -127,12 +127,11 @@ Locally it can be a thin pass-through: the user browsing their own machine sees 
 
 ### 5. Security Invariants
 
-Four properties follow structurally from the token model:
+Three properties follow structurally from the token model:
 
 - **No disclosure.** A token carries no path, so a leaked token reveals nothing about the server's storage layout — no home-directory usernames, no neighbouring users' locations, no tree above the caller's view.
 - **No traversal.** A caller can submit only tokens the backend minted, each already bound to a vetted location; there is no path to manipulate into `../../`. The one place client-supplied text reaches the filesystem is the `save` filename, which is therefore **validated to a leaf name** — separators, `..`, and absolute markers rejected.
 - **Sandbox by roots.** The caller holds only tokens the backend handed out — roots from `list-roots`, children from `list-directory`. There is no token for the parent of a root, so the backend's chosen roots are the navigable ceiling. The sandbox is the absence of an upward token, not a check that can be forgotten.
-- **No existence oracle.** Failures are returned as data (§7). A denied operation and a non-existent target return the **same** error, so a caller holding a legitimate dir-token cannot probe for files within it that authorisation has hidden.
 
 ### 6. Token Lifetime and the Connection Registry
 
@@ -154,7 +153,7 @@ Token lifetime is the connection's lifetime: when the client disconnects, gracef
 
 The operations are ordinary API calls over the universal `ExecuteMethod` endpoint (ADR-0018), so they require no `.proto` change. Under ADR-0046 the in-process transport passes the call's Clojure values by reference and the network transport serialises them, but the handler is identical in both cases; tokens and filenames are plain strings that cross either way unchanged. The contract is thus transport-blind: the opacity discipline is a property of the handler, not of whether bytes were produced.
 
-Failures travel as data on both transports. The server catches the operation's `Throwable`, records statistics, and returns `{:success false :error "<message>" :result nil}`; it does not rethrow, so the message is never truncated into a gRPC status. The client-side `SRV/*` wrapper inspects `:success` and throws `ex-info` carrying the server's exact message. A not-found, a denial, and a rejected traversal are all reported this way — and, per §5, denial and not-found deliberately carry the same message.
+Failures travel as data on both transports. The server catches the operation's `Throwable`, records statistics, and returns `{:success false :error "<message>" :result nil}`; it does not rethrow, so the message is never truncated into a gRPC status. The client-side `SRV/*` wrapper inspects `:success` and throws `ex-info` carrying the server's exact message. A not-found, a denial, and a rejected traversal are each reported this way, each carrying its own error code — they are detected on different paths and are not conflated. Whether an unauthorised caller is *shown* a uniform message, so it cannot learn which pieces exist, is a presentation decision for the access model (ADR-0036), not a property of this contract.
 
 ### 8. The Seams
 
