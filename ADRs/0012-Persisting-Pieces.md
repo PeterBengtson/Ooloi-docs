@@ -74,7 +74,7 @@ The integer ID references above identify elements *within* a piece. A separate i
 
 **Assigned at creation, never changed.** Every piece gets a UUID when it is created. It does not change when the piece is renamed, transposed, restructured, or has its content replaced — identity is decoupled from representation; name, location, format, and content are metadata layered on a stable identity. The UUID is Ooloi's equivalent of a DOI: external references (a publisher's catalogue entry, a plugin's per-piece configuration, a rights-management record, a collaboration invitation) can hold a UUID and trust it indefinitely.
 
-**Embedded in the piece, not an external registry.** The UUID lives in the piece data itself and is serialized with it, on the same Nippy path as everything else above. A piece is therefore self-describing: loading a file on any server immediately yields its UUID with no external lookup, so file-and-registry desynchronisation is impossible by construction. The Piece Manager's registry key is *derived from* the embedded UUID, not assigned alongside it.
+**Embedded in the piece, not an external registry.** The UUID lives in the piece data itself and is serialized with it, on the same Nippy path as everything else above. A piece is therefore self-describing: loading a file on any server immediately yields its UUID with no external lookup, so file-and-registry desynchronisation is impossible by construction. The Piece Manager's registry key *is* the embedded UUID itself — not a separate key derived from or assigned alongside it.
 
 **Server-persistent.** The same file loaded on the same server always yields the same UUID; the UUID survives save/load round-trips unchanged.
 
@@ -85,7 +85,7 @@ The integer ID references above identify elements *within* a piece. A separate i
 - **Collision detection on open** — the Piece Manager detects when a piece being opened carries a UUID already held by a different, currently-managed piece, and warns the user rather than producing undefined behaviour.
 - **UUID regeneration command** — a user command (file menu / piece settings) that assigns a fresh UUID and saves the file. It is the prescribed resolution for every collision scenario: an out-of-band file copy, distributing a template (each recipient regenerates before treating the file as their own), restoring a backup beside a live version, or importing/converting from another format (assignment on import is the same operation as regeneration).
 
-**Storage-backend opacity.** The identity model is independent of how pieces are stored — local filesystem, S3 / object storage, or a database. The UUID is embedded in the piece data; where that data is stored is irrelevant to identity.
+**Storage-backend opacity.** The identity model is independent of how pieces are stored — local filesystem, S3 / object storage, or a database. The UUID is embedded in the piece data; where that data is stored is irrelevant to identity. How that storage is navigated, listed, opened, and saved — over a real filesystem or a virtual hierarchy, in-process or across the network — is the filesystem-operations contract of [ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md).
 
 **Three distinct identifiers — do not conflate.** This ADR defines two of them; the third lives elsewhere:
 

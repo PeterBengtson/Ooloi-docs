@@ -1,4 +1,4 @@
-# ADR-0051: Filesystem Operations: Real and Virtual
+# ADR-0051: Filesystem Operations — Real and Virtual
 
 ## Status
 
@@ -26,9 +26,9 @@ Accepted
 
 ## Context
 
-Ooloi's frontend never touches a filesystem. Under the single-authority model ([ADR-0040](0040-Single-Authority-State-Model.md)) pieces exist only on a backend and change only through accepted operations; under frontend/backend separation ([ADR-0001](0001-Frontend-Backend-Separation.md)) that backend may be in the same process or on another machine entirely. A frontend that read directories, resolved paths, or opened files directly would assume a local filesystem that may not exist — and, when connected to a remote backend, would expose that machine's storage layout across the wire.
+Ooloi's frontend never browses a backend's storage directly. Under the single-authority model ([ADR-0040](0040-Single-Authority-State-Model.md)) pieces exist only on a backend and change only through accepted operations; under frontend/backend separation ([ADR-0001](0001-Frontend-Backend-Separation.md)) that backend may be in the same process or on another machine entirely. A frontend that read directories, resolved paths, or opened files directly would assume a local filesystem that may not exist — and, when connected to a remote backend, would expose that machine's storage layout across the wire.
 
-Yet the application must let users find, open, and save pieces, and must let other subsystems perform the same storage operations: import and export, the administration of a standalone server, the collaboration access model that shows each user a different catalogue. Today there is no architectural home for *how* those operations work. The piece persistence layer ([ADR-0012](0012-Persisting-Pieces.md), [ADR-0007](0007-Nippy.md)) reads and writes pieces at explicit paths; it knows nothing of navigation, of remote backends, or of who may see what. The custom piece picker, and the File-menu operations New, Open, Save, and Save As, all need a single consistent contract beneath them — and that contract must hold identically whether the storage behind it is a local filesystem, a virtual hierarchy a host presents to a guest, or, later, object storage or a database.
+Yet the application must let users find, open, and save pieces, and must let other subsystems rely on the same operations: administering a backend's storage, and the collaboration access model that shows each user a different catalogue — regardless of whether that backend is in-process or remote, since the backend is the same either way. (Import, Upload, and Export are related but distinct — they stream a file's content between client and backend rather than browsing storage; see §1.) Today there is no architectural home for *how* those operations work. The piece persistence layer ([ADR-0012](0012-Persisting-Pieces.md), [ADR-0007](0007-Nippy.md)) reads and writes pieces at explicit paths; it knows nothing of navigation, of remote backends, or of who may see what. The custom piece picker, and the File-menu operations New, Open, Save, and Save As, all need a single consistent contract beneath them — and that contract must hold identically whether the storage behind it is a local filesystem, a virtual hierarchy a host presents to a guest, or, later, object storage or a database.
 
 This ADR defines that contract: the operations, the identifiers they exchange, the security boundary they enforce, and the seams at which identity, access, serialisation, and transport plug in. It is deliberately not a "picker" decision — the picker is one consumer among several.
 
@@ -46,7 +46,7 @@ Foundations this builds on:
 We define a **backend filesystem-operations contract** addressed entirely through **opaque tokens**, identical across real and virtual storage:
 
 1. **No path crosses the boundary.** The frontend never sends or receives an operating-system path. Directories are named by opaque tokens the backend mints; files are opened by opaque tokens; a file is written by naming a destination directory token and a leaf filename (§1–2).
-2. **A small operation set:** `list-roots`, `list-directory`, `open`, `save`, `delete`, and — pending the investigation below — `move` (§3).
+2. **A small operation set:** `list-roots`, `list-directory`, `open`, `save`, `delete`, and — defined but deferred (see Future Considerations) — `move` (§3).
 3. **One contract, real or virtual.** The same operations and tokens serve a local filesystem, a virtual hierarchy, and future object or database backends; only the backend's token resolution differs (§4).
 4. **Security is structural.** Opaque tokens make path disclosure and path traversal impossible by construction; filename inputs are validated to leaf names; the backend's chosen roots are the navigable ceiling (§5).
 5. **Tokens are session-scoped backend state**, held on the calling client's connection-registry entry and discarded when that client disconnects (§6).
@@ -60,6 +60,8 @@ We define a **backend filesystem-operations contract** addressed entirely throug
 The frontend's relationship to storage is interrogative, never direct: it asks the backend *"what is here?"* and renders the answer. It does not enumerate directories, resolve paths, or read bytes itself. This is the single-authority principle (ADR-0040) applied to the filesystem, and it is what makes a remote backend indistinguishable from a local one: the same question is asked of both, and only the answer's content — and its boundaries — differ.
 
 The boundary is the gRPC call, in-process or networked alike. A value that crosses it is exposed: it can be read from client memory, logs, or the wire. Therefore **no operating-system path is ever placed in any value that crosses the boundary** — not as an argument, not in a result, not encoded inside a token. This holds in-process as strictly as over the network, because the in-process backend is the same code that, the moment a network server is enabled, begins answering remote callers. A contract that admitted paths in-process would leak them the instant the application hosted a session.
+
+One clarification, because the rule is about the *backend's* storage, not every filesystem everywhere. **Reading or writing a file on the client's *own* machine — Import and Upload inbound, Export outbound — is a separate path, and not part of this contract.** Import and Upload read a local file and stream its *content* to the backend, which creates the piece; Export is the mirror — the backend produces the content, streams it to the frontend, and the frontend saves it to a local file with full local-filesystem access. A native file dialog is appropriate at these ends: it is the *client's* filesystem, not a backend's. No path crosses the boundary in any of them; bytes do. All are ordinary frontend↔backend streaming — the same transport-blind pattern as events and playback (ADR-0046) — and the backend at the other end is identical whether in-process or remote, so none of it is remote-only or tied to any deployment. What this contract forbids is the frontend *browsing or reading a backend's storage*; it never forbids the client reading or writing its own file.
 
 ### 2. Opaque Tokens
 
@@ -115,6 +117,14 @@ On a local backend the resolver maps a token to a real path, and the abstraction
 
 This is why building the contract opaque from the start, in-process included, is not premature generality: it is what lets a new storage backend be a backend-only change, with no frontend branch and no protocol change. The persistence layer already abstracts its sinks and sources (file, in-memory buffer, network socket) behind a writer/reader pair; resolution simply produces the appropriate one.
 
+**The structure itself.** What `list-roots` and `list-directory` expose is a *virtual structure* — virtual directories mapped to real storage. Every backend has one, because the combined application's in-process backend and a dedicated server run the *same* backend components (ADR-0001); the only difference is whether a frontend is attached. So a combined app that hosts a session presents this structure to the clients that connect, and what they meet is exactly that: virtual directories containing real files. This is not a server-product feature added later — it is a property of the backend, present from the start.
+
+Locally it can be a thin pass-through: the user browsing their own machine sees the operating system's own hierarchy — the Finder-style sidebar — and defines nothing. A *curated* structure matters when the backend hosts: the host shapes what guests see, decoupled from the real layout on disk.
+
+**Virtual directories carry stable identities, distinct from session tokens.** A token is ephemeral (§6); a virtual directory's identity is durable. That distinction is what makes "open where I last saved", favourites, and bookmarks possible at all — you cannot remember a token, but you can remember a stable directory identity and have the backend resolve it to a fresh listing on demand.
+
+**Structure and access are orthogonal, and compose.** The structure is server-wide and administrator-defined; access (ADR-0036) is per-user. A given caller's `list-roots` / `list-directory` is the structure *filtered by* that caller's grants — the same backend yielding different worlds to different people. In-process single-user has neither a curated structure nor a filter: just the OS pass-through, everything permitted. Defining and administering the structure is the host or administrator's responsibility, its mechanics deferred (see [Future Considerations](#future-considerations)).
+
 ### 5. Security Invariants
 
 Four properties follow structurally from the token model:
@@ -138,7 +148,7 @@ stateDiagram-v2
     Discarded --> [*]
 ```
 
-Token lifetime is the connection's lifetime: when the client disconnects, gracefully or by the cancel-handler backstop, its registry entry is removed and its tokens vanish with it — the same cleanup path that already discards its subscriptions and event queue. No separate store and no eviction policy are introduced; a browsing session mints a bounded number of tokens and they are reclaimed with the connection. A token therefore does not survive reconnection — persistent references are the business of the piece UUID and the catalogue (§[Future Considerations](#future-considerations)), not of tokens.
+Token lifetime is the connection's lifetime: when the client disconnects, gracefully or by the cancel-handler backstop, its registry entry is removed and its tokens vanish with it — the same cleanup path that already discards its subscriptions and event queue. No separate store and no eviction policy are introduced; a browsing session mints a bounded number of tokens and they are reclaimed with the connection. A token therefore does not survive reconnection. Persistent references — to a piece, or to a location for favourites and "last saved" — are the business of stable identities (the piece's UUID, a virtual directory's stable id) resolved through the catalogue (§[Future Considerations](#future-considerations)), never of tokens. The frontend keeps no token cache: navigation is always a live query — cheap, because in-process calls are reference-passed (ADR-0046) and listings are small and fetched lazily per directory.
 
 ### 7. Transport Transparency and Errors
 
@@ -191,9 +201,11 @@ sequenceDiagram
     participant ID as Identity (ADR-0012)
     participant B as Backend (fs-ops)
     participant P as Persistence (ADR-0007)
+    F->>B: SRV/list-roots
+    B-->>F: named roots, each a dir-token
     F->>B: SRV/list-directory(dir-token)
-    B-->>F: entries (for navigation)
-    Note over F: user chooses destination dir, types a filename
+    B-->>F: entries (navigate inward to the destination dir)
+    Note over F: user chooses the destination dir, types a filename
     F->>ID: regenerate UUID on a clone (current piece untouched)
     ID-->>F: clone piece-id
     F->>B: SRV/save(clone piece-id, dir-token, filename)
@@ -209,15 +221,15 @@ sequenceDiagram
 
 Every operation carries an authorisation class — `read` for `list-roots`/`list-directory`/`open`, `save` for `save`, `delete` for `delete`, and an administrative class for `move`. These are the same classes ADR-0036 already defines for collaboration (a host holds read, write, save, print, delete, and management; a guest holds a granted subset). This ADR does **not** invent a parallel permission system and does **not** introduce a distinct "create" capability: writing a new file is a `save`, gated like any other.
 
-Assignment is ADR-0036's, not this ADR's. The owner of a backend — the person running it, or the host of a session — holds every class and grants subsets to others by email; the gRPC interceptor enforces each call before it executes; the frontend mirrors the grants as visual gating only (the backend remains the sole enforcer). The two halves meet at `list-*`: the access registry filters listings so a guest sees only the slice granted to them, while the host sees the full catalogue — the same dialog against the same backend yielding different worlds.
+Assignment is ADR-0036's, not this ADR's. The host or administrator holds every class and grants subsets to others by email; the gRPC interceptor enforces each call before it executes; the frontend mirrors the grants as visual gating only (the backend remains the sole enforcer). The two halves meet at `list-*`: the access registry filters listings so a guest sees only the slice granted to them, while the host sees the full catalogue — the same dialog against the same backend yielding different worlds.
 
-Until the collaboration access model is built, the backend runs free-for-all: every class is permitted, and the owner of a local backend implicitly holds all of them. The contract is built permission-agnostic from the start, exactly so that access-filtering of listings and per-operation enforcement can layer on later without changing any operation's shape.
+Until the collaboration access model is built, the backend runs free-for-all: every class is permitted, and the local user implicitly holds all of them. The contract is built permission-agnostic from the start, exactly so that access-filtering of listings and per-operation enforcement can layer on later without changing any operation's shape.
 
 ## Rationale
 
 **Why opaque tokens, and not paths, UUIDs, or OS file identifiers.** Paths disclose and invite traversal. UUIDs are identity, not location, and are unknowable before a file is read, so they cannot drive a cold browse. Operating-system file identifiers (the inode on macOS and Linux, the NTFS File ID on Windows) are volume-scoped, reused after deletion, absent from virtual and object backends, and unevenly exposed on the JVM (the standard library returns no file key on Windows) — they re-couple the contract to a local filesystem, the precise coupling being removed. An opaque token is the only identifier that is simultaneously path-free, location-bearing, and backend-agnostic. Where a stable file identity is genuinely wanted, it belongs server-side, behind the token, never on the wire.
 
-**Why one contract for real and virtual.** Building it opaque from the start makes a remote backend a change of *answers*, not of *interface*. Object and database storage, and the administration of a standalone server, then extend token resolution alone; the frontend and the operation shapes never learn they exist.
+**Why one contract for real and virtual.** Building it opaque from the start makes a remote backend a change of *answers*, not of *interface*. Object and database storage then extend token resolution alone — a backend-only change; the frontend and the operation shapes never learn they exist.
 
 **Why session-scoped tokens on the registry.** Navigation is a session activity, and the connection registry already holds per-client state with exactly the right lifecycle. Placing `:nav-tokens` there reuses the existing cleanup and the existing caller-identity seam, rather than inventing a store that would have to be reaped separately.
 
@@ -225,20 +237,20 @@ Until the collaboration access model is built, the backend runs free-for-all: ev
 
 ### Positive
 
-- One contract serves the picker, New/Open/Save/Save As, import and export, server administration, and remote, object, and database storage.
+- One contract serves the picker, New/Open/Save/Save As, administering a backend's storage, and remote, object, and database storage. (Import, Upload, and Export are the separate ingestion/egress path — §1 — not consumers of this contract.)
 - Path disclosure and path traversal are impossible by construction, not by vigilance.
 - No frontend branches on deployment; remote is identical in shape to local.
 - A new storage backend is a backend-only resolver change — no protocol change, no frontend change.
 
 ### Negative / Costs
 
-- Tokens do not survive reconnection. Persistent references (recent files, bookmarks, session restore) must key on the piece UUID and resolve through a catalogue, not on tokens.
+- Tokens do not survive reconnection. Persistent references (recent files, bookmarks, session restore) must key on a stable identity — a piece's UUID, or a virtual directory's stable id — and resolve through a catalogue, not on tokens.
 - The backend carries per-client navigation state. It is bounded and reclaimed on disconnect, but it is state.
 - Filename input must be validated at the boundary; a missed validation re-opens traversal through the one client-supplied string.
 
 ### Neutral
 
-- Recent files and bookmarks are frontend state keyed by UUID (the frontend-settings family, ADR-0043), resolved through the catalogue when it exists. They consume this contract but are not part of it.
+- Recent files and bookmarks are per-user state keyed by UUID — whether they live in frontend settings (ADR-0043) or per-user on the backend is deferred (see Future Considerations) — resolved through the catalogue when it exists. They consume this contract but are not part of it.
 - The picker is a consumer: it renders `list-*` results and round-trips tokens. Its presentation is out of scope here.
 
 ## Related Decisions
@@ -259,8 +271,10 @@ Until the collaboration access model is built, the backend runs free-for-all: ev
 
 ## Future Considerations
 
-- **Move (investigation outcome).** A `move(file-token, dest-dir-token)` belongs in the contract conceptually: it is opaque-token-clean, and because a piece's identity is its embedded UUID, moving the file changes no identity — references resolve correctly once the catalogue re-resolves the UUID to its new location. It is a storage-administration operation for the owner of a backend, not a File-menu action, and is therefore **defined now but deferred**: it has no consumer until server administration and the catalogue exist. Recording it here keeps the contract whole and prevents it being bolted on later as an exception.
+- **Move (investigation outcome).** A `move(file-token, dest-dir-token)` belongs in the contract conceptually: it is opaque-token-clean, and because a piece's identity is its embedded UUID, moving the file changes no identity — references resolve correctly once the catalogue re-resolves the UUID to its new location. It is a storage-administration operation for the host or administrator, not a File-menu action, and is therefore **defined now but deferred**: it has no consumer until storage administration and the catalogue are built — both backend features, regardless of how the backend is deployed. Recording it here keeps the contract whole and prevents it being bolted on later as an exception.
 - **Delete** is part of the contract and is needed internally — overwrite, cleanup, and administration — but carries no File-menu item initially.
-- **The persistent catalogue** (embedded UUID → storage location and metadata) is the deferred companion to this contract. It is what lets a persistent reference, or a recent-files entry, resolve a piece that has moved. Until it exists, persistent references degrade gracefully to a last-known location. Its first consumer is single-user session restore; the collaboration access model and the standalone server extend it with per-user access.
-- **Object and database backends** extend token resolution only, and belong with the standalone-server deployment.
+- **The persistent catalogue** (embedded UUID → storage location and metadata) is the deferred companion to this contract. It is what lets a persistent reference, or a recent-files entry, resolve a piece that has moved. Until it exists, persistent references degrade gracefully to a last-known location. Its first consumer is single-user session restore; per-user access over it comes with the collaboration access model. It is backend state — the same whether the backend runs with a frontend or headless.
+- **Alternative storage backends.** Where a backend keeps its pieces — a local filesystem, an SQL database, an object store, or anything else a writer/reader can target — is *general backend configuration*: neither cloud-specific nor deployment-specific. A combined-app user can point their own backend at a database or a local object store on their own machine, exactly as a dedicated server can. It extends token resolution only, is built when that storage is needed, and is never tied to how or where the backend runs.
 - **Access-filtered listings** — the per-user "shared with me" slice — layer onto `list-roots`/`list-directory` when the collaboration access model lands, filtering results by the access registry before they leave the backend.
+- **Virtual-structure administration.** On any backend that hosts, the roots and directories are an administrator-defined virtual structure mapping virtual directories to real storage (§4). Defining and editing that structure — and who holds the right to — is administration by the host or administrator, persisted as EDN under the platform storage folder alongside the collaborator and piece-access registries (ADR-0036, `~/.ooloi/…`). It is **not** a standalone-server feature: the in-process backend needs it the moment it hosts. Its mechanics — the management surface (the *Collaborators* window administers the access half; a structure surface administers the namespace), the persistence format, and fine-grained administrative permissions — are deferred to the collaboration / hosting work and require no new ADR: identity is ADR-0021, the persisted registries and storage location are ADR-0036, and the window contract is ADR-0042. This ADR only requires that `list-roots` / `list-directory` resolve whatever structure and grants the backend holds.
+- **Recent files, favourites, and "last saved".** These are persistent *per-user* state, not session state — so they live neither in the ephemeral connection registry nor as tokens, but as stable identities (a piece UUID, a virtual directory's stable id). Whether they are frontend state (ADR-0043, per installation) or backend per-user state (the ADR-0036 collaborator registry, following the user across clients in the Google Docs manner) is deferred; the latter fits the hosted model better. Either way the backend resolves the stored identity to a fresh listing — the frontend still queries, and never caches tokens.

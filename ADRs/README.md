@@ -98,6 +98,7 @@ Distributing authority and coordinating state between backend and frontend.
 - **[0040-Single-Authority-State-Model](0040-Single-Authority-State-Model.md)**: Single-authority state model where pieces exist only on server; operations-only API with capability symmetry but authority asymmetry
 - **[0045-Instrument-Library](0045-Instrument-Library.md)**: Server-side singleton instrument registry with optimistic locking, lazy frontend caching, event-driven synchronisation, and a bundled library covering the full orchestral repertoire from Bach to Messiaen
 - **[0046-Reference-Passing-In-Process-Transport](0046-Reference-Passing-In-Process-Transport.md)**: Reference-passing marshallers eliminating Clojure-protobuf conversion overhead for in-process gRPC, completing the optimisation chain started by ADR-0019
+- **[0051-Filesystem-Operations-Real-and-Virtual](0051-Filesystem-Operations-Real-and-Virtual.md)**: Backend filesystem-operations contract over opaque tokens — list, open, save, delete, move — identical across real and virtual storage and across in-process and network transport; no OS path crosses the boundary, security (disclosure, traversal, sandbox) is structural, and identity, access, and serialisation are seams to ADRs 0012, 0036, and 0007
 
 ## Extensibility & Interoperability
 
