@@ -72,7 +72,7 @@ Two kinds of identifier travel across the boundary, both opaque to the frontend:
 
 A token is a string the backend mints and the frontend round-trips without interpretation. Its only verbs, from the frontend's side, are *send it back*. The frontend never constructs a token, never parses one, never infers structure from one. The backend holds the mapping from token to real location; the token itself carries no path information of any kind.
 
-Filenames are different from tokens, and the asymmetry is deliberate: a leaf filename (`symphony.ooloi`) is safe to display and safe for a user to type, and `save-piece` accepts one directly. You **reference an existing thing by its token** (it was listed, so a token exists for it); you **create a new thing by naming it** within a directory token (it does not yet exist, so there is no token to round-trip). A file's identity to the user is its name; its identity to the contract is its token.
+Filenames are different from tokens, and the asymmetry is deliberate: a leaf filename (`symphony.ool` or `symphony.ooloi`) is safe to display and safe for a user to type, and `save-piece` accepts one directly. You **reference an existing thing by its token** (it was listed, so a token exists for it); you **create a new thing by naming it** within a directory token (it does not yet exist, so there is no token to round-trip). A file's identity to the user is its name; its identity to the contract is its token.
 
 ### 3. The Operations
 
