@@ -496,6 +496,8 @@ A component that returns a map without `:status :running` is silently reported a
 
 If the new component is reached from a `shared/ops/` impl during a gRPC request (i.e. it's exposed via an `^{:api true}` multimethod and called via `SRV/*`), its Integrant dep must be carried through **all four** of these sites. Missing any one routes the component as `nil` at the impl, and the SRV call silently returns `{:result nil}` with no error visible to the caller.
 
+**First consider a protocol.** If the component's state can be reached without the running server's per-request context — most can (a piece store, a registry) — the structurally-decoupled alternative is to declare the operation as a **protocol** in `shared` and implement it in `backend` (dependency inversion; `PieceRefResolver` is the existing example, `PieceManagerOps` in #238 another). That needs **none** of the four sites below, no `*server-component*`, and no runtime `resolve` — the direction #230 moves in. Use the wiring below to extend the existing `undo`/`instrument_library`/`event_subscription` seam, or where an op genuinely needs the per-request server context (`:transport`, `:server-id`).
+
 | # | Site | What to add |
 |---|---|---|
 | 1 | `shared/system.clj` `combined-config` | `:my-component-component (ig/ref :ooloi.backend.components/my-component)` in `grpc-server`'s config map |
@@ -964,7 +966,7 @@ Reaching another namespace's var at call time via `requiring-resolve` / `resolve
 **Legitimate exceptions — not smells:**
 
 - **By-name dispatch** where the symbol genuinely is not known at compile time: the gRPC method dispatcher (`ns-resolve 'ooloi.shared.api` by method-name string) and record deserialization (`map->Record`). These are exactly what make the API surface and the record set plugin-extensible.
-- **The `*server-component*` late-binding seam**, documented in `ooloi.backend.grpc.server`: shared-tier op implementations reach injected backend components via `@(resolve '…*server-component*)` because the shared tier must not compile-depend on the backend tier. The rule there is fixed — *"never introduce a new per-component dynamic var."*
+- **The `*server-component*` late-binding seam**, documented in `ooloi.backend.grpc.server`: shared-tier op implementations reach injected backend components via `@(resolve '…*server-component*)` because the shared tier must not compile-depend on the backend tier; the rule there is *"never introduce a new per-component dynamic var."* This is a legitimate exception for the **existing** consumers (`undo`/`instrument_library`/`event_subscription`) — leave them be — but it is **not** the default for new shared→backend access. The same "shared can't compile-depend on backend" is satisfied by a **protocol** (declared in shared, implemented in backend: `PieceRefResolver`, and `PieceManagerOps` in #238), which needs no `resolve` and no `*server-component*` wiring — the structural direction of #230. The existing consumers reach only known, global state, so they are decouplable too, eventually (#230). **Prefer a protocol for new work.**
 
 If a runtime resolution is not one of those two exceptions, treat it as debt to be removed structurally.
 
