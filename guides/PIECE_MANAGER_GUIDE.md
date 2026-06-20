@@ -52,15 +52,19 @@ The piece manager maintains a **dual-ref system**, and the store is **owned by t
 ;; component's halt, so it cannot leak across a restart.
 (def ^:private piece-store (ref nil))
 
-;; The store ref it holds maps piece-id -> piece-ref; each piece is its own ref.
+;; The store ref it holds maps piece-id -> a registry entry of the form
+;; {:ref piece-ref :provenance {:path :modified}}; each piece is its own ref.
 (def piece-id "my-symphony")
 (def piece-ref (ref (create-piece ...)))
 
 ;; While a piece-manager component is running:
-@@piece-store ; => {"my-symphony" #<Ref @piece-ref>}
+@@piece-store ; => {"my-symphony" {:ref #<Ref @piece-ref>
+              ;                     :provenance {:path "…/my-symphony.ooloi" :modified 1718900000000}}}
 ```
 
 **Why a ref handle rather than an atom?** Every store mutation already happens inside `dosync` (`store-piece` / `remove-piece` `alter` the store ref). Making the handle a **ref** too keeps the whole access path under a single STM discipline: the handle read inside a transaction is transactionally consistent by construction, and there is no second reference type to reason about. The handle is populated by the component, so pure-model code — `resolve-piece-ref`, `get-piece-ref` — reaches the store through it with no server in scope. The store is created by `init-store!` (called from the component's `init-key`) and released by `release-store!` (from `halt-key!`); there is no JVM-global remnant.
+
+**The registry entry.** Each value in the store is a map — `{:ref piece-ref :provenance {:path :modified}}` — not a bare ref. The `:ref` is the piece's STM ref (the dual-ref system above). The `:provenance` — the file path and modification time the piece was opened from — is present only for pieces opened through `open-piece` (ADR-0051), and is how the Piece Manager distinguishes an idempotent reopen of the same file (same embedded UUID, same provenance) from a variant collision (same UUID, different provenance) — see [ADR-0012](../ADRs/0012-Persisting-Pieces.md). Provenance shares the ref's identity and lifetime — dropped with it on `remove-piece` — rather than living in a parallel structure to keep in sync; the persistent catalogue of every piece ever seen is a separate concern (#184).
 
 ### Why This Architecture?
 
@@ -571,7 +575,7 @@ Every VPD operation uses the piece manager internally:
 ### Debugging Tips
 
 ```clojure
-;; Check piece store contents (double deref: handle -> store ref -> id->ref map)
+;; Check piece store contents (double deref: handle -> store ref -> id->entry map)
 (defn list-stored-pieces []
   (->> @@piece-store
        keys

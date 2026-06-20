@@ -165,7 +165,7 @@ This ADR owns the operation contract and nothing else. Everything adjacent plugs
 |---|---|---|
 | Caller identity | ADR-0021 | client-id from the authenticated gRPC context |
 | Authorisation | ADR-0036 | interceptor enforces each operation's class; the access registry filters `list-*` results before they leave the backend; the frontend gates visually |
-| Piece identity | ADR-0012 | `open-piece` registers and collision-checks by embedded UUID; Save As regenerates the UUID before the write |
+| Piece identity | ADR-0012 | `open-piece` registers under the embedded UUID with the file's provenance (path + modification time), distinguishing an idempotent reopen (same provenance) from a variant collision (same UUID, different provenance) per ADR-0012; Save As regenerates the UUID before the write |
 | Byte format | ADR-0007 | `open-piece`/`save-piece` delegate (de)serialisation to the persistence writer/reader |
 | Transport | ADR-0046 | reference-passing vs serialisation; identical handler |
 | Governed by | ADR-0040 / ADR-0001 | single authority; separation; a backend is always present |
