@@ -97,6 +97,8 @@ Every Integrant component is a Clojure multimethod pair dispatching on a namespa
   nil)
 ```
 
+> This is a simplified illustration of the lifecycle shape. The real piece-manager publishes its store to a **namespace handle** in `ooloi.backend.ops.piece-manager` (via `init-store!` / `release-store!`) rather than returning it on the component value, so that pure-model code can reach the store with no server in scope — see [PIECE_MANAGER_GUIDE §The Core Architecture](PIECE_MANAGER_GUIDE.md#the-core-architecture).
+
 **Dependencies are declared with `ig/ref`:**
 
 ```clojure
@@ -548,7 +550,7 @@ Ooloi provides four primary test macros covering distinct test scopes. Pick the 
 
 | What you're testing | Macro to use | Scope started |
 |---|---|---|
-| gRPC client-server API calls — wire protocol, headers, interceptors, event streaming, security | `with-server` + `with-clients` + `with-srv-client` | `grpc-server` + `http-server` only; backend state components passed as `nil` |
+| gRPC client-server API calls — wire protocol, headers, interceptors, event streaming, security | `with-server` + `with-clients` + `with-srv-client` | `grpc-server` + `http-server` + `piece-manager` (store via the ops namespace handle); `instrument-library` / `undo-manager` passed as `nil` |
 | Full backend Integrant system — multi-client integration with real piece/IL/undo state | `with-system` | All backend components (piece-manager, instrument-library, undo-manager, grpc-server, http-server, cache-daemon) |
 | Full combined application — frontend → backend pipeline, JAT callbacks, UI manager state | `with-combined-system` | All 15 baseline components (every backend + every frontend), headless UI by default |
 | Frontend UI manager and individual frontend components | `with-ui-manager` | Just thread-pool, event-bus, ui-manager |
@@ -561,7 +563,7 @@ The three system-level macros differ in *which components actually start*. Pick 
 
 | Macro | Backend components initialised | Frontend components initialised | Use when |
 |---|---|---|---|
-| `with-server` | `grpc-server` + `http-server` only. Dependencies (`piece-manager`, `instrument-library`, `undo-manager`) are **not** initialised — they're passed to the gRPC server as `nil`. | None | Pure gRPC mechanism tests: TLS handshake, header propagation, event streaming protocol, security interceptors, client registration mechanics. The test must not invoke any SRV call that reaches into a state-holding backend component. |
+| `with-server` | `grpc-server` + `http-server`, plus a **`piece-manager`** — lightweight (its `init-store!` only creates the store ref on the ops namespace handle), so `with-server` tests get a real piece store, mirroring production where the gRPC server always runs alongside one. `instrument-library` and `undo-manager` are **not** initialised — they're passed to the gRPC server as `nil`. | None | gRPC mechanism tests (TLS handshake, header propagation, event streaming, security interceptors, client registration) and tests that store/read pieces directly. The test must not invoke an SRV call that reaches `instrument-library` or `undo-manager` state. |
 | `with-system` | Full backend: `piece-manager`, `instrument-library`, `undo-manager`, `grpc-server`, `http-server`, `cache-daemon`. | None | Multi-client integration tests that need real backend state (IL, pieces, undo stacks) but no frontend pipeline. SRV calls that touch IL or pieces are safe here. |
 | `with-combined-system` | All backend components (same as `with-system`). | All five frontend components: `event-bus`, `ui-manager`, `grpc-clients`, `event-router`, `fetch-coordinator`. | Tests that need the frontend → backend event pipeline, JAT-scheduled callbacks, or UI manager state. Heaviest macro. |
 
@@ -569,15 +571,19 @@ The three system-level macros differ in *which components actually start*. Pick 
 
 **Symptom.** An SRV call inside `with-server` fails with `clojure.lang.ExceptionInfo: SRV/<method> failed: Execution error: Cannot invoke "java.util.concurrent.Future.get()" because "fut" is null`.
 
-**Cause.** `with-server` initialises only the gRPC server and HTTP health server — `piece-manager`, `instrument-library`, and `undo-manager` are passed in as `nil`. When the SRV call reaches one of those state-holding components, the op impl resolves `(:instrument-library-component server-component)` (or the equivalent for piece-manager / undo-manager) to `nil`. The subsequent `(deref nil)` falls through Clojure's `deref` into `deref-future`, which calls `.get` on a `Future` that is `nil`. The server's exception handler catches this and returns `{:success false :error "Execution error: Cannot invoke \"java.util.concurrent.Future.get()\" because \"fut\" is null"}`, which the client wrapper surfaces as the ExceptionInfo above.
+**Cause.** `with-server` initialises the gRPC server, the HTTP health server, and a `piece-manager` — but **not** `instrument-library` or `undo-manager`, which are passed to the gRPC server as `nil`. Those two are reached through `*server-component*`: the op impl resolves `(:instrument-library-component server-component)` (or `(:undo-manager-component server-component)`) to `nil`. The subsequent `(deref nil)` falls through Clojure's `deref` into `deref-future`, which calls `.get` on a `Future` that is `nil`. The server's exception handler catches this and returns `{:success false :error "Execution error: Cannot invoke \"java.util.concurrent.Future.get()\" because \"fut\" is null"}`, which the client wrapper surfaces as the ExceptionInfo above.
 
 The error message is misleading — there's nothing wrong with futures, with promises, with the gRPC wire layer, or with the SRV call mechanism. The dependency was simply never initialised, and the resulting `nil` propagated until it hit a `.get` on a nullable Java reference.
 
-**Fix.** Switch the test from `with-server` to `with-system` (full backend) or `with-combined-system` (full backend + frontend, if the test also needs the frontend pipeline). Use `with-server` only for tests that don't reach state-holding components: pure gRPC mechanism tests — TLS handshake, header propagation, event streaming protocol, security interceptors, client registration mechanics, two-phase connection lifecycle.
+**Piece operations are *not* subject to this pitfall.** They reach the store through the ops **namespace handle** (`pm/store-piece`, `resolve-piece-ref`), which the `with-server` piece-manager populates — not through `*server-component*`. So storing and reading pieces under `with-server` works; only `instrument-library` and `undo-manager` are the nil-dependency hazards.
+
+**Fix.** If the test needs `instrument-library` or `undo-manager` state, switch from `with-server` to `with-system` (full backend) or `with-combined-system` (full backend + frontend, if the test also needs the frontend pipeline). Piece state needs no switch — `with-server` already provides it.
+
+> **Why `with-server` starts a piece-manager (and IL/undo don't).** Earlier, the piece store was a JVM-global `defonce` — ambient under any `with-server`, so the piece-manager component didn't need starting here, and this section originally listed the piece-manager among the nil dependencies. Once the store became **component-owned** (created by `init-store!` at the component's `init-key`, released at `halt-key!`), that ambient store was gone, so `with-server` now starts a piece-manager to keep piece operations working — cheap, because it only creates a ref. `instrument-library` (loads its bundle from disk) and `undo-manager` are heavier and reached via `*server-component*`, so they stay opt-in through `with-system`.
 
 ### `with-server` / `with-clients` / `with-srv-client`
 
-The standard pattern for gRPC integration tests. `with-server` starts both the gRPC server and HTTP health server, waits for startup (100ms default), then tears them down. `with-clients` creates client components, optionally registers them, then disconnects them. `with-srv-client` binds a client to the `SRV/*` dynamic context.
+The standard pattern for gRPC integration tests. `with-server` starts the gRPC server, the HTTP health server, and a piece-manager (plus the shared connection-registry / server-statistics / health-manager — see the init-scope table above), waits for startup (100ms default), then tears them down. `with-clients` creates client components, optionally registers them, then disconnects them. `with-srv-client` binds a client to the `SRV/*` dynamic context.
 
 ```clojure
 ;; Basic: one client, auto-registered

@@ -42,19 +42,25 @@ The piece manager is Ooloi's central system for managing the lifecycle of musica
 
 ### The Core Architecture
 
-The piece manager maintains a **dual-ref system**:
+The piece manager maintains a **dual-ref system**, and the store is **owned by the piece-manager Integrant component** — it lives for exactly as long as that component runs, not for the lifetime of the JVM:
 
 ```clojure
-;; Internal piece store - ref containing a map of piece-id -> piece-ref
-(defonce ^:private piece-store (ref {}))
+;; The store handle — a ref that holds the live store ref, or nil when no
+;; piece-manager component is running. The component's init-key creates a fresh
+;; store ref and publishes it here (init-store!); halt-key! clears it back to nil
+;; (release-store!). Removing a defonce: the store no longer survives the
+;; component's halt, so it cannot leak across a restart.
+(def ^:private piece-store (ref nil))
 
-;; Each piece is stored as its own ref
+;; The store ref it holds maps piece-id -> piece-ref; each piece is its own ref.
 (def piece-id "my-symphony")
 (def piece-ref (ref (create-piece ...)))
 
-;; The store maps IDs to refs
-@piece-store ; => {"my-symphony" #<Ref @piece-ref>}
+;; While a piece-manager component is running:
+@@piece-store ; => {"my-symphony" #<Ref @piece-ref>}
 ```
+
+**Why a ref handle rather than an atom?** Every store mutation already happens inside `dosync` (`store-piece` / `remove-piece` `alter` the store ref). Making the handle a **ref** too keeps the whole access path under a single STM discipline: the handle read inside a transaction is transactionally consistent by construction, and there is no second reference type to reason about. The handle is populated by the component, so pure-model code — `resolve-piece-ref`, `get-piece-ref` — reaches the store through it with no server in scope. The store is created by `init-store!` (called from the component's `init-key`) and released by `release-store!` (from `halt-key!`); there is no JVM-global remnant.
 
 ### Why This Architecture?
 
@@ -565,9 +571,9 @@ Every VPD operation uses the piece manager internally:
 ### Debugging Tips
 
 ```clojure
-;; Check piece store contents
+;; Check piece store contents (double deref: handle -> store ref -> id->ref map)
 (defn list-stored-pieces []
-  (->> @piece-store
+  (->> @@piece-store
        keys
        sort))
 
