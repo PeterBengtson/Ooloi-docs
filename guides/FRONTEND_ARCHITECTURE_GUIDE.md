@@ -258,13 +258,22 @@ When lifecycle control is centralised, the rest of the system can reason about w
 
 This is not a full API reference, but the most commonly used frontend entry points are:
 
-**Window lifecycle** — publish to `:window-requests` on the frontend event bus:
+**Window lifecycle** — application code asks the UI Manager to open or close a window through the `ooloi.frontend.ui.core.window-request` facade, which publishes to `:window-requests` on the frontend event bus (the UI Manager is the sole performer of the actual operation):
 
 ```clojure
-(eb/publish! (:event-bus ui-manager) :window-requests
-  [{:type :window-open-requested  :window/id :my-window ...}])
+(require '[ooloi.frontend.ui.core.window-request :as wr])
 
-(eb/publish! (:event-bus ui-manager) :window-requests
+(wr/request-window-open!  manager {:window/id :my-window :window/spec-fn … :window/state …})
+(wr/request-window-close! manager :my-window)
+```
+
+The facade supplies the `:type` (`:window-open-requested` / `:window-close-requested`) itself — forced last, so a caller's spec can't override it — so call sites never hand-write the event map or the raw publish:
+
+```clojure
+;; equivalent raw form the facade wraps — prefer the facade
+(eb/publish! (:event-bus manager) :window-requests
+  [{:type :window-open-requested :window/id :my-window …}])
+(eb/publish! (:event-bus manager) :window-requests
   [{:type :window-close-requested :window/id :my-window}])
 ```
 
@@ -1456,9 +1465,9 @@ When a test needs to verify production event listener behaviour wired into a com
 ;; opens the window and wires the reactive update cycle.
 (th/with-test-config {:ui/theme :nord-light}
   (th/with-ui-manager [mgr]
-    (th/run-on-fx-thread-sync!
-      (fn [] (app-settings-window/show-app-settings! mgr (fn [_]))))
-    (Thread/sleep 200)
+    (th/await-window-event mgr :window-opened :app-settings
+      (fn [] (th/run-on-fx-thread-sync!
+               (fn [] (app-settings-window/show-app-settings! mgr (fn [_]))))))
     (let [stage    (:stage (get @(:window-registry mgr) :app-settings))
           outer    (first (.getChildren (.getRoot (.getScene stage))))
           tab-pane (first (.getChildren outer))
@@ -1477,6 +1486,34 @@ The `with-ui-manager` macro wires the event bus (required for `set-app-setting!`
 **`Node.focusedProperty` cannot be driven in tests.** In test processes initialised via `Platform/startup`, the OS never grants focus to a Stage — `requestFocus()` has no effect and `focusedProperty` ChangeListeners never fire regardless. The `ooloi-dense-text-field` `:on-commit` callback fires on both Enter and focus loss, but tests that need to verify focus-loss commits must call the listener's target function directly. Do not attempt to simulate OS focus transfer.
 
 **Shutdown race — JAT flush before pool halt.** `run-later!` callbacks queued during `show-window!` or `attach-notification-widget!` may still be pending on the JAT when the pool is halted, causing `RejectedExecutionException`. Drain the JAT queue with a no-op `run-on-fx-thread-sync!` before halting the pool. `with-ui-manager` performs this automatically. Never write manual pool/bus/manager boilerplate in tests.
+
+#### Waiting for Window Lifecycle Events
+
+Window opens and closes are asynchronous: `show-window!` / `close-window!` (or the `window-request` facade) publish to `:window-requests`, the UI Manager performs the operation on the JAT, and only then publishes `:window-opened` / `:window-closed` on `:window-lifecycle`. A *close* is doubly deferred — `close-window!` runs the fade-out animation first and removes the window from the registry (and publishes `:window-closed`) only in the fade's `on-complete`. A test that reads the registry immediately after triggering a show or close races that pipeline.
+
+There are three distinct shapes, and choosing the wrong one is a common source of flakiness:
+
+1. **Trigger-based wait — `await-window-event`.** The test itself triggers the open or close. This is the common case (any `with-ui-manager` test that shows or closes a window). The helper subscribes to `:window-lifecycle` *before* running the trigger (avoiding the race where the event fires before the subscription is in place), then blocks for the matching `(event-type, window-id)` event:
+
+   ```clojure
+   (th/await-window-event mgr :window-opened :my-window
+     (fn [] (th/run-on-fx-thread-sync! #(my-window/show-my-window! mgr)))) => truthy
+
+   ;; close — pair with with-zero-animation-times so the fade-out is instant
+   (th/with-zero-animation-times
+     (th/with-ui-manager [mgr]
+       (th/await-window-event mgr :window-closed :my-window
+         (fn [] (th/run-on-fx-thread-sync! #(um/close-window! mgr :my-window)))) => truthy
+       (get @(:window-registry mgr) :my-window) => nil))   ; registry cleared in the fade's on-complete
+   ```
+
+   Because the registry entry is removed in the fade's `on-complete`, a `:window-closed` test must run under `with-zero-animation-times` (or redefine `window-transitions/fade-out!` to call `on-complete` immediately) — otherwise the assertion races the ~2-second fade.
+
+2. **Autonomous-startup wait.** The window opens on its own during `start-app!`, with no test-triggered action. `await-window-event` does not fit — there is no trigger to pass. Subscribe to `:window-lifecycle` *and* pre-check the registry for the already-open case — see Combined System Tests below.
+
+3. **Capture, not wait.** Some tests subscribe to `:window-lifecycle` to *assert that an event fired* — testing that `show-window!` / `close-window!` publish correctly — accumulating events into an atom and asserting their content. That is a capture, not a synchronisation: leave it as an explicit subscribe; do not replace it with `await-window-event`.
+
+**Suite-vs-isolation caveat.** Some window and menu tests behave differently run alone versus in the full suite, because the global macOS system menu bar (NSMenuFX) and JavaFX `Popup` overlays are process-global, order-dependent state. A locale-switching menu test can pass in the suite but crash in isolation (the menu host is established by an earlier test); a `Popup` timing test can pass in isolation but flake in the suite. When a single namespace fails where the suite passes (or the reverse), suspect this before suspecting the change under test.
 
 #### Combined System Tests (`start-app!`)
 

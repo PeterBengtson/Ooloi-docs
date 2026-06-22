@@ -814,24 +814,52 @@ For tests that need a UI manager without the full combined system. Creates a thr
 (th/with-ui-manager [mgr {:pool-size 4 :ui-mode :headless}]
   ...)
 
+;; Bind the manager's live Claypoole pool as a second symbol, to hand to a show-*
+;; fn that fetches on the pool — no nested with-thread-pool needed
+(th/with-ui-manager [mgr pool]
+  (th/run-on-fx-thread-sync! #(picker/show-piece-picker! mgr :pool pool))
+  ...)
+
+;; Pool symbol and options together
+(th/with-ui-manager [mgr pool {:pool-size 4}]
+  ...)
+
 ;; With extra Integrant config merged into init-key
 (th/with-ui-manager [mgr {:extra-config {:some-key some-value}}]
   ...)
 ```
 
-Defaults: `:pool-size 2`, `:ui-mode :headless`. `:extra-config` is merged into the `ig/init-key` config map. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model) for the full frontend testing model.
+Binding forms: `[mgr]`, `[mgr opts-map]`, `[mgr pool]`, or `[mgr pool opts-map]`. A symbol after the manager binds the manager's live pool — so a test can pass it to a `show-*` fn that fetches on the pool, with no nested `with-thread-pool`; a map is the options. Defaults: `:pool-size 2`, `:ui-mode :headless`. `:extra-config` is merged into the `ig/init-key` config map. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model) for the full frontend testing model.
 
 **Visual inspection tests** — when a test needs to show a real window on screen (e.g. to verify layout, content, or appearance), pass `:ui-mode :graphical`. In headless mode (the default), `show-window!` builds and registers the Stage but never calls `window/show!`, so nothing appears on screen. Combine with `(visual-pause ms)` and the `OOLOI_UI_VISUAL=true` environment variable:
 
 ```clojure
 (th/with-ui-manager [mgr {:ui-mode :graphical}]
-  (th/run-on-fx-thread-sync! #(my-window/show-my-window! mgr))
-  (deref opened 5000 nil) => truthy
+  (th/await-window-event mgr :window-opened :my-window
+    (fn [] (th/run-on-fx-thread-sync! #(my-window/show-my-window! mgr)))) => truthy
   (th/visual-pause 5000)   ; no-op unless OOLOI_UI_VISUAL=true
   ...)
 ```
 
 Run with: `OOLOI_UI_VISUAL=true lein midje my.namespace`
+
+### `await-window-event`
+
+Window opens and closes are asynchronous: `show-window!` / `close-window!` publish to `:window-requests`, the UI Manager performs the operation on the JAT, and only then publishes `:window-opened` / `:window-closed` on `:window-lifecycle`. A test that reads the window registry immediately after triggering a show races that pipeline. `await-window-event` is the standard synchronisation:
+
+```clojure
+(th/await-window-event mgr :window-opened :my-window
+  (fn [] (th/run-on-fx-thread-sync! #(my-window/show-my-window! mgr)))) => truthy
+```
+
+It subscribes to `:window-lifecycle` **before** running `trigger-fn` (avoiding the race where the event fires before the subscription is in place), then blocks up to `timeout-ms` (default 5000) for the matching `(event-type, window-id)` event — returning truthy if it fired, `nil` on timeout. `trigger-fn` is whatever makes the window emit the event: a `run-on-fx-thread-sync!` show or close, or a raw `:window-requests` publish. The same helper covers closes:
+
+```clojure
+(th/await-window-event mgr :window-closed :my-window
+  (fn [] (th/run-on-fx-thread-sync! #(um/close-window! mgr :my-window)))) => truthy
+```
+
+`await-window-event` is for **trigger-based** waits. Combined-system `start-app!` tests, where the piece window opens autonomously during startup with no test-triggered action, use a different shape — subscribe to `:window-lifecycle` *and* pre-check the registry for the already-open case. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model).
 
 ### `force-headless`
 
