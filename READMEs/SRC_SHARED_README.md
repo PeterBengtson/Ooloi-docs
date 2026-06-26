@@ -348,17 +348,21 @@ for the full heuristic and worked example.
 
 ## Adding New Multimethods
 
-When adding a new operation to the Ooloi API, follow this four-step procedure in order:
+When adding a new operation to the Ooloi API:
 
-1. **Define in `interfaces.clj`** with proper `:vpd-category` metadata. The metadata ensures VPD
-   integration is automatic.
-2. **Export through `core.clj`** in alphabetical order among the existing exports.
-3. **Export through `api.clj`** in alphabetical order among the existing exports.
-4. **Add implementations in appropriate model files** — each model file contains the
-   implementations specific to that type.
+1. **Define it in `interfaces.clj`** with metadata — `:api true` to expose it through `api`/`SRV`,
+   and/or `:vpd-category <cat>` for automatic VPD integration. A non-VPD operation (a singleton or
+   a piece-level service) uses `:api` *without* `:vpd-category` and a constant dispatch fn (see the
+   Polymorphic API Guide, "Non-VPD Singleton API Functions").
+2. **Add implementations in the appropriate model file(s)** — each model file holds the
+   implementations for its type (`defattribute` / `defvector` / `m/defmethod`).
 
-VPD integration is automatic once the `:vpd-category` metadata is correct. Alphabetical ordering
-in steps 2 and 3 is enforced by convention to make the exports easy to scan and update.
+That is the whole procedure. **Re-export through `core`, `api`, and `SRV` is automatic and
+metadata-driven — there is no manual export list for multimethods.** `models.core` interns every
+`interfaces` var tagged `:api` or `:vpd-category`; `api`'s `core-operations` is *derived* from the
+`models.core` vars tagged `:api`. The only hand-maintained list is `constructor-functions` in
+`api.clj`, for the `create-*` plain functions (which are not multimethods, so they are not
+auto-harvested).
 
 ## Unified gRPC Architecture
 

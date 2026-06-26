@@ -11,6 +11,7 @@ Accepted. Living: this ADR is prescriptive about the architecture as decided, an
   - [1. One detection point](#1-one-detection-point)
   - [2. Detection keys on the VPD shape](#2-detection-keys-on-the-vpd-shape)
   - [3. Structural change emits `:piece-structure-changed`](#3-structural-change-emits-piece-structure-changed)
+  - [3a. The structural projection: `get-piece-structure`](#3a-the-structural-projection-get-piece-structure)
   - [4. Exactly one event per outermost transaction](#4-exactly-one-event-per-outermost-transaction)
   - [5. The dirty flag](#5-the-dirty-flag)
   - [6. Two emission regimes](#6-two-emission-regimes)
@@ -51,11 +52,32 @@ Detection keys on the VPD form. The object form is out of band: constructing a p
 
 ### 3. Structural change emits `:piece-structure-changed`
 
-The structural entities — Piece, Musician, Instrument, Staff, Layout — carry a trait that emits `:piece-structure-changed` for the affected piece when one of them is mutated through the VPD path. The trait is conferred declaratively: an entity participates by deriving the structural tag, so a new structural entity — including one defined by a plugin — opts in with a single derivation and no change to the funnel.
+The structural entities — Piece, Musician, Instrument, Staff, Layout — carry a trait that emits `:piece-structure-changed` for the affected piece when one of them is mutated through the VPD path. The trait is conferred declaratively through the same per-entity `non-structural-fields` declaration the projection uses (§3a): an entity participates by one `defmethod`, co-located with its model, so a new structural entity — including one defined by a plugin — opts in with a single declaration and no change to the funnel.
 
 The event is the standard invalidation: it names the piece and reports its structure stale; it carries no structural payload, and the frontend responds by refetching the structural snapshot. The set of mutations the trait covers is exactly the set that changes what `get-piece-structure` projects — membership, ordering, identity, naming, and staff participation across those five entities — and the covered set and the projection are kept in agreement by construction.
 
 The event type `:piece-structure-changed` and its `:piece-structure` bus category are registered as amendments to [ADR-0018](0018-API-gRPC-Interface-and-Events.md) and [ADR-0031](0031-Frontend-Event-Driven-Architecture.md). The name is `:piece-structure-changed` throughout; the earlier `:piece-structure-invalidated` is retired.
+
+### 3a. The structural projection: `get-piece-structure`
+
+**"Structural" here is a GUI scope, not the general term.** It means the *makeup* of a piece as shown and rearranged in the **Piece Window** — its Musicians, their Instruments, those Instruments' Staves, and the piece's Layouts (rooted at the Piece): the entities a user manipulates there by drag-and-drop. The Structural trait exists to serve that window — what it displays (`get-piece-structure`) and what a structural change notifies it to refetch (`:piece-structure-changed`) — and has no consumer outside it. It is not the computer-science sense of "structural", and it is not the musical content. Everything below follows from that scope.
+
+The snapshot the frontend refetches is produced by `get-piece-structure`, which returns the piece reduced to its **structural fields**, recursively. It is a *keep-the-structural, drop-the-non-structural* projection, not an allowlist of named fields: every editable definitional field (transposition, ranges, `:clefs`, family, short-names, …) is kept automatically, and a new structural slot added later is kept for free. Dropped at every level are the large or content-bearing fields — measures, voices and items; the per-level change-sets; the layout visual hierarchy; internal counters; and `:settings`, which travels on its own `:piece-setting-changed` channel and would otherwise read stale here. These dropped fields are permanent piece content, not transient: the axis is *structural vs non-structural*, never *permanent vs temporary*.
+
+The projection and the emission trait (§3) share **one declaration per entity**. A `non-structural-fields` multimethod dispatches on entity type; its `:default` returns `nil` (= not a structural entity), and each structural entity returns the set of fields the projection drops. A non-nil result both marks the entity structural (it emits on mutation) and names its non-structural fields — so a new structural entity, core or plugin, opts in with one `defmethod`, co-located with its model, and no change to either the funnel or the projection. The recursive `structural-fields` helper keeps each node's structural fields and recurses into the structural children it retains.
+
+**Structural fields kept / non-structural fields dropped, per entity:**
+
+| Entity | non-structural (dropped) | structural (kept) |
+|---|---|---|
+| every node | `:settings` | — |
+| Piece | `:time-signatures` `:key-signatures` `:tempos` | `:id` `:title` `:musicians` `:layouts` |
+| Musician | `:instrument-changes` | `:id` `:name` `:instruments` |
+| Instrument | `:key-signature-overrides` `:next-id` | `:id` `:name` `:short-name` `:number` `:language` `:family` `:transposition` `:range` `:amateur-range` `:comment` `:staves` |
+| Staff | `:measures` `:key-signature-overrides` `:clef-changes` | `:id` `:name` `:short-name` `:clefs` `:num-lines` |
+| Layout | `:page-views` `:stack-formatters` | `:id` `:name` |
+
+**Naming.** Entity naming is `:name` (with `:short-name` only where a score abbreviates the label — Instrument, Staff), read and written through `get-name`/`set-name`. The piece's human label is `:title` (no short name), through a separate `get-title`/`set-title` family — the head of a title-block family (subtitle, composer, arranger, … added later). Musician `:name` (initial value derived from its instruments) and Layout `:name` (initial value derived from its musicians) are user-overridable slots; the initial-value derivations are out of scope here. The filename is never piece data and never appears in the projection — it is external catalogue state ([ADR-0012](0012-Persisting-Pieces.md) provenance); the window title derives from `:title`, blank rendering as "Untitled" via `tr` on the frontend.
 
 ### 4. Exactly one event per outermost transaction
 
