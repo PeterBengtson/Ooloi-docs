@@ -543,12 +543,12 @@ needs to display them — see [Unified Frontend Routing](#unified-frontend-routi
 The notification is routed via `derive-category` to a new `:undo` bus category.
 Notifications are scoped by audience: IL notifications go to all connected clients (the IL
 is a shared global resource); piece notifications go only to clients subscribed to that
-piece. This follows the same scoping as other piece events (`:piece-structure-invalidated`).
+piece. This follows the same scoping as other piece events (`:piece-structure-changed`).
 
 After `undo!` or `redo!`, the undo manager broadcasts **two** events:
 1. `:undo-state-changed` — so subscribed clients update their undo/redo menu state
 2. The resource-specific event (`:instrument-library-changed` or
-   `:piece-structure-invalidated`) — so all clients see the state change through
+   `:piece-structure-changed`) — so all clients see the state change through
    the normal invalidate→fetch→replace pipeline
 
 This dual broadcast means the undo operation is transparent to all existing event handlers.
