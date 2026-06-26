@@ -1454,6 +1454,7 @@ machinery that requires operation rebasing are permanently off the table.
 - [ADR-0039: Localisation Architecture](0039-Localisation-Architecture.md) - Translation key resolution for undo description display
 - [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) - `set-app-setting!` and the `:setting-changed` event that Tier 2 accumulates
 - [ADR-0045: Instrument Library](0045-Instrument-Library.md) - First consumer of Tier 1 undo manager
+- [ADR-0052: Change Detection and Event Generation](0052-Change-Detection-and-Event-Generation.md) - The detection/emission a piece mutation site relies on: the transaction scope that names the undo step also coalesces the structure event, and the dirty flag restored by undo/redo lives outside the piece
 
 ## Notes
 

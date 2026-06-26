@@ -328,6 +328,7 @@ Queue operations locally when disconnected, replay on reconnection.
 - **ADR-0038**: Backend-Authoritative Rendering — rendering authority; this document addresses state authority
 - **ADR-0045**: Instrument Library — applies this model to a global singleton: the library exists only on the server, the frontend caches and invalidates via event, and no distributed state exists
 - **ADR-0046**: Reference-Passing In-Process Transport — immutability guarantee that makes reference passing safe; serialisation is not what enforces the authority boundary
+- **ADR-0052**: Change Detection and Event Generation — operationalises "change only through accepted operations": detection at the write funnel, and one event per transaction
 
 ## Notes
 

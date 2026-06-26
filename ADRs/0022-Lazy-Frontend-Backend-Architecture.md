@@ -585,3 +585,4 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Complete implementation of the event-driven synchronization architecture specified here
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) - Backend-authoritative rendering with GPU-accelerated frontend execution implementing the lazy rendering patterns specified here
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Single-authority model enabling lazy frontend architecture
+- [ADR-0052: Change Detection and Event Generation](0052-Change-Detection-and-Event-Generation.md) - The backend detection mechanism that drives the invalidate→refetch flow defined here: where a mutation is detected and how it becomes a single event

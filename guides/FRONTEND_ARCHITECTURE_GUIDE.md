@@ -672,6 +672,8 @@ The pattern is simple but powerful:
 
 No component assumes it “knows” the final structure based on partial updates.
 
+The backend side of this contract — where a change is detected and how it becomes an invalidation event — is specified in [ADR-0052: Change Detection and Event Generation](../ADRs/0052-Change-Detection-and-Event-Generation.md): detection at the single VPD write funnel, structural changes emitting `:piece-structure-changed`, and emission coalesced to one event per outermost transaction.
+
 ### 5.3 Example Flow
 
 Consider a concrete interaction: the user changes a pitch.

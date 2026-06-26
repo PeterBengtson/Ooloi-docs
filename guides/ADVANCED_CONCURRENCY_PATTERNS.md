@@ -231,6 +231,8 @@ The VPD API provides complete abstraction over STM complexity:
 
 **The only STM primitive developers use:** `dosync` to compose multiple VPD operations atomically.
 
+When such a composed transaction mutates piece structure, change detection emits a single `:piece-structure-changed` event for the whole transaction, not one per operation — see [ADR-0052: Change Detection and Event Generation](../ADRs/0052-Change-Detection-and-Event-Generation.md) for how agent-deferred emission and a transaction-scoped gate guarantee exactly-once-per-commit, even under retry.
+
 ## Overview
 
 Ooloi's layout engine can format individual measures in parallel while coordinating updates to the visual hierarchy - a capability that gives it significant performance advantages over traditional single-threaded notation systems. Piece-walker's temporal coordination enables this safe parallelization within measure groups.
