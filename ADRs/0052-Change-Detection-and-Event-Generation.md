@@ -12,6 +12,7 @@ Accepted. Living: this ADR is prescriptive about the architecture as decided, an
   - [2. Detection keys on the VPD shape](#2-detection-keys-on-the-vpd-shape)
   - [3. Structural change emits `:piece-structure-changed`](#3-structural-change-emits-piece-structure-changed)
   - [3a. The structural projection: `get-piece-structure`](#3a-the-structural-projection-get-piece-structure)
+  - [3b. Detection: the slot flag](#3b-detection-the-slot-flag)
   - [4. Exactly one event per outermost transaction](#4-exactly-one-event-per-outermost-transaction)
   - [5. The dirty flag](#5-the-dirty-flag)
   - [6. Two emission regimes](#6-two-emission-regimes)
@@ -54,7 +55,7 @@ Detection keys on the VPD form. The object form is out of band: constructing a p
 
 The structural entities — Piece, Musician, Instrument, Staff, Layout — carry a trait that emits `:piece-structure-changed` for the affected piece when one of them is mutated through the VPD path. The trait is conferred declaratively through the same per-entity `non-structural-fields` declaration the projection uses (§3a): an entity participates by one `defmethod`, co-located with its model, so a new structural entity — including one defined by a plugin — opts in with a single declaration and no change to the funnel.
 
-The event is the standard invalidation: it names the piece and reports its structure stale; it carries no structural payload, and the frontend responds by refetching the structural snapshot. The set of mutations the trait covers is exactly the set that changes what `get-piece-structure` projects — membership, ordering, identity, naming, and staff participation across those five entities — and the covered set and the projection are kept in agreement by construction.
+The event is the standard invalidation: it names the piece and reports its structure stale; it carries no structural payload, and the frontend responds by refetching the structural snapshot. The set of mutations the trait covers is exactly the set that changes what `get-piece-structure` projects — membership, ordering, identity, naming, and staff participation across those five entities — and the covered set and the projection are kept in agreement by construction (§3b states the detection rule).
 
 The event type `:piece-structure-changed` and its `:piece-structure` bus category are registered as amendments to [ADR-0018](0018-API-gRPC-Interface-and-Events.md) and [ADR-0031](0031-Frontend-Event-Driven-Architecture.md). The name is `:piece-structure-changed` throughout; the earlier `:piece-structure-invalidated` is retired.
 
@@ -79,6 +80,26 @@ The projection and the emission trait (§3) share **one declaration per entity**
 
 **Naming.** Entity naming is `:name` (with `:short-name` only where a score abbreviates the label — Instrument, Staff), read and written through `get-name`/`set-name`. The piece's human label is `:title` (no short name), through a separate `get-title`/`set-title` family — the head of a title-block family (subtitle, composer, arranger, … added later). Musician `:name` (initial value derived from its instruments) and Layout `:name` (initial value derived from its musicians) are user-overridable slots; the initial-value derivations are out of scope here. The filename is never piece data and never appears in the projection — it is external catalogue state ([ADR-0012](0012-Persisting-Pieces.md) provenance); the window title derives from `:title`, blank rendering as "Untitled" via `tr` on the frontend.
 
+### 3b. Detection: the slot flag
+
+Detection is a single O(1) test at the funnel, never a diff. Every VPD write arrives with the entity it mutates and the **slot** it writes — the attribute or collection key. A write emits `:piece-structure-changed` iff **the entity is structural and the written slot is not one of its non-structural fields**: `(when-let [drop (non-structural-fields entity)] (not (contains? drop slot)))`. A non-structural entity yields the `:default` `nil` and never emits; a write to a non-structural slot of a structural entity — content, a change-set, `:settings` — is silent.
+
+This reuses the §3a multimethod unchanged: the *same* set the projection strips is the set whose complement, on a structural entity, fires the event. Projection and detection read one declaration and cannot drift. There is no projection consed before and after, and no value comparison — only set membership on the slot being written, so the cost is constant regardless of piece size.
+
+Because the test keys on the *slot* and not merely the entity, it is precise where a coarser entity-only rule would over-signal: `Staff` and `Layout` are structural, but `:measures` and `:page-views` are content, so adding a measure or a page-view is silent — while renaming that same `Staff` fires. (§6 would tolerate the over-signal as a cheap refetch the renderer diffs to nothing; the slot flag spends nothing on it.)
+
+| VPD write | entity | slot | non-structural? | emits |
+|---|---|---|---|---|
+| add / remove / set / move-up / move-down / set-vector musician | Piece | `:musicians` | no | **yes** |
+| … layout | Piece | `:layouts` | no | **yes** |
+| … instrument | Musician | `:instruments` | no | **yes** |
+| … staff | Instrument | `:staves` | no | **yes** |
+| `set-name` / `set-title` | Musician / Instrument / Staff / Layout / Piece | `:name` / `:title` | no | **yes** |
+| `add-measure` | Staff | `:measures` | yes | no |
+| `add-page-view` | Layout | `:page-views` | yes | no |
+| `add-voice` / `add-item` | Measure / Voice | `:voices` / `:items` | non-structural entity → nil | no |
+| any object-form op | — | — | — | no (§2) |
+
 ### 4. Exactly one event per outermost transaction
 
 Emission is deferred to commit by dispatching through an agent: an action dispatched inside a transaction is held until that transaction commits and is discarded if it retries. Emission therefore never fires from an uncommitted or replayed attempt, and never from inside the `dosync` itself.
@@ -88,6 +109,10 @@ Deferral fixes timing, not multiplicity: N changes that each dispatch would comm
 The gate is held in a **ref**, so that it rolls back in lockstep with the discarded dispatch when the transaction retries. A non-transactional flag would survive a retry while its dispatch was discarded, and the committed transaction would then emit nothing. The gate lives **outside the piece** — it is transaction coordination, not musical content — and is fresh per outermost transaction.
 
 The scope that establishes the gate is a single primitive that also opens the transaction and names the operation for undo. A lone operation is the degenerate case: it opens that scope itself and is the n = 1 transaction — one change, one event — with no separate path. Composition therefore goes through that scope rather than a bare `dosync`; a bare `dosync` gives atomicity but binds no gate, and its inner operations would each emit.
+
+**Where this lives, and the seam.** The gate, the scope, and the slot test (§3b) are the change-detection system, and they live in a dedicated home (`ops/change-detection.clj`) — so the write funnel's location is unchanged while the detection system has room to grow the content and formatting regimes (§6–§7). Emission crosses the shared→backend boundary by **dependency inversion**: the funnel names the operation — *a structural change occurred for this piece* — through a protocol declared in the shared tier and implemented in the backend, which broadcasts on the event stream. This is the seam `PieceRefResolver` already uses, not a runtime lookup of a server component. A context with no backend implementation — a pure-shared test, a frontend-local value manipulation — has no subscriber and emits nothing, which is the §2 object-form exclusion seen from the other side.
+
+**Built now, extended later.** The scope is introduced here for the gate. The undo capture it will also carry — naming the operation for undo at the piece mutation sites ([ADR-0015](0015-Undo-and-Redo.md)) — is a later addition to the *same* primitive, not a second scope: until then the scope opens the transaction and binds the gate, and the undo name joins it when piece undo capture is built.
 
 ### 5. The dirty flag
 
