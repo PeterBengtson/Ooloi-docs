@@ -53,7 +53,7 @@ Detection keys on the VPD form. The object form is out of band: constructing a p
 
 ### 3. Structural change emits `:piece-structure-changed`
 
-The structural entities — Piece, Musician, Instrument, Staff, Layout — carry a trait that emits `:piece-structure-changed` for the affected piece when one of them is mutated through the VPD path. The trait is conferred declaratively through the same per-entity `non-structural-fields` declaration the projection uses (§3a): an entity participates by one `defmethod`, co-located with its model, so a new structural entity — including one defined by a plugin — opts in with a single declaration and no change to the funnel.
+The structural entities — Piece, Musician, Instrument, Staff, Layout — carry the `::h/Structural` trait (`hierarchy.clj`) and emit `:piece-structure-changed` for the affected piece when one of them is mutated through the VPD path. Membership is the trait, tested with the `structural?` predicate (`predicates.clj`); each structural entity additionally declares, co-located with its model, the `non-structural-fields` set the projection uses (§3a). A new structural entity — including one defined by a plugin — opts in by deriving `::h/Structural` and declaring its `non-structural-fields`, with no change to the funnel.
 
 The event is the standard invalidation: it names the piece and reports its structure stale; it carries no structural payload, and the frontend responds by refetching the structural snapshot. The set of mutations the trait covers is exactly the set that changes what `get-piece-structure` projects — membership, ordering, identity, naming, and staff participation across those five entities — and the covered set and the projection are kept in agreement by construction (§3b states the detection rule).
 
@@ -65,7 +65,7 @@ The event type `:piece-structure-changed` and its `:piece-structure` bus categor
 
 The snapshot the frontend refetches is produced by `get-piece-structure`, which returns the piece reduced to its **structural fields**, recursively. It is a *keep-the-structural, drop-the-non-structural* projection, not an allowlist of named fields: every editable definitional field (transposition, ranges, `:clefs`, family, short-names, …) is kept automatically, and a new structural slot added later is kept for free. Dropped at every level are the large or content-bearing fields — measures, voices and items; the per-level change-sets; the layout visual hierarchy; internal counters; and `:settings`, which travels on its own `:piece-setting-changed` channel and would otherwise read stale here. These dropped fields are permanent piece content, not transient: the axis is *structural vs non-structural*, never *permanent vs temporary*.
 
-The projection and the emission trait (§3) share **one declaration per entity**. A `non-structural-fields` multimethod dispatches on entity type; its `:default` returns `nil` (= not a structural entity), and each structural entity returns the set of fields the projection drops. A non-nil result both marks the entity structural (it emits on mutation) and names its non-structural fields — so a new structural entity, core or plugin, opts in with one `defmethod`, co-located with its model, and no change to either the funnel or the projection. The recursive `structural-fields` helper keeps each node's structural fields and recurses into the structural children it retains.
+Membership in the structural set is the `::h/Structural` trait (`hierarchy.clj`), tested with the `structural?` predicate; each structural entity additionally declares the set of fields the projection drops via a `non-structural-fields` `defmethod`, co-located with its model. The **same** `non-structural-fields` set is read by both the projection (which strips it) and the detection (§3b, which fires on a write to a slot outside it), so the kept fields and the covered set cannot drift. A new structural entity — core or plugin — opts in by deriving `::h/Structural` and declaring its `non-structural-fields`, with no central map and no change to the funnel or the projection. The recursive `structural-fields` helper keeps each node's structural fields and recurses into the structural children it retains.
 
 **Structural fields kept / non-structural fields dropped, per entity:**
 
@@ -82,7 +82,7 @@ The projection and the emission trait (§3) share **one declaration per entity**
 
 ### 3b. Detection: the slot flag
 
-Detection is a single O(1) test at the funnel, never a diff. Every VPD write arrives with the entity it mutates and the **slot** it writes — the attribute or collection key. A write emits `:piece-structure-changed` iff **the entity is structural and the written slot is not one of its non-structural fields**: `(when-let [drop (non-structural-fields entity)] (not (contains? drop slot)))`. A non-structural entity yields the `:default` `nil` and never emits; a write to a non-structural slot of a structural entity — content, a change-set, `:settings` — is silent.
+Detection is a single O(1) test at the funnel, never a diff. Every VPD write arrives with the entity it mutates and the **slot** it writes — the attribute or collection key. A write emits `:piece-structure-changed` iff **the entity is structural and the written slot is not one of its non-structural fields**: `(and (structural? entity) (not (contains? (non-structural-fields entity) slot)))`. A non-structural entity fails `structural?` and never emits; a write to a non-structural slot of a structural entity — content, a change-set, `:settings` — is silent.
 
 This reuses the §3a multimethod unchanged: the *same* set the projection strips is the set whose complement, on a structural entity, fires the event. Projection and detection read one declaration and cannot drift. There is no projection consed before and after, and no value comparison — only set membership on the slot being written, so the cost is constant regardless of piece size.
 
@@ -97,7 +97,7 @@ Because the test keys on the *slot* and not merely the entity, it is precise whe
 | `set-name` / `set-title` | Musician / Instrument / Staff / Layout / Piece | `:name` / `:title` | no | **yes** |
 | `add-measure` | Staff | `:measures` | yes | no |
 | `add-page-view` | Layout | `:page-views` | yes | no |
-| `add-voice` / `add-item` | Measure / Voice | `:voices` / `:items` | non-structural entity → nil | no |
+| `add-voice` / `add-item` | Measure / Voice | `:voices` / `:items` | not a structural entity | no |
 | any object-form op | — | — | — | no (§2) |
 
 ### 4. Exactly one event per outermost transaction
