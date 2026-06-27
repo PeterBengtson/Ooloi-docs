@@ -57,7 +57,7 @@ The structural entities — Piece, Musician, Instrument, Staff, Layout — carry
 
 The event is the standard invalidation: it names the piece and reports its structure stale; it carries no structural payload, and the frontend responds by refetching the structural snapshot. The set of mutations the trait covers is exactly the set that changes what `get-piece-structure` projects — membership, ordering, identity, naming, and staff participation across those five entities — and the covered set and the projection are kept in agreement by construction (§3b states the detection rule).
 
-The event type `:piece-structure-changed` and its `:piece-structure` bus category are registered as amendments to [ADR-0018](0018-API-gRPC-Interface-and-Events.md) and [ADR-0031](0031-Frontend-Event-Driven-Architecture.md). The name is `:piece-structure-changed` throughout; the earlier `:piece-structure-invalidated` is retired.
+The event type `:piece-structure-changed` is registered as an amendment to [ADR-0018](0018-API-gRPC-Interface-and-Events.md). It is a **piece event**: `send-piece-event` delivers it only to clients subscribed to that piece, and [ADR-0031](0031-Frontend-Event-Driven-Architecture.md) routes it per-piece to that piece's window through the piece subscription (`subscribe-to-piece-events`) — **not** through a shared bus category. The name is `:piece-structure-changed` throughout; the earlier `:piece-structure-invalidated` is retired.
 
 ### 3a. The structural projection: `get-piece-structure`
 
@@ -86,7 +86,7 @@ Detection is a single O(1) test at the funnel, never a diff. Every VPD write arr
 
 This reuses the §3a multimethod unchanged: the *same* set the projection strips is the set whose complement, on a structural entity, fires the event. Projection and detection read one declaration and cannot drift. There is no projection consed before and after, and no value comparison — only set membership on the slot being written, so the cost is constant regardless of piece size.
 
-Because the test keys on the *slot* and not merely the entity, it is precise where a coarser entity-only rule would over-signal: `Staff` and `Layout` are structural, but `:measures` and `:page-views` are content, so adding a measure or a page-view is silent — while renaming that same `Staff` fires. (§6 would tolerate the over-signal as a cheap refetch the renderer diffs to nothing; the slot flag spends nothing on it.)
+Because the test keys on the *slot* and not merely the entity, it is precise where a coarser entity-only rule would over-signal: `Staff` and `Layout` are structural, but `:measures` and `:page-views` are content, so adding a measure or a page-view is silent — while renaming that same `Staff` fires. A coarser entity-only rule would emit on those content writes; the slot flag spends nothing on them and emits nothing.
 
 | VPD write | entity | slot | non-structural? | emits |
 |---|---|---|---|---|
@@ -124,7 +124,7 @@ The dirty flag is held by the Piece Manager, beside the piece, and **never insid
 
 One detection mechanism feeds two regimes that differ in granularity, and the difference is deliberate:
 
-- **Structure** is coarse. A structural change emits a single `:piece-structure-changed` per transaction and the frontend refetches the whole structural snapshot. That snapshot is light, so over-signalling costs only a cheap refetch the renderer diffs to nothing; there is no need for finer structural events.
+- **Structure** is coarse-grained: a structural change emits a single `:piece-structure-changed` per transaction, and the subscribed window refetches the whole structural snapshot — no delta, no finer-grained structural events ([ADR-0040](0040-Single-Authority-State-Model.md): the frontend refetches canonical state). The event reaches only that piece's subscribers — per-piece, never broadcast (§3; [ADR-0031](0031-Frontend-Event-Driven-Architecture.md)).
 - **Formatting / content** is fine. A content change can require more than one invalidation (see §7).
 
 Both regimes honour the same principle: an event carries identifiers of what is stale, not a delta ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)). The single-event-per-transaction rule of §4 is **specific to structure** and must not be read as governing formatting.
@@ -151,7 +151,7 @@ sequenceDiagram
     participant SRV as SRV / gRPC
     participant BE as Backend<br/>(vpd-transact funnel)
     participant AG as Notifier agent
-    participant ER as Event Router / bus
+    participant ER as Event Router
 
     FE->>SRV: add-musician [vpd] piece-id m
     SRV->>BE: ExecuteMethod (VPD form)
@@ -161,8 +161,8 @@ sequenceDiagram
     SRV-->>FE: {:ok ...}
     BE->>AG: on commit, dispatch
     AG->>ER: :piece-structure-changed {:piece-id}
-    ER->>FE: :piece-structure (bus)
-    FE->>SRV: get-piece-structure piece-id
+    ER->>FE: :piece-structure-changed (per-piece → this window)
+    FE->>SRV: get-piece-structure [] piece-id
     SRV->>BE: ExecuteMethod
     BE-->>SRV: structural snapshot
     SRV-->>FE: snapshot
@@ -178,7 +178,7 @@ sequenceDiagram
     participant OP as Composed op<br/>(with-undo: Import XML)
     participant SC as Transaction scope<br/>(gate ref)
     participant AG as Notifier agent
-    participant ER as Event Router / bus
+    participant ER as Event Router
 
     OP->>SC: open outermost scope (dosync, gate = false)
     OP->>SC: change 1 (add-musician)
