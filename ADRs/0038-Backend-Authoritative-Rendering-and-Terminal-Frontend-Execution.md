@@ -271,14 +271,15 @@ The following components implement the terminal frontend execution model. Events
 
 #### 1. Event Router (Integrant Component)
 
-Pure protocol adapter: categorises backend gRPC events, batches them by category with time windows, and publishes each batch to the frontend event bus (ADR-0031). JavaFX local events remain in JavaFX.
+Pure protocol adapter for category-routed events: categorises backend gRPC events, batches them by category with time windows, and publishes each batch to the frontend event bus (ADR-0031). Per-piece events such as `:piece-structure-changed` are the exception — the Event Router dispatches them directly to the subscribing window, not categorised or batched (see ADR-0031). JavaFX local events remain in JavaFX.
 
 **Responsibilities:**
 - Subscribe to gRPC event streams
 - Derive routing category from event type
 - Batch events by category with time windows
 - Publish one `eb/publish!` per category batch to the frontend event bus
-- No direct category handlers — all downstream processing happens through bus subscribers mediated by the UI Manager
+- No direct category handlers — category processing happens through bus subscribers mediated by the UI Manager
+- Per-piece events (`:piece-structure-changed`) are dispatched directly to the subscribing window's registered handler, bypassing categorisation and batching (ADR-0031)
 - No rendering details; no UI chrome
 
 **Invalidation Flow:**
