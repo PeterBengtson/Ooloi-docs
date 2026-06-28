@@ -359,7 +359,9 @@ Every application window uses a **per-window cljfx renderer** managed by the dec
 │     :window/state      (atom {})                                  │
 │     :window/subscriptions [...]  ;; optional                      │
 │     :window/watches       [...]  ;; optional                      │
-│     :window/stylesheets   [...]} ;; optional                      │
+│     :window/stylesheets   [...]  ;; optional                      │
+│     :window/on-open       fn     ;; optional                      │
+│     :window/on-close      fn}    ;; optional                      │
 │                                                                   │
 └──────────────────────────────────┼────────────────────────────────┘
                                    │ eb/publish! :window-requests
@@ -376,12 +378,14 @@ Every application window uses a **per-window cljfx renderer** managed by the dec
 │  8. Subscribe declared :window/subscriptions                     │
 │  9. Add declared :window/watches                                 │
 │ 10. Load declared :window/stylesheets                            │
+│ 11. Run :window/on-open hook                                     │
 │                                                                   │
 │  On close-window!:                                               │
-│  1. Unsubscribe all stored bus handlers                          │
-│  2. Remove all stored atom watches                               │
-│  3. Unmount renderer                                             │
-│  4. Persist geometry, close Stage, remove registry entry         │
+│  1. Run :window/on-close hook (window still live)               │
+│  2. Unsubscribe all stored bus handlers                          │
+│  3. Remove all stored atom watches                               │
+│  4. Unmount renderer                                             │
+│  5. Persist geometry, close Stage, remove registry entry         │
 │                                                                   │
 └──────────────────────────────────────────────────────────────────┘
 
@@ -399,16 +403,27 @@ Map event flow:
 
 #### How it works
 
-1. `show-piece-window!` publishes a `:window-open-requested` event with a data map declaring `:window/spec-fn`, `:window/handler`, `:window/state`, and optionally `:window/subscriptions`, `:window/watches`, and `:window/stylesheets`.
+1. `show-piece-window!` publishes a `:window-open-requested` event with a data map declaring `:window/spec-fn`, `:window/handler`, `:window/state`, and optionally `:window/subscriptions`, `:window/watches`, `:window/stylesheets`, and the lifecycle hooks `:window/on-open` / `:window/on-close`.
 2. The UI Manager's pipeline composes the handler with `cljfx/wrap-co-effects` and `cljfx/wrap-effects` (if declared), then creates a renderer with:
    - **`:middleware`** — `cljfx/wrap-map-desc` transforms each new atom value into a cljfx description by calling the spec function with the current state.
    - **`:fx.opt/map-event-handler`** — routes all map-form `:on-action` values through the composed handler.
 3. The renderer is called once with the initial state. `cljfx/mount-renderer` then keeps it watching the atom.
 4. `cljfx/instance` extracts the JavaFX Node. This is passed as `:window/content` to `show-window!`.
 5. The pipeline registers the renderer for locale/theme reactivity, subscribes all declared event bus subscriptions, adds all declared atom watches, and loads all declared stylesheets.
-6. On close, `close-window!` automatically unsubscribes all bus handlers, removes all atom watches, unmounts the renderer, persists geometry, and closes the Stage. No window module manages its own cleanup.
+6. On close, `close-window!` automatically runs the window's `:window/on-close` hook first (while the window is still fully live), then unsubscribes all bus handlers, removes all atom watches, unmounts the renderer, persists geometry, and closes the Stage. No window module manages its own cleanup.
 
 Each `show-piece-window!` call publishes a fresh event with a fresh state atom, so any number of piece windows can be open simultaneously with fully isolated state.
+
+#### Window lifecycle hooks: `:window/on-open` and `:window/on-close`
+
+Two optional keys carry per-window setup and teardown that the declarative keys do not cover. Each is `(fn [ctx])`, where `ctx` is `{:window/id :window/state :stage}` (the state is the renderer's atom). They are **symmetric**:
+
+- **`:window/on-open`** runs **last** when opening — after the Stage is shown, registered, and every `:window/subscriptions` / `:window/watches` / `:window/stylesheets` is wired. The window is fully live.
+- **`:window/on-close`** runs **first** when closing — before any unsubscribe, unwatch, or unmount, and before the Stage closes. The window is still fully live.
+
+So opening wires everything and *then* calls `on-open`; closing calls `on-close` and *then* tears everything down — last-in-first-out symmetry, with the window fully present in both callbacks.
+
+They are **additive** to `:window/subscriptions` / `:window/watches`, which remain the declarative path for event-bus subscriptions and atom watches. The hooks exist for setup the UI Manager cannot express declaratively because it must not depend on the collaborating component. The piece window is the first consumer: on open it subscribes to its piece's backend events (`subscribe-to-piece` on the Event Router) and on close it unsubscribes — the callbacks are supplied from `system.clj`, closing over the Event Router, so the UI Manager wires the hooks without itself depending on the Event Router. Other window types (layout, MIDI) use the same pair for their own open/close steps.
 
 #### Map events and dispatch
 
