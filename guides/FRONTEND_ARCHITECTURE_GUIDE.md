@@ -761,6 +761,8 @@ When invalidation events arrive (Section 5), the frontend may perform substantia
 
 The effect is a UI that remains responsive even while large orchestral scores are being recomputed or streamed from a remote backend.
 
+`SRV/*` — the polymorphic API over gRPC — enforces this directly: it is **hard-guarded** and throws immediately if invoked on the JavaFX Application Thread, directing the caller to dispatch on a background pool. So a backend call made from a JAT context — for example a window lifecycle hook, which runs on the JAT — fails loudly and at once rather than silently freezing the UI. The remedy is always the same: run the call on a background thread (the Claypoole pool), and if a result must touch the scene graph, return it to the JAT via `fx/run-later!`. This mirrors `fx/assert-fx-thread!` (§6.1), which throws when JAT-only work is attempted off the thread; together the two guards make the boundary visible from both sides.
+
 ### 6.3 Threading Model in Practice
 
 Putting the pieces together:

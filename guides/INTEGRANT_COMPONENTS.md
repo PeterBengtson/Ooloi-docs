@@ -796,6 +796,8 @@ For testing the full combined application — all 15 baseline components, in-pro
 
 `wire-domain-subscriptions!` is defined in `shared/src/app/clojure/ooloi/shared/system.clj`. Production gets this wiring from `start-app!`, which calls it before `event-client/register-with-server`. The function is deliberately separate so tests can opt in without dragging in splash screens, menu bars, and piece window creation.
 
+**Nor is the client registered with the server.** `with-combined-system` starts the components but does not call `event-client/register-with-server` (also a `start-app!` step). A test that makes a direct `SRV/*` call — or exercises production code that does, such as a piece window's `:window/on-open` hook subscribing to its piece — must call `(event-client/register-with-server grpc-clients grpc-clients)` first (both arguments are the `grpc-clients` component), or the SRV connection pool is unavailable and the call throws *"API connection pool not available - call register-with-server first"*.
+
 **Aggregator queue requirement:** every category returned by `derive-category` (in `frontend/event_router/core.clj`) must have a corresponding queue in the aggregator (`frontend/event_router/aggregator.clj`). Missing queues cause events to be silently dropped — `add-event` uses `when-let` on the queue lookup. When adding a new event category, update both files.
 
 **Async synchronisation note:** after `register-with-server`, allow 100ms before reading server registry state — gRPC connections are established asynchronously.
