@@ -98,6 +98,8 @@ There is no zero-latency editing via local state.
 
 The frontend does not hold authoritative state. It may construct pieces locally (for testing, validation, preparation), but these are data, not authority. The authoritative piece exists only on the server.
 
+Because the frontend refetches canonical state on invalidation rather than reconciling deltas, concurrent invalidations are safe to apply out of order. A consumer that refetches applies results **latest-wins**: each refetch carries a timestamp and is applied only if newer than the last applied, so a stale refetch landing late is dropped and no stale state can persist. The mechanism is in [ADR-0031](0031-Frontend-Event-Driven-Architecture.md).
+
 ### Operations as the Only Unit of Truth
 
 There is no `get-piece` or `set-piece` in the API. This is not a gap but a boundary.

@@ -661,6 +661,7 @@ This pull-based model has several consequences:
 
 * The frontend never trusts cached semantic structure beyond its validity scope.
 * Multiple invalidations can be coalesced before repaint.
+* Refetches are latest-wins: a consumer that refetches applies a result only if it is newer than the last applied, so a stale refetch landing out of order is dropped and the view settles on the freshest authoritative state.
 * Collaboration becomes a transport concern, not an architectural fork.
 * Determinism is preserved because rendering is always derived from authoritative state.
 

@@ -166,7 +166,7 @@ sequenceDiagram
     SRV->>BE: ExecuteMethod
     BE-->>SRV: structural snapshot
     SRV-->>FE: snapshot
-    Note over FE: reset! *piece-state, then cljfx re-renders
+    Note over FE: apply to *piece-state (latest-wins: newer :timestamp only),<br/>then cljfx re-renders
 ```
 
 ### One event per outermost transaction

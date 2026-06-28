@@ -614,9 +614,14 @@ the Event Router's `subscribe-to-piece` (proxying `subscribe-to-piece-events`), 
 handler against that `piece-id`; the Event Router dispatches the event to that piece's handler.
 It does **not** pass through `derive-category` or a shared `:piece-structure` category — there is
 no fan-out to other pieces' windows and no client-side `:piece-id` filter.
-**Subscriber reaction**: the piece window's handler calls `(SRV/get-piece-structure [] piece-id)`,
-places the result into `*piece-state` via `swap!`. The cljfx renderer repopulates the Musicians
+**Subscriber reaction**: the piece window's handler calls `(SRV/get-piece-structure [] piece-id)`
+and applies the result to `*piece-state` via `swap!`. The cljfx renderer repopulates the Musicians
 and Layouts panes reactively. No paintlist impact; no Fetch Coordinator involvement.
+**Refetches are latest-wins**: the window also reads the structure once on open, and both that
+initial read and every event-driven refetch run off the JAT and can land out of order. Each
+carries a timestamp — the event's `:timestamp`, or `0` for the initial read — and is applied only
+if newer than the last applied (`:structure-timestamp`), so a stale refetch landing late is
+dropped and the window settles on the freshest structure.
 
 ---
 
