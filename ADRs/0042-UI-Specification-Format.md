@@ -130,11 +130,31 @@ Backend plugins currently use piece settings (ADR-0016) with auto-generated UI v
 - Persistent (default): main windows, tool palettes
 - Non-persistent: splash screen (`:window/persist? false`), notifications (no Stage)
 
+**`:window/factory`** (keyword, optional)
+- Factory-dispatch content source: names a factory registered in the UI Manager's
+  `:window-factory-registry` via `register-window-factory!`. The `:window-open-requested`
+  pipeline calls that factory with the event's `:window/data` and uses the returned JavaFX
+  Node as the window content — one of three mutually-exclusive content sources
+  (`:window/content-spec`, `:window/factory`, `:window/spec-fn`); a window declares exactly one.
+- The imperative / plugin path: no factory is registered today, so it has no production
+  users yet — it exists for backend-described and plugin windows (see Problem Statement).
+
 **`:window/type`** (keyword, optional)
-- Reserved key — not currently in the recognised key set. Passing it to `show-window!`
-  will throw "Unknown window/* keys". Documented for future use as a semantic type hint
-  (e.g. `:stage`, `:dialog`, `:notification`).
-- Not required — `:fx/type` is authoritative for rendering
+- Semantic classification of the window — *what kind* of window this is (`:piece` today;
+  `:layout`, `:palette`, `:dialog` foreseen). `show-piece-window!` sets `:window/type :piece`;
+  `register-window!` stores it verbatim on the window-registry entry.
+- It is **not** a content source: the `:window-open-requested` pipeline never reads it, so it
+  rides alongside whichever of `:window/content-spec` / `:window/factory` / `:window/spec-fn`
+  builds the content. Its purpose is to *query and group* windows by role —
+  `ui-manager/piece-windows` filters `(= :piece (:window/type entry))`; the startup window-set
+  gates on `(empty? (piece-windows mgr))` ("no piece window on-screen → open one New"), and
+  #184's restore reopens each window as its recorded type.
+- **Distinct from `:window/factory`, and the two never overlap.** `:window/type` answers *what
+  the window is* — a classification, read after the window is registered. `:window/factory`
+  answers *how its content is built* — a registry dispatch, consumed during construction (and
+  `dissoc`ed before registration). They are orthogonal axes: a window may carry both, e.g. a
+  factory-built dialog — `:window/factory :plugin-config` (build) + `:window/type :dialog`
+  (classification). The factory is keyed by a `factory-key`, never by a `:window/type`.
 
 **First-open position and size** (plain `:x` / `:y` / `:width` / `:height`, optional)
 - A window's position and size before any persisted geometry exist are ordinary `:x` / `:y` / `:width` / `:height` in the spec — not `:window/*` keys. `show-window!` merges persisted geometry over them, so they govern only the first-ever open (see §"Established Usage Patterns: Floating windows → Ambient indicators" for how the collaboration palette computes its first-open `:x` / `:y`). There is no dedicated `:window/default-*` key.
@@ -189,14 +209,37 @@ Backend plugins currently use piece settings (ADR-0016) with auto-generated UI v
 - Declares the window's JavaFX modality: `:none` (default, non-modal) or `:application-modal` (blocks input to all other Ooloi windows while shown).
 - Keyword-valued (not boolean) so a future modality kind (e.g. window-modal, once multiple piece windows exist) is a non-breaking *addition* — a new value plus one branch — not a boolean→keyword contract migration. Only the values with consumers now are built.
 - `build-window!` translates `:application-modal` → `.initModality APPLICATION_MODAL` before the Stage is shown; `:none`/absent leaves JavaFX's default (`NONE`). Interop stays confined to the boundary files (`window.clj` / `ui_manager.clj`).
-- Modality is a **window property**, not a separate UI type — a modal is a window with `:window/modality`, opened through the same `show-window!` pipeline as any other window (distinct from the still-reserved `:window/type` semantic-kind hint). A modal window additionally receives an owner and non-persist/non-resizable defaults — see "Modal dialogs: one core, two entry points" below.
+- Modality is a **window property**, not a separate UI type — a modal is a window with `:window/modality`, opened through the same `show-window!` pipeline as any other window. A modal window additionally receives an owner and non-persist/non-resizable defaults — see "Modal dialogs: one core, two entry points" below.
 
 **`:title`** (string, optional)
 - Raw JavaFX Stage title string, passed directly to `Stage.setTitle()`
 - This is the **low-level target** that `:window/title-key` resolves into — `build-window!` calls `(tr title-key)` and places the result in `:title`
 - `:window/title-key` takes precedence: if both are present, the resolved translation replaces `:title`
 - Spec authors must use `:window/title-key` for all titles — all user-facing strings must be localisable per ADR-0039
-- No production code should pass hardcoded strings via `:title`; all window titles go through `tr-declare` + `:window/title-key`
+- No production code passes hardcoded UI strings via `:title`; static window titles go through `tr-declare` + `:window/title-key`. (Titles that track *user data* — the piece name — are set as raw text through `set-window-title!`; see "Dynamic window titles" below.)
+
+### Dynamic window titles: raw `:title` vs the `:window/title-key` fallback
+
+The two title keys above set a window's title **once**, at build. A window whose title must
+*track domain state* — the piece window, titled by the piece's name — instead uses
+`ui-manager/set-window-title! [manager window-id title fallback-key]`, which chooses between the
+two mechanisms by whether `title` is blank:
+
+- **Non-blank** (e.g. `"Sonata"`): the piece's name is **raw text**, set verbatim via `:title`
+  and never translated. The registry entry's `:title-key` is *cleared*, so the locale pipeline —
+  which re-resolves `:window/title-key` windows on a locale change — leaves it untouched: "Sonata"
+  stays "Sonata" in every locale.
+- **Blank** (`""`, a freshly created piece): the title falls back to `fallback-key`
+  (`:window.untitled-piece.title` → "Untitled"), tr-resolved, and the entry *keeps* that
+  `:title-key`, so the locale pipeline re-translates it on a locale change.
+
+The rule, then: **`:title` is raw text; `:window/title-key` is a translation key — two distinct
+mechanisms, two distinct keys.** A locale change re-resolves the tr fallback but never a raw name.
+This is consistent with ADR-0039, not an exception to it: the piece *name* is user data, not a UI
+string, so it is correctly raw; only the "Untitled" fallback is a UI string, and that is localised.
+The piece window re-applies its title on open and on every `:piece-structure-changed` refetch — a
+watch on the window state calls `set-window-title!` — so `set-title` (a structural change, ADR-0052)
+updates the window title live.
 
 ### Modal dialogs: one core, two entry points
 
@@ -580,7 +623,7 @@ The handler function is pure: it receives the event map with co-effect values me
 The `:window-open-requested` handler supports four materialisation paths:
 
 1. **`:window/content-spec`** — materialise a cljfx data spec to a Node via `create-component` + `instance`.
-2. **`:window/type`** — look up a registered factory function by type keyword.
+2. **`:window/factory`** — look up a registered factory by type keyword (the imperative/plugin path; see `register-window-factory!`).
 3. **`:window/spec-fn`** — create a full renderer + dispatch pipeline from declarative keys (this section). **The standard path for all renderer windows.** All four windows (About, Piece, Settings, Instrument Library) use this path.
 4. **Pass-through** — the event already contains a pre-built `:window/content` Node. Used by the splash screen.
 
@@ -1323,6 +1366,26 @@ The implementation uses an atom + lock architecture for thread-safe persistence.
   (locking persistence-lock
     (save-window-state @window-states)))
 ```
+
+### Application startup: window-set, menu, and readiness
+
+Startup is orchestrated by `start-app!` in a fixed order, so that "the application is ready" means "its windows are on screen", not merely "the process launched":
+
+1. **Splash.** `start-app!` shows the splash screen and brings the system up behind it (backend components, gRPC, the UI Manager).
+2. **Menu host.** When the splash closes, the menu host is installed *first*. On macOS this is the single global system menu bar (see *Platform-split menus* below); on Windows/Linux there is no global menu, so the per-window bars instead arrive with their windows in step 3.
+3. **The startup window-set.** `open-startup-windows!` then opens the initial set of piece windows. There is no fixed "open the untitled piece" step; the rule is an **invariant** — *if no piece window would be on screen, open one*. A future session restore reopens the previous session's windows; when nothing is restored (or a restored window fails to open), the **untitled fallback** runs — mint one New untitled, unsaved backend piece (`SRV/new-piece`, off the JAT) and open its subscribed window through `open-piece-window!`. The set is whatever actually opens.
+4. **Readiness last.** `:app-ready` is published only once the whole window-set has opened and registered — never partway. `open-startup-windows!` owns the signal and fires it when the set settles, so a restore that opens nothing, or fails partway, cannot starve readiness (the ADR-0031 ordering guarantee).
+
+Every startup window is keyed by its **piece UUID**, like any other piece window — there is no distinguished `:untitled-piece` id. Code that needs "the startup piece window" looks it up by kind (`ui-manager/piece-windows`), never by a fixed id.
+
+#### Platform-split menus
+
+Where the menu bar lives is platform-specific, by design:
+
+- **macOS** has one **global system menu bar**, installed once at startup (step 2) and shared by every window. Piece windows attach no menu of their own.
+- **Windows / Linux** have no global menu, so **each piece window carries its own**. `open-piece-window!` is platform-sensitive: on those platforms it builds a `MenuBar` for the window and attaches it (with the command accelerators) to that window's scene; on macOS it attaches none. Every New / Open / startup window therefore has a working menu on every platform — closing the earlier gap where New/Open windows were menu-less on Windows/Linux.
+
+Because the menu can exist in *many* places on Windows/Linux (one bar per piece window), dynamic menu-text updates — locale changes, enablement-driven labels — go through a **multi-bar `refresh-menu-text!`**: it iterates every open piece window's bar on Windows/Linux, and updates the single global bar on macOS. The command descriptors (the menu *items*) are identical across platforms; only their *placement* and *refresh fan-out* differ.
 
 ## Benefits
 

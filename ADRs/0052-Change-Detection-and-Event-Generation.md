@@ -120,6 +120,8 @@ A piece is dirty when it has changed since it was last saved. Dirtiness is **OR-
 
 The dirty flag is held by the Piece Manager, beside the piece, and **never inside the piece value**. Were it a field of the piece, setting it would itself be a change the detector would see and undo/redo would capture, and a save could not clear it without mutating content. It is read through a reader and set through the manager's own function: session state about a piece, not part of the piece's identity or content.
 
+**Identity preservation — the requirement this flag and the detector both rest on.** The "not identical to the prior value" test above, and the change detector's no-op gate at the write funnel (`(not (identical? before after))`, §3b), only suppress a no-op write if that write actually returns the *identical* structure. The VPD set mutators (`set-vector-item`, `set-vector`, `set-attribute`, and their `vpd-` forms) therefore return the identical value when written the value already present — compared with `identical?`, never `=` (an `=` deep-compare would be O(n) and would torpedo the write path). A no-op write thus yields an identical result: the detector emits nothing and the dirty flag is left as it was.
+
 ### 6. Two emission regimes
 
 One detection mechanism feeds two regimes that differ in granularity, and the difference is deliberate:

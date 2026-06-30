@@ -312,6 +312,10 @@ The recognised `:window/*` keys for `:window-open-requested` events:
 | `:window/modality` | `:none` (default) or `:application-modal`; a modal also defaults to non-persist + non-resizable and is owned via the owner chain |
 | `:window/draggable?` | Chrome-less windows only (default `true`): synthesised whole-body window drag, unless `false` (e.g. the splash) |
 
+A piece window's title is **dynamic**, not the static `:window/title-key` above: it tracks the piece's `:title` — the raw piece name when set (locale-independent), the tr'd "Untitled" fallback when blank (locale-reactive) — re-applied via `ui-manager/set-window-title!` on every structure refetch. See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §"Dynamic window titles".
+
+`:window/menu-bar` is **platform-split**: macOS has one global system menu bar shared by every window, so piece windows attach none; Windows/Linux have no global menu, so `open-piece-window!` builds a `MenuBar` per piece window and `refresh-menu-text!` fans out across all of them. See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §"Platform-split menus".
+
 **Declarative window pipeline keys** — when `:window/spec-fn` is present, the UI Manager builds a cljfx renderer with full lifecycle management (see §4.5):
 
 | Key | Purpose |
@@ -1534,19 +1538,14 @@ Tests in `shared/test/app/clojure/ooloi/shared/system_test.clj` exercise the ful
 
 2. **Always wrap with `with-zero-animation-times`** — splash fade-out is ~2 seconds by default. Without this, any test that halts before the animation completes leaves the piece window unregistered at halt time.
 
-3. **Wait for piece window registration before halting** — use a promise subscribed to `:window-lifecycle`. The `:window-opened :untitled-piece` event fires *after* `register-window!` completes, guaranteeing no pending listener registration exists when `ig/halt!` runs:
+3. **Wait for startup readiness before halting** — call `th/await-app-ready`. It blocks until `:app-ready`, which `start-app!` publishes only after the whole startup window-set has opened and registered ([ADR-0031](../ADRs/0031-Frontend-Event-Driven-Architecture.md)), so no pending listener registration exists when `ig/halt!` runs. The startup window is keyed by its **piece UUID**, not a fixed id — reach it through `th/startup-piece-window` (which looks it up by kind), never `(get @(:window-registry mgr) :untitled-piece)`:
 
    ```clojure
-   (let [mgr    (:ooloi.frontend.components/ui-manager sys)
-         bus    (:ooloi.frontend.components/event-bus sys)
-         opened (promise)
-         _      (eb/subscribe! bus :window-lifecycle
-                              (fn [events]
-                                (when (some #(= (:window/id %) :untitled-piece) events)
-                                  (deliver opened true))))
-         _      (when (get @(:window-registry mgr) :untitled-piece)
-                  (deliver opened true))]
-     (deref opened 5000 nil))
+   (let [mgr (:ooloi.frontend.components/ui-manager sys)]
+     (th/await-app-ready mgr)                          ; blocks until :app-ready (race-safe)
+     (let [entry        (th/startup-piece-window mgr)  ; the startup window's registry entry, by kind
+           *piece-state (:*state entry)]
+       ...))
    ```
 
 4. **Double flush before `ig/halt!`** — two sequential `(th/run-on-fx-thread-sync! (fn []))` calls. When a window is explicitly closed before system halt, one flush drains the close callbacks; a second flush drains any callbacks those callbacks enqueued.
@@ -1563,19 +1562,12 @@ A complete `start-app!` test skeleton:
     (with-redefs [platform/macos?   (constantly true)
                   platform/windows? (constantly false)
                   platform/linux?   (constantly false)]
-      (let [sys (system/start-app! (th/force-headless (system/combined-config)))]
+      (let [sys (system/start-app! (th/force-headless (system/combined-config)))
+            mgr (:ooloi.frontend.components/ui-manager sys)]
         (try
-          ;; Wait for piece window to be fully registered before assertions or halt
-          (let [mgr    (:ooloi.frontend.components/ui-manager sys)
-                bus    (:ooloi.frontend.components/event-bus sys)
-                opened (promise)
-                _      (eb/subscribe! bus :window-lifecycle
-                                     (fn [events]
-                                       (when (some #(= (:window/id %) :untitled-piece) events)
-                                         (deliver opened true))))
-                _      (when (get @(:window-registry mgr) :untitled-piece)
-                         (deliver opened true))]
-            (deref opened 5000 nil))
+          ;; Block until the startup window-set is open and registered, before assertions or halt
+          (th/await-app-ready mgr)
+          ;; Reach the startup window by kind, not a fixed id: (th/startup-piece-window mgr)
           ;; ... assertions ...
           (finally
             (th/run-on-fx-thread-sync! (fn []))   ; first flush

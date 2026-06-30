@@ -87,6 +87,14 @@ The integer ID references above identify elements *within* a piece. A separate i
 
 **Storage-backend opacity.** The identity model is independent of how pieces are stored — local filesystem, S3 / object storage, or a database. The UUID is embedded in the piece data; where that data is stored is irrelevant to identity. How that storage is navigated, listed, opened, and saved — over a real filesystem or a virtual hierarchy, in-process or across the network — is the filesystem-operations contract of [ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md).
 
+**Name, location, and identity are three separate things.** A desktop app fuses them — the file *is* the piece, its filename *is* its name — and Ooloi deliberately does not:
+
+- **Name → `:title`** — the piece's human work name, and piece *data*: round-tripped by `get-title`/`set-title`, present in the `get-piece-structure` projection ([ADR-0052](0052-Change-Detection-and-Event-Generation.md)), user-editable, blank (`""`) by default; the window title derives from it (blank → "Untitled" via `tr`).
+- **Location → filename** — external **provenance**, and *never* piece data: the resolved file's path and modification time, held only in the Piece Manager registry entry beside the managed ref (for the collision detection above). It is never embedded in the piece and never appears in `get-piece-structure`. (A blank `:title` may take the filename as a *save-time* default — a name derived *from* the filename — but the filename is never written *into* piece data.)
+- **Identity → UUID** — the stable primary key (this section): embedded in the piece, surfaced as `:id` in the projection, unchanged by rename or save/load.
+
+They vary independently: rename a piece (`:title` changes), move or copy its file (filename changes), reopen it (same UUID) — none of the three implies the others.
+
 **Three distinct identifiers — do not conflate.** This ADR defines two of them; the third lives elsewhere:
 
 1. **Integer ID references** (§2) — cross-element references *within* a piece (slurs, ties, dynamics), scoped per Instrument. Internal referencing, not identity.
