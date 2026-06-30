@@ -104,15 +104,15 @@ Because the test keys on the *slot* and not merely the entity, it is precise whe
 
 Emission is deferred to commit by dispatching through an agent: an action dispatched inside a transaction is held until that transaction commits and is discarded if it retries. Emission therefore never fires from an uncommitted or replayed attempt, and never from inside the `dosync` itself.
 
-Deferral fixes timing, not multiplicity: N changes that each dispatch would commit N events. A composed transaction — several mutations grouped for atomicity, up to an import of thousands of items — must produce **exactly one** structural event, not one per inner change. This is achieved with a transaction-scoped gate: the first structural change in the outermost transaction schedules the single emission and records that it has done so; later changes in the same transaction see the gate set and add nothing.
+Deferral fixes timing, not multiplicity: N changes that each dispatch would commit N events. A composed transaction — several mutations grouped for atomicity, up to an import of thousands of items — must produce **exactly one** structural event, not one per inner change. This is achieved with a transaction-scoped gate, bound by the coalescing scope below: the first structural change within the scope schedules the single emission and records that it has done so; later changes in the same transaction see the gate set and add nothing.
 
 The gate is held in a **ref**, so that it rolls back in lockstep with the discarded dispatch when the transaction retries. A non-transactional flag would survive a retry while its dispatch was discarded, and the committed transaction would then emit nothing. The gate lives **outside the piece** — it is transaction coordination, not musical content — and is fresh per outermost transaction.
 
-The scope that establishes the gate is a single primitive that also opens the transaction and names the operation for undo. A lone operation is the degenerate case: it opens that scope itself and is the n = 1 transaction — one change, one event — with no separate path. Composition therefore goes through that scope rather than a bare `dosync`; a bare `dosync` gives atomicity but binds no gate, and its inner operations would each emit.
+The coalescing scope is the macro `with-coalesced-structural-change`: it binds a fresh gate ref and opens the transaction, so the structural changes within it collapse to one event. It is needed only for composition. A **lone** mutation outside any scope is the degenerate case — no gate is bound, so it emits directly (its one change, its one event), paying none of the gate's overhead on the engine's hot path. A bare `dosync` is *not* a coalescing scope: it gives atomicity but binds no gate, so its inner operations each emit — composition that must collapse to a single event goes through `with-coalesced-structural-change`, never a bare `dosync`.
 
 **Where this lives, and the seam.** The gate, the scope, and the slot test (§3b) are the change-detection system, and they live in a dedicated home (`ops/change-detection.clj`) — so the write funnel's location is unchanged while the detection system has room to grow the content and formatting regimes (§6–§7). Emission crosses the shared→backend boundary by **dependency inversion**: the funnel names the operation — *a structural change occurred for this piece* — through a protocol declared in the shared tier and implemented in the backend, which broadcasts on the event stream. This is the seam `PieceRefResolver` already uses, not a runtime lookup of a server component. A context with no backend implementation — a pure-shared test, a frontend-local value manipulation — has no subscriber and emits nothing, which is the §2 object-form exclusion seen from the other side.
 
-**Built now, extended later.** The scope is introduced here for the gate. The undo capture it will also carry — naming the operation for undo at the piece mutation sites ([ADR-0015](0015-Undo-and-Redo.md)) — is a later addition to the *same* primitive, not a second scope: until then the scope opens the transaction and binds the gate, and the undo name joins it when piece undo capture is built.
+**Built now, decided later.** `with-coalesced-structural-change` exists for the gate alone. Undo grouping — naming the operation for undo at the piece mutation sites ([ADR-0015](0015-Undo-and-Redo.md)) — keys on the same outermost-operation boundary, so it *could* ride on this scope; but undo spans content as well as structure, while this scope is structural-coalescing only. Whether undo extends this primitive or stands beside it is decided when piece undo capture is built, not pre-committed here.
 
 ### 5. The dirty flag
 
@@ -177,7 +177,7 @@ A composed transaction with many structural changes yields exactly one event; th
 
 ```mermaid
 sequenceDiagram
-    participant OP as Composed op<br/>(with-undo: Import XML)
+    participant OP as Composed op<br/>(with-coalesced-structural-change: Import XML)
     participant SC as Transaction scope<br/>(gate ref)
     participant AG as Notifier agent
     participant ER as Event Router
