@@ -81,11 +81,12 @@ Filenames are different from tokens, and the asymmetry is deliberate: a leaf fil
 | `list-filesystem-roots` | — | `[{:name :token}]` | read | Backend-curated entry points; the navigable ceiling |
 | `list-filesystem-directory` | dir-token | `[{:name :type :modified? :token}]` | read | Lazy, per-directory; result is disposable cache |
 | `open-piece` | file-token | piece-id, or a typed open-failure (§7) | read | Resolve → load → deserialise, register, collision-check per ADR-0012 |
-| `save-piece` | piece-id, dir-token, filename | ack | save | Validate filename (leaf-only) → resolve → write (Nippy, ADR-0007); record location |
+| `save-piece` | piece-id, dir-token, filename | ack | save | Validate filename (leaf-only) → resolve → write (Nippy, ADR-0007); record location. A plain `save-piece` (piece-id alone) re-writes to the recorded location |
+| `clone-piece` | piece-id, dir-token, filename | ack | save | Save As: clone the piece (regenerate structural ids only, share all content by reference), then write the clone value (Nippy); the clone is not registered |
 | `delete-piece` | file-token | ack | delete | Internal; no File-menu item initially |
 | `move-piece` | file-token, dest-dir-token | ack | administrative | See [Future Considerations](#future-considerations); defined, deferred |
 
-**A note on operation names.** Only the two listing operations carry `filesystem` in their names, because navigating storage structure is their purpose — they are the one place this contract makes the filesystem visible. The operations that act on a piece (`open-piece`, `save-piece`, `delete-piece`, `move-piece`) name the piece, not the filesystem: under [ADR-0012](0012-Persisting-Pieces.md) a piece is not a file, the filesystem is the abstracted backing, and naming it on every operation would foreground exactly what the architecture abstracts away.
+**A note on operation names.** Only the two listing operations carry `filesystem` in their names, because navigating storage structure is their purpose — they are the one place this contract makes the filesystem visible. The operations that act on a piece (`open-piece`, `save-piece`, `clone-piece`, `delete-piece`, `move-piece`) name the piece, not the filesystem: under [ADR-0012](0012-Persisting-Pieces.md) a piece is not a file, the filesystem is the abstracted backing, and naming it on every operation would foreground exactly what the architecture abstracts away.
 
 `list-filesystem-roots` bootstraps navigation. `list-filesystem-directory` needs a dir-token to act on, and `list-filesystem-roots` is the only source of the first one; without it the frontend would have nothing to navigate from. Each entry's `:type` (`:directory`, `:piece`, `:other`) tells the frontend which operation applies, and the backend re-checks the resolved target's type on use (`open-piece` rejects a dir-token, and so on). Listings carry **no UUID**: a piece's UUID lives inside its file, on the same serialised path as everything else (ADR-0012), so it is unknowable without deserialising — and listing a directory must not deserialise every piece in it.
 
@@ -95,10 +96,10 @@ That macOS-alias step is a **legitimate backend native dependency**: the backend
 
 **`open-piece` is one-directional: token in, piece-id out.** Because the UUID is inside the file, you cannot open *by* UUID from a cold browse — the UUID does not exist as a known value until the file has been read. The backend resolves the file-token to a location, loads and deserialises the piece, registers it under its embedded UUID (detecting collisions per ADR-0012), and returns the piece-id. The UUID is a *product* of opening, not an input to it.
 
-**`save-piece` writes a piece to a named destination.** The destination is always a dir-token the user navigated to plus a leaf filename — never a path, never a UUID (a UUID is identity, not a location). `save-piece` is identity-agnostic: it writes the piece's bytes at the resolved location. The two File-menu variants differ only in what the identity layer does *before* the write:
+**`save-piece` writes a piece to a named destination.** The destination is always a dir-token the user navigated to plus a leaf filename — never a path, never a UUID (a UUID is identity, not a location). `save-piece` writes the piece's bytes at the resolved location and records that location on the piece's provenance, so a subsequent plain `save-piece` (piece-id alone) re-writes there with no picker. The two File-menu variants are **different operations**:
 
-- **Save** writes the current piece to its recorded location (or, if it has none, prompts through the picker in save mode, keeping its UUID).
-- **Save As** is *export a copy*: the identity layer clones the piece with a fresh UUID (ADR-0012), the clone is written to the chosen destination, and the current in-memory piece is left untouched. The fs-ops `save-piece` itself does not distinguish the two — the regeneration is an identity operation that happens before the call.
+- **Save** (`save-piece`) writes the current piece to its recorded location, keeping its UUID — or, if it has none recorded, prompts through the picker in save mode.
+- **Save As** (`clone-piece`) is *export a copy*: the backend clones the piece — regenerating **only** the structural identifiers (the piece's string UUID *and* every Musician/Instrument/Staff/Layout `:id`, so the copy shares no identity with the original) and **sharing everything else with the original by reference** (all musical content, the change-sets, names, and definitional fields; the model is immutable, so a later edit copies-on-write) — and writes the clone's bytes to the chosen destination. The clone is **not registered** and the current in-memory piece is untouched; to work on the copy you open it.
 
 **New (`new-piece`) is not a filesystem operation.** It mints an in-memory piece with a fresh UUID (ADR-0012); the piece touches storage only at its first Save (`save-piece`).
 
@@ -192,7 +193,7 @@ This ADR owns the operation contract and nothing else. Everything adjacent plugs
 |---|---|---|
 | Caller identity | ADR-0021 | client-id from the authenticated gRPC context |
 | Authorisation | ADR-0036 | interceptor enforces each operation's class; the access registry filters `list-*` results before they leave the backend; the frontend gates visually |
-| Piece identity | ADR-0012 | `open-piece` registers under the embedded UUID with the file's provenance (path + modification time), distinguishing an idempotent reopen (same provenance) from a variant collision (same UUID, different provenance) per ADR-0012; Save As regenerates the UUID before the write |
+| Piece identity | ADR-0012 | `open-piece` registers under the embedded UUID with the file's provenance (path + modification time), distinguishing an idempotent reopen (same provenance) from a variant collision (same UUID, different provenance) per ADR-0012; Save As (`clone-piece`) clones the piece — regenerating the structural identifiers only (piece UUID + every sub-entity `:id`), sharing all content by reference — and persists the clone unregistered |
 | Byte format | ADR-0007 | `open-piece`/`save-piece` delegate (de)serialisation to the persistence writer/reader |
 | Transport | ADR-0046 | reference-passing vs serialisation; identical handler |
 | Governed by | ADR-0040 / ADR-0001 | single authority; separation; a backend is always present |
@@ -228,24 +229,25 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant F as Frontend (save mode)
-    participant ID as Identity (ADR-0012)
     participant B as Backend (fs-ops)
+    participant C as Clone (ADR-0012)
     participant P as Persistence (ADR-0007)
     F->>B: SRV/list-filesystem-roots
     B-->>F: named roots, each a dir-token
     F->>B: SRV/list-filesystem-directory(dir-token)
     B-->>F: entries (navigate inward to the destination dir)
     Note over F: user chooses the destination dir, types a filename
-    F->>ID: regenerate UUID on a clone (current piece untouched)
-    ID-->>F: clone piece-id
-    F->>B: SRV/save-piece(clone piece-id, dir-token, filename)
+    F->>B: SRV/clone-piece(piece-id, dir-token, filename)
     B->>B: validate filename (leaf-only)
+    B->>C: clone — regenerate structural ids only; share all content by reference
+    C-->>B: clone value (unregistered)
     B->>B: resolve dir-token → location
-    B->>P: write piece (Nippy) at location / filename
+    B->>P: write the clone value (Nippy) at location / filename
     P-->>B: ok
-    B->>B: record location for the piece
     B-->>F: ack
 ```
+
+The clone regenerates only the structural identifiers — the piece's UUID and every Musician/Instrument/Staff/Layout `:id` — and shares everything else with the original by reference. It is not registered, the original piece is untouched, and there is no "record location" step: the copy is not a managed piece, and to work on it you open it.
 
 ### 9. Authorisation Classes and How the Owner Assigns Them
 
