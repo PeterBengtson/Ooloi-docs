@@ -81,8 +81,8 @@ Filenames are different from tokens, and the asymmetry is deliberate: a leaf fil
 | `list-filesystem-roots` | — | `[{:name :token}]` | read | Backend-curated entry points; the navigable ceiling |
 | `list-filesystem-directory` | dir-token | `[{:name :type :modified? :token}]` | read | Lazy, per-directory; result is disposable cache |
 | `open-piece` | file-token | piece-id, or a typed open-failure (§7) | read | Resolve → load → deserialise, register, collision-check per ADR-0012 |
-| `save-piece` | piece-id, dir-token, filename | ack | save | Validate filename (leaf-only) → resolve → write (Nippy, ADR-0007); record location. A plain `save-piece` (piece-id alone) re-writes to the recorded location |
-| `clone-piece` | piece-id, dir-token, filename | ack | save | Save As: clone the piece (regenerate structural ids only, share all content by reference), then write the clone value (Nippy); the clone is not registered |
+| `save-piece` | piece-id, dir-token, filename | ack, or a typed save-failure (§7) | save | Validate filename (leaf-only) → resolve → write (Nippy, ADR-0007); record location. A plain `save-piece` (piece-id alone) re-writes to the recorded location |
+| `clone-piece` | piece-id, dir-token, filename | ack, or a typed save-failure (§7) | save | Save As: clone the piece (regenerate structural ids only, share all content by reference), then write the clone value (Nippy); the clone is not registered |
 | `delete-piece` | file-token | ack | delete | Internal; no File-menu item initially |
 | `move-piece` | file-token, dest-dir-token | ack | administrative | See [Future Considerations](#future-considerations); defined, deferred |
 
@@ -184,6 +184,24 @@ The taxonomy is **decoupled from the picker**: `open-piece` validates the bytes 
 **Every typed failure must reach the user as a visible error notification.** Returning `{:open-failure <type>}` is only half the contract: the caller translates the type through `tr` and raises an error notification — the persistent, user-dismissed tier ([ADR-0043](0043-Frontend-Settings.md) §Error Display) — so the user sees *"This isn't a valid Ooloi piece"* rather than silence or a generic internal error. Notification is a frontend capability gated on UI-Manager presence ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Notification Model): a standalone backend that calls `open-piece` receives the typed data and shows nothing. **The surfacing is a single, unbypassable entry point.** A file-token becomes an open piece only through one frontend function: it calls `open-piece` off the JavaFX thread, and on a `{:open-failure <type>}` result it raises the persistent error notification — translating the type through a single pure mapping (`:open-failure` type → `tr` key) — while on a piece-id it invokes a success continuation that opens the piece window. Every caller goes through it — File > Open today, single-user session restore, recent-files, and upload later — so no caller can reach `open-piece` and skip the surfacing, and the type→message mapping and the notification live in exactly one auditable place. This is the same make-the-boundary-unbypassable discipline as the JAT-thread guards and the pool error net: the architecture prevents the mistake rather than asking each caller to remember.
 
 The catch spans both `Exception` and `OutOfMemoryError` (the latter is an `Error`, which a plain `Exception` catch would miss); every other `Error` still flows to the backstop. A versioned on-disk file-format envelope — a separate, future decision — would add an `:unsupported-piece-format` type for a file written by a later Ooloi than the one opening it; no such version stamp exists in the format today, so that case is presently indistinguishable from `:invalid-piece-file`.
+
+#### Known save failures: typed data, not exceptions
+
+The write side follows the same discipline, for the same reason: a known failure of a save is an expected outcome, not a defect, and must reach the user as its own specific message rather than the generic internal-error backstop. So `save-piece` and `clone-piece` return success as an **ack** (`true`) and every known failure as **typed data** — `{:save-failure <type>}` — never a thrown exception. The frontend discriminates by shape exactly as it does for opens (a map is a failure), and translates the `:save-failure` type through `tr` into a specific notification. An exception on this path means a *program error*, and only that escapes to the thrown-exception backstop.
+
+The taxonomy is narrower than `open-piece`'s, and deliberately so: the only client-supplied free text that reaches a save is the **filename** — the destination is a token the user navigated to, not text they typed — so the failures centre on that one input and on the write itself, not on interpreting arbitrary bytes.
+
+| `:save-failure` type | Condition |
+|---|---|
+| `:invalid-filename` | the filename is not a single leaf name — it contains a path separator, `..`, or an absolute-path marker (§5) |
+| `:invalid-destination` | the dir-token does not resolve, or resolves to a file rather than a directory |
+| `:file-access-denied` | the write is refused — a permission or I/O denial |
+| `:insufficient-space` | the write fails for lack of free space at the destination |
+| `:save-failed` | any other, unforeseen failure of the write — the catch-all, so no known-path failure reaches the backstop |
+
+`:insufficient-space` is **best-effort**: the JVM raises no distinct exception for a full disk — it is an `IOException` whose text varies by operating system and locale — so it is recognised by inspecting the I/O error, and an unrecognised write `IOException` falls through to `:save-failed` rather than being mislabelled. `save-piece` and `clone-piece` share this taxonomy because they share the destination-validation and write path; `clone-piece` adds no new save-failure types, only the clone step before the write.
+
+**The surfacing mirrors `open-piece-token!` exactly.** A save reaches the filesystem through **one** frontend entry point — it calls `save-piece` (or `clone-piece`) off the JavaFX thread, and on a `{:save-failure <type>}` result raises the persistent error notification, translating the type through a single pure mapping (`:save-failure` type → `tr` key), while on the ack it invokes a success continuation. Save, Save As, and the save-on-close of an unnamed piece all go through it, so no caller can reach a write and skip the surfacing, and the type→message mapping lives in exactly one auditable place — the same make-the-boundary-unbypassable discipline the read side uses. `delete-piece` is internal, has no File-menu item, and surfaces nothing, so it keeps a plain `ack`.
 
 ### 8. The Seams
 
