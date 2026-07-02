@@ -83,7 +83,7 @@ Filenames are different from tokens, and the asymmetry is deliberate: a leaf fil
 | `open-piece` | file-token | piece-id, or a typed open-failure (§7) | read | Resolve → load → deserialise, register, collision-check per ADR-0012 |
 | `save-piece` | piece-id, dir-token, filename | ack, or a typed save-failure (§7) | save | Validate filename (leaf-only) → resolve → write (Nippy, ADR-0007); record location. A plain `save-piece` (piece-id alone) re-writes to the recorded location |
 | `clone-piece` | piece-id, dir-token, filename | ack, or a typed save-failure (§7) | save | Save As: clone the piece (regenerate structural ids only, share all content by reference), then write the clone value (Nippy); the clone is not registered |
-| `delete-piece` | file-token | ack | delete | Internal; no File-menu item initially |
+| `delete-piece` | file-token | ack, or a typed delete-failure (§7) | delete | Internal; no File-menu item initially |
 | `move-piece` | file-token, dest-dir-token | ack | administrative | See [Future Considerations](#future-considerations); defined, deferred |
 
 **A note on operation names.** Only the two listing operations carry `filesystem` in their names, because navigating storage structure is their purpose — they are the one place this contract makes the filesystem visible. The operations that act on a piece (`open-piece`, `save-piece`, `clone-piece`, `delete-piece`, `move-piece`) name the piece, not the filesystem: under [ADR-0012](0012-Persisting-Pieces.md) a piece is not a file, the filesystem is the abstracted backing, and naming it on every operation would foreground exactly what the architecture abstracts away.
@@ -201,7 +201,20 @@ The taxonomy is narrower than `open-piece`'s, and deliberately so: the only clie
 
 `:insufficient-space` is **best-effort**: the JVM raises no distinct exception for a full disk — it is an `IOException` whose text varies by operating system and locale — so it is recognised by inspecting the I/O error, and an unrecognised write `IOException` falls through to `:save-failed` rather than being mislabelled. `save-piece` and `clone-piece` share this taxonomy because they share the destination-validation and write path; `clone-piece` adds no new save-failure types, only the clone step before the write.
 
-**The surfacing mirrors `open-piece-token!` exactly.** A save reaches the filesystem through **one** frontend entry point — it calls `save-piece` (or `clone-piece`) off the JavaFX thread, and on a `{:save-failure <type>}` result raises the persistent error notification, translating the type through a single pure mapping (`:save-failure` type → `tr` key), while on the ack it invokes a success continuation. Save, Save As, and the save-on-close of an unnamed piece all go through it, so no caller can reach a write and skip the surfacing, and the type→message mapping lives in exactly one auditable place — the same make-the-boundary-unbypassable discipline the read side uses. `delete-piece` is internal, has no File-menu item, and surfaces nothing, so it keeps a plain `ack`.
+**The surfacing mirrors `open-piece-token!` exactly.** A save reaches the filesystem through **one** frontend entry point — it calls `save-piece` (or `clone-piece`) off the JavaFX thread, and on a `{:save-failure <type>}` result raises the persistent error notification, translating the type through a single pure mapping (`:save-failure` type → `tr` key), while on the ack it invokes a success continuation. Save, Save As, and the save-on-close of an unnamed piece all go through it, so no caller can reach a write and skip the surfacing, and the type→message mapping lives in exactly one auditable place — the same make-the-boundary-unbypassable discipline the read side uses.
+
+#### Known delete failures: typed data, not exceptions
+
+`delete-piece` follows the same discipline, for **uniformity** and **robustness**, even though it is internal — no File-menu item, and nothing surfaces its outcome today. It returns `true` (ack) on success and every known failure as `{:delete-failure <type>}` data, so an uncaught exception never reaches the backstop and a future delete consumer inherits a ready taxonomy rather than a special case. The types mirror the read side where they map:
+
+| `:delete-failure` type | Condition |
+|---|---|
+| `:invalid-file-selection` | the file-token does not resolve, or resolves to a directory rather than a file |
+| `:file-missing` | the file existed at listing time but is gone when the delete runs |
+| `:file-access-denied` | the delete is refused — a permission or I/O denial |
+| `:delete-failed` | any other, unforeseen failure of the delete — the catch-all, so no known-path failure reaches the backstop |
+
+The typed data is defined **ahead of its consumer**: no frontend surfacing maps `:delete-failure` yet (delete has no menu), so the value is returned but not yet translated to a notification. When a delete feature lands, it consumes this taxonomy through the same single-entry-point discipline the read and write sides use.
 
 ### 8. The Seams
 
