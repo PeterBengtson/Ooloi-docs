@@ -148,7 +148,14 @@ Backend plugins currently use piece settings (ADR-0016) with auto-generated UI v
   builds the content. Its purpose is to *query and group* windows by role —
   `ui-manager/piece-windows` filters `(= :piece (:window/type entry))`; the startup window-set
   gates on `(empty? (piece-windows mgr))` ("no piece window on-screen → open one New"), and
-  #184's restore reopens each window as its recorded type.
+  #184's restore reopens each window as its recorded type. A companion query reads
+  `:window/type` the *other* way — from the **focused** window: `ui-manager/active-piece-id`
+  answers "which piece is the user acting on?" by taking the currently-focused window and
+  resolving its piece — a `:piece` window's `:window/id` *is* its piece-id; a `:layout`
+  window's `:window/piece-id` names its parent piece (so Save reaches the piece even from a
+  layout window over it) — or `nil` when no piece window holds focus. It reads live JavaFX
+  focus, and is the query the File-menu piece actions (Save / Save As / Close) and their
+  enablement predicates target.
 - **Distinct from `:window/factory`, and the two never overlap.** `:window/type` answers *what
   the window is* — a classification, read after the window is registered. `:window/factory`
   answers *how its content is built* — a registry dispatch, consumed during construction (and
