@@ -149,13 +149,15 @@ Backend plugins currently use piece settings (ADR-0016) with auto-generated UI v
   `ui-manager/piece-windows` filters `(= :piece (:window/type entry))`; the startup window-set
   gates on `(empty? (piece-windows mgr))` ("no piece window on-screen → open one New"), and
   #184's restore reopens each window as its recorded type. A companion query reads
-  `:window/type` the *other* way — from the **focused** window: `ui-manager/active-piece-id`
-  answers "which piece is the user acting on?" by taking the currently-focused window and
-  resolving its piece — a `:piece` window's `:window/id` *is* its piece-id; a `:layout`
-  window's `:window/piece-id` names its parent piece (so Save reaches the piece even from a
-  layout window over it) — or `nil` when no piece window holds focus. It reads live JavaFX
-  focus, and is the query the File-menu piece actions (Save / Save As / Close) and their
-  enablement predicates target.
+  `:window/type` the *other* way — from the **foremost** window:
+  `ui.core.active-window/active-piece-id` answers "which piece is the user acting on?" by
+  resolving the piece of the currently active window — a `:piece` window's `:window/id` *is* its
+  piece-id; a `:layout` window's `:window/piece-id` names its parent piece (so Save reaches the
+  piece even from a layout window over it) — or `nil` when no piece-derivable window is foremost.
+  It reads the UI Manager's deterministic `:active-window-id` atom (updated by each Stage's
+  `focused-listener` on real OS focus-gain), not live focus, so it is a settled value with no
+  window-transition race. It is the query the File-menu piece actions (Save / Save As / Close)
+  target, and that Close enablement gates on.
 - **Distinct from `:window/factory`, and the two never overlap.** `:window/type` answers *what
   the window is* — a classification, read after the window is registered. `:window/factory`
   answers *how its content is built* — a registry dispatch, consumed during construction (and
