@@ -295,6 +295,8 @@ The `get-piece-ref` function is the cornerstone of piece manager's flexibility:
 (api/remove-piece "satb-choir")  ; Remove from store
 ```
 
+Step 6 is the *programmatic* removal — a script or test that stored a piece and is done with it. **In the running application, pieces are never removed by hand.** A piece is registered when a client first opens it (New, Open, or a subscription) and removed automatically the moment its *last* subscriber leaves — a deterministic **close-on-last-release** driven by the subscriber count the connection registry keeps, with a disconnect treated as unsubscribe-from-every-piece-then-leave. A piece thus lives exactly as long as some client holds it: one client closing its window keeps the piece alive for any other still holding it, and the last client leaving closes it (the saved file re-loaded on a later reopen, not returned from memory). This is what makes Piece-Manager-mediated sharing identical for a single user and for a collaboration — the policy is [ADR-0022 §Piece Lifetime — Close-on-Last-Release](../ADRs/0022-Lazy-Frontend-Backend-Architecture.md), and the disconnect handlers that invoke `remove-piece` are in [ADR-0024 §Connection Lifecycle](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md).
+
 ### Working with Piece Families
 
 ```clojure

@@ -376,7 +376,9 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 - **Connection establishment**: Automatic server event subscription for all clients
 - **Piece opening**: Explicit subscription when clients open specific pieces
 - **Piece closing**: Explicit unsubscription when clients close pieces
-- **Disconnection cleanup**: Automatic removal from all piece subscriptions
+- **Disconnection cleanup**: A disconnect unsubscribes the client from every piece it held — both the graceful Disconnect RPC and the channel-close backstop — closing any piece thereby left with no subscribers (see *Piece Lifetime* below)
+
+**Piece Lifetime — Close-on-Last-Release**: A managed piece's lifetime is bound to its subscriber count. The backend removes a piece from the Piece Manager the moment its last subscriber leaves — a deterministic close-on-last-release: a settled subscriber count driving an immediate close, not a deferred sweep. Because a disconnect is treated as unsubscribe-from-every-piece-then-leave, the release path is identical whether a client unsubscribes cleanly or drops — one shared check (`close-if-unheld!`) closes a piece exactly when no client still holds it. This makes Piece-Manager-mediated sharing **identical for a single user and for a collaboration**: one client leaving keeps a piece alive for any other still holding it, the last leaving closes it, and the piece — saved on disk — is re-loaded from the file on reopen rather than returned from memory. The policy composes the two shared backend stores, the connection registry and the Piece Manager, without either owning the other, so transport stays clear of piece lifecycle. The Piece Manager side of the mechanism is in [PIECE_MANAGER_GUIDE](../guides/PIECE_MANAGER_GUIDE.md); the disconnect handlers that invoke it are in [ADR-0024 §Connection Lifecycle](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md).
 
 ### Collaborative Update Handling
 

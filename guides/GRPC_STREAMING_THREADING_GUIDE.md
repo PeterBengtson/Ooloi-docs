@@ -192,6 +192,8 @@ Three details matter:
 
 3. **No `.onCompleted` on the streaming call from this handler.** The intuitive design — have the Disconnect handler gracefully complete the `RegisterClient` server-streaming call via `.onCompleted` on its response observer — creates a *self-closing race*. The canonical caller is the same client that owns the streaming call (via `switch-to!`'s use of `disconnect-from-server`). A server-side `.onCompleted` fires the client's identity-aware `handle-stream-completed` callback, which calls `handle-server-disconnected`, which closes the API pool channels — and the unary Disconnect's response is still in flight on those very channels, causing `DEADLINE_EXCEEDED` on the client. The streaming call is cleaned up via `setOnCancelHandler` (the identity-aware backstop above) when the client tears down channels *after* `disconnect-from-server` returns. The PHASE 6 broadcast still fires from this handler, so disconnect observability is preserved.
 
+Beyond the threading concerns above, both this handler and the cancel-handler backstop **release the departing client's pieces** — unsubscribing it from every piece it held and closing any thereby left with no subscribers, the deterministic close-on-last-release of [ADR-0022 §Piece Lifetime](../ADRs/0022-Lazy-Frontend-Backend-Architecture.md). That piece-lifecycle step is elided from the snippets above, which show the threading-critical registry mutation and drainer teardown.
+
 ---
 
 ## Queue Handling

@@ -941,7 +941,7 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 1. User closes piece window
 2. Windowing System calls Event Router: unsubscribe-from-piece(piece-id)
 3. Event Router calls backend API: unsubscribe-from-piece-events(piece-id)
-4. Backend stops streaming events for that piece to this client
+4. Backend stops streaming events for that piece to this client — and, if this was the piece's *last* subscriber, removes it from the Piece Manager (close-on-last-release, [ADR-0022 §Piece Lifetime](0022-Lazy-Frontend-Backend-Architecture.md))
 5. Cache Manager may evict cached data for that piece (or retain for quick reopen)
 
 **Combined App Scenario:**
