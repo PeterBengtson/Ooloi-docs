@@ -200,7 +200,7 @@ When `:window-open-requested` arrives at the UI Manager's `:window-requests` sub
 4. **macOS ownership**: on macOS, if a menu-bar host stage exists, the new window is owned by it so the system menu bar is inherited.
 5. **Lifecycle wiring**:
 
-   * Native close requests (the window “X”) are intercepted and routed through `close-window!`.
+   * Native close requests (the window “X”) are intercepted; a window may run its own `:window/on-close-request` hook first (a piece window prompts to save an unnamed piece — §3.3), otherwise the close routes straight through `close-window!`.
    * Geometry listeners are attached and debounced persistence is scheduled after move/resize.
    * The stage is registered under `:window/id`.
 6. **Showing**: unless `:ui-mode` is `:headless`, the stage is shown.
@@ -346,6 +346,44 @@ The UI Manager tracks the **foremost window** — the one that most recently gai
 Every managed Stage carries a `focused-listener` on its `focusedProperty` (attached in `register-window!`); on focus-gain it resets `:active-window-id` and publishes `:window-focused`. Because focus-gain is a settled event, the atom always holds the last window the OS actually focused — never a mid-transition transient.
 
 `active-piece-id` (in `ui.core.active-window`) is one consumer: it resolves the **piece the foremost window belongs to** — a piece window's `:window/id`, a layout window's `:window/piece-id`, else `nil` — by reading the atom and looking the id up in the window registry (so a closed id self-corrects to `nil`). File-menu piece items read it: `File > Close` is enabled when the foremost window is piece-derivable, and the menu re-evaluates on `:window-focused`. Reading a *settled* value avoids the race a live-focus read hits when a *window* event (such as a close) triggers the refresh mid-transition. See [UI Architecture — Active-Window Tracking](../research/UI_ARCHITECTURE.md) for the full model, the focus→enablement sequence diagram, and the window-lifecycle event emitter/consumer catalogue.
+
+### 3.3 The Full Lifecycle in One View
+
+Open, focus, and close as a single flow. **Open** fans out — one request yields `:window-opened`, `:window-shown`, and `:window-focused`. A **focus switch** re-points the active-window atom and refreshes menu enablement. **Close** is the butterfly: `File > Close` and the native window "X" fan **in** to one shared save-on-close — `close-piece-with-save!`, which records a location for an unnamed piece first and aborts on cancel — then pass through the single real close (`request-window-close!` → `close-window!`) and fan **out** to teardown, geometry persistence, and `:window-closed`. The "X" reaches that shared path through the window's optional `:window/on-close-request` hook, so the menu item and the "X" are identical. Stadium nodes are events; the diamond is the save decision.
+
+```mermaid
+flowchart TD
+  %% ── OPEN ──
+  o0(["app: request-window-open!"]) --> o1["UI-Manager: show-window!"]
+  o1 --> o2["register-window!: wire Stage listeners"]
+  o1 --> oe1([":window-opened"])
+  o1 --> o3["window/show! (jfx)"]
+  o3 --> oe2([":window-shown"])
+  o3 --> o4["OS focus: focused-listener sets :active-window-id"]
+  o4 --> oe3([":window-focused"])
+  o1 --> o5[":window/on-open hook"]
+
+  %% ── FOCUS SWITCH ──
+  f0(["user focuses another window"]) --> f1["focused-listener: :active-window-id := it"]
+  f1 --> fe1([":window-focused / :window-focus-lost"])
+  fe1 --> f2["refresh-menu-text!"]
+
+  %% ── CLOSE (butterfly: two entries in, teardown out) ──
+  c0a(["File > Close (active-piece-id)"]) --> waist["close-piece-with-save! mgr pool piece-id"]
+  c0b(["X button: onCloseRequest then :window/on-close-request (own id)"]) --> waist
+  waist --> dec{"recorded location?"}
+  dec -- yes --> rwc["request-window-close!"]
+  dec -- no --> pk["save-mode picker"]
+  pk -- OK --> sp["save-piece!"] --> rwc
+  pk -- Cancel --> ab(["abort: window stays"])
+  rwc --> ce1([":window-close-requested"])
+  ce1 --> cw["UI-Manager: close-window!"]
+  cw --> c1[":window/on-close hook: teardown"]
+  cw --> ce2([":window-state-persisted"])
+  cw --> c2["window/close! (jfx): Stage closes"]
+  cw --> ce3([":window-closed"])
+  ce3 --> f3["refresh-menu-text!"]
+```
 
 ---
 
