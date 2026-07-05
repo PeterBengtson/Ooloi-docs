@@ -78,7 +78,7 @@ Membership in the structural set is the `::h/Structural` trait (`hierarchy.clj`)
 | Staff | `:measures` `:key-signature-overrides` `:clef-changes` | `:id` `:name` `:short-name` `:clefs` `:num-lines` |
 | Layout | `:page-views` `:stack-formatters` | `:id` `:name` |
 
-**Naming.** Entity naming is `:name` (with `:short-name` only where a score abbreviates the label — Instrument, Staff), read and written through `get-name`/`set-name`. The piece's human label is `:title` (no short name), through a separate `get-title`/`set-title` family — the head of a title-block family (subtitle, composer, arranger, … added later). Musician `:name` (initial value derived from its instruments) and Layout `:name` (initial value derived from its musicians) are user-overridable slots; the initial-value derivations are out of scope here. The filename is never piece data and never appears in the projection — it is external catalogue state ([ADR-0012](0012-Persisting-Pieces.md) provenance); the window title derives from `:title`, blank rendering as "Untitled" via `tr` on the frontend.
+**Naming.** Entity naming is `:name` (with `:short-name` only where a score abbreviates the label — Instrument, Staff), read and written through `get-name`/`set-name`. The piece's human label is `:title` (no short name), through a separate `get-title`/`set-title` family — the head of a title-block family (subtitle, composer, arranger, … added later). Musician `:name` (initial value derived from its instruments) and Layout `:name` (initial value derived from its musicians) are user-overridable slots; the initial-value derivations are out of scope here. The filename is never piece *data* — it is external catalogue state ([ADR-0012](0012-Persisting-Pieces.md) provenance) — but it **is** surfaced in the projection as a **virtual `:filename` field**: conj'd at projection time from the piece's recorded provenance (the leaf only, never the path — [ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md)), looked up in the Piece Manager by the piece's own id rather than read from the piece. It is the one non-piece field the projection carries, and a piece with no recorded location has no `:filename`. The window title derives from `:title`, falling back to that filename with its `.ooloi`/`.ool` extension stripped, then to "Untitled" via `tr` on the frontend.
 
 ### 3b. Detection: the slot flag
 
@@ -99,6 +99,8 @@ Because the test keys on the *slot* and not merely the entity, it is precise whe
 | `add-page-view` | Layout | `:page-views` | yes | no |
 | `add-voice` / `add-item` | Measure / Voice | `:voices` / `:items` | not a structural entity | no |
 | any object-form op | — | — | — | no (§2) |
+
+**One non-VPD op emits deliberately: `save-piece`.** The projection carries a virtual `:filename` (§3a), so recording a new location *does* change what `get-piece-structure` returns even though no piece slot was written. After a full save records provenance, `save-piece` therefore calls the emission seam directly — one `:piece-structure-changed` for the piece — so a subscribed piece window refetches and retitles. It runs outside any transaction, so no coalescing gate (§4) is involved; it is the single deliberate exception to the object-form silence of §2, made because it alters a projected field. A plain re-save to the already-recorded path changes no projected field and stays silent.
 
 ### 4. Exactly one event per outermost transaction
 
@@ -190,6 +192,34 @@ sequenceDiagram
     Note over SC,AG: on retry the held send is discarded<br/>and the gate ref rolls back, re-scheduling once
     SC-->>AG: commit, dispatch exactly one
     AG->>ER: one :piece-structure-changed {:piece-id}
+```
+
+### From a Save to the retitled window
+
+A full save records new provenance and emits one event — not a VPD mutation, but a change to the projection's virtual `:filename` (§3a). The window refetches, and the title watch retitles from the new filename with its extension stripped.
+
+```mermaid
+sequenceDiagram
+    participant FE as Piece Window<br/>(*piece-state, title watch)
+    participant SRV as SRV / gRPC
+    participant BE as Backend<br/>(save-piece)
+    participant PM as Piece Manager<br/>(provenance)
+    participant ER as Event Router
+
+    FE->>SRV: save-piece piece-id dir-token leaf
+    SRV->>BE: ExecuteMethod
+    Note over BE: append .ooloi unless .ool/.ooloi,<br/>write the file
+    BE->>PM: record-piece-provenance {:path :modified}
+    BE->>ER: :piece-structure-changed {:piece-id} (direct emit)
+    BE-->>SRV: true
+    SRV-->>FE: true
+    ER->>FE: :piece-structure-changed (per-piece → this window)
+    FE->>SRV: get-piece-structure [] piece-id
+    SRV->>BE: ExecuteMethod
+    Note over BE,PM: project the piece, conj :filename<br/>= provenance leaf (extension intact)
+    BE-->>SRV: snapshot {..., :filename "score.ooloi"}
+    SRV-->>FE: snapshot
+    Note over FE: apply to *piece-state; the title watch sees<br/>:filename change → set-window-title! "score"<br/>(.ooloi/.ool stripped)
 ```
 
 ## Rationale

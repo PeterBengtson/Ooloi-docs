@@ -248,7 +248,12 @@ This is consistent with ADR-0039, not an exception to it: the piece *name* is us
 string, so it is correctly raw; only the "Untitled" fallback is a UI string, and that is localised.
 The piece window re-applies its title on open and on every `:piece-structure-changed` refetch — a
 watch on the window state calls `set-window-title!` — so `set-title` (a structural change, ADR-0052)
-updates the window title live.
+updates the window title live. What that watch passes as the `title` argument is not the raw `:title`
+alone but a derived **display name**: the raw `:title` when set, else the recorded **filename** with
+its `.ooloi`/`.ool` extension stripped ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a
+surfaces that filename as a virtual `:filename` in the projection), else blank — so the "Untitled"
+fallback resolves only when a piece has neither a name nor a saved location. A first Save therefore
+retitles the window from "Untitled" to the filename stem even while `:title` is still blank.
 
 ### Modal dialogs: one core, two entry points
 

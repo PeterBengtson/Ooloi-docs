@@ -312,7 +312,7 @@ The recognised `:window/*` keys for `:window-open-requested` events:
 | `:window/modality` | `:none` (default) or `:application-modal`; a modal also defaults to non-persist + non-resizable and is owned via the owner chain |
 | `:window/draggable?` | Chrome-less windows only (default `true`): synthesised whole-body window drag, unless `false` (e.g. the splash) |
 
-A piece window's title is **dynamic**, not the static `:window/title-key` above: it tracks the piece's `:title` — the raw piece name when set (locale-independent), the tr'd "Untitled" fallback when blank (locale-reactive) — re-applied via `ui-manager/set-window-title!` on every structure refetch. See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §"Dynamic window titles".
+A piece window's title is **dynamic**, not the static `:window/title-key` above: it tracks the piece's display name — the raw `:title` when set (locale-independent), else the recorded **filename** with its `.ooloi`/`.ool` extension stripped, else the tr'd "Untitled" fallback (locale-reactive) — re-applied via `ui-manager/set-window-title!` on every structure refetch, so a first Save retitles the window from "Untitled" to the filename stem. See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §"Dynamic window titles".
 
 `:window/menu-bar` is **platform-split**: macOS has one global system menu bar shared by every window, so piece windows attach none; Windows/Linux have no global menu, so `open-piece-window!` builds a `MenuBar` per piece window and `refresh-menu-text!` fans out across all of them. See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §"Platform-split menus".
 
