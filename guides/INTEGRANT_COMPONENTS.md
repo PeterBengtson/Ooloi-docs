@@ -524,6 +524,7 @@ Ooloi's test utilities are split into four namespaces, each in its own source ro
 | `util.client` | `shared/test/util/backend/util/client.clj` | `util/backend` | shared only — `util.client` requires both backend and frontend code, so it can only load in the shared project (which has both on its classpath) |
 | `util.frontend` | `shared/test/util/frontend/util/frontend.clj` | `util/frontend` | shared, frontend |
 | `util.instrument-library` | `shared/test/util/backend/util/instrument_library.clj` | `util/backend` | shared; reachable from backend via :resource-paths |
+| `util.filesystem` | `shared/test/util/backend/util/filesystem.clj` | `util/backend` | shared; reachable from backend via :resource-paths |
 
 **Why the split?** `util.server` previously also contained client-side helpers (`register-client`, `with-clients`, `with-combined-system`). Those reference `ooloi.frontend.grpc.event-client` and `ooloi.shared.system` (which transitively pulls in the frontend), making the combined file unloadable from backend-only tests. Splitting the client-side helpers into a separate `util.client` namespace lets the backend's test profile pull `util/backend` in via `:resource-paths` (classpath access without Midje auto-discovery) while leaving anything frontend-coupled out of the backend's loadable surface. The frontend project never references `util.client` (servers and clients are integration concerns and integration tests live in the shared project), so `util.client` sits under `util/backend/` alongside `util.server`: shared has `util/backend` on `:test-paths` and auto-loads it; backend has it on `:resource-paths` (reachable but not auto-loaded; backend tests don't require it); frontend doesn't have `util/backend` on its classpath at all.
 
@@ -543,6 +544,19 @@ Standard imports per project:
 (:require [util.frontend :as th]
           [util.common :as tc])
 ```
+
+### `with-tmp-filesystem` — a real temp directory tree
+
+`util.filesystem/with-tmp-filesystem` builds a real temporary directory tree for tests that exercise the ADR-0051 filesystem operations (`list-filesystem-roots` / `list-filesystem-directory`, `open-piece`, `save-piece`). `(with-tmp-filesystem [root-sym structure] & body)` binds `root-sym` to a fresh temp-root `File`, materialises `structure` under it, runs the body, then recursively deletes the root — even when the body throws.
+
+`structure` is a `name → kind` map, where the kind is one of:
+
+- `{}` — an empty directory; `{<children>}` — a directory containing the described children (recurses).
+- `:ooloi` — an empty `.ooloi` file (directory listings classify by extension and never deserialise, so an empty file is enough for listing tests); `:txt` — a text file; `:empty` — an empty file.
+- `[:ooloi p]` — an `.ooloi` file holding a **real serialised piece**, where `p` is a piece value or a 0-arg fn producing one (e.g. `"score.ooloi" [:ooloi fxt/piece-with-notes]`) — the one to use when the test must `open-piece` or `save-piece` it.
+- `[:symlink t]` — a symlink to relative path `t`; `[:alias t]` — a macOS Finder alias to sibling `t` (macOS-only; guard with `platform/macos?`).
+
+To reach the tree through the opaque SRV token API, redef the platform roots at it — `platform/user-folders` → `(constantly [{:name "Test" :file root}])` and `platform/mounted-volumes` → `(constantly [])` — then mint dir-tokens with `list-filesystem-roots` / `list-filesystem-directory`. Combine with `with-server` + `with-clients` + `with-srv-client` for the client-scoped token registry.
 
 ### Choosing the Right Test Macro — Decision Table
 
