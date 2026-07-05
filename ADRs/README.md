@@ -132,6 +132,7 @@ Executing rendering decisions and handling user interaction.
 - **[0039-Localisation-Architecture](0039-Localisation-Architecture.md)**: Frontend-only localisation with PO files, single translation API, and build-time verification
 - **[0042-UI-Specification-Format](0042-UI-Specification-Format.md)**: Pure cljfx maps with namespace-qualified keys for UI specifications; plugin-friendly format with gRPC serialization and window lifecycle management
 - **[0043-Frontend-Settings](0043-Frontend-Settings.md)**: Global application settings with atom-based storage, EDN persistence, translated choice labels, and registry-driven Settings window
+- **[0053-Piece-Window-and-Piece-Preferences](0053-Piece-Window-and-Piece-Preferences.md)**: The Piece Window — a live view and workspace over the backend-authoritative piece: the Musicians and Layouts panes, drag-and-drop assembly composed into atomic `SRV/atomic` gestures (one `:piece-structure-changed` event, one named undo step), the dynamic title with dirty and shared decorators, the per-piece Piece Preferences window, and everything under backend undo/redo
 
 ## Audio Architecture
 

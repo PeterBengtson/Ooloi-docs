@@ -402,7 +402,7 @@ The full glyph alphabet (`●` modified, `⇄` shared) and ordering (`●` first
 | Window type | Guest-side (this user is a remote guest) | Host-side (this user is the host) |
 |---|---|---|
 | Instrument Library | Frontend is connected to a remote backend → IL is shared (the whole library belongs to the host) | Any network guest is connected → IL is shared (the library is the session's; no per-piece concept applies) |
-| Piece window (future, #136 Phase 3) | Frontend is connected to a remote backend → piece is shared (all pieces I see are the host's) | At least one network guest has subscribed to *this piece* — registry entries' `:piece-subscriptions` set membership, filtered by `:server-id` matching the network server's id → piece (and all its layouts) is shared |
+| Piece and layout windows | Frontend is connected to a remote backend → the piece (and its layouts) is shared | At least one network guest has subscribed to *this piece* → the piece (and its layouts) is shared — the `piece-shared?` predicate, specified in [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §5 |
 
 The OR composition means a remote guest sees all subjects (IL, pieces, layouts) as shared unconditionally; a host sees each subject as shared only when their guests have actually engaged with it.
 
@@ -412,7 +412,7 @@ The OR composition means a remote guest sees all subjects (IL, pieces, layouts) 
 - **`network-client-count`** — host-side, IL-applicable. Counts registry entries whose `:server-id` matches the network gRPC server's `:server-id`; returns `0` when no network server is running.
 - **`il-shared?`** — IL composite: `(or (frontend-on-network? sys) (pos? (network-client-count sys)))`.
 
-Piece-window helpers (added when piece windows land) follow the same pattern: `frontend-on-network?` (re-used) plus a new host-side helper `piece-subscribed-by-network?` taking `(sys piece-id)`, returning true iff any registry entry with `:server-id` matching the network server has `piece-id` in its `:piece-subscriptions`. The composite `piece-shared?` mirrors `il-shared?`: `(or (frontend-on-network? sys) (piece-subscribed-by-network? sys piece-id))`. Layout windows derive from their parent piece's predicate — a layout is shared iff its piece is.
+The piece and layout windows apply the same `⇄` decoration; their `piece-shared?` predicate — which reuses the `frontend-on-network?` test above and adds a host-side `piece-subscribed-by-network?`, with a layout shared exactly when its piece is — is specified in [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §5.
 
 The `:watches` declaration in each window's decorator narrows *what triggers re-evaluation* to the atoms whose changes can flip the predicate's result. For IL: the connection-registry atom (host-side changes) and the frontend's `api-connection-pool` atom (guest-side changes). For piece windows: the same two atoms. The predicate itself consults the live system map through the helpers — the watches and the predicate's reads are not the same set, by design (see ADR-0042 §Metadata Keys for the `:window/title-decorators` API).
 
@@ -723,6 +723,7 @@ Based on network realities, the architecture supports three deployment tiers wit
 - [ADR-0020: TLS Infrastructure](0020-TLS-Infrastructure-and-Deployment-Architecture.md) - Security foundation for network transport
 - [ADR-0021: Authentication](0021-Authentication.md) - JWT-based authentication supporting email identity
 - [ADR-0045: Instrument Library](0045-Instrument-Library.md) - First non-piece entity using this permission model; host has unconditional write access, guests are read-only by default, write access requires explicit grant; enforced by `create-api-authentication-interceptor`
+- [ADR-0053: The Piece Window and Piece Preferences](0053-Piece-Window-and-Piece-Preferences.md) - The piece and layout windows' `⇄` shared indicator and the `piece-shared?` predicate
 
 ### Technical References
 

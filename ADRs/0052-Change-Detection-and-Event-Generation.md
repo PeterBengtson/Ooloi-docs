@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Living: this ADR is prescriptive about the architecture as decided, and is revised as implementation proceeds and we learn more. The prose is normative; any code shown is illustrative — one realisation of the requirements, never the contract (cf. [ADR-0015](0015-Undo-and-Redo.md)).
+Accepted
 
 ## Table of Contents
 
@@ -76,7 +76,9 @@ Membership in the structural set is the `::h/Structural` trait (`hierarchy.clj`)
 | Musician | `:instrument-changes` | `:id` `:name` `:instruments` |
 | Instrument | `:key-signature-overrides` `:next-id` | `:id` `:name` `:short-name` `:number` `:language` `:family` `:transposition` `:range` `:amateur-range` `:comment` `:staves` |
 | Staff | `:measures` `:key-signature-overrides` `:clef-changes` | `:id` `:name` `:short-name` `:clefs` `:num-lines` |
-| Layout | `:page-views` `:stack-formatters` | `:id` `:name` |
+| Layout | `:page-views` `:stack-formatters` | `:id` `:name` `:musician-uuids` |
+
+A Layout's `:musician-uuids` is the ordered vector of musician references that determines which musicians the layout renders, and so whether it is a score or a part ([ADR-0053](0053-Piece-Window-and-Piece-Preferences.md)). It is structural: changing which musicians a layout lists, or their order, changes the makeup shown in the Piece Window, so the projection keeps it and a write to it fires the event (§3b).
 
 **Naming.** Entity naming is `:name` (with `:short-name` only where a score abbreviates the label — Instrument, Staff), read and written through `get-name`/`set-name`. The piece's human label is `:title` (no short name), through a separate `get-title`/`set-title` family — the head of a title-block family (subtitle, composer, arranger, … added later). Musician `:name` (initial value derived from its instruments) and Layout `:name` (initial value derived from its musicians) are user-overridable slots; the initial-value derivations are out of scope here. The filename is never piece *data* — it is external catalogue state ([ADR-0012](0012-Persisting-Pieces.md) provenance) — but it **is** surfaced in the projection as a **virtual `:filename` field**: conj'd at projection time from the piece's recorded provenance (the leaf only, never the path — [ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md)), looked up in the Piece Manager by the piece's own id rather than read from the piece. It is the one non-piece field the projection carries, and a piece with no recorded location has no `:filename`. The window title derives from `:title`, falling back to that filename with its `.ooloi`/`.ool` extension stripped, then to "Untitled" via `tr` on the frontend.
 
@@ -94,6 +96,7 @@ Because the test keys on the *slot* and not merely the entity, it is precise whe
 | … layout | Piece | `:layouts` | no | **yes** |
 | … instrument | Musician | `:instruments` | no | **yes** |
 | … staff | Instrument | `:staves` | no | **yes** |
+| add / remove / move a musician in a layout | Layout | `:musician-uuids` | no | **yes** |
 | `set-name` / `set-title` | Musician / Instrument / Staff / Layout / Piece | `:name` / `:title` | no | **yes** |
 | `add-measure` | Staff | `:measures` | yes | no |
 | `add-page-view` | Layout | `:page-views` | yes | no |
@@ -246,3 +249,4 @@ sequenceDiagram
 - [ADR-0018: API, gRPC Interface and Events](0018-API-gRPC-Interface-and-Events.md)
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md)
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md)
+- [ADR-0053: The Piece Window and Piece Preferences](0053-Piece-Window-and-Piece-Preferences.md)

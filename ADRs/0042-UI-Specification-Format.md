@@ -253,7 +253,7 @@ alone but a derived **display name**: the raw `:title` when set, else the record
 its `.ooloi`/`.ool` extension stripped ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a
 surfaces that filename as a virtual `:filename` in the projection), else blank — so the "Untitled"
 fallback resolves only when a piece has neither a name nor a saved location. A first Save therefore
-retitles the window from "Untitled" to the filename stem even while `:title` is still blank.
+retitles the window from "Untitled" to the filename stem even while `:title` is still blank. The piece window's title — this display name plus its `●`/`⇄` decorators — is specified in [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §5.
 
 ### Modal dialogs: one core, two entry points
 
@@ -1203,7 +1203,7 @@ The `:window/title-decorators` mechanism uses a stable glyph alphabet, common ac
 | `●` | U+25CF | Modified / dirty (unsaved local changes) | Piece windows (future) |
 | `⇄` | U+21C4 | Shared (window's subject is participating in a collaboration session) | IL window |
 
-When multiple glyphs apply, they prefix in this canonical order: **dirty first, shared second**. Rationale: dirty is the more urgent, actionable state — the user can act on it (save); shared is a stable role marker. Piece windows showing both would render `● ⇄ Untitled Piece`.
+When multiple glyphs apply, they prefix in this canonical order: **dirty first, shared second**. Rationale: dirty is the more urgent, actionable state — the user can act on it (save); shared is a stable role marker. Piece windows showing both would render `● ⇄ Untitled Piece`. The piece window applies both — its `●` from the dirty flag ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §5) and its `⇄` from the `piece-shared?` predicate — as specified in [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §5.
 
 Windows opt in by declaring `:window/title-decorators` (see §Metadata Keys). The default `[]` means no prefix — the entire existing window population continues to render unchanged unless deliberately opted in. New state classes (e.g., read-only, view-only) should add to the alphabet here and document their ordering relative to existing glyphs before being adopted by individual windows.
 
@@ -1620,3 +1620,4 @@ Frontend plugins reference Clojure vars directly — no serialization needed:
 - **ADR-0039:** Localisation Architecture - Requires all UI strings use translation keys
 - **ADR-0003:** Plugins - Plugin architecture requirements
 - **ADR-0043:** Frontend Settings - Application preferences system with registry-driven Settings window
+- **ADR-0053:** The Piece Window and Piece Preferences - The piece window consuming this format: title decorators, dynamic title, and the spec-fn window pipeline

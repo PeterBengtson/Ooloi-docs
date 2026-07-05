@@ -265,7 +265,7 @@ Key implementation aspects:
 7. **Data Integrity**: Invalid settings prevented at write time with clear error messages
 8. **Declarative Constraints**: Validation requirements explicit and co-located with definitions
 9. **Reduced Boilerplate**: Eliminated separate validation functions and :around methods
-10. **Collaborative Awareness**: When a piece setting changes, the backend emits a piece-setting-changed event via the backend event router (ADR-0031). The frontend reacts only when a piece settings window is open — refreshing stale values so a collaborating user does not work on outdated settings. Visual consequences of piece setting changes (e.g. re-rendering after beam thickness changes) are handled separately by the backend's own cache-invalidation events, not by the settings event.
+10. **Collaborative Awareness**: When a piece setting changes, the backend emits a piece-setting-changed event via the backend event router (ADR-0031). The frontend reacts only when a piece settings window is open — refreshing stale values so a collaborating user does not work on outdated settings. Visual consequences of piece setting changes (e.g. re-rendering after beam thickness changes) are handled separately by the backend's own cache-invalidation events, not by the settings event. The Piece Preferences window that presents these settings, and this two-channel behaviour, is specified in [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6.
 
 ### Negative
 
@@ -357,6 +357,7 @@ Key implementation aspects:
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Establishes that backend has no application settings, only piece data
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Backend event router delivers piece-setting-changed events to the frontend event bus for collaborative settings awareness
 - [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) - Companion system for global application preferences (frontend-only); borrows validation patterns from this ADR
+- [ADR-0053: The Piece Window and Piece Preferences](0053-Piece-Window-and-Piece-Preferences.md) - The Piece Preferences window presents these piece settings (§6)
 
 ### Technical Dependencies
 - **Methodical**: Multimethod system providing polymorphic dispatch foundation

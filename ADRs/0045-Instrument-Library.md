@@ -616,7 +616,7 @@ instruments, the visible (filtered) flat list, and the anchor's family for range
 staves, the parent instrument's staves vector. Because the algebra is type-agnostic, the same
 four primitives serve the whole `Layouts ⊃ Musicians ⊃ Instruments ⊃ Staves` nesting — Musicians
 and Layouts selection in the Piece window reuses them unchanged, each supplying its own id-vector
-and constraint group.
+and constraint group. The Piece window's use of these primitives for its Musicians and Layouts panes — and the drag-and-drop gestures they carry — is specified in [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §4.
 
 **Instrument selection** (`:selected` — vector of instrument `:id` keywords):
 
@@ -1130,6 +1130,7 @@ the protocol is correct regardless of timing, which is what matters.
 - [ADR-0039: Localisation Architecture](0039-Localisation-Architecture.md) — `tr-declare`, `tr` for language filter dropdown labels
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) — backend authority; frontend caches, never owns
 - [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) — `def-app-setting` for language filter; undo/redo integration
+- [ADR-0053: The Piece Window and Piece Preferences](0053-Piece-Window-and-Piece-Preferences.md) — the Piece window reuses this library's selection and drag-and-drop primitives; instruments drag from here into musicians
 
 ### Guides
 

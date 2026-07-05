@@ -100,7 +100,7 @@ That macOS-alias step is a **legitimate backend native dependency**: the backend
 **`save-piece` writes a piece to a named destination.** The destination is always a dir-token the user navigated to plus a leaf filename — never a path, never a UUID (a UUID is identity, not a location). `save-piece` writes the piece's bytes at the resolved location and records that location on the piece's provenance, so a subsequent plain `save-piece` (piece-id alone) re-writes there with no picker. The two File-menu variants are **different operations**:
 
 - **Save** (`save-piece`) writes the current piece to its recorded location, keeping its UUID — or, if it has none recorded, prompts through the picker in save mode.
-- **Save As** (`clone-piece`) is *export a copy*: the backend clones the piece — regenerating **only** the structural identifiers (the piece's string UUID *and* every Musician/Instrument/Staff/Layout `:id`, so the copy shares no identity with the original) and **sharing everything else with the original by reference** (all musical content, the change-sets, names, and definitional fields; the model is immutable, so a later edit copies-on-write) — and writes the clone's bytes to the chosen destination. The clone is **not registered** and the current in-memory piece is untouched; to work on the copy you open it.
+- **Save As** (`clone-piece`) is *export a copy*: the backend clones the piece — regenerating **only** the structural identifiers (the piece's string UUID *and* every Musician/Instrument/Staff/Layout `:id`, so the copy shares no identity with the original) and **sharing everything else with the original by reference** (all musical content, the change-sets, names, and definitional fields; the model is immutable, so a later edit copies-on-write) — and writes the clone's bytes to the chosen destination. The clone is **not registered** and the current in-memory piece is untouched; to work on the copy you open it. Because the structural ids are regenerated, the clone also **remaps** each layout's `:musician-uuids` to the new musician ids ([ADR-0012](0012-Persisting-Pieces.md), [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md)), so the copy's layouts reference its own musicians rather than the original's.
 
 **New (`new-piece`) is not a filesystem operation.** It mints an in-memory piece with a fresh UUID (ADR-0012); the piece touches storage only at its first Save (`save-piece`).
 
@@ -330,6 +330,7 @@ Until the collaboration access model is built, the backend runs free-for-all: ev
 - [ADR-0012: Persisting Pieces](0012-Persisting-Pieces.md) / [ADR-0007: Nippy](0007-Nippy.md) — piece identity and byte format at the seam.
 - [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) / [ADR-0021: Authentication](0021-Authentication.md) — caller identity and authorisation.
 - [ADR-0022: Lazy Frontend-Backend Architecture](0022-Lazy-Frontend-Backend-Architecture.md) — listings are fetched per-directory on demand and are disposable.
+- [ADR-0053: The Piece Window and Piece Preferences](0053-Piece-Window-and-Piece-Preferences.md) — Save As clones a piece whose layouts carry `:musician-uuids`, which the clone remaps.
 
 ## Implementation Notes
 
