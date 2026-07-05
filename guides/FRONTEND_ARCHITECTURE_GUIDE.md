@@ -1625,6 +1625,8 @@ A complete `start-app!` test skeleton:
             (ig/halt! sys)))))))
 ```
 
+**The startup untitled window counts as an open piece.** Startup always opens the untitled New window ([ADR-0042](../ADRs/0042-UI-Specification-Format.md) untitled fallback), and opening a piece window subscribes its piece — so `subscription-state` is non-empty from launch. A `start-app!` test that exercises the collaboration **connect / switch-to-remote** path therefore trips the outbound open-pieces gate ([ADR-0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md): `switch-to!` refuses with `{:refused :open-pieces}` while any local piece is subscribed) unless it first clears that window. `th/close-startup-piece-window! mgr` does so: it waits for the window's initial `get-piece-structure` read to land (closing the window removes the piece via close-on-last-release, and an in-flight fetch would otherwise fail "not found" and fire a spurious error notification), then closes it on the JAT; the test then waits for `subscription-state` to empty before connecting. It is a test-only stand-in for the user-facing close-without-save (discard) gesture, which is not yet built.
+
 If a test explicitly closes a window before halt, close it on the JAT first, then apply both flushes:
 
 ```clojure
