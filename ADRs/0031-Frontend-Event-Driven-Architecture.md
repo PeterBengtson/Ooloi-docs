@@ -3,7 +3,7 @@
 **Status:** ACCEPTED
 **Date:** 2025-10-15
 **Implemented:** 2026-01-26
-**Updated:** 2026-02-13 (Frontend event bus as Integrant component, Event Router as pure pipeline, nomenclature clarification); 2026-02-28 (Added :piece-structure and :piece-settings event categories for Steps 4 and 6 of the development sequence); 2026-03-12 (Added :instrument-library category for the Instrument Library component — ADR-0045)
+**Updated:** 2026-02-13 (Frontend event bus as Integrant component, Event Router as pure pipeline, nomenclature clarification); 2026-02-28 (Added :piece-structure and :piece-settings event categories for Steps 4 and 6 of the development sequence); 2026-03-12 (Added :instrument-library category for the Instrument Library component — ADR-0045); 2026-07-05 (:piece-setting-changed reclassified to per-piece routing, like :piece-structure-changed — it is not a shared :piece-settings category)
 
 ---
 
@@ -89,6 +89,70 @@ The frontend must handle two fundamentally different event sources with incompat
 
 ---
 
+## Per-Piece Event Routing
+
+Events reach the frontend through **three lanes**, and every routing decision follows from which lane an event is in. Keeping the three straight is the one thing this section exists to keep from going wrong.
+
+1. **Global backend events** — tied to no piece; they concern every client. The backend **broadcasts** them (`send-server-event`), and the frontend routes them through a **shared bus category** any component may subscribe to. Correct, because the event genuinely is everyone's: `:server-client-connected` / `:server-client-disconnected` → `:system` (carrying guest-vs-owner identity, so a named "X has connected" notification is possible); `:instrument-library-changed` → `:instrument-library`; `:undo-state-changed` **for the Instrument Library resource** → `:undo`; `:client-registration-confirmed` (the per-client registration handshake).
+
+2. **Frontend-local events** — raised inside the frontend, never from the gRPC stream. They are published **straight to the bus** (`eb/publish!`) and **never pass through the Event Router, `derive-category`, or the aggregator**. A category is correct — these are this client's own UI/state signals: `:app-lifecycle`, `:window-lifecycle`, `:window-requests`, `:app-settings`, `:collaboration` (`:collaboration-state-changed` — *this* client's transport/host state), `:backend`.
+
+3. **Piece events** — tied to exactly one piece, always carrying `:piece-id`, and marked by the **`:piece-` prefix**. The backend sends each **only to the clients subscribed to that piece** (`send-piece-event`), and the frontend routes each **to that piece's own handler or queue** — never a shared category.
+
+**The invariant, and why the prefix carries it.** A `:piece-*` event is **never** broadcast to all clients and filtered locally, and **never** placed on a shared frontend category that other pieces' windows also receive. It is delivered per-piece at the source and handled per-piece at the destination. The **`:piece-` prefix is the scope marker**: the router's rule is simply *"`:piece-*` → per-piece; everything else → its category."* A scope lookup table — deciding per event type whether it is piece-scoped — would drift, because a new event could be added on the wrong side. The prefix makes scope structural, so it cannot. This is why a piece-scoped collaboration cursor is `:piece-collaboration-cursor-moved`, not `:collaboration-cursor-moved`: the former routes per-piece by rule; the latter would be a scope lookup waiting to go wrong.
+
+### Two orthogonal axes for a piece event
+
+A piece event is fixed by two **independent** choices; separating them is what dissolves the confusion.
+
+1. **Scope — always the one piece.** `send-piece-event` reaches only the clients whose `:piece-subscriptions` contain the `:piece-id`, over the per-client FIFO queues of [ADR-0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md). Identical for every piece event. A client with several shared pieces open is subscribed to each; each piece's events arrive tagged with their `:piece-id` and dispatch to the right window — the subscription model carries multi-piece with no extra machinery.
+
+2. **Regime — by event type.** How a receiving client handles it: dispatched straight to the window, or coalesced in a per-piece queue at a set cadence and flushed to a consumer. `derive-category` is the **regime classifier** and the aggregator holds the cadences. **The classifications for streams not yet emitted are deliberate forward-preparation, not dead code** — each future stream's regime is established ahead of the events that will use it. What a stream adds when it is built is per-piece *delivery* and a per-piece *queue* at its already-prepared cadence; it changes neither the classification nor the prefix.
+
+| Piece event | Regime | Cadence | Consumer | Status |
+|---|---|---|---|---|
+| `:piece-structure-changed` | direct → window | — | window refetches the structure snapshot | live |
+| `:piece-setting-changed` | direct → window | — | settings window refreshes the control | prepared |
+| `:piece-invalidation` | per-piece batched | ~50–100 ms | **Fetch Coordinator** fetches stale paintlists | prepared |
+| `:piece-playback-*` | per-piece batched | ~16 ms | playback | prepared |
+| `:piece-collaboration-cursor-moved` | per-piece batched | ~33 ms | presence overlay | prepared |
+| `:undo-state-changed` for a piece resource | direct → window | — | undo-menu state | prepared |
+
+"Direct" regimes carry no queue; "batched" regimes use their prepared cadence in a **per-piece** queue. Only `:piece-structure-changed` is built; the rest are prepared. `:undo-state-changed` is the one event split by `:resource-key`: a **piece** resource routes per-piece like the rest of this table; the **Instrument Library** resource is global and broadcasts (Lane 1).
+
+Two points that have misled before:
+
+- **Only `:piece-invalidation` touches the Fetch Coordinator.** Its sole job is fetching stale *paintlists*, and only an invalidation names stale paintlist VPDs. `:piece-structure-changed` refetches the *structure snapshot* (`get-piece-structure`) itself; `:piece-playback-*` and the collaboration cursor move overlays over already-rendered content and fetch nothing; a setting change's *visual* consequence is a **separate** `:piece-invalidation`, and *that* reaches the Fetch Coordinator (the two-channel split of [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6).
+- **Each batched stream has its own cadence and its own per-piece queue** — invalidation ~50–100 ms, playback ~16 ms, cursor ~33 ms. Structure and settings do not batch: structure is already one event per transaction ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §4), settings are rare.
+
+### Routing diagram
+
+```mermaid
+flowchart TD
+    subgraph BE["Backend"]
+      PSRC["piece source<br/>(:piece-* — carries :piece-id)"]
+      GSRC["global source<br/>(:server-client-*, :instrument-library-changed, IL undo, registration)"]
+      PSRC -->|"send-piece-event<br/>ONLY subscribers of this piece"| Q["per-client FIFO queue (ADR-0024)"]
+      GSRC -->|"send-server-event<br/>broadcast to all"| Q
+    end
+    Q --> ER["event-client → Event Router (this client)"]
+    FL["frontend-local sources<br/>window lifecycle · app settings ·<br/>collaboration-state · backend switch"] -->|"eb/publish! — bypasses the Event Router"| BUS
+    ER --> SC{"is it :piece-* ?"}
+    SC -->|"no — global"| CAT["shared aggregator queue → bus category<br/>:system / :instrument-library / :undo"]
+    SC -->|"yes — per-piece, by regime"| RG{"regime"}
+    RG -->|"direct: structure · settings · piece-undo"| WH["that piece's window handler"]
+    RG -->|"batched ~50–100 ms: invalidation"| FC["per-piece queue → Fetch Coordinator"]
+    RG -->|"batched ~16 ms: playback"| PB["per-piece queue → playback"]
+    RG -->|"batched ~33 ms: cursor"| PR["per-piece queue → presence overlay"]
+    CAT --> BUS["frontend event bus"]
+    WH --> BUS
+    BUS --> CONS["UI Manager · windows · consumers"]
+```
+
+The detailed mechanisms follow below: `send-piece-event` and the per-client queues in the backend event sections, the per-piece dispatch and `derive-category` under *Event Router*, and the per-event specifics under *Piece Structure*, *Piece Settings*, and *Cache Invalidation*.
+
+---
+
 ## Consequences
 
 ### Core Pattern
@@ -157,10 +221,11 @@ The `:backend` category is the orthogonal "I switched backends" signal: `switch-
 
 Categories are arbitrary keywords — any component can define new ones. Backend-originated
 categories (`:cache-invalidation`, `:presence`, `:playback`, `:system`, `:notification`,
-`:piece-settings`, `:instrument-library`, `:undo`) appear on the same
+`:instrument-library`, `:undo`) appear on the same
 bus as the frontend-originated ones above — the bus is the delivery mechanism for all
-category-routed frontend events. (`:piece-structure-changed` is **not** a category — it is a
-per-piece event the Event Router dispatches to the subscribing window; see *Piece Structure* below.)
+category-routed frontend events. (The `:piece-*` events — `:piece-structure-changed` and
+`:piece-setting-changed` — are **not** categories: they are per-piece events the Event Router
+dispatches to the subscribing window; see *Piece Structure* and *Piece Settings* below.)
 See [Event Type Taxonomy and Category Derivation](#event-type-taxonomy-and-category-derivation)
 for the complete backend-event-to-category mapping.
 
@@ -627,19 +692,26 @@ dropped and the window settles on the freshest structure.
 
 ---
 
-**Piece Settings** (`:piece-settings` category):
+**Piece Settings** (`:piece-setting-changed` — a **per-piece event, not a bus category**):
 ```clojure
 :piece-setting-changed  ; A defsetting value changed on the backend
 ```
 
 **Required fields**: `:piece-id` (string), `:timestamp` (number)
 **Payload fields**: `:setting-key` (keyword), `:old-value`, `:new-value`
+**Routing — per-piece, not categorised.** Like `:piece-structure-changed` above (and every
+`:piece-*` event), `send-piece-event` delivers this only to clients subscribed to that piece, and the
+Event Router dispatches it to that piece's registered handler. It does **not** pass through
+`derive-category` or a shared `:piece-settings` category — there is no fan-out to other pieces'
+windows and no client-side `:piece-id` filter. The two per-piece regimes differ only in the
+subscriber's reaction, never in the routing.
 **Note**: The `:piece-setting-changed` event **never triggers paintlist fetching**. Graphical
 consequences of setting changes travel independently as `:piece-invalidation` events (→
 `:cache-invalidation`). The two event types are architecturally separate and must never be
 conflated.
-**Subscriber reaction**: Piece settings window (if open for this piece-id) refreshes the
-control for `:setting-key` using `:new-value`. No Fetch Coordinator involvement.
+**Subscriber reaction**: the piece's subscribed settings window refreshes the control for
+`:setting-key` using `:new-value` — no client-side filter (the per-piece subscription already scopes
+it). No Fetch Coordinator involvement.
 
 ---
 
@@ -711,8 +783,9 @@ invalidate→fetch model and timestamp-based routing.
     ;; Event Router dispatches directly to the subscribing window (see "Piece Structure" above);
     ;; it never reaches derive-category.
 
-    ;; Piece settings
-    :piece-setting-changed :piece-settings
+    ;; Piece settings are NOT categorised — :piece-setting-changed is a per-piece event the
+    ;; Event Router dispatches directly to the subscribing window (see "Piece Settings" above),
+    ;; exactly like :piece-structure-changed; it never reaches derive-category.
 
     ;; Instrument library (global singleton — not piece-scoped)
     :instrument-library-changed :instrument-library
