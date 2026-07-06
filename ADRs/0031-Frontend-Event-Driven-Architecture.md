@@ -3,7 +3,7 @@
 **Status:** ACCEPTED
 **Date:** 2025-10-15
 **Implemented:** 2026-01-26
-**Updated:** 2026-02-13 (Frontend event bus as Integrant component, Event Router as pure pipeline, nomenclature clarification); 2026-02-28 (Added :piece-structure and :piece-settings event categories for Steps 4 and 6 of the development sequence); 2026-03-12 (Added :instrument-library category for the Instrument Library component — ADR-0045); 2026-07-05 (:piece-setting-changed reclassified to per-piece routing, like :piece-structure-changed — it is not a shared :piece-settings category)
+**Updated:** 2026-02-13 (Frontend event bus as Integrant component, Event Router as pure pipeline, nomenclature clarification); 2026-02-28 (Added :piece-structure and :piece-settings event categories for Steps 4 and 6 of the development sequence); 2026-03-12 (Added :instrument-library category for the Instrument Library component — ADR-0045); 2026-07-05 (:piece-setting-changed reclassified to per-piece routing, like :piece-structure-changed — it is not a shared :piece-settings category); 2026-07-06 (Added the :piece-dirty-changed per-piece event and the generalised PieceChangeNotifier emission seam — ADR-0052 §5)
 
 ---
 
@@ -112,6 +112,7 @@ A piece event is fixed by two **independent** choices; separating them is what d
 | Piece event | Regime | Cadence | Consumer | Status |
 |---|---|---|---|---|
 | `:piece-structure-changed` | direct → window | — | window refetches the structure snapshot | live |
+| `:piece-dirty-changed` | direct → window | — | window refetches; drives the `●` dirty title + Save enablement | live |
 | `:piece-setting-changed` | direct → window | — | settings window refreshes the control | prepared |
 | `:piece-invalidation` | per-piece batched | ~50–100 ms | **Fetch Coordinator** fetches stale paintlists | prepared |
 | `:piece-playback-*` | per-piece batched | ~16 ms | playback | prepared |
@@ -689,6 +690,20 @@ initial read and every event-driven refetch run off the JAT and can land out of 
 carries a timestamp — the event's `:timestamp`, or `0` for the initial read — and is applied only
 if newer than the last applied (`:structure-timestamp`), so a stale refetch landing late is
 dropped and the window settles on the freshest structure.
+
+---
+
+**Piece Dirty State** (`:piece-dirty-changed` — a **per-piece event, not a bus category**):
+```clojure
+:piece-dirty-changed  ; The piece's dirty flag flipped — clean→dirty on the first edit
+                      ; after a save, dirty→clean on a save (ADR-0052 §5)
+```
+
+**Required fields**: `:piece-id` (string), `:timestamp` (number)
+**Payload fields**: none — the flag rides the projection; clients read it from `get-piece-structure`'s virtual `:dirty` field.
+**Emitted on the flip only.** The Piece Manager holds the flag (ADR-0052 §5). `mark-piece-dirty!` emits on the `false→true` transition (from the change-detection funnel, deferred to commit like `:piece-structure-changed`); `clear-piece-dirty!` emits on the `true→false` transition (from `save-piece`, a direct emit outside any transaction). A no-op mark on an already-dirty piece, or a clear of an already-clean one, is silent — ~two events per save cycle, not one per keystroke. Both go through the shared `PieceChangeNotifier` seam (`notify-piece-change! [piece-id event-type]`) — the *same* seam `:piece-structure-changed` uses, parameterised by the event type, since the two payload-free per-piece change events differ only in the keyword.
+**Routing — per-piece, not categorised.** Exactly like `:piece-structure-changed`: `send-piece-event` delivers it only to clients subscribed to the piece, and the Event Router dispatches it to that piece's registered handler — one of the two window-refetch events routed direct-to-window (never `derive-category` / a shared category).
+**Subscriber reaction**: the piece window's handler refetches `(SRV/get-piece-structure [] piece-id)` — the same handler as `:piece-structure-changed` — so the projected `:dirty` updates in `*piece-state`, toggling the window title's `●` (ADR-0053 §5). The menu also re-evaluates Save enablement (active-piece **and** dirty) on this event. Latest-wins by `:timestamp`.
 
 ---
 
