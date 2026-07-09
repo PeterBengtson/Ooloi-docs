@@ -613,6 +613,41 @@ Lazy content is **opt-in** (`:lazy-content true`, default off), because it carri
 
 New windows follow a single step: publish a `:window-open-requested` event with a data map declaring `:window/spec-fn`, `:window/handler`, `:window/state`, and optionally `:window/subscriptions`, `:window/watches`, `:window/stylesheets`, and the lifecycle hooks `:window/on-open` / `:window/on-close`. The pipeline builds the renderer, mounts it, registers it, wires all declared subscriptions and watches, loads stylesheets on the scene, runs `:window/on-open` last, and handles all cleanup on close (running `:window/on-close` first). Locale reactivity, theme reactivity, geometry persistence, and lifecycle management are automatic.
 
+#### Shared interaction capabilities — the parity matrix
+
+The Instrument Library window, the Musicians pane, and the Layouts pane are three incarnations of **one**
+shared selection / expansion / drag-and-drop model, so their user-facing capabilities are kept in **parity**.
+This matrix is the coordination point: when a capability is added or changed in one consumer, the matrix is
+updated and the others reconciled — parity is easy to break silently otherwise. It is a thin index; the
+per-consumer mechanics live in the sections below. `✓` present · `◻` planned · `—` not applicable.
+
+| Capability | Instrument Library | Musicians pane | Layouts pane |
+|---|---|---|---|
+| Single-click select (`sel/select-one`, gated on `ofx/selection-click?`) | ✓ | ✓ | ✓ |
+| Cmd/Shift multi-select (`sel/toggle-selection` / `sel/extend-selection`) | ✓ | ✓ | ✓ |
+| Arrow-key navigation (`sel/move-selection`; a click grants focus) | ✓ | ✓ | ✓ |
+| Context-scoped highlight (`:selection {:context …}`) | — one context | ✓ `:musicians` | ✓ `:layouts` / `[:layout id]` |
+| Selection-on-drag (a drag on an unselected item selects it first) | ✓ | ◻ | — |
+| Reorder within a parent — move (`move-<elem>`) | ✓ | ◻ | — |
+| Copy within a parent (`SRV/atomic [copy-<elem>, individuate]`) | ✓ | ◻ | — |
+| Copy cross-parent (staff→instrument; instrument→musician) | ✓ | ◻ | — |
+| Cross-parent *move* — deliberately **rejected**, use copy | — | — | — |
+| Collapsed-container drop-reject (only an expanded container accepts) | ✓ | ◻ | — |
+| Multi-item drag (one `SRV/atomic` for the whole selection) | ✓ | ◻ | — |
+| Guarded delete (confirm iff the entity contains music) | —¹ | ◻ | ◻ |
+| Inline field-edit (field-commit → `SRV/set-*` on the entity's address) | ✓ | ◻ | ◻ layout name |
+| Double-click to open / navigate | — (`>` opens) | — (`>` opens) | ✓ musician → Musicians pane |
+| **Backend submission** | **en-bloc** `set-instrument-library` (full-replace + conflict-retry) | **per-gesture** `SRV/atomic` granular operations | **per-gesture** `SRV/atomic` granular operations |
+
+¹ Instrument-Library entities are content-free **templates**, so removal needs no music-content confirmation
+and no by-reference sourcing — a copy legitimately carries the value. The panes hold real piece content,
+which is why their copies source **by reference** on the server (content never crosses the wire, resolved
+from the client-side structural projection the window already holds) and their deletes are guarded.
+
+**The one load-bearing difference is the last row.** The library submits the whole (small, content-free)
+catalogue en bloc; the panes compose one `SRV/atomic` batch of granular operations per gesture against the
+large, music-bearing piece. Everything else is intended to match.
+
 #### The Piece Window's Panes — the shared model, second incarnation
 
 The Instrument Library window was the first consumer of Ooloi's shared selection / expansion / drag-and-drop core; the **Piece window's Musicians pane is the second**, and its Layouts pane is the third. All three are the *same* small model in different clothes — a new pane is a re-parameterisation, not new infrastructure. The window holds its state in a per-window `*piece-state` atom, the same atom the invalidation/refetch cycle writes the piece's structural projection into; every gesture is either an internal state mutation or a composed backend call.
