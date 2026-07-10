@@ -234,7 +234,6 @@ The shared model contracts **only affect Clojure clients**. Non-Clojure clients 
 ┌─────────────────────────────────────────────────────────┐
 │                    gRPC Service                         │
 │  ExecuteMethod(OoloiRequest) → OoloiResponse           │
-│  ExecuteBatch(stream OoloiRequest) → OoloiResponse     │
 └─────────────────────────────────────────────────────────┘
                             │
         ┌───────────────────┼───────────────────┐
@@ -295,7 +294,7 @@ response = stub.ExecuteMethod(request)
 
 1. **Complete API access** via ExecuteMethod with any method name
 2. **Perfect data fidelity** via OoloiValue conversion preserving all types
-3. **Streaming support** via ExecuteBatch for atomic STM transactions
+3. **Atomic multi-operation batches** via ExecuteMethod (SRV/atomic) — one STM transaction, ACID
 4. **All backend features** without any limitations or performance overhead
 5. **Standard protobuf workflow** with generated client code
 

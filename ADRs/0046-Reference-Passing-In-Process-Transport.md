@@ -110,19 +110,17 @@ This encapsulates the existing three-layer conversion into the marshaller, remov
 
 The `ServerServiceDefinition` is built manually (not via generated `OoloiServiceImplBase.bindService()`) with `MethodDescriptor<Object, Object>` instances carrying the transport-appropriate marshallers.
 
-Service handlers for `ExecuteMethod` and `ExecuteBatch` receive and return **Clojure data**:
-- `ExecuteMethod` handler receives `{:method "..." :params <clojure-value>}`, returns `{:success true :result <clojure-value>}`
-- `ExecuteBatch` handler receives a stream of such maps, returns a single result map
+The `ExecuteMethod` handler receives and returns **Clojure data** — it receives `{:method "..." :params <clojure-value>}` and returns `{:success true :result <clojure-value>}`.
 
 `RegisterClient` remains on the protobuf marshaller path — event streaming is infrequent with small payloads, and the conversion cost is negligible. It can be migrated to reference passing later without architectural change; the same marshaller interface applies.
 
-For the two payload-significant methods, the handler implementation is identical regardless of transport. Only the marshaller differs.
+For this payload-significant method, the handler implementation is identical regardless of transport. Only the marshaller differs.
 
 ### Transport-Aware Client Calls
 
 Client code uses `ClientCalls/blockingUnaryCall` (and equivalent async calls) with `MethodDescriptor<Object, Object>` instances carrying the transport-appropriate marshallers, replacing generated stub classes (`OoloiServiceGrpc/newBlockingStub`).
 
-For `ExecuteMethod` and `ExecuteBatch`, client code sends and receives **Clojure data** in both transport modes. `RegisterClient` continues to use protobuf stubs.
+For `ExecuteMethod`, client code sends and receives **Clojure data** in both transport modes. `RegisterClient` continues to use protobuf stubs.
 
 ### Statistics Adaptation
 
@@ -250,7 +248,7 @@ ADR-0019 eliminated TCP/IP overhead by switching to `InProcessTransport`. This A
 
 ## Implementation Scope
 
-The optimisation targets **`ExecuteMethod` (unary) and `ExecuteBatch` (client streaming)** — the two methods that carry payload-significant data.
+The optimisation targets **`ExecuteMethod` (unary)** — the method that carries payload-significant data.
 
 **`RegisterClient` (server streaming for events) is deferred.** Event streaming is infrequent and carries simple, small data structures. The conversion overhead on events is negligible. The event path can remain on the protobuf marshaller indefinitely or be migrated later without architectural change — the same marshaller interface applies.
 
@@ -269,8 +267,6 @@ Each phase can be committed and tested independently. Phases 1-2 are pure additi
 
 **`.getSerializedSize()` is a correctness issue, not merely a meaningless metric.** The current code calls `.getSerializedSize()` on every request, response, and event for statistics collection. With reference-passing marshallers, the objects flowing through the handler are Clojure maps, not protobuf messages. Calling `.getSerializedSize()` on a Clojure map produces a `ClassCastException`. These calls must be guarded by transport mode or removed for the reference path. This is not optional — it is a correctness requirement.
 
-**`ExecuteBatch` STM boundary is unchanged.** The batch handler accumulates streamed request maps and wraps execution in a `dosync` block. With reference passing, each streamed message is a Clojure map rather than a protobuf message, but the accumulation and STM wrapping logic is identical. The marshaller handles per-message conversion; the handler sees the same data shape regardless of transport.
-
 **The generated `OoloiServiceGrpc` class remains in the build.** It continues to serve three purposes: (1) the wire marshaller uses its protobuf message classes for network transport, (2) it defines the canonical `fullMethodName` strings that method descriptors must match, and (3) existing tests that exercise the network path continue to function.
 
 **The `.proto` file is unchanged.** The protobuf schema remains the network wire format contract. Reference passing is a transport optimisation that does not alter the schema or the network protocol. A network client connecting to a network server sees no difference.
@@ -285,7 +281,7 @@ Discoveries from implementation that affect the specification or clarify impleme
 
 **MethodDescriptor instance identity is a gRPC constraint.** `ServerServiceDefinition.Builder.build()` requires that each `MethodDescriptor` passed to `.addMethod()` is the **same object instance** as the corresponding descriptor in the `ServiceDescriptor`. Creating descriptors with identical names but as separate instances causes `IllegalStateException: "Bound method not same instance as method in service descriptor"`. The service builder creates each descriptor once and shares the instance between the `ServiceDescriptor` and `.addMethod()` calls. The descriptor factory functions in `transport.clj` remain available for client-side use but are not used by the service builder.
 
-**Server handlers receive Clojure maps directly.** The handler refactoring is clean: `handle-execute-method` and `handle-execute-batch` receive and return Clojure maps regardless of transport. The protobuf conversion that was previously in the handler code is now encapsulated entirely within the wire marshaller. Handler code has no `import` of any protobuf class.
+**Server handlers receive Clojure maps directly.** The handler refactoring is clean: `handle-execute-method` receives and returns Clojure maps regardless of transport. The protobuf conversion that was previously in the handler code is now encapsulated entirely within the wire marshaller. Handler code has no `import` of any protobuf class.
 
 **Response byte tracking uses a closure baked into the marshaller.** The wire response marshaller's `stream()` method already computes `(.toByteArray proto-obj)` — the byte count is available at that point with zero additional work. A callback `(fn [byte-count])` is passed to the marshaller factory at service creation time and called during `stream()`. This avoids per-call overhead: no dynamic vars, no thread-locals, no extra conversion. For in-process transport, there is no callback — reference marshallers have no bytes to report. The callback is threaded through `build-service-definition` → descriptor factories → `create-wire-marshaller`.
 
@@ -293,7 +289,7 @@ Discoveries from implementation that affect the specification or clarify impleme
 
 **Error injection point moves from bridge to handler.** With reference-passing marshallers, `protobuf-bridge/protobuf-object->internal-map` is no longer in the handler code path — it is encapsulated within the wire marshaller. The correct error injection point is `resolve-api-var`, which is in the handler path for both transports. This ensures error categorisation exercises the same code path regardless of transport mode.
 
-**Errors travel as data on both transports.** `handle-execute-method` and `handle-execute-batch` catch `Throwable` from the invoked operation, record API-failure and error-category stats, and return `{:success false :error "<message>" :result nil}`. The handler does *not* rethrow — exceptions never cross the gRPC boundary as `Status/INTERNAL` (which would truncate the description). The client-side `SRV/*` wrapper inspects `:success` and throws `ex-info` carrying the server's exact error message. This contract is identical for in-process and network — only the marshaller differs. See [POLYMORPHIC_API_GUIDE §Error Surfacing Contract](../guides/POLYMORPHIC_API_GUIDE.md#error-surfacing-contract-response-data-client-side-throw) for the full design.
+**Errors travel as data on both transports.** `handle-execute-method` catches `Throwable` from the invoked operation, record API-failure and error-category stats, and return `{:success false :error "<message>" :result nil}`. The handler does *not* rethrow — exceptions never cross the gRPC boundary as `Status/INTERNAL` (which would truncate the description). The client-side `SRV/*` wrapper inspects `:success` and throws `ex-info` carrying the server's exact error message. This contract is identical for in-process and network — only the marshaller differs. See [POLYMORPHIC_API_GUIDE §Error Surfacing Contract](../guides/POLYMORPHIC_API_GUIDE.md#error-surfacing-contract-response-data-client-side-throw) for the full design.
 
 ## Related ADRs
 

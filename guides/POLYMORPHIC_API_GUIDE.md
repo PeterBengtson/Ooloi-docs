@@ -913,9 +913,9 @@ Implement in a `shared/ops/` namespace. Because shared code cannot require backe
     ...))
 ```
 
-`*server-component*` is the gRPC server component map, bound per-request by `handle-execute-method` and `handle-execute-batch` in `backend/grpc/server.clj`. Backend Integrant deps injected into the gRPC server — `:undo-manager-component`, `:instrument-library-component`, and any future singleton component — appear as keys on this map. Reach them by `(:my-component server-component)`.
+`*server-component*` is the gRPC server component map, bound per-request by `handle-execute-method` in `backend/grpc/server.clj`. Backend Integrant deps injected into the gRPC server — `:undo-manager-component`, `:instrument-library-component`, and any future singleton component — appear as keys on this map. Reach them by `(:my-component server-component)`.
 
-> **🚨 Anti-pattern: per-component dynamic vars.** An earlier iteration of the singleton pattern declared a per-component `^:dynamic` var (e.g. `*instrument-library-component*`) and bound it in every gRPC handler's `binding` block. **Do not reintroduce this pattern.** Each additional dynamic var would have to be bound in *every* handler site (`handle-execute-method`, `handle-execute-batch`); missing any one silently routes the component as `nil` and the request returns `{:result nil}` with no error visible to the caller. The `*server-component*` map already carries every dep — use it directly. The subscription operations in `event_subscription.clj` and the undo operation in `ops/undo.clj` are the canonical model.
+> **🚨 Anti-pattern: per-component dynamic vars.** An earlier iteration of the singleton pattern declared a per-component `^:dynamic` var (e.g. `*instrument-library-component*`) and bound it in every gRPC handler's `binding` block. **Do not reintroduce this pattern.** Each additional dynamic var would have to be bound in the handler's `binding` block (`handle-execute-method`); missing it silently routes the component as `nil` and the request returns `{:result nil}` with no error visible to the caller. The `*server-component*` map already carries every dep — use it directly. The subscription operations in `event_subscription.clj` and the undo operation in `ops/undo.clj` are the canonical model.
 
 ### Frontend Usage
 
@@ -948,7 +948,7 @@ Every gRPC-accessible API function — VPD-based or singleton — returns throug
 
 ### Server side: errors as data
 
-`handle-execute-method` and `handle-execute-batch` in `backend/grpc/server.clj` catch `Throwable` from the invoked operation, record API-failure and error-category statistics, and return a response map:
+`handle-execute-method` in `backend/grpc/server.clj` catches `Throwable` from the invoked operation, records API-failure and error-category statistics, and returns a response map:
 
 ```clojure
 ;; Success

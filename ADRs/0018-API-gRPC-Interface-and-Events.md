@@ -78,12 +78,11 @@ We will implement **unified Clojure-aware gRPC architecture with server-to-clien
 
 ### 4. Service Architecture
 
-The unified `OoloiValue` design (above) reduces the service surface from hundreds of generated method messages to four RPCs: a single `ExecuteMethod` for all unary API calls, an `ExecuteBatch` for STM-coordinated atomic batches, a `RegisterClient` server-streaming RPC for event delivery, and a `Disconnect` unary RPC for graceful session termination as the complementary peer of `RegisterClient`:
+The unified `OoloiValue` design (above) reduces the service surface from hundreds of generated method messages to three RPCs: a single `ExecuteMethod` for all unary API calls (an atomic multi-operation batch rides this same unary RPC via `SRV/atomic` — its ACID guarantee is the backend's single STM transaction, `execute-atomic-operations`' `dosync`, a handler-level guarantee, not a protocol-level construct), a `RegisterClient` server-streaming RPC for event delivery, and a `Disconnect` unary RPC for graceful session termination as the complementary peer of `RegisterClient`:
 
 ```protobuf
 service OoloiService {
   rpc ExecuteMethod(OoloiRequest) returns (OoloiResponse);
-  rpc ExecuteBatch(stream OoloiRequest) returns (OoloiResponse);
   rpc RegisterClient(RegisterClientRequest) returns (stream EventMessage);
   rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
 }
@@ -539,39 +538,7 @@ rpc SubscribeToPieceEvents(PieceSubscriptionRequest) returns (stream PieceEvent)
 - **Event filtering**: Intelligent filtering to prevent overwhelming clients with irrelevant updates
 - **Connection recovery**: Automatic reconnection with event replay for missed updates
 
-**Client Streaming for STM-Composable Batch Operations**:
-```protobuf
-// Generated service method for STM-composable distributed transactions
-rpc ExecuteBatchOperations(stream BatchOperationRequest) returns (BatchOperationResponse);
-```
-
-**🎯 Unique Architectural Innovation: STM-gRPC Batch Transaction Composability**
-
-Ooloi's batch processing represents a **unique architectural achievement** in distributed music notation systems - **STM transaction boundaries naturally align with gRPC batch boundaries**, enabling true **distributed transactions for collaborative editing**.
-
-**STM-gRPC Integration Pattern**:
-```clojure
-;; Client streams operations → Server accumulates → Single dosync wraps all → Atomic result
-(defn handle-batch-operations [operation-stream response-observer]
-  (let [operations (collect-streamed-operations operation-stream)]
-    (try
-      (dosync  ; ← STM transaction boundary = gRPC batch boundary
-        (doseq [op operations]
-          (apply-vpd-operation op)))  ; Multiple VPD operations compose atomically
-      (send-success-response response-observer)
-      (catch Exception e
-        (send-failure-response response-observer e)))))
-```
-
-**Collaborative Editing Advantages**:
-- **Atomic batch processing**: Multiple VPD-based operations processed as single distributed transaction
-- **ACID compliance across network**: Either all operations succeed or all fail, maintaining data consistency
-- **Collaborative conflict resolution**: Multiple users' edits can be batched and coordinated atomically
-- **Undo/redo optimization**: Streaming operation chains create natural transaction boundaries for state management
-- **Import processing**: Large MusicXML/MIDI files streamed and applied atomically in manageable transaction chunks
-- **Performance optimization**: Reduced network roundtrips combined with transactional integrity
-
-**Industry Differentiation**: This STM-gRPC batch architecture is **unique among music notation systems** - traditional notation software cannot provide distributed transactional guarantees for collaborative editing operations.
+**Atomic batches ride the unary `ExecuteMethod`.** A multi-operation atomic batch is submitted as one `SRV/atomic` call over the unary `ExecuteMethod` RPC, and the backend runs it in a single STM transaction (`execute-atomic-operations`' `dosync`). The ACID guarantee is that **handler-level** STM transaction — gRPC has no transaction semantics of its own — so no dedicated streaming RPC is needed for atomicity. A client-streaming RPC would earn its place only for **large-body** transport (chunking a very large MusicXML/MIDI import so it need not arrive as one message — size ceiling, backpressure); that, and bulk file transfer, are streaming concerns for a future ADR, to be written when a concrete consumer arrives.
 
 **Bidirectional Streaming for Interactive Collaboration**:
 ```protobuf
