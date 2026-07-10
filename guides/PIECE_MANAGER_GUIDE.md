@@ -62,7 +62,7 @@ The piece manager maintains a **dual-ref system**, and the store is **owned by t
               ;                     :provenance {:path "…/my-symphony.ooloi" :modified 1718900000000}}}
 ```
 
-**Why a ref handle rather than an atom?** Every store mutation already happens inside `dosync` (`store-piece` / `remove-piece` `alter` the store ref). Making the handle a **ref** too keeps the whole access path under a single STM discipline: the handle read inside a transaction is transactionally consistent by construction, and there is no second reference type to reason about. The handle is populated by the component, so pure-model code — `resolve-piece-ref`, `get-piece-ref` — reaches the store through it with no server in scope. The store is created by `init-store!` (called from the component's `init-key`) and released by `release-store!` (from `halt-key!`); there is no JVM-global remnant.
+**Why a ref handle rather than an atom?** Every store mutation already happens inside `dosync` (`store-piece` / `remove-piece` `alter` the store ref). Making the handle a **ref** too keeps the whole access path under a single STM discipline: the handle read inside a transaction is transactionally consistent by construction, and there is no second reference type to reason about. The handle is populated by the component, so pure-model code — `resolve-into-piece-ref`, `get-piece-ref` — reaches the store through it with no server in scope. The store is created by `init-store!` (called from the component's `init-key`) and released by `release-store!` (from `halt-key!`); there is no JVM-global remnant.
 
 **The registry entry.** Each value in the store is a map — `{:ref piece-ref :provenance {:path :modified}}` — not a bare ref. The `:ref` is the piece's STM ref (the dual-ref system above). The `:provenance` — the file path and modification time the piece was opened from — is present only for pieces opened through `open-piece` (ADR-0051), and is how the Piece Manager distinguishes an idempotent reopen of the same file (same embedded UUID, same provenance) from a variant collision (same UUID, different provenance) — see [ADR-0012](../ADRs/0012-Persisting-Pieces.md). Provenance shares the ref's identity and lifetime — dropped with it on `remove-piece` — rather than living in a parallel structure to keep in sync; the persistent catalogue of every piece ever seen is a separate concern (#184).
 
@@ -253,6 +253,33 @@ The `get-piece-ref` function is the cornerstone of piece manager's flexibility:
 ;;     (alter piece-ref update-something)))
 ;; More code, more complexity, more chances for bugs!
 ```
+
+### Resolving to a value or a ref: `resolve-into-piece` and `resolve-into-piece-ref`
+
+`get-piece-ref` is the backend piece-store lookup. One level up sits the `PieceResolver`
+protocol, which the shared tier uses to turn a piece-thing — a value, a ref, or an id — into a
+piece. It offers **two** methods for two intents, so a reader never pays for a ref it will only
+dereference:
+
+```clojure
+;; Readers — return the piece VALUE, allocating nothing for a bare value:
+(resolve-into-piece piece-object)   ; Object -> returned unchanged
+(resolve-into-piece piece-ref)      ; Ref    -> dereferenced to its value
+(resolve-into-piece "piece-id")     ; String -> looked up (backend) and dereferenced
+
+;; Writers — return a Ref, to alter within a transaction:
+(resolve-into-piece-ref piece-object) ; Object -> wrapped in a new ref
+(resolve-into-piece-ref piece-ref)    ; Ref    -> returned as-is
+(resolve-into-piece-ref "piece-id")   ; String -> looked up stored ref (backend)
+```
+
+The read funnel `vpd-get` — every `get-xxxxx` on a piece — uses `resolve-into-piece`: a plain
+piece value flows straight through, with no throwaway ref allocated on the hot getter path. The
+write funnels `vpd-transact` (adders, removers, setters, movers, `individuate`) and
+`vpd-mutate-setting` use `resolve-into-piece-ref`, because they `alter` the ref inside `dosync`.
+Both methods accept a value, a ref, or a string id; the backend resolves ids through the piece
+store (throwing on a missing id, exactly as `get-piece-ref` does), while the frontend rejects
+string ids to force gRPC.
 
 ### Piece Lifecycle Patterns
 

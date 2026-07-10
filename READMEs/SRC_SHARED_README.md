@@ -196,10 +196,14 @@ including the very files that imported it. This constraint applies to all archit
 files — `predicates.clj`, `interfaces.clj`, and any model file use selective imports from specific
 namespaces, not `core :refer :all`.
 
-**PieceRefResolver protocol**: In shared contexts, the `PieceRefResolver` protocol requires an
+**PieceResolver protocol**: In shared contexts, the `PieceResolver` protocol requires an
 explicit `[ooloi.shared.ops.piece-ref]` require. Without it, the protocol functions exist but
 implementations may not be loaded, causing runtime failures. Add this require explicitly in any
-shared-layer namespace that resolves piece references.
+shared-layer namespace that resolves piece references. The protocol has two methods for two
+intents: `resolve-into-piece` returns the piece **value** — for readers such as the getter
+funnel, with no ref allocated for a bare value — while `resolve-into-piece-ref` returns a
+**Ref**, for writers that `alter` it in STM. Both accept a value, a ref, or a string id; the
+backend resolves ids through the piece store, the frontend rejects them to force gRPC.
 
 ## Namespace Organisation: How to Import
 
