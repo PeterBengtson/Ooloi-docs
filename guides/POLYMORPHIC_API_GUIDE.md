@@ -397,6 +397,8 @@ Each operation in the collection requires:
 - **Isolation**: Concurrent operations don't see partial state
 - **Durability**: Changes are persisted once transaction completes
 
+**Piece threading is implicit, through STM.** The batch does not thread a piece *value* from one operation to the next. All operations run in one transaction, and each is an ordinary VPD call that `alter`s the same piece STM ref; because they share the transaction, each operation reads the ref's in-transaction value — which already reflects every prior operation's change. So a batch can build on itself: `add-layout` appends a layout, and a following `add-musician [:l n]` in the same batch sees that layout and adds to it. Ordering within the batch is therefore significant, and the threading comes for free from the shared ref — you compose operations in the order they must apply, and STM threads the evolving piece for you.
+
 This function integrates with Ooloi's STM-gRPC system to provide remote atomic batch execution for musical notation operations.
 
 ### Platform Abstraction: What the API Brings vs. How It Does It
