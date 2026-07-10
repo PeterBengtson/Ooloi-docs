@@ -816,6 +816,15 @@ For testing the full combined application — all 15 baseline components, in-pro
 
 **Async synchronisation note:** after `register-with-server`, allow 100ms before reading server registry state — gRPC connections are established asynchronously.
 
+**Pool sizing for thread-parking tests.** `with-combined-system` inherits the production pool default (`cores-1`). A test that **parks a pool thread** — e.g. blocking a fetch inside a mocked `SRV/*` call on a promise to force an out-of-order landing, as the latest-wins refetch tests do — must set a fixed floor via `:extra-config`:
+
+```clojure
+(with-combined-system [sys {:extra-config {:ooloi.shared.components/thread-pool {:size 8}}}]
+  ...)
+```
+
+Two traps make this necessary. `cores-1` is `1` on a two-core CI runner, which **deadlocks** the blocked task — no thread is left to run anything else. And capping the pool *below* `cores-1` **starves** the other pool work: under a multi-namespace sweep the threads are busy with combined-system startup, so a `cp/future` dispatched at window-open queues behind them and loses its expected ordering to a later-dispatched refetch — a flake that never reproduces run alone, only under sweep contention. A fixed floor at or above the peak concurrent pool tasks (8 is ample) avoids both.
+
 ### `with-ui-manager`
 
 For tests that need a UI manager without the full combined system. Creates a thread pool, event bus, and UI manager; flushes outstanding JAT callbacks before halting. Prevents `RejectedExecutionException` teardown races.
