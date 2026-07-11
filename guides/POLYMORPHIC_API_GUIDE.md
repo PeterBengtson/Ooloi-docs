@@ -832,6 +832,28 @@ For specialized cases not covered by shortcuts, use constructor functions direct
 
 **Note:** For filtering specific musical element types like pitches and chords, use the [timewalker](TIMEWALKING_GUIDE.md) which provides powerful traversal and filtering capabilities.
 
+### Reordering a Collection: `move-<elem>` vs `reorder-<elem>`
+
+Two families reorder a vector, and they differ in how they address the items.
+
+`move-<elem>` is **index-based**. It repositions a single item from one index to another, and works on any vector — including the id-less content vectors (measures, voices, items):
+
+```clojure
+;; Move the instrument at index 0 to the end of its musician
+(api/move-instrument [:m 0] piece-id 0 -1)
+```
+
+`reorder-<elem>` is **identity-based**. It moves a whole (multi-)selection — named by the items' `:id`s — to a contiguous block after a target item, in one arrangement:
+
+```clojure
+;; Reorder musicians: move the block {id-a, id-b} to just after id-c
+(api/reorder-musician [] piece-id [id-a id-b] id-c)   ; a nil target moves the block to the front
+```
+
+The reorder is computed as a single splice — remove the selected items, resolve the target position in what remains, then reinsert the selection there (`remaining ++ ordered`). Done as one splice, a multi-item reorder is contiguous by construction and needs no sequence of single moves (which would each have to account for the previous move shifting the next one's indices). Because it matches on `:id`, `reorder-<elem>` exists only for the id-bearing **Structural** entities — musicians, instruments, staves, layouts — while `move-<elem>` remains the index primitive for everything else.
+
+A drag-and-drop reorder in the UI composes exactly one such call inside an [`SRV/atomic`](#remote-atomic-operations-srvatomic) batch: the client sends only the selected `:id`s and the target `:id` — never the items themselves — and the backend performs the arrangement server-side.
+
 ### Full Piece Roundtrip with SRV
 
 The ultimate demonstration of the polymorphic API's power:
