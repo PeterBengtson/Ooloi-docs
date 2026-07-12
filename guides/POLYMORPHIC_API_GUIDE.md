@@ -123,6 +123,19 @@ Same verb, different depths:
 
 The verb stays the same, only the VPD depth changes. This is the architectural benefit: learn one pattern, use it everywhere.
 
+### The verb hides representation, too — not only depth
+
+The pattern reaches further than depth: the same verb works even when the target's *internal representation* differs from what the verb implies. A **Layout** — a score or a part — does not contain Musicians. It holds `:musician-uuids`, a flat vector of musician *references* into the piece's authoritative musician list (the score/part model, [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md)). Yet you assign musicians to a layout, reorder them, and remove them with the ordinary verbs:
+
+```clojure
+(api/add-musician     [:l 0] piece-id musician)      ; records the musician's reference in layout 0
+(api/reorder-musician [:l 0] piece-id ids target)    ; reorders that layout's references
+(api/remove-musician  [:l 0] piece-id idx)           ; drops the reference from THAT layout — the musician stays in the piece
+(api/remove-musician  []     piece-id idx)           ; deletes the musician from the piece — pruned from EVERY layout that listed it
+```
+
+You write `add-musician` and mean "put this musician in that layout"; that the layout stores a *reference*, not the musician, never surfaces. Removal has two scopes and the one verb serves both, keyed by the target: remove a musician from a *layout* and only that score or part loses it; delete the musician from the *piece* and referential integrity additionally prunes its reference from every layout that listed it. In each case an `:around` on the generic operation recognises the target and does the right maintenance — a musician also appears at most once in a layout, so a duplicate add is simply a no-op. The API user — **and backend code, which calls the same `api`/`SRV` verbs** — never learns the representation differs, and cannot accidentally corrupt it. The polymorphism absorbs not just the *level* but the *shape*: one verb, every level, and — where the model demands a different internal form — every representation.
+
 ## Understanding the Mechanics
 
 The polymorphic mechanism: first argument determines operation mode.
