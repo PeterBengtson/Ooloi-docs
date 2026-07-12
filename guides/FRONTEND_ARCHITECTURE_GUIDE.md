@@ -530,7 +530,7 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-sounding-clef` | Sounding clef selector (transposing instruments only). Accepts `:clefs`, `:label`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
 | `ooloi-aux-range-row` | Single aux-range row: clef combo + low/high text fields + `[-]` button. Fires `:staff-aux-clef-changed`, `:staff-aux-text-changed`, `:staff-aux-commit`, `:staff-aux-remove` events. Accepts `:clef`, `:aux-range`, `:available-clefs`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
 | `ooloi-instrument-editor` | Instrument editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors. Passes `(permissions/allowed? :edit-staff)` as `:editable?` to each staff editor. Accepts `:instrument`, `:locale`, `:editable?`, `:selected-staves`, `:on-staff-clicked`, `:on-staff-drag-detected` (3-arity fn wrapped in per-staff closure), `:on-collapsed`, `:on-expanded-changed`. `:on-drag-over` accepts staff drags when expanded, rejects when collapsed |
-| `ooloi-staff-editor` | Staff editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic with staff name and translated written default-clef. Content VBox with name/short-name text fields, num-lines spinner, written-clef (with aux-ranges), sounding-clef (when transposing). All controls respect `:editable?`. Accepts `:staff`, `:locale`, `:editable?`, `:transposing?`, `:instrument-id`, `:selected`, `:on-mouse-clicked`. `:on-drag-over` sets `:target-instrument-id` and `:target-staff-id` |
+| `ooloi-staff-editor` | Staff editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic with staff name and translated written default-clef. Content VBox with name/short-name text fields, num-lines spinner, written-clef (with aux-ranges), sounding-clef (when transposing). All controls respect `:editable?`. Accepts `:staff`, `:locale`, `:editable?`, `:transposing?`, `:instrument-id`, `:selected`, `:on-mouse-clicked`. `:on-drag-over` sets `:target-instrument-id` and `:target-staff-id` (the latter used by copy; the reorder position comes from the shared drop-target scan) |
 
 These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
 
@@ -627,13 +627,13 @@ per-consumer mechanics live in the sections below. `✓` present · `◻` planne
 | Cmd/Shift multi-select (`sel/toggle-selection` / `sel/extend-selection`) | ✓ | ✓ | ✓ |
 | Arrow-key navigation (`sel/move-selection`; a click grants focus) | ✓ | ✓ | ✓ |
 | Context-scoped highlight (`:selection {:context …}`) | — one context | ✓ `:musicians` | ✓ `:layouts` / `[:layout id]` |
-| Selection-on-drag (a drag on an unselected item selects it first) | ✓ | ◻ | — |
-| Reorder within a parent — move (`move-<elem>`) | ✓ | ◻ | — |
-| Copy within a parent (`SRV/atomic [copy-<elem>, individuate]`) | ✓ | ◻ | — |
-| Copy cross-parent (staff→instrument; instrument→musician) | ✓ | ◻ | — |
+| Selection-on-drag (a drag on an unselected item selects it first) | ✓ | ✓ | ✓ |
+| Reorder within a parent — drag (`reorder-<elem>`, shared drop-target scan) | ✓ | ✓ | ✓ |
+| Copy within a parent (`SRV/atomic [copy-<elem>, individuate]`) | ✓ | ◻ clone | ◻ clone |
+| Copy cross-parent (staff→instrument; instrument→musician) | ✓ | ◻ clone | ◻ clone |
 | Cross-parent *move* — deliberately **rejected**, use copy | — | — | — |
 | Collapsed-container drop-reject (only an expanded container accepts) | ✓ | ◻ | — |
-| Multi-item drag (one `SRV/atomic` for the whole selection) | ✓ | ◻ | — |
+| Multi-item drag (one `SRV/atomic` for the whole selection) | ✓ | ✓ | ✓ |
 | Guarded delete (confirm iff the entity contains music) | —¹ | ◻ | ◻ |
 | Inline field-edit (field-commit → `SRV/set-*` on the entity's address) | ✓ | ◻ | ◻ layout name |
 | Double-click to open / navigate | — (`>` opens) | — (`>` opens) | ✓ musician → Musicians pane |
@@ -662,7 +662,7 @@ The Instrument Library window was the first consumer of Ooloi's shared selection
 
 - **Focus is explicit.** Because the openable pane consumes the mouse-press that would otherwise focus it, keyboard navigation needs a deliberate focus grant on click — guarded so it never steals focus from an editor's text field or combo box. This is the kind of interaction only a real windowing test, driving genuine OS focus, can verify.
 
-The Layouts pane is built by **replicating** this realisation — the same dispatcher, the same flat selection map at a new level, a separate per-pane expansion map, the same drop-composes-a-transaction shape — rather than by sharing a common abstraction. Extracting a shared "selectable, expandable tree pane" is deliberately deferred until the shape has stopped moving: replicate now, extract later. The Piece window as a whole is specified in [ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md).
+The Layouts pane is built by **replicating** this realisation — the same dispatcher, the same flat selection map at a new level, a separate per-pane expansion map, the same drop-composes-a-transaction shape — rather than by sharing a common abstraction. Extracting a shared "selectable, expandable tree pane" is deliberately deferred until the shape has stopped moving: replicate now, extract later — where what is replicated is the *pane wiring*. The lower-level pieces are shared the moment a second consumer needs them: the selection primitives, and the **drag drop-target resolution** — one geometry scan that every reorder in both windows uses, so a drop lands the same way whether it is released on a row, in a gap, or in the whitespace below the last row; the enclosing scroll-pane accepts across its whole area, the scan reports the insert-after position, and the handler composes the reorder as one transaction. The Piece window as a whole is specified in [ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md).
 
 The Layouts pane renders a layout's ordered musician references: each layout an openable pane, the musicians it lists as openable-but-**empty** panes — the Layouts pane shows musicians, never their staves; a different, simpler editor than the Musicians pane's. A layout with no name derives its header from what it lists — a part for one musician, a score for many, and an empty score for none — through the translation layer. Its expansion is tracked in a **separate map from the Musicians pane's**: a musician can appear in a layout and in the Musicians pane at once, and the two views open and close independently.
 
@@ -711,7 +711,7 @@ When TitledPanes are nested (e.g. instrument editors containing staff editors), 
 
 **`:fx/key` for identity-based reconciliation**: when nested TitledPanes support D&D reordering, child specs must include `:fx/key` with a stable identity (e.g., `:fx/key (:id staff)`). Without it, cljfx matches by vector position after reorder — `:on-created` closures that capture the item identity for DRAG_OVER target tracking become stale. See [UI Architecture §Staff D&D](../research/UI_ARCHITECTURE.md).
 
-**Regression tests**: `cljfx_event_test.clj` — synthetic `Event.fireEvent()` through real filter chains on the core editor components, covering nested-pane event isolation (expand/collapse, selection passthrough, modifier passthrough, drag initiation, selection highlight). `event_wiring_test.clj` — the IL-specific scroll-pane DRAG_OVER/DROPPED dispatch (`:reorder-staves`/`:copy-staff` routing, `:on-staff-drag-detected` wiring, `:target-staff-id` resolution, expanded/collapsed acceptance, `:target-index-copy` for COPY). `selection_test.clj` / `dnd_test.clj` — IL selection and D&D wiring. `robot_drag_test.clj` — Robot-based integration tests verifying the full D&D pipeline with production renderer, plus handler-level `isStillSincePress` tests.
+**Regression tests**: `cljfx_event_test.clj` — synthetic `Event.fireEvent()` through real filter chains on the core editor components, covering nested-pane event isolation (expand/collapse, selection passthrough, modifier passthrough, drag initiation, selection highlight). `event_wiring_test.clj` — the IL-specific scroll-pane DRAG_OVER/DROPPED dispatch (`:reorder-staves`/`:copy-staff` routing, `:on-staff-drag-detected` wiring, the reorder resolving through the shared drop-target scan, `:target-staff-id`/`:target-id-copy` for COPY, expanded/collapsed acceptance). `selection_test.clj` / `dnd_test.clj` — IL selection and D&D wiring. `robot_drag_test.clj` — Robot-based integration tests verifying the full D&D pipeline with production renderer, plus handler-level `isStillSincePress` tests.
 
 ---
 
