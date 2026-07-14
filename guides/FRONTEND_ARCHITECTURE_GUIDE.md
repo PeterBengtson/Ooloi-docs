@@ -643,8 +643,10 @@ per-consumer mechanics live in the sections below. `✓` present · `◻` planne
 
 ¹ Instrument-Library entities are content-free **templates**, so removal needs no music-content confirmation
 and no by-reference sourcing — a copy legitimately carries the value. The panes hold real piece content,
-which is why their copies source **by reference** on the server (content never crosses the wire, resolved
-from the client-side structural projection the window already holds) and their deletes are guarded.
+which is why their copies source **by reference** on the server: the client sends only the source's VPD,
+and `add-<elem>` / `add-item` accepts that VPD as its item and resolves it to the referenced element
+server-side (content never crosses the wire, resolved from the client-side structural projection the
+window already holds — see [Polymorphic API Guide](POLYMORPHIC_API_GUIDE.md#the-item-can-be-a-reference-too--a-vpd-as-the-thing-to-add)) and their deletes are guarded.
 
 **The one load-bearing difference is the last row.** The library submits the whole (small, content-free)
 catalogue en bloc; the panes compose one `SRV/atomic` batch of granular operations per gesture against the

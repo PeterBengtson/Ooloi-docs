@@ -115,6 +115,8 @@ Here are examples of using VPDs with API functions (always use compact form):
 
 In these examples, `piece-or-id` can be either a Piece instance or a string piece ID. The API will handle the resolution of the piece ID to a Piece instance internally when necessary.
 
+A VPD is normally the *first* argument — the path to the element being operated on. But it can also appear as a later argument: the item given to `add-<elem>` / `add-item` may itself be a VPD referencing an existing element in the piece, in which case the operation resolves it server-side and adds that element **by reference** — the cross-container clone primitive. See [Polymorphic API Guide](POLYMORPHIC_API_GUIDE.md#the-item-can-be-a-reference-too--a-vpd-as-the-thing-to-add).
+
 ### Important: Always Use Compact VPD Form
 
 ```clojure

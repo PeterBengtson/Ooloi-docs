@@ -136,6 +136,36 @@ The pattern reaches further than depth: the same verb works even when the target
 
 You write `add-musician` and mean "put this musician in that layout"; that the layout stores a *reference*, not the musician, never surfaces. Removal has two scopes and the one verb serves both, keyed by the target: remove a musician from a *layout* and only that score or part loses it; delete the musician from the *piece* and referential integrity additionally prunes its reference from every layout that listed it. In each case an `:around` on the generic operation recognises the target and does the right maintenance — a musician also appears at most once in a layout, so a duplicate add is simply a no-op. That `:around` must ride the **VPD form** — the shape clients and the frontend use — not only the object form: the change funnel applies the VPD op directly and does not dispatch the object method (ADR-0052 §2, the object form is out of band), so an object-form-only `:around` silently skips every client and is caught only by a client-path test, never by an object-form unit test. Each maintenance obligation is wired as two `:around` twins, object-form and VPD-form (ADR-0053 §4). The API user — **and backend code, which calls the same `api`/`SRV` verbs** — never learns the representation differs, and cannot accidentally corrupt it. The polymorphism absorbs not just the *level* but the *shape*: one verb, every level, and — where the model demands a different internal form — every representation.
 
+### The item can be a reference, too — a VPD as the thing to add
+
+The same reach extends to the *argument*. An `add-<elem>` normally takes an element in hand — a value you built or hold — and inserts it:
+
+```clojure
+(api/add-instrument [:m 1] piece-id an-instrument)   ; add this instrument value to musician 1
+```
+
+But the item may itself be a **VPD** referencing an element that already lives in the piece. When it is, the operation resolves that VPD against the same piece, server-side, and adds the *referenced* element **by reference**:
+
+```clojure
+(api/add-instrument [:m 1] piece-id [:m 0 0])   ; add musician 0's first instrument to musician 1
+```
+
+The element's content is shared, never re-created; nothing but the VPD crosses the wire. This is the mechanism behind Ooloi's cross-container clones. The frontend holds only a content-free projection of the piece — paths and ids, no objects — so to copy an existing instrument into a *different* musician it sends the source's VPD, and `add-instrument` places the referenced instrument into the destination.
+
+But the add alone is not yet a clone: the copy still carries the source's structural ids. A real clone is the add **and** an `individuate` — composed in one `SRV/atomic` transaction so both land together, and no observer ever sees the un-individuated intermediate:
+
+```clojure
+(SRV/atomic
+  [{:method-name :add-instrument :vpd [:m 1]   :piece-id piece-id :parameters [[:m 0 0]]}  ; copy by reference into musician 1
+   {:method-name :individuate    :vpd [:m 1 0] :piece-id piece-id :parameters []}])         ; re-id that copy → an independent clone
+```
+
+`individuate` re-ids the just-added copy at its landing VPD so it shares no identity with the source ([ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md)). Structural sharing plus copy-on-write means the shared content costs nothing until an edit lands on one copy.
+
+The discriminator is `vpd?`: a vector shaped like a VPD (empty, or prefixed `:m`/`:l`/`:musicians`/`:layouts`) is a reference to resolve; anything else — a record, a keyword — is an element in hand, added as-is. Because every `add-<elem>` and `add-item` funnels through the same VPD-form insert, this holds for the whole family, at every level, with no per-operation wiring.
+
+There is deliberately **no** "reset content" flag on the add. Whether the copy keeps the source's content or starts empty is an orthogonal decision, made afterwards with an ordinary `set-<elem>` on the copy — not a parameter that doubles the operation's contract.
+
 ## Understanding the Mechanics
 
 The polymorphic mechanism: first argument determines operation mode.
@@ -842,6 +872,8 @@ For specialized cases not covered by shortcuts, use constructor functions direct
 
 (filter has-items? [pitch1 tuplet1 measure1])          ; => [tuplet1 measure1]
 ```
+
+**Adding by reference:** in VPD form, the item argument may itself be a VPD referencing an element already in the piece; `add-item` / `add-<elem>` then resolves it server-side and adds the referenced element by reference. See [The item can be a reference, too](#the-item-can-be-a-reference-too--a-vpd-as-the-thing-to-add) above.
 
 **Note:** For filtering specific musical element types like pitches and chords, use the [timewalker](TIMEWALKING_GUIDE.md) which provides powerful traversal and filtering capabilities.
 
