@@ -33,6 +33,7 @@
     - [12.5 Test Isolation Infrastructure](#125-test-isolation-infrastructure)
 13. [Architectural Invariants](#13-architectural-invariants)
 14. [Concluding Perspective](#14-concluding-perspective)
+- [Appendix: Key Bindings](#appendix-key-bindings)
 
 ---
 
@@ -1912,6 +1913,33 @@ For deeper formal detail, see:
 * [ADR‑0039: Localisation Architecture](../ADRs/0039-Localisation-Architecture.md)
 * [ADR‑0042: UI Specification Format](../ADRs/0042-UI-Specification-Format.md)
 * [ADR‑0043: Frontend Settings](../ADRs/0043-Frontend-Settings.md)
+
+## Appendix: Key Bindings
+
+The application's keyboard bindings, one row per assigned accelerator. The source of truth is `command-catalogue` in `commands.clj` — every binding is declared there as an `:accelerator` on a command descriptor, and the menu system derives all platform behaviour from it (see [ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). This table is a maintained view of that catalogue: it grows as commands gain bindings, and it is the conflict-check reference when assigning a new one.
+
+`Cmd/Ctrl` denotes the platform shortcut modifier: Cmd on macOS, Ctrl on Windows and Linux. Rows marked *reserved* are stub commands — the binding is spoken for and the menu item exists (disabled), but the feature is not yet active; per ADR‑0042, stubs stabilise menu structure and imply no feature commitment.
+
+| Binding | Command | Menu |
+|---|---|---|
+| Cmd/Ctrl+N | New | File |
+| Cmd/Ctrl+O | Open | File |
+| Cmd/Ctrl+W | Close | File |
+| Cmd/Ctrl+S | Save | File |
+| Cmd/Ctrl+Shift+S | Save As | File |
+| Cmd/Ctrl+P | Print *(reserved)* | File |
+| Cmd/Ctrl+Z | Undo | Edit |
+| Cmd/Ctrl+Shift+Z | Redo | Edit |
+| Cmd/Ctrl+X | Cut *(reserved)* | Edit |
+| Cmd/Ctrl+C | Copy *(reserved)* | Edit |
+| Cmd/Ctrl+V | Paste *(reserved)* | Edit |
+| Cmd/Ctrl+A | Select All *(reserved)* | Edit |
+| Cmd/Ctrl+= | Zoom In | View |
+| Cmd/Ctrl+− | Zoom Out | View |
+| Cmd+M | Minimise | Window (macOS only) |
+| Cmd/Ctrl+I | Instrument Library | Window |
+| Cmd+, / Ctrl+, | Settings / Options | App menu (macOS) / Edit (Linux) / Tools (Windows) |
+| Cmd+Q / Ctrl+Q | Quit / Exit | App menu (macOS) / File (Linux: Quit; Windows: Exit) |
 
 ## Related Guides
 
