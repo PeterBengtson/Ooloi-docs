@@ -1039,7 +1039,7 @@ current data. The two mechanisms address different concerns and work together.
 
 ### Why two API functions, not individual operations
 
-Individual operations — `add-instrument`, `remove-instrument`, `move-instrument-up`, etc. — would
+Individual operations — `add-instrument`, `remove-instrument`, `move-instrument`, etc. — would
 require the backend to understand and implement editing semantics. With `get-instrument-library` and
 `set-instrument-library`, all editing logic lives in the frontend and is expressed as a pure
 transformation of a Clojure vector. The backend stores state and enforces consistency; it does not
