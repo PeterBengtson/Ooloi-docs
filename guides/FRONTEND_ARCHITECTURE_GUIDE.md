@@ -219,7 +219,7 @@ From here, we can expand the example — adding interaction, backend calls, and 
 
 Windows are the general lifecycle mechanism. Three other pieces complete the common interaction vocabulary.
 
-**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.core.confirmation-dialog` is the blocking yes/no helper. It takes the UI Manager and a message, builds a message + OK/Cancel `ooloi-button-bar` spec, and shows it through the blocking entry point `show-modal!`; it blocks synchronously on the JAT via `.showAndWait` and returns `true` on OK or `false` on Cancel/Esc/close. The dialog is a transient application-modal `Stage` (not registered, no ongoing lifecycle); the former cljfx `:alert` / `Dialog` path is gone.
+**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.core.confirmation-dialog` is the blocking confirmation helper. It takes the UI Manager and a message, builds a message + button-bar spec, and shows it through the blocking entry point `show-modal!`; it blocks synchronously on the JAT via `.showAndWait` and returns `true` on OK or `false` on Cancel/Esc/close. The dialog is a transient application-modal `Stage` (not registered, no ongoing lifecycle); the former cljfx `:alert` / `Dialog` path is gone. An optional **third button** (`:third {:text-key … :value …}`) extends the binary answer for a *Save / Don't Save / Cancel* style decision: it returns a caller-supplied, non-boolean `:value` (a boolean throws — `true`/`false` stay reserved for OK/Cancel), while callers that pass none keep the unchanged binary contract. Each of the three buttons takes an optional label (`:text-key`) and `:style`, and the buttons are ordered by platform convention (`platform-order-buttons`: the affirmative last on macOS/GNOME, first on Windows, for both the two- and three-button shapes). The close gesture uses all of this — a Save / Don't Save / Cancel prompt with platform-resolved wording (`discard-label-key`, `save-changes-message-key`) and a warning-styled discard button.
 
 **Modal dialogs in general.** A modal is a window with `:window/modality :application-modal`, built by the same core as any window. There are two entry points, distinguished by **control flow, not by modality**: `show-window!` for a registered, non-blocking modal (the normal path — e.g. the connect dialog), and `show-modal!` for a transient, blocking one (`.showAndWait`, synchronous return — used only by `show-confirmation!`). There is one modal node type, a `Stage`. Every modal is owned, on **every** platform, via `select-owner-stage` (focused managed window → macOS menu-bar-host → Windows/Linux showing non-always-on-top window); an ownerless `APPLICATION_MODAL` blocks input but loses stay-on-top-of-parent and iconify-with-parent and can render behind another window. Always-on-top decorations (the collaboration palette) never qualify as a modal's owner. *(Naming note: the operative axis is blocking-vs-async, not window-vs-modal — `show-window!` already shows modals — so `show-modal!` may be renamed to a blocking-dialog name in future.)* See [ADR‑0042](../ADRs/0042-UI-Specification-Format.md) §"Modal dialogs: one core, two entry points".
 
@@ -288,7 +288,7 @@ The facade supplies the `:type` (`:window-open-requested` / `:window-close-reque
 
 **Confirmation dialogs**
 
-* `show-confirmation!` `[manager message]` (`ooloi.frontend.ui.core.confirmation-dialog`) — builds a message + OK/Cancel button-bar spec, shows it through `show-modal!`, blocks on the JAT via `.showAndWait`, and returns `true` if the user confirmed.
+* `show-confirmation!` `[manager message]` / `[manager message title-key opts]` (`ooloi.frontend.ui.core.confirmation-dialog`) — builds a message + button-bar spec, shows it through `show-modal!`, blocks on the JAT via `.showAndWait`, and returns `true` if the user confirmed (`false` on Cancel/Esc/close). An optional third button (`opts :third`) returns a caller-supplied non-boolean value instead, for a Save / Don't Save / Cancel decision.
 
 **Notifications (UI Manager)**
 
@@ -352,7 +352,7 @@ Every managed Stage carries a `focused-listener` on its `focusedProperty` (attac
 
 ### 3.3 The Full Lifecycle in One View
 
-Open, focus, and close as a single flow. **Open** fans out — one request yields `:window-opened`, `:window-shown`, and `:window-focused`. A **focus switch** re-points the active-window atom and refreshes menu enablement. **Close** is the butterfly: `File > Close` and the native window "X" fan **in** to one shared save-on-close — `close-piece-with-save!`, which records a location for an unnamed piece first and aborts on cancel — then pass through the single real close (`request-window-close!` → `close-window!`) and fan **out** to teardown, geometry persistence, and `:window-closed`. The "X" reaches that shared path through the window's optional `:window/on-close-request` hook, so the menu item and the "X" are identical. Stadium nodes are events; the diamond is the save decision.
+Open, focus, and close as a single flow. **Open** fans out — one request yields `:window-opened`, `:window-shown`, and `:window-focused`. A **focus switch** re-points the active-window atom and refreshes menu enablement. **Close** is the butterfly: `File > Close` (with its `Cmd-W` accelerator) and the native window "X" fan **in** to one shared `close-piece!` — a **clean** piece just closes; a **dirty** piece is asked *Save / Don't Save / Cancel*, where Save writes it (in place, or through the save-mode picker for an unnamed piece) then closes, Don't Save discards and closes, and Cancel keeps the window open — and the closes that proceed pass through the single real close (`request-window-close!` → `close-window!`) and fan **out** to teardown, geometry persistence, and `:window-closed`. The "X" reaches that shared path through the window's optional `:window/on-close-request` hook, so the menu item, the accelerator, and the "X" are identical. Stadium nodes are events; the diamonds are the close decision.
 
 ```mermaid
 flowchart TD
@@ -372,13 +372,19 @@ flowchart TD
   fe1 --> f2["refresh-menu-text!"]
 
   %% ── CLOSE (butterfly: two entries in, teardown out) ──
-  c0a(["File > Close (active-piece-id)"]) --> waist["close-piece-with-save! mgr pool piece-id"]
+  c0a(["File > Close / Cmd-W (active-piece-id)"]) --> waist["close-piece! mgr pool piece-id"]
   c0b(["X button: onCloseRequest then :window/on-close-request (own id)"]) --> waist
-  waist --> dec{"recorded location?"}
-  dec -- yes --> rwc["request-window-close!"]
-  dec -- no --> pk["save-mode picker"]
-  pk -- OK --> sp["save-piece!"] --> rwc
-  pk -- Cancel --> ab(["abort: window stays"])
+  waist --> dirty{"dirty?"}
+  dirty -- "no (clean)" --> rwc["request-window-close!"]
+  dirty -- yes --> ask{"Save / Don't Save / Cancel"}
+  ask -- "Don't Save" --> rwc
+  ask -- Cancel --> ab(["abort: window stays"])
+  ask -- Save --> loc{"recorded location?"}
+  loc -- yes --> sp["save-piece!"]
+  loc -- no --> pk["save-mode picker"]
+  pk -- OK --> sp
+  pk -- Cancel --> ab
+  sp --> rwc
   rwc --> ce1([":window-close-requested"])
   ce1 --> cw["UI-Manager: close-window!"]
   cw --> c1[":window/on-close hook: teardown"]
@@ -1695,7 +1701,7 @@ A complete `start-app!` test skeleton:
             (ig/halt! sys)))))))
 ```
 
-**The startup untitled window counts as an open piece.** Startup always opens the untitled New window ([ADR-0042](../ADRs/0042-UI-Specification-Format.md) untitled fallback), and opening a piece window subscribes its piece — so `subscription-state` is non-empty from launch. A `start-app!` test that exercises the collaboration **connect / switch-to-remote** path therefore trips the outbound open-pieces gate ([ADR-0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md): `switch-to!` refuses with `{:refused :open-pieces}` while any local piece is subscribed) unless it first clears that window. `th/close-startup-piece-window! mgr` does so: it waits for the window's initial `get-piece-structure` read to land (closing the window removes the piece via close-on-last-release, and an in-flight fetch would otherwise fail "not found" and fire a spurious error notification), then closes it on the JAT; the test then waits for `subscription-state` to empty before connecting. It is a test-only stand-in for the user-facing close-without-save (discard) gesture, which is not yet built.
+**The startup untitled window counts as an open piece.** Startup always opens the untitled New window ([ADR-0042](../ADRs/0042-UI-Specification-Format.md) untitled fallback), and opening a piece window subscribes its piece — so `subscription-state` is non-empty from launch. A `start-app!` test that exercises the collaboration **connect / switch-to-remote** path therefore trips the outbound open-pieces gate ([ADR-0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md): `switch-to!` refuses with `{:refused :open-pieces}` while any local piece is subscribed) unless it first clears that window. `th/close-startup-piece-window! mgr` does so: it waits for the window's initial `get-piece-structure` read to land (closing the window removes the piece via close-on-last-release, and an in-flight fetch would otherwise fail "not found" and fire a spurious error notification), then closes it on the JAT; the test then waits for `subscription-state` to empty before connecting. It is a test-only stand-in for the user-facing close-without-save (discard) gesture, which now exists (`close-piece!`): a clean startup piece closes silently either way, so the helper remains a convenient direct close for the test's teardown.
 
 If a test explicitly closes a window before halt, close it on the JAT first, then apply both flushes:
 
