@@ -148,9 +148,9 @@ You write `add-musician` and mean "put this musician in that layout"; that the l
 | `set-musician … idx M` | set the idx-th reference `= (:id M)` |
 | `set-musicians … Ms` | set the whole vector `= (mapv :id Ms)` |
 | `move-musician … from to` | index-based reposition of one reference |
-| `copy-musician … src to` | duplicate a reference; a following `individuate` mints a distinct musician |
+| `copy-musician … src to` | **refused (throws)** — a layout lists each musician at most once, so a reference cannot be duplicated |
 
-Reads return `Musician` records — resolved from the piece, in the *layout's* order, which need not match the piece's `:musicians` order. `copy` duplicates the *reference* only and never touches `:musicians`; the physically distinct musician is minted by a following `individuate`, exactly the `[copy, individuate]` idiom used for every other clone.
+Reads return `Musician` records — resolved from the piece, in the *layout's* order, which need not match the piece's `:musicians` order. **`copy-musician` on a layout is refused — it throws.** A layout references each musician at most once (uniqueness — `add-musician` is idempotent, so you cannot list one twice), so duplicating a reference is forbidden; and there is no `individuate` to rescue it, because a `[:l n idx]` VPD cannot descend into a musician. `copy` is the one musician verb that does not extend to a layout. To place a *distinct* copy of a musician in a layout, clone it at the piece — `copy-musician []` clones (a structural copy is a fresh-id clone) — and reference the clone with `add-musician [:l n]`.
 
 **Two layers — never conflate them.** Two families share the word "musician", and they are **not** the same operations under two names:
 
@@ -161,7 +161,7 @@ Reads return `Musician` records — resolved from the piece, in the *layout's* o
 
 So `set-musician-uuids` (internal primitive) and `set-musicians [:l n]` (public verb) are **different things at different layers**: the public verb is what a caller writes; it *happens* to maintain the vector by calling the internal primitive underneath. A caller uses the public verb and never learns the internal one exists.
 
-**Why the internal vector declares `:no-move :no-copy`.** The reference vector is defined `(defvector Layout :musician-uuid :no-move true :no-copy true)` — and, lacking `:has-id`, generates no `reorder-musician-uuid` either. This says **nothing** about whether a layout supports move, copy, or reorder — it plainly does, through the public verbs above. It says only that the redirects maintain the vector through **whole-vector `set-musician-uuids`**: each reference-maintenance helper computes the new vector and writes it in one call, so per-item `move`/`copy`/`reorder` primitives *on the internal vector* are never needed. Read `:no-move`/`:no-copy` as "the internal vector has no per-item mover or copier of its own", never as "a layout cannot be moved-within or copied-into". `move-musician [:l n]` and `copy-musician [:l n]` are wired exactly like `add`/`remove`/`reorder`.
+**Why the internal vector declares `:no-move :no-copy`.** The reference vector is defined `(defvector Layout :musician-uuid :no-move true :no-copy true)` — and, lacking `:has-id`, generates no `reorder-musician-uuid` either. This says **nothing** about whether a layout supports move or reorder — it plainly does, through the public verbs above. It says only that the redirects maintain the vector through **whole-vector `set-musician-uuids`**: each reference-maintenance helper computes the new vector and writes it in one call, so per-item `move`/`reorder` primitives *on the internal vector* are never needed. Read `:no-move` as "the internal vector has no per-item mover of its own", never as "a layout cannot be moved-within". `move-musician [:l n]` is wired exactly like `add`/`remove`/`reorder`. `copy-musician [:l n]` is a different case entirely: it is **refused** — it throws — because duplicating a reference violates a layout's at-most-once invariant, not because the internal vector lacks a copier.
 
 ### The item can be a reference, too — a VPD as the thing to add
 
@@ -192,6 +192,8 @@ But the add alone is not yet a clone: the copy still carries the source's struct
 The discriminator is `vpd?`: a vector shaped like a VPD (empty, or prefixed `:m`/`:l`/`:musicians`/`:layouts`) is a reference to resolve; anything else — a record, a keyword — is an element in hand, added as-is. Because every `add-<elem>` and `add-item` funnels through the same VPD-form insert, this holds for the whole family, at every level, with no per-operation wiring.
 
 There is deliberately **no** "reset content" flag on the add. Whether the copy keeps the source's content or starts empty is an orthogonal decision, made afterwards with an ordinary `set-<elem>` on the copy — not a parameter that doubles the operation's contract.
+
+**Within a container, `copy` clones directly — no `individuate` needed.** The cross-container clone above is `[add, individuate]` because `add` shares by reference. But `copy-<elem>` — duplicating within one container's own vector — clones a *structural* element outright: copying a Musician, Instrument, Staff, or Layout inserts a fresh-id copy that shares the source's substructure, so the `[copy, individuate]` pairing has collapsed to plain `copy` for the within-container case. (A non-structural `copy` — an item, voice, measure, or view — still inserts the source *by reference*, unchanged; only cloneable structural elements clone.) `individuate` remains only as the re-id step for the cross-container `add`-by-reference above.
 
 ## Understanding the Mechanics
 

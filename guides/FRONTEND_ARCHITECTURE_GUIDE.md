@@ -640,7 +640,7 @@ per-consumer mechanics live in the sections below. `✓` present · `◻` planne
 | Selection survives the refetch (keyed by structural id) | ✓ | ✓ | ✓ |
 | Selection-on-drag (a drag on an unselected item selects it first) | ✓ | ✓ | ✓ |
 | Reorder within a parent — drag (`reorder-<elem>`, shared drop-target scan) | ✓ | ✓ | ✓ |
-| Copy within a parent (`SRV/atomic [copy-<elem>, individuate]`) | ✓ | ◻ clone | ◻ clone |
+| Copy within a parent (`SRV/atomic [copy-<elem>]` — a structural copy clones) | ✓ | ◻ clone | ◻ clone |
 | Copy cross-parent (staff→instrument; instrument→musician) | ✓ | ◻ clone | ◻ clone |
 | Cross-parent *move* — deliberately **rejected**, use copy | — | — | — |
 | Collapsed-container drop-reject (only an expanded container accepts) | ✓ | ◻ | — |
