@@ -136,6 +136,33 @@ The pattern reaches further than depth: the same verb works even when the target
 
 You write `add-musician` and mean "put this musician in that layout"; that the layout stores a *reference*, not the musician, never surfaces. Removal has two scopes and the one verb serves both, keyed by the target: remove a musician from a *layout* and only that score or part loses it; delete the musician from the *piece* and referential integrity additionally prunes its reference from every layout that listed it. In each case an `:around` on the generic operation recognises the target and does the right maintenance — a musician also appears at most once in a layout, so a duplicate add is simply a no-op. That `:around` must ride the **VPD form** — the shape clients and the frontend use — not only the object form: the change funnel applies the VPD op directly and does not dispatch the object method (ADR-0052 §2, the object form is out of band), so an object-form-only `:around` silently skips every client and is caught only by a client-path test, never by an object-form unit test. Each maintenance obligation is wired as two `:around` twins, object-form and VPD-form (ADR-0053 §4). The API user — **and backend code, which calls the same `api`/`SRV` verbs** — never learns the representation differs, and cannot accidentally corrupt it. The polymorphism absorbs not just the *level* but the *shape*: one verb, every level, and — where the model demands a different internal form — every representation.
 
+**The whole verb family, not just these three.** The redirect is not special to `add`/`reorder`/`remove` — *every* musician verb works on a layout target, each expressed as an operation on the layout's references:
+
+| On a layout `[:l n]` | Effect on `:musician-uuids` |
+|---|---|
+| `add-musician … M` | append `(:id M)` (idempotent — a musician appears at most once) |
+| `remove-musician … idx` | drop the idx-th reference; the musician stays in the piece |
+| `reorder-musician … ids target` | id-based block reorder of the references |
+| `get-musician … idx` | resolve the idx-th reference → the referenced `Musician` |
+| `get-musicians …` | resolve every reference → the `Musician`s, in the layout's order |
+| `set-musician … idx M` | set the idx-th reference `= (:id M)` |
+| `set-musicians … Ms` | set the whole vector `= (mapv :id Ms)` |
+| `move-musician … from to` | index-based reposition of one reference |
+| `copy-musician … src to` | duplicate a reference; a following `individuate` mints a distinct musician |
+
+Reads return `Musician` records — resolved from the piece, in the *layout's* order, which need not match the piece's `:musicians` order. `copy` duplicates the *reference* only and never touches `:musicians`; the physically distinct musician is minted by a following `individuate`, exactly the `[copy, individuate]` idiom used for every other clone.
+
+**Two layers — never conflate them.** Two families share the word "musician", and they are **not** the same operations under two names:
+
+- **`:musician-uuids` and its internal accessors** — `get-`/`set-musician-uuid`, `get-`/`set-musician-uuids`, `add-`/`remove-musician-uuid`. They carry `:vpd-category` (for VPD integration) but **deliberately no `:api`**, so they are **off the api/SRV surface entirely** — the backend's private primitives for editing the reference vector.
+- **The public `*-musician` verbs** — the api/SRV surface, and on a layout target the *only* way to touch its musicians. The backend `:around` redirect **maintains `:musician-uuids` on the caller's behalf**, through the reference-maintenance family in `ooloi.shared.traits.structural`, which in turn uses those internal accessors.
+
+> **As a caller, you will never call a `*-musician-uuid` operation — ever.** Not from the frontend, not over `SRV/`, not from a script, a plugin, or a test's client path. `get-musician-uuid`, `set-musician-uuids`, `add-musician-uuid` and their kin have **no `:api`**, so they are not exported to `api`/`SRV` at all — they are invisible to you. You never read or write `:musician-uuids` directly; the frontend sees the slot only as a projected field of `get-piece-structure`. If you catch yourself reaching for a `*-musician-uuid` name, you are one layer too low: the operation you want is the plain `*-musician` verb on a `[:l n]` target — `get-musicians [:l 0]`, never `get-musician-uuids`; `set-musicians [:l 0]`, never `set-musician-uuids` — and the backend maintains the vector for you.
+
+So `set-musician-uuids` (internal primitive) and `set-musicians [:l n]` (public verb) are **different things at different layers**: the public verb is what a caller writes; it *happens* to maintain the vector by calling the internal primitive underneath. A caller uses the public verb and never learns the internal one exists.
+
+**Why the internal vector declares `:no-move :no-copy`.** The reference vector is defined `(defvector Layout :musician-uuid :no-move true :no-copy true)` — and, lacking `:has-id`, generates no `reorder-musician-uuid` either. This says **nothing** about whether a layout supports move, copy, or reorder — it plainly does, through the public verbs above. It says only that the redirects maintain the vector through **whole-vector `set-musician-uuids`**: each reference-maintenance helper computes the new vector and writes it in one call, so per-item `move`/`copy`/`reorder` primitives *on the internal vector* are never needed. Read `:no-move`/`:no-copy` as "the internal vector has no per-item mover or copier of its own", never as "a layout cannot be moved-within or copied-into". `move-musician [:l n]` and `copy-musician [:l n]` are wired exactly like `add`/`remove`/`reorder`.
+
 ### The item can be a reference, too — a VPD as the thing to add
 
 The same reach extends to the *argument*. An `add-<elem>` normally takes an element in hand — a value you built or hold — and inserts it:
