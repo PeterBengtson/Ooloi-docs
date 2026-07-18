@@ -1384,6 +1384,8 @@ The implementation uses an atom + lock architecture for thread-safe persistence.
     (save-window-state @window-states)))
 ```
 
+**Several writers, one record.** `merge-window-state` (inside `persist-window!`) is a **shallow merge** into the entry matching `:id`, not a replace: keys the incoming map omits are preserved. This lets more than one writer update a window's record independently. The geometry writers above touch only `:position` / `:size` / …; a piece window additionally persists its **interior view state** — both panes' `>` expansion maps and the split-divider proportion — through its `:window/on-close` hook. The two coexist on the one record, keyed by the piece's UUID (stable across sessions): the on-close write runs first, while the window is still live, and `close-window!`'s geometry write follows in the same close, neither clobbering the other. On open, `show-piece-window!` seeds the expansion maps from the record and applies the divider *after* layout via `Platform.runLater` — setting a `SplitPane` divider before it lays out is unreliable (JDK-8092863). A record carrying only geometry — every non-piece window, and every not-yet-arranged piece — restores exactly as before.
+
 ### Application startup: window-set, menu, and readiness
 
 Startup is orchestrated by `start-app!` in a fixed order, so that "the application is ready" means "its windows are on screen", not merely "the process launched":

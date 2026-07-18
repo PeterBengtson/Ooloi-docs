@@ -64,6 +64,8 @@ The window is built from a pure spec function and the declarative window pipelin
 
 **The button bar** carries the window's actions, among them the button that opens this piece's Preferences window (§6).
 
+**The window remembers its layout.** Beyond where it sits on screen, a piece window persists how its two panes were arranged, so reopening a piece restores the workspace exactly as it was left. Each pane's `>` expansion — which musicians, instruments, and staves are open in the Musicians pane, which layouts and their musicians in the Layouts pane — and the `SplitPane` divider position ride the window's own persisted record (the geometry record of [ADR-0042](0042-UI-Specification-Format.md), keyed by the piece's UUID, stable across sessions, [ADR-0012](0012-Persisting-Pieces.md) §4), written as the window closes and read back as it opens. Only explicit toggles are recorded — the expansion state is a map, not a set — so a pane the user never touched still follows its default (a Musician or a Layout opens by default; the nested instrument, staff, and musician-in-layout levels rest closed), and a piece last saved before this state was ever recorded simply opens at those defaults.
+
 ### 4. Drag-and-drop across the workspace
 
 Every structural edit in the window is a drag, a drop, or a deletion. The gestures form a small, uniform grammar; what a drop does is determined by what is dragged and where it lands.
