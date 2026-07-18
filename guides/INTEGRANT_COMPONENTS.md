@@ -599,6 +599,8 @@ The error message is misleading — there's nothing wrong with futures, with pro
 
 The standard pattern for gRPC integration tests. `with-server` starts the gRPC server, the HTTP health server, and a piece-manager (plus the shared connection-registry / server-statistics / health-manager — see the init-scope table above), waits for startup (100ms default), then tears them down. `with-clients` creates client components, optionally registers them, then disconnects them. `with-srv-client` binds a client to the `SRV/*` dynamic context.
 
+Every piece-manager-booting macro here — `with-server`, `with-system`, `with-combined-system`, and the narrower `with-piece-manager` / `with-shared-components` — redirects the platform directory (`~/.ooloi`) to a temporary directory for the duration of the test, via `util.common/with-test-platform-directory`. So no integration test touches the developer's real user directory: the persistent piece catalogue, the on-disk instrument library, and TLS certs all land in a temp directory that is deleted afterwards. A test that boots a persistent component *without* a piece-manager wraps `with-test-platform-directory` explicitly.
+
 ```clojure
 ;; Basic: one client, auto-registered
 (with-server [server]

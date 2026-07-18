@@ -472,7 +472,7 @@ Used in `frontend/test/` and `shared/test/app/` (system integration tests).
 | Macro / Function | Purpose |
 |---|---|
 | `run-on-fx-thread-sync! f` | Runs `f` on the JavaFX thread, blocks until complete, returns the value. Replaces all `CountDownLatch` + `fx/run-later!` + `.await` patterns. |
-| `with-test-config {overrides}` | Combines platform directory isolation, settings isolation, and locale isolation. Controls `load-defaults` via the overrides map. |
+| `with-frontend-test-config {overrides}` | Composes `with-test-platform-directory` (platform-dir isolation) plus settings and locale isolation. Controls `load-defaults` via the overrides map. |
 | `with-event-bus` | Creates a live event bus for the duration of body. Required when calling `set-app-setting!` with a value that differs from the stored value. |
 | `default-settings` | Returns all registry settings at their defaults. Use as base for `load-defaults` mocks. |
 | `with-zero-animation-times` | Sets all animation durations to zero for lifecycle tests. |
@@ -493,6 +493,7 @@ Used across all three projects.
 
 | Macro / Function | Purpose |
 |---|---|
+| `with-test-platform-directory` | Redirects `platform/get-platform-directory` to a fresh temp directory for the body, then deletes it. The single platform-dir isolation primitive: isolates any test that touches `~/.ooloi` (piece catalogue, instrument library, TLS certs). Used directly by backend/shared tests, composed by `with-frontend-test-config`, and wrapped by the piece-manager-booting macros (`with-server`, `with-system`, `with-combined-system`, `with-piece-manager`, `with-shared-components`) so those isolate `~/.ooloi` by default. |
 | `with-saved-atom [atom-expr & body]` | Saves and restores an atom's value around body. Prevents state leakage between tests. |
 
 ### `util.instrument-library` — Instrument Library test helpers
@@ -505,7 +506,6 @@ Used in shared and backend IL tests.
 
 | Macro / Function | Purpose |
 |---|---|
-| `with-test-il-dir` | Redirects `platform/get-platform-directory` to a temporary directory, then deletes it. |
 | `with-loaded-test-bundle` | Replaces `load-bundle` with a stable test fixture covering all eight instrument families. |
 
 ### `util.server` — server-side gRPC test helpers
@@ -555,7 +555,7 @@ tree for where to put a new test helper, see
   (instance? TabPane root) => true)
 
 ;; Settings isolation
-(th/with-test-config {:ui/theme :nord-dark}
+(th/with-frontend-test-config {:ui/theme :nord-dark}
   (th/with-event-bus
     (settings/get-app-setting :ui/theme) => :nord-dark))
 

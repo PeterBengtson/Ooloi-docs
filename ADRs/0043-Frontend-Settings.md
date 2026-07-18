@@ -5,7 +5,7 @@
 Accepted - February 12, 2026
 Updated - February 13, 2026 (Defaults declared in def-app-setting; event bus integration)
 Updated - February 16, 2026 (Settings window implemented; code references added)
-Updated - February 27, 2026 (Testing section: with-test-config, default-settings, with-event-bus)
+Updated - February 27, 2026 (Testing section: with-frontend-test-config, default-settings, with-event-bus)
 Updated - March 8, 2026 (Testing section: with-ui-manager replaces ig/init-key in primary example)
 Updated - April 12, 2026 (Validation feedback architecture: uniform closure interface, notification-based error display)
 
@@ -350,16 +350,16 @@ The Settings window (`app_settings_window.clj`) consumes the registry to generat
 
 Tests that exercise code reading or writing app settings must isolate three categories of global state: the platform directory, the settings atoms, and the locale. The `util.frontend` test namespace provides the standard toolkit.
 
-### `with-test-config` — the Primary Wrapper
+### `with-frontend-test-config` — the Primary Wrapper
 
 ```clojure
-(with-test-config {:ui/theme :nord-dark}
+(with-frontend-test-config {:ui/theme :nord-dark}
   (th/with-ui-manager [mgr]
     (tr/set-locale! :en-GB)   ; must set after UI Manager init — it reads OS locale on init
     ...))
 ```
 
-Pass a settings override map merged onto `(default-settings)`. Pass `{}` to use all registry defaults. `with-test-config` redirects the platform directory to a temp location, snapshots and restores settings atoms, rebinds `load-defaults` to return the controlled map, and saves/restores `tr/current-locale`. Combine with `with-ui-manager` for any test that also needs a UI Manager — never use raw `ig/init-key`/`ig/halt-key!` boilerplate.
+Pass a settings override map merged onto `(default-settings)`. Pass `{}` to use all registry defaults. `with-frontend-test-config` composes `util.common/with-test-platform-directory` — which redirects the platform directory to a temp location — and layers frontend state isolation on top: it snapshots and restores the settings atoms, rebinds `load-defaults` to return the controlled map, and saves/restores `tr/current-locale`. Combine with `with-ui-manager` for any test that also needs a UI Manager — never use raw `ig/init-key`/`ig/halt-key!` boilerplate.
 
 ### `default-settings` — Registry-Derived Defaults
 
@@ -367,14 +367,14 @@ Pass a settings override map merged onto `(default-settings)`. Pass `{}` to use 
 (th/default-settings)  ; => {:ui/theme :nord-dark, ...all registered settings at defaults}
 ```
 
-Returns a map of every registered setting at its declared default, derived from the live registry. When a new `def-app-setting` is added, `default-settings` picks it up automatically — **provided the namespace that declares it has been loaded**. `def-app-setting` registers a setting as a load-time side effect, so the registry contains only settings whose declaring namespace has been required, directly or transitively. A test that relies on `with-test-config {}` to serve a setting's default must therefore require that namespace: a test exercising the Instrument Library's `:instrument-library/language-filter`, for instance, needs `[ooloi.frontend.settings.instrument-library]` (a side-effecting require, no alias). Omit it and the setting is absent from the registry when the namespace runs alone — `get-app-setting` returns nil, the code under test sees no default, and the failure hides in the full suite (another namespace loads the setting) while surfacing only when the test runs standalone. Always use `(merge (th/default-settings) overrides)` rather than hand-writing a settings map — hand-written maps silently omit new settings, causing nil-reference failures in production code that reads them. The correct response when a test breaks because a new setting was added is to ensure `default-settings` is used, not to add nil-guards to production code.
+Returns a map of every registered setting at its declared default, derived from the live registry. When a new `def-app-setting` is added, `default-settings` picks it up automatically — **provided the namespace that declares it has been loaded**. `def-app-setting` registers a setting as a load-time side effect, so the registry contains only settings whose declaring namespace has been required, directly or transitively. A test that relies on `with-frontend-test-config {}` to serve a setting's default must therefore require that namespace: a test exercising the Instrument Library's `:instrument-library/language-filter`, for instance, needs `[ooloi.frontend.settings.instrument-library]` (a side-effecting require, no alias). Omit it and the setting is absent from the registry when the namespace runs alone — `get-app-setting` returns nil, the code under test sees no default, and the failure hides in the full suite (another namespace loads the setting) while surfacing only when the test runs standalone. Always use `(merge (th/default-settings) overrides)` rather than hand-writing a settings map — hand-written maps silently omit new settings, causing nil-reference failures in production code that reads them. The correct response when a test breaks because a new setting was added is to ensure `default-settings` is used, not to add nil-guards to production code.
 
 ### `with-event-bus` — Tests That Publish Setting Events
 
 `set-app-setting!` publishes a `:setting-changed` event only when the new value differs from the stored value, and only when an event bus has been wired in via `init-event-bus!`. Tests that exercise this event path must use `with-event-bus`:
 
 ```clojure
-(with-test-config {}
+(with-frontend-test-config {}
   (with-event-bus
     (set-app-setting! :ui/theme :nord-light)  ; triggers :setting-changed event
     ...))
@@ -483,4 +483,4 @@ Require `load-app-settings!` call in system.clj startup sequence.
 - `frontend/src/main/clojure/ooloi/frontend/ui/theme.clj` — Theme module consuming settings
 - `shared/src/main/clojure/ooloi/shared/platform.clj` — Platform-specific directory paths
 - `frontend/src/main/clojure/ooloi/frontend/ui/persistence.clj` — Existing EDN persistence pattern
-- `frontend/test/clojure/util/frontend.clj` — Test isolation infrastructure: `with-test-config`, `default-settings`, `with-event-bus`
+- `frontend/test/clojure/util/frontend.clj` — Test isolation infrastructure: `with-frontend-test-config`, `default-settings`, `with-event-bus`

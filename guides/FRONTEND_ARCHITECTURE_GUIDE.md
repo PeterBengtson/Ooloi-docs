@@ -1566,7 +1566,7 @@ When structure is clear, testing becomes calmer. You test pure functions where p
 
 Frontend tests that touch app settings, the platform directory, locale, or JavaFX stages share a common isolation namespace: `frontend/test/clojure/util/frontend.clj` (namespace `util.frontend`). Requiring it initialises JavaFX automatically — no explicit init call needed.
 
-The namespace exposes a layered set of isolation macros. For any test that needs a UI Manager, the standard setup is `with-ui-manager`, optionally combined with `with-test-config` for settings/locale isolation:
+The namespace exposes a layered set of isolation macros. For any test that needs a UI Manager, the standard setup is `with-ui-manager`, optionally combined with `with-frontend-test-config` for settings/locale isolation:
 
 ```clojure
 ;; UI Manager only — no settings isolation needed
@@ -1574,7 +1574,7 @@ The namespace exposes a layered set of isolation macros. For any test that needs
   ...)
 
 ;; Settings isolation + UI Manager
-(with-test-config {:ui/theme :nord-dark}
+(with-frontend-test-config {:ui/theme :nord-dark}
   (th/with-ui-manager [mgr]
     (tr/set-locale! :en-GB)   ; must set after UI Manager init
     ...))
@@ -1582,11 +1582,11 @@ The namespace exposes a layered set of isolation macros. For any test that needs
 
 `with-ui-manager` creates a thread pool, event bus, and UI Manager; flushes outstanding JAT callbacks; then halts everything in the correct order. It prevents `RejectedExecutionException` teardown races from `run-later!` callbacks that fire after the pool is terminated. Access the event bus via `(:event-bus mgr)`. **Never write manual `ig/init-key`/`ig/halt-key!` boilerplate for UI Manager tests.**
 
-`with-test-config` handles settings isolation. Pass `{}` to use all registry defaults with no overrides. The override map is merged onto `(default-settings)`, which derives defaults from the live registry — so new settings added via `def-app-setting` appear automatically in every test without changes to test setup.
+`with-frontend-test-config` composes `util.common/with-test-platform-directory` — which redirects the platform directory (`~/.ooloi`) to a temp directory — and adds settings and locale isolation on top. Pass `{}` to use all registry defaults with no overrides. The override map is merged onto `(default-settings)`, which derives defaults from the live registry — so new settings added via `def-app-setting` appear automatically in every test without changes to test setup.
 
 Additional macros for specific situations:
 
-- **`with-event-bus`** — wrap inside `with-test-config` when the test calls `set-app-setting!` and needs the `:setting-changed` event to actually publish
+- **`with-event-bus`** — wrap inside `with-frontend-test-config` when the test calls `set-app-setting!` and needs the `:setting-changed` event to actually publish
 - **`with-zero-animation-times`** — for notification lifecycle tests; sets all animation durations to zero so state transitions complete instantly
 - **`with-stage`** — creates a JavaFX Stage on the JAT for lightweight tests that need a real Stage but not a full UI Manager
 - **Visual testing modes** (`OOLOI_UI_VISUAL`, `OOLOI_UI_VISUAL_INTERACTIVE`) — show real windows during test runs for screenshot capture or manual inspection; call `(visual-pause)` at inspection points (no-op in headless mode)
@@ -1602,7 +1602,7 @@ When a test needs to verify production event listener behaviour wired into a com
 ```clojure
 ;; Settings window tests use a mounted renderer — show-app-settings!
 ;; opens the window and wires the reactive update cycle.
-(th/with-test-config {:ui/theme :nord-light}
+(th/with-frontend-test-config {:ui/theme :nord-light}
   (th/with-ui-manager [mgr]
     (th/await-window-event mgr :window-opened :app-settings
       (fn [] (th/run-on-fx-thread-sync!
@@ -1662,7 +1662,7 @@ Tests in `shared/test/app/clojure/ooloi/shared/system_test.clj` exercise the ful
 
 **Six rules for all `start-app!` tests:**
 
-1. **Always wrap with `with-test-config {}`** — prevents platform directory contamination and settings atom bleed between tests.
+1. **Always wrap with `with-frontend-test-config {}`** — prevents platform directory contamination and settings atom bleed between tests.
 
 2. **Always wrap with `with-zero-animation-times`** — splash fade-out is ~2 seconds by default. Without this, any test that halts before the animation completes leaves the piece window unregistered at halt time.
 
@@ -1686,7 +1686,7 @@ A complete `start-app!` test skeleton:
 
 ```clojure
 (th/with-zero-animation-times
-  (th/with-test-config {}
+  (th/with-frontend-test-config {}
     (with-redefs [platform/macos?   (constantly true)
                   platform/windows? (constantly false)
                   platform/linux?   (constantly false)]
