@@ -81,6 +81,7 @@ Filenames are different from tokens, and the asymmetry is deliberate: a leaf fil
 | `list-filesystem-roots` | — | `[{:name :token}]` | read | Backend-curated entry points; the navigable ceiling |
 | `list-filesystem-directory` | dir-token | `[{:name :type :modified? :token}]` | read | Lazy, per-directory; result is disposable cache |
 | `open-piece` | file-token | piece-id, or a typed open-failure (§7) | read | Resolve → load → deserialise, register, collision-check per ADR-0012 |
+| `open-by-uuid` | piece UUID | piece-id, or a typed open-failure (§7) | read | The identity inverse of `open-piece`: resolve the UUID to a location through the persistent catalogue → `open-piece`'s load tail → verify the embedded UUID matches. For persistent references (session restore) that hold a UUID, not a token |
 | `piece-location` | piece-id | `{:dir-token :file-token}`, or `nil` | read | The piece's recorded location as opaque tokens — `nil` when it was never saved. No path crosses the boundary (§1); tokens are minted-once-and-reused (§6). The Save action branches on it |
 | `save-piece` | piece-id, dir-token, filename | ack, or a typed save-failure (§7) | save | Validate filename (leaf-only) → enforce a known extension (append `.ooloi` unless already `.ool`/`.ooloi`) → resolve → write (Nippy, ADR-0007); record location. A plain `save-piece` (piece-id alone) re-writes to the recorded location |
 | `clone-piece` | piece-id, dir-token, filename | ack, or a typed save-failure (§7) | save | Save As: clone the piece (regenerate structural ids only, share all content by reference), then write the clone value (Nippy); the clone is not registered |
@@ -95,7 +96,9 @@ Filenames are different from tokens, and the asymmetry is deliberate: a leaf fil
 
 That macOS-alias step is a **legitimate backend native dependency**: the backend project declares `net.java.dev.jna/jna`, the JNA jar is cross-platform, and the CoreFoundation access is lazily loaded behind a `macos?` guard, so the namespace loads on every platform. It does **not** contradict ADR-0044's "no native dependencies in application code" — that stance is **MIDI-specific** (the CoreMidi4J SPI provider keeps native MIDI code out of application logic), not a blanket rule that the backend must be native-free. Native code is admitted where it is the right tool and confined behind a boundary — here, a small platform-guarded resolver.
 
-**`open-piece` is one-directional: token in, piece-id out.** Because the UUID is inside the file, you cannot open *by* UUID from a cold browse — the UUID does not exist as a known value until the file has been read. The backend resolves the file-token to a location, loads and deserialises the piece, registers it under its embedded UUID (detecting collisions per ADR-0012), and returns the piece-id. The UUID is a *product* of opening, not an input to it.
+**`open-piece` is one-directional: token in, piece-id out.** Because the UUID is inside the file, you cannot open *by* UUID **from a cold browse** — the UUID does not exist as a known value until the file has been read. The backend resolves the file-token to a location, loads and deserialises the piece, registers it under its embedded UUID (detecting collisions per ADR-0012), and returns the piece-id. On this path the UUID is a *product* of opening, not an input to it.
+
+**`open-by-uuid` is the inverse, for a UUID already known.** A persistent reference holds a piece's UUID, not a token — tokens do not survive a session (§6). `open-by-uuid` takes that UUID, resolves it to a location through the persistent catalogue (backend-internal: the location never crosses the boundary, §1), then runs `open-piece`'s **identical** load tail — load → deserialise → register under the embedded UUID — and verifies the loaded piece's embedded UUID equals the one requested, since the file at that location may since have become a different piece. The only difference from `open-piece` is the head: an identity-keyed catalogue lookup in place of token resolution. Its consumer is session restore — re-opening the pieces that were open at last quit; further consumers are possible but unbuilt. It returns a piece-id or a typed open-failure (§7) — an unresolvable UUID, a stale location, or a UUID mismatch — surfaced through the same single unbypassable entry point as `open-piece`'s.
 
 **`save-piece` writes a piece to a named destination.** The destination is always a dir-token the user navigated to plus a leaf filename — never a path, never a UUID (a UUID is identity, not a location). `save-piece` writes the piece's bytes at the resolved location and records that location on the piece's provenance, so a subsequent plain `save-piece` (piece-id alone) re-writes there with no picker. The two File-menu variants are **different operations**:
 
@@ -234,7 +237,7 @@ This ADR owns the operation contract and nothing else. Everything adjacent plugs
 | Transport | ADR-0046 | reference-passing vs serialisation; identical handler |
 | Governed by | ADR-0040 / ADR-0001 | single authority; separation; a backend is always present |
 
-The composition is clearest in the two canonical flows.
+The composition is clearest in the three canonical flows.
 
 **Open:**
 
@@ -259,6 +262,30 @@ sequenceDiagram
 ```
 
 `open-piece` ends at the returned piece-id. A client does not begin receiving that piece's change events as part of opening it: subscription is a separate seam ([ADR-0031](0031-Frontend-Event-Driven-Architecture.md)), performed by the windowing layer through the Event Router when it opens the piece window and unwound when the window closes. The same holds for a freshly minted `new-piece`. This contract neither subscribes nor unsubscribes.
+
+**Open by UUID (session restore):**
+
+```mermaid
+sequenceDiagram
+    participant F as Frontend (restore)
+    participant B as Backend (fs-ops)
+    participant C as Piece Catalogue
+    participant P as Persistence (ADR-0007)
+    participant M as Piece Manager (ADR-0012)
+    Note over F: pieces open at last quit — UUIDs only, no tokens
+    F->>B: SRV/open-by-uuid(uuid)
+    B->>C: catalogue-resolve(uuid)
+    C-->>B: locator | nil
+    Note over B: nil → typed open-failure (skip-and-notify)
+    B->>P: load bytes from locator, deserialise
+    P-->>B: piece
+    B->>M: register under embedded UUID (collision-check)
+    M-->>B: piece-id
+    B->>B: verify embedded UUID == requested (else typed failure)
+    B-->>F: piece-id | {:open-failure <type>}
+```
+
+The `P` and `M` legs are the *same load tail* as Open — only the head differs: a tokenless `catalogue-resolve` in place of token resolution, plus the embedded-UUID verify (the file at that location may since have become a different piece). The frontend passes a UUID, never a token — restore is tokenless (§6) — and the catalogue lookup and the resolved location stay backend-internal; the piece-id or a typed `{:open-failure <type>}` returns through the same single unbypassable surfacing point (§7).
 
 **Save As (export a copy):**
 
@@ -318,7 +345,7 @@ Until the collaboration access model is built, the backend runs free-for-all: ev
 
 ### Neutral
 
-- Recent files and bookmarks are per-user state keyed by UUID — whether they live in frontend settings (ADR-0043) or per-user on the backend is deferred (see Future Considerations) — resolved through the catalogue when it exists. They consume this contract but are not part of it.
+- Recent files and bookmarks are per-user state keyed by UUID — whether they live in frontend settings (ADR-0043) or per-user on the backend is deferred (see Future Considerations) — resolved through the catalogue. They consume this contract but are not part of it.
 - The picker is a consumer: it renders `list-*` results and round-trips tokens. Its presentation is out of scope here.
 
 ## Related Decisions
@@ -340,9 +367,9 @@ Until the collaboration access model is built, the backend runs free-for-all: ev
 
 ## Future Considerations
 
-- **Move (investigation outcome).** A `move-piece(file-token, dest-dir-token)` belongs in the contract conceptually: it is opaque-token-clean, and because a piece's identity is its embedded UUID, moving the file changes no identity — references resolve correctly once the catalogue re-resolves the UUID to its new location. It is a storage-administration operation for the host or administrator, not a File-menu action, and is therefore **defined now but deferred**: it has no consumer until storage administration and the catalogue are built — both backend features, regardless of how the backend is deployed. Recording it here keeps the contract whole and prevents it being bolted on later as an exception.
+- **Move (investigation outcome).** A `move-piece(file-token, dest-dir-token)` belongs in the contract conceptually: it is opaque-token-clean, and because a piece's identity is its embedded UUID, moving the file changes no identity — references resolve correctly once the catalogue re-resolves the UUID to its new location. It is a storage-administration operation for the host or administrator, not a File-menu action, and is therefore **defined now but deferred**: it has no consumer until storage administration is built — its other prerequisite, the catalogue, now exists. This is backend work, regardless of how the backend is deployed. Recording it here keeps the contract whole and prevents it being bolted on later as an exception.
 - **Delete (`delete-piece`)** is part of the contract and is needed internally — overwrite, cleanup, and administration — but carries no File-menu item initially.
-- **The persistent catalogue** (embedded UUID → storage location and metadata) is the deferred companion to this contract. It is what lets a persistent reference, or a recent-files entry, resolve a piece that has moved. Until it exists, persistent references degrade gracefully to a last-known location. Its first consumer is single-user session restore; per-user access over it comes with the collaboration access model. It is backend state — the same whether the backend runs with a frontend or headless.
+- **The persistent catalogue** (embedded UUID → tagged storage locator) is the companion to this contract, **now built** as a second store in the Piece Manager: loaded from EDN at init, written on every save/open, awaited at halt — durable across restarts, backend state whether the backend runs with a frontend or headless. It is what lets a persistent reference resolve a piece no longer in memory: `open-by-uuid` reads it (`catalogue-resolve` → locator, backend-internal — the locator never crosses the boundary, §1); a stale locator (the file moved or was deleted outside Ooloi) degrades gracefully to a typed open-failure (§7). Its value is a *tagged* locator (`{:kind :filesystem :path}` today), so alternative storage backends slot in without a schema change. Its first consumer is single-user session restore; per-user access over it comes with the collaboration access model, and `move-piece` (above) re-resolves through it.
 - **Alternative storage backends.** Where a backend keeps its pieces — a local filesystem, an SQL database, an object store, or anything else a writer/reader can target — is *general backend configuration*: neither cloud-specific nor deployment-specific. A combined-app user can point their own backend at a database or a local object store on their own machine, exactly as a dedicated server can. It extends token resolution only, is built when that storage is needed, and is never tied to how or where the backend runs.
 - **Access-filtered listings** — the per-user "shared with me" slice — layer onto `list-filesystem-roots`/`list-filesystem-directory` when the collaboration access model lands, filtering results by the access registry before they leave the backend.
 - **Virtual-structure administration.** On any backend that hosts, the roots and directories are an administrator-defined virtual structure mapping virtual directories to real storage (§4). Defining and editing that structure — and who holds the right to — is administration by the host or administrator, persisted as EDN under the platform storage folder alongside the collaborator and piece-access registries (ADR-0036, `~/.ooloi/…`). It is **not** a standalone-server feature: the in-process backend needs it the moment it hosts. Its mechanics — the management surface (the *Collaborators* window administers the access half; a structure surface administers the namespace), the persistence format, and fine-grained administrative permissions — are deferred to the collaboration / hosting work and require no new ADR: identity is ADR-0021, the persisted registries and storage location are ADR-0036, and the window contract is ADR-0042. This ADR only requires that `list-filesystem-roots` / `list-filesystem-directory` resolve whatever structure and grants the backend holds.
