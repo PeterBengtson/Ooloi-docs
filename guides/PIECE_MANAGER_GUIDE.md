@@ -64,7 +64,7 @@ The piece manager maintains a **dual-ref system**, and the store is **owned by t
 
 **Why a ref handle rather than an atom?** Every store mutation already happens inside `dosync` (`store-piece` / `remove-piece` `alter` the store ref). Making the handle a **ref** too keeps the whole access path under a single STM discipline: the handle read inside a transaction is transactionally consistent by construction, and there is no second reference type to reason about. The handle is populated by the component, so pure-model code — `resolve-into-piece-ref`, `get-piece-ref` — reaches the store through it with no server in scope. The store is created by `init-store!` (called from the component's `init-key`) and released by `release-store!` (from `halt-key!`); there is no JVM-global remnant.
 
-**The registry entry.** Each value in the store is a map — `{:ref piece-ref :provenance {:path :modified}}` — not a bare ref. The `:ref` is the piece's STM ref (the dual-ref system above). The `:provenance` — the file path and modification time the piece was opened from — is present only for pieces opened through `open-piece` (ADR-0051), and is how the Piece Manager distinguishes an idempotent reopen of the same file (same embedded UUID, same provenance) from a variant collision (same UUID, different provenance) — see [ADR-0012](../ADRs/0012-Persisting-Pieces.md). Provenance shares the ref's identity and lifetime — dropped with it on `remove-piece` — rather than living in a parallel structure to keep in sync; the persistent catalogue of every piece ever seen is a separate concern (#184).
+**The registry entry.** Each value in the store is a map — `{:ref piece-ref :provenance {:path :modified}}` — not a bare ref. The `:ref` is the piece's STM ref (the dual-ref system above). The `:provenance` — the file path and modification time the piece was opened from — is present only for pieces opened through `open-piece` (ADR-0051), and is how the Piece Manager distinguishes an idempotent reopen of the same file (same embedded UUID, same provenance) from a variant collision (same UUID, different provenance) — see [ADR-0012](../ADRs/0012-Persisting-Pieces.md). Provenance shares the ref's identity and lifetime — dropped with it on `remove-piece` — rather than living in a parallel structure to keep in sync. Distinct from this per-open provenance, the **persistent catalogue** — a second, durable store the same component owns, mapping every piece's UUID to its storage location whether or not it is currently open — is described in [The Persistent Catalogue](#the-persistent-catalogue) below.
 
 ### Why This Architecture?
 
@@ -92,6 +92,28 @@ The piece manager handles three different ways to reference a piece:
 ;; 3. Piece ID (string identifier)
 (def piece-id "symphony-no-9")
 ```
+
+### The Persistent Catalogue
+
+The store above is **in-memory**: it holds the pieces open *right now*, and it dies when the component halts. Beside it the same component owns a **second, durable store — the persistent catalogue** — mapping every piece's embedded UUID to *where that piece lives*, for every piece ever opened or saved, whether or not it is currently open. The in-memory store answers "is this piece open, and where is its live ref?"; the catalogue answers "where on disk is the piece with this UUID?" — the durable resolution needed to re-open a piece that is no longer in memory. Because the in-memory registry empties as clients disconnect (close-on-last-release, [ADR-0022](../ADRs/0022-Lazy-Frontend-Backend-Architecture.md)) and is gone entirely at shutdown, without the catalogue there would be nothing to resolve a UUID against on relaunch. Re-opening the pieces that were open at last quit is its first consumer.
+
+**The value is a tagged locator, never a bare path.** Each entry maps a UUID to `{:kind :filesystem :path "…"}`:
+
+```clojure
+;; The persisted catalogue EDN — every piece's UUID → its storage locator
+{"5a3c1e7f-…" {:kind :filesystem :path "…/my-symphony.ooloi"}
+ "b71f9d02-…" {:kind :filesystem :path "…/string-quartet.ooloi"}}
+```
+
+The `:kind` tag is what lets `{:kind :s3 …}` or `{:kind :db …}` slot in later with **no schema change** — storage-backend opacity ([ADR-0012](../ADRs/0012-Persisting-Pieces.md)); only `:filesystem` is built today. The locator is **backend-internal**: it never crosses to the frontend, which holds UUIDs (identity) and ephemeral per-session tokens (access), never a storage location.
+
+**Writes ride the provenance recorders — no new seam.** The two operations that already record a piece's provenance in the piece-manager — `register-opened-piece` (on open) and `record-piece-provenance` (on save) — each *also* record `uuid → {:kind :filesystem :path}`. The same fact — a piece's location — is recorded at two durabilities in one place: the ephemeral provenance beside the live ref, and the durable entry in the catalogue.
+
+**Persistence is on every mutation, not at halt.** Each write hands the whole catalogue map to a **writer agent** that spits it to EDN immediately (the same writer-agent pattern the Instrument Library component uses), under `get-platform-directory "Ooloi" "catalogue"`. `halt-key!` only *awaits* any in-flight write — it is not the write trigger — so a crash never loses a committed entry. The catalogue is read back from that EDN at `init-key`, which is how it survives a restart.
+
+**The catalogue is best-effort secondary durability.** A catalogue write must never fail the open or save it rode in on. Both `make-parents` and `spit` run on the writer agent under `:error-mode :continue`, so a disk error stays on the agent and cannot escape `register-opened-piece` / `record-piece-provenance` onto the wire — the operation still returns its piece. The catalogue is a convenience for later resolution, not a correctness dependency of opening or saving.
+
+**Reads: `catalogue-resolve` and `open-by-uuid`.** The raw read is `catalogue-resolve [uuid] → locator | nil`, backend-internal (the locator stays inside the backend). The consumer-facing read is **opening a piece by its UUID**: `open-by-uuid` resolves the UUID to a locator, loads the file through `open-piece`'s shared load tail (read → deserialize → validate against the typed-failure taxonomy → register under the embedded UUID), and **verifies the loaded piece's embedded UUID matches the one requested** — guarding against the file at that location having become a *different* piece. It returns the piece-id, or a typed `{:open-failure …}`: `:piece-not-in-catalogue` (the UUID has no entry), `:piece-not-found` (the entry's file is gone — a stale locator), `:piece-uuid-mismatch` (the file now holds a different piece), plus the shared load-tail failures. `open-by-uuid` is exposed through `api`/`SRV` — session restore sends a UUID and gets back a piece-id or a typed failure it maps to a notification; `catalogue-resolve` is not exposed. The operation, its one-directional relationship to `open-piece`, and the full taxonomy are specified in [ADR-0051](../ADRs/0051-Filesystem-Operations-Real-and-Virtual.md).
 
 ## Complete API Reference
 
