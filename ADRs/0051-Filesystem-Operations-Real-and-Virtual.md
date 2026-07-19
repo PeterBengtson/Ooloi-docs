@@ -305,7 +305,7 @@ sequenceDiagram
     Note over F: user chooses the destination dir, types a filename
     F->>B: SRV/clone-piece(piece-id, dir-token, filename)
     B->>B: validate filename (leaf-only)
-    B->>C: clone — regenerate structural ids only; share all content by reference
+    B->>C: clone — regenerate structural ids only, share all content by reference
     C-->>B: clone value (unregistered)
     B->>B: resolve dir-token → location
     B->>P: write the clone value (Nippy) at location / filename
