@@ -399,14 +399,14 @@ flowchart TD
 
 ### 3.4 Quitting: the Same Decision, Across Every Piece
 
-The close decision above is not the close path's own. `resolve-unsaved-piece!` — clean, or *Save / Don't Save / Cancel*, with Save writing in place or through the save-mode picker — is shared with the **Quit save pass**, and the difference is only what the caller does with the answer. Close closes the window; the pass moves on to the next piece.
+The close decision above is not the close path's own. `resolve-unsaved-piece!` — clean, or *Save / Don't Save / Cancel*, with Save writing in place or through the save-mode picker — is shared with the **Quit save pass**. `resolve-and-close!` wraps it into a single per-piece operation: resolve, close the window if it resolved, report whether the caller may proceed. Close is that operation run for one window; the pass is the same operation run over every piece.
 
-Every quit gesture (the File menu's Quit/Exit item, the Ctrl+Q accelerator, macOS's Cmd+Q) dispatches `:ui/quit` to a single handler, and that handler announces and halts **nothing** until the pass has resolved every open piece window. A refusal anywhere — Cancel at the prompt, a dismissed save-mode picker, or a failed write — abandons the whole Quit: no `:app-shutting-down`, no `ig/halt!`, and every window still open, exactly as it was. This is what stops a quit gesture from silently discarding unsaved work.
+Every quit gesture (the File menu's Quit/Exit item, the Ctrl+Q accelerator, macOS's Cmd+Q) dispatches `:ui/quit` to a single handler, and that handler announces and halts **nothing** until the pass has resolved every open piece window. A refusal anywhere — Cancel at the prompt, a dismissed save-mode picker, or a failed write — abandons the whole Quit: no `:app-shutting-down`, no `ig/halt!`, and the application still running. This is what stops a quit gesture from silently discarding unsaved work.
 
 Three properties are worth stating explicitly, because each is load-bearing:
 
 - **One at a time.** Pieces are resolved in sequence: the next is not asked until the previous one's write has completed. The user answers one dialog, not a burst of them.
-- **Nothing is closed during the pass** — not even a piece the user chose to discard. Closing is left to the halt. Were a discarded piece closed where it is resolved, discarding piece A and then cancelling on piece B would abandon the Quit with A's window already gone and its changes destroyed. Deferring every close to the halt is what lets Cancel genuinely restore the status quo.
+- **A decision takes effect where it is made.** Each window closes as the user answers it, rather than all of them at the halt — answer Save or Don't Save and the window goes, as it would in any other application. So an abandoned Quit leaves exactly the windows that were never resolved: pieces already saved or discarded closed as they were answered, and pieces after the refusal are never asked. Cancel abandons the *quit*, not the decisions already taken — a discarded piece's changes were destroyed by the user's own Don't Save.
 - **The whole resolution occupies exactly one pool thread.** The pool is sized `cores-1`, so on a single-core machine it has one thread and anything needing a second would deadlock the shutdown. Hence `resolve-unsaved-piece!` blocks and returns its outcome instead of handing back a promise (a caller awaiting one would need a thread to park in), and performs its write directly through `write-piece!` instead of dispatching it through `save-piece!` (which would need a thread to run it while the first stayed parked). `save-piece!` remains the dispatching form for callers with nothing to wait for, and is `write-piece!` wrapped in that dispatch — so the guarantee that no write can skip its failure notification holds through both.
 
 ```mermaid
@@ -436,17 +436,18 @@ sequenceDiagram
             else Don't Save
                 Note over Pool: resolves as :discarded, no write
             else Cancel
-                Note over Pool: the pass stops here
+                Note over Pool: the pass stops here, this window stays open
             end
         end
+        Pool->>JAT: resolved, so close this piece window now
     end
     alt every piece resolved
         Pool->>JAT: publish :app-shutting-down
         Pool->>IG: ig/halt!
-        IG->>JAT: close every managed window, persisting geometry
+        IG->>JAT: close any remaining managed windows, persisting geometry
         IG->>Pool: thread pool shuts down
     else any refusal
-        Note over Pool,IG: no announcement and no halt — every window stays open
+        Note over Pool,IG: no announcement and no halt — the unresolved windows stay open
     end
 ```
 
