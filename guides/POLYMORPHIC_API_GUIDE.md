@@ -928,32 +928,29 @@ The reorder is computed as a single splice — remove the selected items, resolv
 
 A drag-and-drop reorder in the UI composes exactly one such call inside an [`SRV/atomic`](#remote-atomic-operations-srvatomic) batch: the client sends only the selected `:id`s and the target `:id` — never the items themselves — and the backend performs the arrangement server-side.
 
-### Full Piece Roundtrip with SRV
+### No whole-piece transfer — you address into the piece
 
-The ultimate demonstration of the polymorphic API's power:
+There is no `get-piece` and no `set-piece`: the piece never crosses the wire whole. This is a boundary, not a gap ([ADR-0040](0040-Single-Authority-State-Model.md) §*Operations as the Only Unit of Truth*) — the authoritative piece lives only on the backend, and the frontend never holds it whole. You work with it across `SRV/`:
 
 ```clojure
-;; Frontend can download the entire piece
 (require '[ooloi.frontend.server :as SRV])
-(def piece (SRV/get-piece [] piece-id))
 
-;; Modify locally with full API access
-(let [piece (api/set-tempo [] piece 0 {:bpm 140})
-      piece (api/add-musician [] piece musician)
-      piece (api/set-key-signature [:m 0] piece 0 f-major)]
+;; 1. Read structure — the content-free projection (titles, names, ids, the
+;;    layout<->musician graph; no musical content), refetched on :piece-structure-changed.
+(SRV/get-piece-structure [] piece-id)
 
-  ;; Write back with full roundtrip identity
-  (SRV/set-piece [] piece-id piece))
+;; 2. Read a value or an element — a VPD getter addresses it exactly.
+(SRV/get-name       [:m 0]   piece-id)
+(SRV/get-instrument [:m 0 0] piece-id)
+
+;; 3. Edit — VPD mutators; compose a multi-op gesture into one transaction with SRV/atomic.
+(SRV/set-name [:m 0] piece-id "Violin I")
+(SRV/add-musician [] piece-id a-musician)
 ```
 
-**Roundtrip identity applies to all data structures** - defrecord instances, maps, everything handled by the SRV API and api namespace. Any musical element can be read from the server, modified locally using api/ functions, and set back on the server using SRV/:
+Element-level get/set is entirely normal — `get-instrument` / `set-instrument`, `get-staff` / `set-staff`, `get-name` / `set-name`. What has no operation is the *whole piece*.
 
-```clojure
-;; Works for any element, not just pieces
-(def musician (SRV/get-musician [:m 0] piece-id))
-(def updated-musician (api/set-name musician "First Violin"))
-(SRV/set-musician [:m 0] piece-id updated-musician)
-```
+Every call carries values across the wire with full fidelity — `OoloiValue` preserves Clojure types exactly ([ADR-0046](0046-Reference-Passing-In-Process-Transport.md), [ADR-0018](0018-API-gRPC-Interface-and-Events.md)) — so what you read is what the backend holds, and a value you submit lands identical. A whole-piece roundtrip (`get-piece` → edit locally → `set-piece`) would in fact work on that fidelity, and it is the sharpest proof of it — but the pair is deliberately withheld, to underline that the piece lives on the backend and changes only through operations against it ([ADR-0040](0040-Single-Authority-State-Model.md)). The backend's undo/redo now also leans on that absence — every piece mutation is a categorised VPD operation, with nothing uncategorised to escape capture. The boundary is a choice, not a technical limit: reintroducing the pair, were it wanted, is straightforward.
 
 ## Cross-References
 

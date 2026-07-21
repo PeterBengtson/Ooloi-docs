@@ -462,6 +462,47 @@ resource's mutation surface:
       (fn [] (apply-piece-state! piece-component after)))))
 ```
 
+**What records an undo step, and why the set is complete.** `ExecuteMethod` is a universal
+endpoint — every API call reaches it — so the boundary must be precise about which operations
+record undo. The rule is one line: an operation records a step iff it changes an open piece's
+content. The identity guard above enforces the *actual-change* half intrinsically — a call
+whose `before` and `after` are the same object records nothing, whether a getter or a no-op
+`set-*` ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §5). The *which-operations*
+half is settled by the shape of the API, so the boundary decides it a priori and spares reads
+the cost:
+
+- **VPD mutators** — the `:set-item` / `:set-seq` / `:set-attribute` / `:change-set-*` /
+  `:settings-set` categories — are the piece-content and piece-setting edits; a lone one records
+  a step. The read categories (`:getters`, `:objectless-get`, `:settings-get`) —
+  `get-piece-structure`, which fires on every window refetch, `has-music?`, and the rest — do
+  not, and are skipped on `:vpd-category` (the metadata `models.core` dispatches on), so a read
+  never pays the coalescing-scope `dosync` or the before/after reads.
+- **`atomic`** is the composed-gesture path: the batch records **one** step at
+  `execute-atomic-operations`, and its inner operations — VPD mutators and `individuate` — sit
+  inside that single snapshot, so they do not each record a step. `individuate` (the re-id step
+  of a by-reference clone) appears only inside such a batch; it is never a lone gesture.
+- The remaining non-VPD `:api` operations change no open piece's content: the Instrument
+  Library singleton keeps its own history (keyed `:instrument-library`, not a piece);
+  `subscribe` / `unsubscribe`, the filesystem listings, and the piece-lifecycle calls
+  (`open-piece`, `open-by-uuid`, `new-piece`, `save-piece`, `delete-piece`, `clone-piece`,
+  `piece-location`) load, persist, or register whole pieces rather than editing one; and
+  `undo-resource` / `redo-resource` replay a snapshot but by design record no new step, moving
+  an entry between the undo and redo stacks.
+
+The set is **complete by construction**: because `get-piece` and `set-piece` are deliberately
+*not* API operations — the single-authority model
+([ADR-0040](0040-Single-Authority-State-Model.md)) keeps the whole piece on the backend and
+edits it only through VPD operations, never a whole-piece transfer — there is no uncategorised
+way to mutate a piece. Every piece-content mutation is a VPD mutator or is composed inside
+`atomic`, and a piece mutation added later is necessarily a new VPD operation with a mutating
+category, so the gate records every real edit, present or future, and nothing spurious.
+
+This completeness *rests on* the exclusion. `get-piece` / `set-piece` are technically
+feasible — a whole-piece roundtrip would work on the wire's type fidelity — and are withheld by
+choice ([ADR-0040](0040-Single-Authority-State-Model.md)); undo capture is one of the things
+that now leans on their absence. Were such a whole-piece mutator reintroduced, it would have to
+carry a mutating category or be gated explicitly, or it would escape capture.
+
 The `undo-key` and `undo-params` are the entry's label, derived from the operation rather than
 hardcoded at a mutation site. A lone call keys on its method name — `:undo.<op>`, e.g.
 `:undo.add-musician`, known at the boundary; an `SRV/atomic` batch is many operations forming
