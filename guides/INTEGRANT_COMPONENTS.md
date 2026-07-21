@@ -515,7 +515,7 @@ If the new component is reached from a `shared/ops/` impl during a gRPC request 
 
 ### Test utility namespaces
 
-Ooloi's test utilities are split into four namespaces, each in its own source root under `shared/test/util/`. The split is enforced by the classpath: backend tests load only what their test profile maps in, so backend-only tests cannot accidentally load frontend-coupled helpers.
+Ooloi's test utilities are split into six namespaces, each in its own source root under `shared/test/util/`. The split is enforced by the classpath: backend tests load only what their test profile maps in, so backend-only tests cannot accidentally load frontend-coupled helpers.
 
 | Namespace | File location | Source root | Auto-discovered by Midje in |
 |---|---|---|---|
@@ -527,6 +527,16 @@ Ooloi's test utilities are split into four namespaces, each in its own source ro
 | `util.filesystem` | `shared/test/util/backend/util/filesystem.clj` | `util/backend` | shared; reachable from backend via :resource-paths |
 
 **Why the split?** `util.server` previously also contained client-side helpers (`register-client`, `with-clients`, `with-combined-system`). Those reference `ooloi.frontend.grpc.event-client` and `ooloi.shared.system` (which transitively pulls in the frontend), making the combined file unloadable from backend-only tests. Splitting the client-side helpers into a separate `util.client` namespace lets the backend's test profile pull `util/backend` in via `:resource-paths` (classpath access without Midje auto-discovery) while leaving anything frontend-coupled out of the backend's loadable surface. The frontend project never references `util.client` (servers and clients are integration concerns and integration tests live in the shared project), so `util.client` sits under `util/backend/` alongside `util.server`: shared has `util/backend` on `:test-paths` and auto-loads it; backend has it on `:resource-paths` (reachable but not auto-loaded; backend tests don't require it); frontend doesn't have `util/backend` on its classpath at all.
+
+#### A test helper may never live in a production file
+
+Test helpers belong in these namespaces and nowhere else. Not in a `src/` namespace, not even beside machinery they share with production, and a docstring reading "Test-only" in `src/` is the smell rather than a mitigation.
+
+Production code is what ships. A test-only function sitting in it is dead weight at best, and at worst it gets *reached for* by later production code precisely because it is there. `run-on-fx-thread-sync!` — a blocking JAT bridge whose ten-second timeout exists so a deadlocked JAT fails a test run rather than hanging it — was promoted from a test utility into production `fx.clj` so that one caller could block and the suite could drop four flush calls. That caller was later reverted; the function stayed; and the dirty-close work eventually used it to raise a modal dialog, turning a test's deadlock guard into a deadline on the user's thinking time in front of "do you want to save the changes?". Four separate docstring prohibitions did not prevent any of that. Returning the function to `util.frontend` did, because production then has no var to call.
+
+**When a helper needs something private from a production namespace, make it public.** Widening a namespace's own surface costs far less than housing test code in it, and nothing is hard to relocate in Clojure. Do not duplicate the private helper, and do not invent a third namespace to share it — both are heavier than dropping a hyphen. `util.filesystem/make-alias!` writes a macOS Finder alias for the `[:alias t]` fixture entry; the CFURL primitives it needs (`cf-fn`, `cfurl-from-path`, `release!`) are public in `ooloi.shared.platform.macos-alias`, which itself keeps only the alias *resolution* production actually calls.
+
+The helper's own tests move with it: `make-alias!` is tested in `util.filesystem-test`, beside the helper, while `macos-alias-test` asserts only on production's `resolve-alias-target` and creates its alias as fixture setup.
 
 Standard imports per project:
 
@@ -942,7 +952,7 @@ Both helpers:
 - Cover the pre-watch race by also testing pred against the current value before deref
 - Always remove the watcher before returning, regardless of timeout or success
 
-This pattern replaces `CountDownLatch` (Java-style coordination forbidden in Ooloi tests per [§11](#11-deprecated-patterns)) and ad-hoc `(loop [tries] ... Thread/sleep ... recur)` polling loops.
+This pattern replaces `CountDownLatch` (Java-style coordination forbidden anywhere in Ooloi, tests or production, per [§11](#11-deprecated-patterns)) and ad-hoc `(loop [tries] ... Thread/sleep ... recur)` polling loops.
 
 ---
 

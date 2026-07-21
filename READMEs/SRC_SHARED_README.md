@@ -457,9 +457,14 @@ in individual model files. Use docstrings everywhere for collaborative developme
 
 ## Testing Infrastructure
 
-Ooloi provides four test helper namespaces with macros that handle all lifecycle boilerplate.
-**Never use raw `CountDownLatch` + `fx/run-later!` + `.await` patterns** — use
-`run-on-fx-thread-sync!` instead.
+Ooloi provides six test helper namespaces — `util.common`, `util.server`, `util.client`,
+`util.frontend`, `util.instrument-library`, `util.filesystem` — with macros that handle all
+lifecycle boilerplate. **Never use `CountDownLatch`**: there are none left anywhere in Ooloi,
+tests or production. Use `th/run-on-fx-thread-sync!` in tests, or a `promise` for callback
+coordination.
+
+The test helpers live on the test classpath and nowhere else. A test helper may never be placed
+in a production (`src/`) file — see [shared/test/util/README.md](../../../../test/util/README.md).
 
 ### `util.frontend` — JavaFX test helpers
 
@@ -471,7 +476,7 @@ Used in `frontend/test/` and `shared/test/app/` (system integration tests).
 
 | Macro / Function | Purpose |
 |---|---|
-| `run-on-fx-thread-sync! f` | Runs `f` on the JavaFX thread, blocks until complete, returns the value. Replaces all `CountDownLatch` + `fx/run-later!` + `.await` patterns. |
+| `run-on-fx-thread-sync! f` | Runs `f` on the JavaFX thread, blocks until complete, returns the value. Lives in `util.frontend`, on the test classpath — production uses `fx/run-later!` plus a promise. |
 | `with-frontend-test-config {overrides}` | Composes `with-test-platform-directory` (platform-dir isolation) plus settings and locale isolation. Controls `load-defaults` via the overrides map. |
 | `with-event-bus` | Creates a live event bus for the duration of body. Required when calling `set-app-setting!` with a value that differs from the stored value. |
 | `default-settings` | Returns all registry settings at their defaults. Use as base for `load-defaults` mocks. |
