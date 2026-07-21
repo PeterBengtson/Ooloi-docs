@@ -1002,7 +1002,7 @@ The `start-server` / `stop-server` / `register-client` / `disconnect-client` fun
 
 ### `CountDownLatch` for async coordination
 
-`java.util.concurrent.CountDownLatch` is a legacy Java pattern and should never appear in new Ooloi tests. The canonical replacements:
+`java.util.concurrent.CountDownLatch` is a legacy Java pattern and should appear nowhere in Ooloi — tests or production. There are none left in either. The canonical replacements:
 
 - For "wait until callback fires" (1 expected delivery): `(promise)` + `(deref p timeout-ms nil)`. The callback delivers the promise.
 - For "wait until N callbacks fire": an `atom` counting remaining deliveries plus a single `promise` delivered when the atom reaches zero.
