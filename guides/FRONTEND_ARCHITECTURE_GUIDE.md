@@ -354,7 +354,7 @@ The Window menu's **open-window list** is another consumer. Below its static com
 
 ### 3.3 The Full Lifecycle in One View
 
-Open, focus, and close as a single flow. **Open** fans out — one request yields `:window-opened`, `:window-shown`, and `:window-focused`. A **focus switch** re-points the active-window atom and refreshes menu enablement. **Close** is the butterfly: `File > Close` (with its `Cmd-W` accelerator) and the native window "X" fan **in** to one shared `close-piece!` — a **clean** piece just closes; a **dirty** piece is asked *Save / Don't Save / Cancel*, where Save writes it (in place, or through the save-mode picker for an unnamed piece) then closes, Don't Save discards and closes, and Cancel keeps the window open — and the closes that proceed pass through the single real close (`request-window-close!` → `close-window!`) and fan **out** to teardown, geometry persistence, and `:window-closed`. The "X" reaches that shared path through the window's optional `:window/on-close-request` hook, so the menu item, the accelerator, and the "X" are identical. Stadium nodes are events; the diamonds are the close decision.
+Open, focus, and close as a single flow. **Open** fans out — one request yields `:window-opened`, `:window-shown`, and `:window-focused`. A **focus switch** re-points the active-window atom and refreshes menu enablement. **Close** is the butterfly: `File > Close` (with its `Cmd-W` accelerator) and the native window "X" fan **in** to one shared `close-piece!` — a **clean** piece just closes; a **dirty** piece is asked *Save / Don't Save / Cancel*, where Save writes it (in place, or through the save-mode picker for an unnamed piece) then closes, Don't Save discards and closes, and Cancel keeps the window open — and the closes that proceed pass through the single real close (`request-window-close!` → `close-window!`) and fan **out** to teardown, geometry persistence, and `:window-closed`. The "X" reaches that shared path through the window's optional `:window/on-close-request` hook, so the menu item, the accelerator, and the "X" are identical. Stadium nodes are events; the diamonds are the close decision — a decision shared with the Quit save pass, which §3.4 takes up.
 
 ```mermaid
 flowchart TD
@@ -376,13 +376,14 @@ flowchart TD
   %% ── CLOSE (butterfly: two entries in, teardown out) ──
   c0a(["File > Close / Cmd-W (active-piece-id)"]) --> waist["close-piece! mgr pool piece-id"]
   c0b(["X button: onCloseRequest then :window/on-close-request (own id)"]) --> waist
-  waist --> dirty{"dirty?"}
+  waist --> res["resolve-unsaved-piece! (shared with the Quit save pass)"]
+  res --> dirty{"dirty?"}
   dirty -- "no (clean)" --> rwc["request-window-close!"]
   dirty -- yes --> ask{"Save / Don't Save / Cancel"}
   ask -- "Don't Save" --> rwc
   ask -- Cancel --> ab(["abort: window stays"])
   ask -- Save --> loc{"recorded location?"}
-  loc -- yes --> sp["save-piece!"]
+  loc -- yes --> sp["write-piece!"]
   loc -- no --> pk["save-mode picker"]
   pk -- OK --> sp
   pk -- Cancel --> ab
@@ -394,6 +395,59 @@ flowchart TD
   cw --> c2["window/close! (jfx): Stage closes"]
   cw --> ce3([":window-closed"])
   ce3 --> f3["refresh-menu-text!"]
+```
+
+### 3.4 Quitting: the Same Decision, Across Every Piece
+
+The close decision above is not the close path's own. `resolve-unsaved-piece!` — clean, or *Save / Don't Save / Cancel*, with Save writing in place or through the save-mode picker — is shared with the **Quit save pass**, and the difference is only what the caller does with the answer. Close closes the window; the pass moves on to the next piece.
+
+Every quit gesture (the File menu's Quit/Exit item, the Ctrl+Q accelerator, macOS's Cmd+Q) dispatches `:ui/quit` to a single handler, and that handler announces and halts **nothing** until the pass has resolved every open piece window. A refusal anywhere — Cancel at the prompt, a dismissed save-mode picker, or a failed write — abandons the whole Quit: no `:app-shutting-down`, no `ig/halt!`, and every window still open, exactly as it was. This is what stops a quit gesture from silently discarding unsaved work.
+
+Three properties are worth stating explicitly, because each is load-bearing:
+
+- **One at a time.** Pieces are resolved in sequence: the next is not asked until the previous one's write has completed. The user answers one dialog, not a burst of them.
+- **Nothing is closed during the pass** — not even a piece the user chose to discard. Closing is left to the halt. Were a discarded piece closed where it is resolved, discarding piece A and then cancelling on piece B would abandon the Quit with A's window already gone and its changes destroyed. Deferring every close to the halt is what lets Cancel genuinely restore the status quo.
+- **The whole resolution occupies exactly one pool thread.** The pool is sized `cores-1`, so on a single-core machine it has one thread and anything needing a second would deadlock the shutdown. Hence `resolve-unsaved-piece!` blocks and returns its outcome instead of handing back a promise (a caller awaiting one would need a thread to park in), and performs its write directly through `write-piece!` instead of dispatching it through `save-piece!` (which would need a thread to run it while the first stayed parked). `save-piece!` remains the dispatching form for callers with nothing to wait for, and is `write-piece!` wrapped in that dispatch — so the guarantee that no write can skip its failure notification holds through both.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant JAT as JavaFX thread
+    participant Pool as Pool (one thread)
+    participant SRV as Backend
+    participant IG as Integrant
+
+    User->>JAT: Quit (menu item, Ctrl+Q, Cmd+Q)
+    JAT->>Pool: the quit handler starts the save pass
+    loop each open piece window, in turn
+        alt clean
+            Note over Pool: resolves as :clean, nothing asked
+        else dirty
+            Pool->>JAT: show-confirmation! (Save / Don't Save / Cancel)
+            JAT-->>Pool: answer
+            alt Save, location recorded
+                Pool->>SRV: save-piece(piece-id)
+                SRV-->>Pool: ack
+            else Save, unnamed
+                Pool->>JAT: show-piece-picker! in save mode
+                JAT-->>Pool: destination, or :cancelled
+                Pool->>SRV: save-piece(piece-id, dir-token, leaf)
+                SRV-->>Pool: ack
+            else Don't Save
+                Note over Pool: resolves as :discarded, no write
+            else Cancel
+                Note over Pool: the pass stops here
+            end
+        end
+    end
+    alt every piece resolved
+        Pool->>JAT: publish :app-shutting-down
+        Pool->>IG: ig/halt!
+        IG->>JAT: close every managed window, persisting geometry
+        IG->>Pool: thread pool shuts down
+    else any refusal
+        Note over Pool,IG: no announcement and no halt — every window stays open
+    end
 ```
 
 ---
