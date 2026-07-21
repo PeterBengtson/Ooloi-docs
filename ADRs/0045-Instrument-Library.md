@@ -1019,7 +1019,7 @@ state that does not need to be coordinated with other state.
 
 **STM refs** participate in Software Transactional Memory. Multiple refs can be read and written
 together inside a `dosync` block, which commits atomically or retries the entire block on conflict.
-STM is designed for coordinated multi-ref mutations — the canonical example in Ooloi is a VPD
+STM is designed for coordinated multi-ref mutations ([ADR-0004](0004-STM-for-concurrency.md)) — the canonical example in Ooloi is a VPD
 operation that must update a measure, a voice, and a layout atomically, all within the piece's STM
 ref. When multiple refs must change together and partial application would leave the system in an
 inconsistent state, STM is the right tool.

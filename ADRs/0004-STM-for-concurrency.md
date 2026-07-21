@@ -24,6 +24,8 @@ Rationale:
 
 7. Elimination of Traditional Threading Issues: Unlike traditional systems that require explicit locking mechanisms, STM eliminates entire classes of concurrency bugs while providing automatic conflict resolution for deterministic behavior.
 
+**What actually distinguishes STM from atoms here is coordination, not throughput.** The scalability points above (5, and the 100,000-updates/second capability) describe what the engine *can* do, not why STM was chosen over an atom — atoms scale just as well for *uncoordinated* writes, and contention is not a concern here in any case (clients are few, writes comparatively rare, which is exactly the regime in which STM's guarantees come for free). STM earns its place wherever consistency must span more than a single write. Today that shows up in two ways: a piece is held in a *single* STM ref — the piece registry itself uses an atom — so coordination currently means composing several mutations within that one ref atomically ([ADR-0045 §"Why atom, not STM ref"](0045-Instrument-Library.md)); and the change-detection funnel already relies on STM's transaction semantics beyond mere atomicity — its coalescing gate is a ref, so it rolls back on retry, and emission is dispatched through an agent held to commit ([ADR-0052 §4](0052-Change-Detection-and-Event-Generation.md)) — neither of which an atom provides. The multi-ref case becomes *literal* only if layouts or musicians are ever promoted to nested refs of their own; choosing STM now keeps that a local change rather than a concurrency-model rewrite. Developer-facing patterns for all of this are in the [Advanced Concurrency Patterns guide](../guides/ADVANCED_CONCURRENCY_PATTERNS.md).
+
 Consequences:
 - Pros:
   - Thread-safe operations with automatic conflict resolution.
@@ -44,3 +46,5 @@ Consequences:
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Undo/redo architecture leveraging STM for coordinated piece modifications
 - [ADR-0025: Server Statistics Architecture](0025-Server-Statistics-Architecture.md) - STM-gRPC transaction monitoring and performance metrics
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Single-authority model relying on STM for transactional piece modifications
+- [ADR-0045: Instrument Library](0045-Instrument-Library.md) - §"Why atom, not STM ref": the per-resource choice — an atom for single-container state (the IL, the piece registry), an STM ref for coordinated piece content
+- [ADR-0052: Change Detection and Event Generation](0052-Change-Detection-and-Event-Generation.md) - the change-detection funnel's coalescing gate and agent-deferred emission depend on STM transaction semantics (a ref that rolls back on retry; dispatch held to commit)

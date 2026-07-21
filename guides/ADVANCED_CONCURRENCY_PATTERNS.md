@@ -12,7 +12,7 @@
 
 ## Understanding Software Transactional Memory (STM)
 
-Before diving into parallel processing patterns, let's understand the foundation that makes safe concurrent programming possible in Ooloi.
+Before diving into parallel processing patterns, let's understand the foundation that makes safe concurrent programming possible in Ooloi. This guide is the *how*; the decision itself is [ADR-0004: STM for Concurrency](../ADRs/0004-STM-for-concurrency.md), and the per-resource choice between a plain atom and an STM ref is [ADR-0045 §"Why atom, not STM ref"](../ADRs/0045-Instrument-Library.md).
 
 ### The Concurrency Problem
 
@@ -448,6 +448,7 @@ This guide demonstrates how to leverage Ooloi's sophisticated concurrency archit
 - **Server architecture**: [Ooloi Server Architectural Guide](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md) - How these STM patterns integrate with distributed gRPC architecture
 - **gRPC integration**: [gRPC Communication and Flow Control](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md) - STM-gRPC coordination patterns
 - **Architecture**: [ADR-0004: STM for Concurrency](../ADRs/0004-STM-for-concurrency.md) - Architectural foundation for STM approach
+- **Atom vs STM ref**: [ADR-0045: Instrument Library](../ADRs/0045-Instrument-Library.md) §"Why atom, not STM ref" - when a single atom is correct and STM would only add overhead
 - **STM fundamentals**: Clojure documentation on Software Transactional Memory
 - **Performance considerations**: See Ooloi backend performance benchmarks
 
