@@ -407,6 +407,7 @@ Three properties are worth stating explicitly, because each is load-bearing:
 
 - **One at a time.** Pieces are resolved in sequence: the next is not asked until the previous one's write has completed. The user answers one dialog, not a burst of them.
 - **A decision takes effect where it is made.** Each window closes as the user answers it, rather than all of them at the halt — answer Save or Don't Save and the window goes, as it would in any other application. So an abandoned Quit leaves exactly the windows that were never resolved: pieces already saved or discarded closed as they were answered, and pieces after the refusal are never asked. Cancel abandons the *quit*, not the decisions already taken — a discarded piece's changes were destroyed by the user's own Don't Save.
+- **Each piece is brought forward before it is asked about.** Closing a resolved piece activates the next window in the stacking order, which is correct for an ordinary close but wrong here: with another window — an Instrument Library, say — sitting between two scores, that window takes focus and the next piece would be asked about from behind it. So the pass focuses its own subject and waits for the focus to *settle* before prompting. The wait matters beyond appearances, because a modal takes its owner from the focused window: prompting without waiting would centre the dialog on whichever window was focused before. The wait is bounded — that bound is on the window manager, not on the user — and on expiry the prompt is raised anyway rather than stalling the Quit.
 - **The whole resolution occupies exactly one pool thread.** The pool is sized `cores-1`, so on a single-core machine it has one thread and anything needing a second would deadlock the shutdown. Hence `resolve-unsaved-piece!` blocks and returns its outcome instead of handing back a promise (a caller awaiting one would need a thread to park in), and performs its write directly through `write-piece!` instead of dispatching it through `save-piece!` (which would need a thread to run it while the first stayed parked). `save-piece!` remains the dispatching form for callers with nothing to wait for, and is `write-piece!` wrapped in that dispatch — so the guarantee that no write can skip its failure notification holds through both.
 
 ```mermaid
@@ -423,6 +424,8 @@ sequenceDiagram
         alt clean
             Note over Pool: resolves as :clean, nothing asked
         else dirty
+            Pool->>JAT: focus this piece window, and wait for it to settle
+            JAT-->>Pool: the piece is now the foremost window
             Pool->>JAT: show-confirmation! (Save / Don't Save / Cancel)
             JAT-->>Pool: answer
             alt Save, location recorded
