@@ -407,8 +407,10 @@ surface — the frontend reaches undo functionality only through `SRV/undo-resou
 
 #### Mutation Sites — How Resources Register Undo Steps
 
-Each mutation site calls `push-undo!` after a successful mutation. The pattern is identical
-regardless of the resource type:
+A resource registers an undo step by calling `push-undo!` after a successful mutation. The
+entry shape — a description, an undo closure, and a redo closure over immutable state — is the
+same regardless of resource type; what differs is *where* the call sits, which follows the
+resource's mutation surface:
 
 ```clojure
 ;; Instrument Library — atom-based, optimistic locking
@@ -438,27 +440,37 @@ regardless of the resource type:
     (fn [] (apply-state! il-component old-instruments old-excluded))   ;; undo
     (fn [] (apply-state! il-component new-instruments new-excluded)))) ;; redo
 
-;; Piece — STM-based, dosync transactions
-;; Capture before inside dosync (in-transaction read is consistent with alter).
-;; push-undo! is called outside dosync to avoid side effects in a retrying transaction.
-;; The piece equivalent of apply-state! handles ref-set + invalidation broadcast
-;; (and any piece-specific persistence the future piece undo design requires) —
-;; the closure is one call, not several.
+;; Piece — STM-based, registered once at the gRPC execution boundary, not at each mutation
+;; site. The IL has one bespoke mutation operation and registers its undo step inside it.
+;; Pieces have no such per-operation seam — every piece mutation flows through the generic
+;; VPD funnel — so a piece registers once, at the backend gRPC boundary that owns the
+;; transaction: execute-atomic-operations for an SRV/atomic batch, and the single-method
+;; handler (wrapped as a batch of one) for a lone call. This is the same outermost-transaction
+;; boundary ADR-0052 §4 coalesces to a single :piece-structure-changed event, so one gesture
+;; is one transaction, one event, and one undo step. Undo is registered only on the
+;; client-facing SRV/ surface: a mutation issued backend-internally through api/ creates no
+;; undo step, because undo tracks user interaction, not every state change.
 (let [[before after]
-      (dosync
-        (let [before @piece-ref]
-          (alter piece-ref apply-mutation args)
-          [before @piece-ref]))]
-  (undo/push-undo! undo-mgr piece-id
-    description-key description-params            ;; e.g. :piece.undo/add-note {:pitch "C4" :measure 3}
-    (fn [] (apply-piece-state! piece-component before))
-    (fn [] (apply-piece-state! piece-component after))))
+      (with-coalesced-structural-change             ; the outermost-transaction boundary
+        (let [before @piece-ref]                    ; captured at the transaction's start
+          (run-the-transaction!)                    ; the SRV/atomic batch, or the lone call
+          [before @piece-ref]))]                    ; after = the committed value
+  (when-not (identical? before after)               ; register only a real change
+    (undo/push-undo! undo-mgr piece-id
+      undo-key undo-params
+      (fn [] (apply-piece-state! piece-component before))
+      (fn [] (apply-piece-state! piece-component after)))))
 ```
 
-The `description-key` and `description-params` are translation keys for the menu display.
-`(tr description-key description-params)` produces the user-facing string — e.g.
-`(tr :piece.undo/add-note {:pitch "C4" :measure 3})` → `"Add Note (C4, m. 3)"`.
-The undo manager stores these alongside the closures but never interprets them.
+The `undo-key` and `undo-params` are the entry's label, derived from the operation rather than
+hardcoded at a mutation site. A lone call keys on its method name — `:undo.<op>`, e.g.
+`:undo.add-musician`, known at the boundary; an `SRV/atomic` batch is many operations forming
+one logical gesture, so its caller supplies an explicit `:undo-key` / `:undo-params`,
+defaulting to a generic `:undo.atomic` when none is given. The prefix is `:undo.*` —
+resource-independent, because the API surface spans more than pieces — and a bespoke,
+diff-derived key (as the IL uses) remains available as an override wherever a richer
+description is wanted. `(tr undo-key undo-params)` produces the user-facing menu string; the
+undo manager stores the key and params alongside the closures but never interprets them.
 
 In both cases, `before` and `after` are immutable Clojure values captured by the closure.
 They share structure via persistent data structures. The undo manager never inspects them,
@@ -516,9 +528,11 @@ instrument list, the server decides what the user just did, the description flow
 through `get-undo-description` when the menu needs it.
 
 The same approach does **not** apply to pieces. Piece mutations have granular APIs
-(`add-note`, `delete-measure`, etc.), so each piece mutation site already knows its
-intent and passes a hardcoded description-key directly to `push-undo!` — no diff
-needed.
+(`add-musician`, `set-transposition`, etc.), so no server-side diff is needed: a lone call
+derives its label from the operation name (`:undo.<op>`) and an `SRV/atomic` batch carries an
+explicit `:undo-key` for the gesture it composes — both resolved at the gRPC boundary where the
+undo step is registered (see *Mutation Sites — How Resources Register Undo Steps*), not inside
+each mutation.
 
 #### Push-Based State Notification
 
