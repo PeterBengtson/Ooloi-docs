@@ -168,7 +168,6 @@ This pattern (`conj vpd attr-name`) is how VPDs interface with Specter for attri
 
 - **[Timewalking Guide](TIMEWALKING_GUIDE.md)** - Timewalking operations return VPD tuples for precise location tracking
 - **[Piece Manager Guide](PIECE_MANAGER_GUIDE.md)** - VPD operations in piece lifecycle management  
-- **[Specter Guide](SPECTER.md)** - Specter provides the underlying implementation for VPD operations
 
 ## Conclusion
 

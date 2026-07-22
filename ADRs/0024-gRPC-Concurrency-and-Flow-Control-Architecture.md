@@ -295,7 +295,6 @@ These transport-layer threading constraints necessitate careful architectural pa
 
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - STM architecture designed for concurrent bombardment
 - [ADR-0002: gRPC](0002-gRPC.md) - gRPC transport layer with inherent concurrency
-- [ADR-0019: STM-gRPC Batch Transactions](0019-STM-gRPC-Batch-Transactions.md) - Transaction boundary alignment
 - [ADR-0022: Lazy Frontend-Backend Architecture](0022-Lazy-Frontend-Backend-Architecture.md) - Event-driven synchronization
 - [ADR-0025: Server Statistics Architecture](0025-Server-Statistics-Architecture.md) - Event queue health monitoring and performance metrics
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Frontend event routing architecture relying on FIFO delivery guarantees from per-client drainer threads
