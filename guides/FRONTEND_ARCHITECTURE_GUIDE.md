@@ -460,6 +460,28 @@ sequenceDiagram
 
 ---
 
+### 3.5 Two Layers of Window State
+
+A window remembers two quite different things, and Ooloi keeps them in two files because they are not the same kind of fact.
+
+The first is **per-window**: where the window sat, how big it was, and whatever else its kind keeps — a piece window's two pane-expansion maps and its split-divider proportion, the settings and library windows' tile state. This is written continuously as you work — a quarter-second after you stop dragging or resizing, the moment you toggle a pane open or shut, and immediately when a window closes. It answers *how was this window arranged*.
+
+The second is **per-session**: which windows were open when you quit, and in what order they were stacked. No per-window record can answer that. A record exists for every window the application has ever shown, and a window you closed last week leaves a record indistinguishable from one that was on screen at the moment you quit. So the session list is its own small file — an ordered list, front-most first, carrying only each window's id, its kind, and for a score its piece UUID. No geometry, no view state, nothing that the per-window layer already holds.
+
+**The payoff is that restore reopens windows and nothing more.** On startup, each entry's kind is dispatched to the call that opens that kind of window — precisely the call the corresponding menu item makes — and from there every mechanism described above runs as it always does, because it *is* an ordinary open. The geometry merge happens because `show-window!` always does it; a score's panes come back arranged because `show-piece-window!` always seeds them. Restore contains no geometry code and no view-state code, and anything added to the per-window record in future is restored on the next open without restore knowing it exists.
+
+That division also explains the one piece of ordering that looks odd until you see why. The Quit save pass (§3.4) closes each window as its piece is answered, and those are ordinary closes — the on-close hooks and the geometry write both run. So the pass *preserves* everything per-window, window by window, as it goes. What it destroys is precisely the per-session fact: a closed window leaves both the window registry and the focus-order record. The session list is therefore **captured before the pass runs** and **written after it succeeds** — captured first because that is the only moment it exists, written last because a Quit the user cancels must leave nothing behind on disk.
+
+Only what can actually come back is written. A score the user saved is written; one they answered *Don't Save* on is not, since they have just said they did not want those changes. A score that needed nothing is written only if it had somewhere to be saved to in the first place — which the untouched Untitled score the application opens for you at startup does not, having never been written anywhere. Recording that one would put an entry in every session list that could not be honoured on the next launch, and launch-quit-launch is the most ordinary thing a person does.
+
+Restoring then proceeds **one window at a time**, each fully on screen before the next begins. The work behind an open is asynchronous, so opening them all at once would leave the resulting stacking order to chance. Determinism is worth more here than haste: if you left twenty-five windows open, they come back in the order you left them, and that takes the moment it takes.
+
+Membership is decided by the same map that does the reopening. A window specification holds live atoms and functions, so it cannot be serialised and a saved list can never be replayed into a window — restore has to map a recorded kind to a *call*, which means every restorable kind needs an entry there in any case. Reading membership off that same map costs nothing extra and makes one class of mistake impossible: a window is recorded exactly when something knows how to reopen it, so there can be no entry without an opener and no opener the list quietly ignores. Dialogs and the ambient indicators have no entry and are never recorded — the collaboration pill in particular must not come back, since it means *someone is in the session right now*, and on a cold start nobody is.
+
+See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) for the full specification.
+
+---
+
 ## 4. Pure Builders and Materialisation
 
 Section 2 showed the basic pattern: a private spec function returns a cljfx description map, a public `show-*!` function materialises it and hands the Node to `show-window!`. This section examines why that pattern exists, how it extends to the full range of UI construction, and where its firm boundaries lie.

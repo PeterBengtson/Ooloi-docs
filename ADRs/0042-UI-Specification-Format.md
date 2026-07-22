@@ -140,15 +140,23 @@ Backend plugins currently use piece settings (ADR-0016) with auto-generated UI v
   users yet — it exists for backend-described and plugin windows (see Problem Statement).
 
 **`:window/type`** (keyword, optional)
-- Semantic classification of the window — *what kind* of window this is (`:piece` today;
-  `:layout`, `:palette`, `:dialog` foreseen). `show-piece-window!` sets `:window/type :piece`;
-  `register-window!` stores it verbatim on the window-registry entry.
+- Semantic classification of the window — *what kind* of window this is. Every window carries
+  one: `:piece`, `:instrument-library`, `:palette` for the ambient indicators, and `:dialog` for
+  About, Settings, the piece picker and the connect dialog, with `:layout` arriving alongside
+  layout windows. `show-piece-window!` sets `:window/type :piece`; `register-window!` stores it
+  verbatim on the window-registry entry.
+- **The library type names its library.** It is `:instrument-library`, not `:library`: other
+  libraries are foreseen — clef libraries and their kind — and each will be its own window with
+  its own restorer, so the type names the specific library rather than reserving the general
+  term for whichever arrives first.
 - It is **not** a content source: the `:window-open-requested` pipeline never reads it, so it
   rides alongside whichever of `:window/content-spec` / `:window/factory` / `:window/spec-fn`
   builds the content. Its purpose is to *query and group* windows by role —
-  `ui-manager/piece-windows` filters `(= :piece (:window/type entry))`; the startup window-set
+  the UI Manager's by-type registry accessor returns the entries whose `:window/type` is in a
+  given set, and `ui-manager/piece-windows` is its `#{:piece}` call; the startup window-set
   gates on `(empty? (piece-windows mgr))` ("no piece window on-screen → open one New"), and
-  #184's restore reopens each window as its recorded type. A companion query reads
+  session restore reopens each window as its recorded type (see §*Two layers: per-window state,
+  and session membership*). A companion query reads
   `:window/type` the *other* way — from the **foremost** window:
   `ui.core.active-window/active-piece-id` answers "which piece is the user acting on?" by
   resolving the piece of the currently active window — a `:piece` window's `:window/id` *is* its
@@ -1042,7 +1050,7 @@ The constants split into two structural categories by mechanism, but both share 
 
 **Three-slot pattern.** Form-field error constants use the same three slots: background, foreground, border. This is not an accident — the three-slot pattern is what makes the cascade preserve the simulated border uniformly across every form control. Surface-tint constants like `list-surface-style` are the exception: with no border to preserve, they redefine only the slot they need (`-color-bg-default`).
 
-**Current status:** `list-surface-style` (the piece picker's listing surface, a single-slot `-color-bg-default` cascade) is the first realized cascade constant. The three-slot `error-style` for form field validation (#206) is future work; the cascade mechanism and three-slot pattern are documented here as its specification.
+**Current status:** `list-surface-style` (the piece picker's listing surface, a single-slot `-color-bg-default` cascade) is the first realized cascade constant. The three-slot `error-style` for form field validation is future work; the cascade mechanism and three-slot pattern are documented here as its specification.
 
 **Why not notifications or selection?** Notifications use AtlantaFX's separate `-color-notify-bg` token system (see Notification Styling below). Selection uses a direct `-fx-background-color` property (Category 2) because the lookup variable cascade leaks into nested children — containers can nest selectable items (musicians → instruments → staves), and a cascade would make descendants appear selected. A direct property confines the highlight to the target node only.
 
@@ -1068,7 +1076,7 @@ The constants split into two structural categories by mechanism, but both share 
 
 ##### Ooloi vocabulary, not AtlantaFX vocabulary
 
-Ooloi constants use Ooloi vocabulary. Notification constants are prefixed `notification-` (e.g. `notification-error-style`) to disambiguate from future form field constants (e.g. `error-style` in #206). The underlying AtlantaFX tokens (`-color-danger-muted`, `-color-notify-bg`, `-color-fg-muted`, `-color-bg-subtle`) remain as AtlantaFX named them — that is their vocabulary, not ours. The constants insulate the rest of the codebase from AtlantaFX's naming choices so that Ooloi plugins, tests, and call sites see a semantic vocabulary rooted in Ooloi's own domain concepts.
+Ooloi constants use Ooloi vocabulary. Notification constants are prefixed `notification-` (e.g. `notification-error-style`) to disambiguate from future form field constants (e.g. a forthcoming `error-style` for form fields). The underlying AtlantaFX tokens (`-color-danger-muted`, `-color-notify-bg`, `-color-fg-muted`, `-color-bg-subtle`) remain as AtlantaFX named them — that is their vocabulary, not ours. The constants insulate the rest of the codebase from AtlantaFX's naming choices so that Ooloi plugins, tests, and call sites see a semantic vocabulary rooted in Ooloi's own domain concepts.
 
 ##### Grep invariant test
 
@@ -1215,7 +1223,7 @@ Windows opt in by declaring `:window/title-decorators` (see §Metadata Keys). Th
 | Purpose | Approach | Usage |
 |---------|----------|-------|
 | Flat icon button (reset) | `Styles/FLAT` style class | Reset-to-default buttons beside settings fields |
-| Invalid input | `:error?` prop on formatter | Set declaratively at render time — the formatter will apply a Category 1 `styles/error-style` via `:style` when `:error? true` (#206) |
+| Invalid input | `:error?` prop on formatter | Set declaratively at render time — the formatter will apply a Category 1 `styles/error-style` via `:style` when `:error? true` (form-field validation, forthcoming) |
 
 `ooloi-dense-text-field`, `ooloi-dense-combo-box`, `ooloi-dense-spinner`, and `ooloi-labelled-field` all accept an `:error?` boolean prop. `ooloi-labelled-field` threads `:error?` through to its nested `:control`. Callers read their view-state `:field-errors` map at render time:
 
@@ -1387,6 +1395,18 @@ The implementation uses an atom + lock architecture for thread-safe persistence.
 ```
 
 **Several writers, one record.** `merge-window-state` (inside `persist-window!`) is a **shallow merge** into the entry matching `:id`, not a replace: keys the incoming map omits are preserved. This lets more than one writer update a window's record independently. The geometry writers above touch only `:position` / `:size` / …; a piece window additionally persists its **interior view state** — both panes' `>` expansion maps and the split-divider proportion — through its `:window/on-close` hook. The two coexist on the one record, keyed by the piece's UUID (stable across sessions): the on-close write runs first, while the window is still live, and `close-window!`'s geometry write follows in the same close, neither clobbering the other. On open, `show-piece-window!` seeds the expansion maps from the record and applies the divider *after* layout via `Platform.runLater` — setting a `SplitPane` divider before it lays out is unreliable (JDK-8092863). A record carrying only geometry — every non-piece window, and every not-yet-arranged piece — restores exactly as before.
+
+**Two layers: per-window state, and session membership.** The record above answers *how was this window arranged* — where it sat, how big it was, and whatever else its kind keeps. It cannot answer *was it open*. A record exists for every window that has ever been shown, and nothing in it distinguishes a window the user closed last week from one that was on screen when the application quit. That second fact is not per-window at all; it is a property of the session. So it lives in its own file beside `window-registry.edn`: an ordered list of the windows open at quit, front-most first, written once at quit and read once at startup. Each entry carries `:window/id` and `:window/type`, and nothing else — no geometry, no view state, and no separate piece id, since a piece window's `:window/id` *is* its piece UUID (a string; see [ADR-0012](0012-Persisting-Pieces.md)) and recording it twice would duplicate state the registry already holds.
+
+The division of labour between the two layers is strict, and it is what keeps restore small: **restore reopens windows; it does not restore their state.** The startup restore arm dispatches each entry's `:window/type` to the call that opens that kind of window — the same call the corresponding menu item makes — and from that point every mechanism above runs unchanged. `show-window!` merges the persisted geometry; the window kind's own open path seeds whatever interior state it keeps, as it does when the user opens that window by hand. Restore therefore contains no geometry code and no view-state code, and it inherits every future addition to the per-window record for free.
+
+**Membership is the restorer map.** A window spec holds live atoms, `spec-fn`s and handlers, so it cannot be serialised and a snapshot can never be replayed into a window. Restore must map a recorded type to a *call*, which means every restorable window kind needs one entry in that map regardless. Deriving membership from the same map costs nothing further and removes a whole class of drift: a window is snapshot-eligible exactly when something knows how to reopen it, so there can be no entry without an opener and no opener the session list ignores. Types absent from the map — dialogs, ambient indicators — are simply never recorded. The cost, stated plainly, is that a new restorable window kind takes one declaration, and omitting it means the window does not come back.
+
+**Timing follows from the same division.** The Quit save pass ([Frontend Architecture Guide §3.4](../guides/FRONTEND_ARCHITECTURE_GUIDE.md#34-quitting-the-same-decision-across-every-piece)) closes each window as its piece is resolved, and those are ordinary closes: the `:window/on-close` hooks run and the immediate geometry write runs, per window, correctly. What the closes destroy is only the per-session fact — a closed window leaves both the window registry and the focus-order record. The session list is therefore **captured before the pass**, because that is the only moment it exists, and **written after the pass succeeds**, because an abandoned quit must leave nothing behind on disk.
+
+**Only what can actually be restored is written.** A piece the pass resolved as `:saved` is written — it now has a location, whether it already had one or the save-mode picker supplied it. A `:discarded` piece is never written: the user has just said they did not want those changes, and restoring the window would contradict them. A `:clean` piece is written only if a location was already recorded for it at capture. That last condition is not a nicety — a piece minted by New carries no location, so nothing recorded one for it, and the untouched untitled piece the application opens at startup would otherwise be written into every snapshot and fail to resolve on every subsequent launch.
+
+**Restore opens one window at a time**, waiting for each to be registered and on screen before opening the next. The opens are asynchronous — resolving a piece by UUID is a backend call, and the window is built on the JavaFX thread — so firing them concurrently leaves registration order, and therefore the restored stacking order, undetermined. Determinism is the requirement here, not speed: a session of twenty-five windows takes as long as it takes.
 
 ### Application startup: window-set, menu, and readiness
 
