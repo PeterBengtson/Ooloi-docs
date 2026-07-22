@@ -246,7 +246,7 @@ The algorithm implements **capacity-constrained segmentation with proportional w
 ### Interface Contract
 
 ```clojure
-;; Input from Stages 1-2 (computed by ADR-0038):
+;; Input from Stages 1-2 (computed by ADR-00XX, forthcoming):
 stacks ;; Vector of stack maps
 
 ;; Each stack map:
