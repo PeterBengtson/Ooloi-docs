@@ -635,11 +635,11 @@ Remember to run tests (`lein midje`) before packaging to ensure everything is wo
 ## Related Documentation
 
 ### Architecture Guides
-- **[Polymorphic API Guide](/guides/POLYMORPHIC_API_GUIDE.md)** - Type system foundations underlying the shared model architecture
-- **[Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Server architecture built on shared model contracts
-- **[gRPC Communication and Flow Control](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - How shared types enable network serialization
-- **[Integrant Components Guide](/guides/INTEGRANT_COMPONENTS.md)** - Component lifecycle, the three-project wiring asymmetry, combined system dependency graph, startup sequence, and the full testing macro reference
+- **[Polymorphic API Guide](../guides/POLYMORPHIC_API_GUIDE.md)** - Type system foundations underlying the shared model architecture
+- **[Ooloi Server Architectural Guide](../guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Server architecture built on shared model contracts
+- **[gRPC Communication and Flow Control](../guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - How shared types enable network serialization
+- **[Integrant Components Guide](../guides/INTEGRANT_COMPONENTS.md)** - Component lifecycle, the three-project wiring asymmetry, combined system dependency graph, startup sequence, and the full testing macro reference
 
 ### Technical Documentation
-- **[ADR-0023: Shared Model Contracts](/ADRs/0023-Shared-Model-Contracts.md)** - Multi-project architecture decisions
-- **[gRPC Streaming & Threading Guide](/guides/GRPC_STREAMING_THREADING_GUIDE.md)** - Advanced streaming implementation patterns
+- **[ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md)** - Multi-project architecture decisions
+- **[gRPC Streaming & Threading Guide](../guides/GRPC_STREAMING_THREADING_GUIDE.md)** - Advanced streaming implementation patterns

@@ -84,7 +84,7 @@ Pursuant to Section 3.3, all core source files explicitly carry the Exhibit B no
 designating them as **Incompatible With Secondary Licenses** (MPL-2.0-no-copyleft-exception) 
 to prevent forced conversion or absorption into GNU GPL/LGPL/AGPL code paths.
 
-This means that any modifications to the core code must be shared under the same license. However, plugins developed using the interfaces and APIs provided by Ooloi can be proprietary. See the [LICENSE](LICENSE.md) file for more details.
+This means that any modifications to the core code must be shared under the same license. However, plugins developed using the interfaces and APIs provided by Ooloi can be proprietary. See the [LICENSE](../LICENSE.md) file for more details.
 
 ### Plugins
 
@@ -100,7 +100,7 @@ The user interface source language is UK English, which is the default and the c
 
 Bundled locales: Czech (Čeština), Danish (Dansk), Dutch (Nederlands), English UK (default), English US, Finnish (Suomi), French (Français), German (Deutsch), Greek (Ελληνικά), Hungarian (Magyar), Icelandic (Íslenska), Italian (Italiano), Japanese (日本語), Korean (한국어), Norwegian Bokmål, Polish (Polski), Portuguese — Brazil (Português), Portuguese — Portugal (Português), Simplified Chinese (简体中文), Spanish (Español), Swedish (Svenska), Ukrainian (Українська).
 
-**Translation quality caveat.** All non-English locales are AI-generated translations and require review by native speakers before they should be considered authoritative. Translation quality varies by language. Localisation is a natural community-driven contribution area — corrections to existing locales and submissions of new locales are welcome. See [ADR-0039](ADRs/0039-Localisation-Architecture.md) for the architectural model and the PO-file workflow.
+**Translation quality caveat.** All non-English locales are AI-generated translations and require review by native speakers before they should be considered authoritative. Translation quality varies by language. Localisation is a natural community-driven contribution area — corrections to existing locales and submissions of new locales are welcome. See [ADR-0039](../ADRs/0039-Localisation-Architecture.md) for the architectural model and the PO-file workflow.
 
 ## Code of Conduct
 
@@ -111,7 +111,7 @@ We are committed to providing a friendly, safe, and welcoming environment for al
 1. **Server-Client Architecture**
    - Backend service handles computations, formatting, and data management
    - Frontend service manages UI and rendering
-   - Combined desktop application bundles frontend and backend in a single JVM; standalone server mode available for dedicated deployments (see [ADR-0036](/ADRs/0036-Hybrid-Transport-Architecture.md))
+   - Combined desktop application bundles frontend and backend in a single JVM; standalone server mode available for dedicated deployments (see [ADR-0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md))
    - Utilizes multithreading and multiprocessing for efficiency
 
 2. **Backend (Clojure)**
@@ -180,14 +180,14 @@ The system's concurrency model, powered by Clojure's STM and enhanced by Specter
 
 | Concept | Description | Key Files | ADR |
 |---------|-------------|-----------|-----|
-| Vector Path Descriptors (VPDs) | Addressing mechanism for navigating the nested piece structure | [`ops/vpd.clj`](/shared/src/main/clojure/ooloi/shared/ops/vpd.clj), [`VPDs.md`](/guides/VPDs.md) | [ADR-0008](/ADRs/0008-VPDs.md) |
-| Pure Tree Structure | Hierarchical representation of musical elements with ID-based references | [`models/musical/piece.clj`](/shared/src/main/clojure/ooloi/shared/models/musical/piece.clj) | [ADR-0010](/ADRs/0010-Pure-Trees.md) |
-| **Shared Model Contracts** | Unified data models and interfaces across frontend/backend | [`shared/models/`](/shared/src/main/clojure/ooloi/shared/models/), [`interfaces.clj`](/shared/src/main/clojure/ooloi/shared/interfaces.clj) | [ADR-0023](/ADRs/0023-Shared-Model-Contracts.md) |
-| Software Transactional Memory | Thread-safe concurrent operations using Clojure's STM | Used throughout with `ref` and `dosync` | [ADR-0004](/ADRs/0004-STM-for-concurrency.md) |
-| Plugin Architecture | Extensible system supporting plugins in any JVM language | Core interfaces in backend | [ADR-0003](/ADRs/0003-Plugins.md) |
-| Shared Structure | Handling elements that span across the musical piece tree | [`ops/attachment_resolver.clj`](/shared/src/main/clojure/ooloi/shared/ops/attachment-resolver.clj) | [ADR-0011](/ADRs/0011-Shared-Structure.md) |
-| Timewalk/Traversal | Transducer-based traversal of piece structure with temporal coordination | [`ops/timewalk.clj`](/shared/src/main/clojure/ooloi/shared/ops/timewalk.clj) | [ADR-0014](/ADRs/0014-Timewalk.md) |
-| SMuFL Fonts | Standard Music Font Layout for notation rendering | Font files in [`SMuFL-fonts/`](/SMuFL-fonts/) | [ADR-0006](/ADRs/0006-SMuFL.md) |
+| Vector Path Descriptors (VPDs) | Addressing mechanism for navigating the nested piece structure | [`ops/vpd.clj`](/shared/src/main/clojure/ooloi/shared/ops/vpd.clj), [`VPDs.md`](../guides/VPDs.md) | [ADR-0008](../ADRs/0008-VPDs.md) |
+| Pure Tree Structure | Hierarchical representation of musical elements with ID-based references | [`models/musical/piece.clj`](/shared/src/main/clojure/ooloi/shared/models/musical/piece.clj) | [ADR-0010](../ADRs/0010-Pure-Trees.md) |
+| **Shared Model Contracts** | Unified data models and interfaces across frontend/backend | [`shared/models/`](/shared/src/main/clojure/ooloi/shared/models/), [`interfaces.clj`](/shared/src/main/clojure/ooloi/shared/interfaces.clj) | [ADR-0023](../ADRs/0023-Shared-Model-Contracts.md) |
+| Software Transactional Memory | Thread-safe concurrent operations using Clojure's STM | Used throughout with `ref` and `dosync` | [ADR-0004](../ADRs/0004-STM-for-concurrency.md) |
+| Plugin Architecture | Extensible system supporting plugins in any JVM language | Core interfaces in backend | [ADR-0003](../ADRs/0003-Plugins.md) |
+| Shared Structure | Handling elements that span across the musical piece tree | [`ops/attachment_resolver.clj`](/shared/src/main/clojure/ooloi/shared/ops/attachment-resolver.clj) | [ADR-0011](../ADRs/0011-Shared-Structure.md) |
+| Timewalk/Traversal | Transducer-based traversal of piece structure with temporal coordination | [`ops/timewalk.clj`](/shared/src/main/clojure/ooloi/shared/ops/timewalk.clj) | [ADR-0014](../ADRs/0014-Timewalk.md) |
+| SMuFL Fonts | Standard Music Font Layout for notation rendering | Font files in [`SMuFL-fonts/`](/SMuFL-fonts/) | [ADR-0006](../ADRs/0006-SMuFL.md) |
 
 ## Directory Structure
 
@@ -230,11 +230,11 @@ The core server that handles musical data, calculations, and business logic.
 - **Setup**: Requires shared project to be built first
 
 ### 📁 **[Frontend](/frontend/)** - User Interface Code Library
-The presentation layer providing the graphical interface for music notation. Consumed by the combined application built from shared/; does not produce a standalone artifact. See [ADR-0036](/ADRs/0036-Hybrid-Transport-Architecture.md) for the deployment architecture.
+The presentation layer providing the graphical interface for music notation. Consumed by the combined application built from shared/; does not produce a standalone artifact. See [ADR-0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md) for the deployment architecture.
 - **Key Features**: gRPC client, UI manager, comprehensive configuration system, CLI/environment variable support
 - **Development**: Retains `lein run` for development and testing; requires shared project to be built first
 
 For technical architecture details, see:
-- [Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md) - Comprehensive server architecture analysis and enterprise patterns
-- [gRPC Communication and Flow Control Guide](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md) - Practical communication patterns and collaborative scenarios
-- [ADR-0024: gRPC Concurrency and Flow Control Architecture](/ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Technical decisions behind communication patterns
+- [Ooloi Server Architectural Guide](../guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md) - Comprehensive server architecture analysis and enterprise patterns
+- [gRPC Communication and Flow Control Guide](../guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md) - Practical communication patterns and collaborative scenarios
+- [ADR-0024: gRPC Concurrency and Flow Control Architecture](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Technical decisions behind communication patterns

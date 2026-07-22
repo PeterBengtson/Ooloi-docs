@@ -177,7 +177,7 @@ The closure captures its validation context at construction time. Consumers call
 
 Validation errors produce two simultaneous effects:
 
-1. **Visual styling** — the field receives `:error? true`, which applies `styles/error-style` (Category 1 lookup variable cascade; see [UI Architecture](../research/UI_ARCHITECTURE.md)). The field turns danger-coloured.
+1. **Visual styling** — the field receives `:error? true`, which applies `styles/error-style` (Category 1 lookup variable cascade). The field turns danger-coloured.
 2. **Error notification** — `show-error-notification!` displays the closure's error message. Error notifications do not auto-dismiss — they persist until the user explicitly dismisses them or the value becomes valid (dismissed programmatically via `dismiss-notification!`).
 
 This uses existing infrastructure with no new UI components. A future refinement may add inline pop-up messages anchored to the field for stronger spatial association; the closure interface remains unchanged — only the consumer changes from notification to inline display.

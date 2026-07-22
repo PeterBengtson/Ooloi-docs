@@ -15,7 +15,7 @@ MIDI to drive external synthesisers or software instruments?
 The answer is that playback operates at a layer above MIDI. Ooloi's playback plugins
 control virtual instruments directly through host parameter automation — the same
 mechanism a DAW uses when it moves a fader or selects an articulation on a loaded
-instrument. This approach, specified in [ADR-0041 (OVID)](ADRs/0041-Ooloi-Virtual-Instrument-Definition-OVID.md),
+instrument. This approach, specified in [ADR-0041 (OVID)](../ADRs/0041-Ooloi-Virtual-Instrument-Definition-OVID.md),
 gives the playback engine per-note tuning, continuous parameter control, and direct
 articulation selection without the constraints MIDI imposes.
 
@@ -31,14 +31,14 @@ through OS-level MIDI.
 There is also the question of where playback lives. Ooloi's backend runs as a server —
 potentially in the cloud, certainly without audio hardware. All audio processing
 happens on the frontend client, which hosts playback plugins locally
-([ADR-0027](ADRs/0027-Plugin-Based-Audio-Architecture.md)). MIDI output to external
+([ADR-0027](../ADRs/0027-Plugin-Based-Audio-Architecture.md)). MIDI output to external
 devices is a client-side concern by definition. If a user needs MIDI output — to drive
 a hardware synthesiser, or to route into a DAW — a plugin can provide it. The core
 system does not, because the core system's playback requirements are already better
 served by direct host control.
 
 For how this approach relates to MIDI mockups and DAW template workflows, see
-[ADR-0041](ADRs/0041-Ooloi-Virtual-Instrument-Definition-OVID.md).
+[ADR-0041](../ADRs/0041-Ooloi-Virtual-Instrument-Definition-OVID.md).
 
 ---
 
@@ -46,7 +46,7 @@ For how this approach relates to MIDI mockups and DAW template workflows, see
 
 MIDI input serves one purpose: note entry in Flow Mode.
 
-Flow Mode ([ADR-0032](ADRs/0032-Flow-Mode.md)) is Ooloi's primary input method — a
+Flow Mode ([ADR-0032](../ADRs/0032-Flow-Mode.md)) is Ooloi's primary input method — a
 stateful modal keyboard paradigm where the computer keyboard governs rhythm and
 articulation while a MIDI keyboard provides pitch. The combination is fast in a way
 neither instrument alone achieves: both hands are productive simultaneously, and the
@@ -94,7 +94,7 @@ invasive, and sufficient.
 ## How Events Flow
 
 A MIDI message that passes the input filter becomes a map and is published to the
-frontend event bus ([ADR-0031](ADRs/0031-Frontend-Event-Driven-Architecture.md)) under
+frontend event bus ([ADR-0031](../ADRs/0031-Frontend-Event-Driven-Architecture.md)) under
 the `:midi` category. The Receiver implementation — the only code that touches
 `javax.sound.midi` objects directly — does nothing else:
 
@@ -137,7 +137,7 @@ launches, and rescans periodically to handle devices connected or disconnected a
 startup.
 
 The selected device is stored as a frontend app setting — `:midi/input-device-id` —
-under the settings system described in [ADR-0043](ADRs/0043-Frontend-Settings.md).
+under the settings system described in [ADR-0043](../ADRs/0043-Frontend-Settings.md).
 The Settings window auto-generates a dropdown populated with currently available
 physical input devices. Virtual and loopback ports are excluded by heuristic (names
 containing "Virtual", "Through", "IAC", "Bus", and similar markers). When only one
@@ -169,15 +169,15 @@ The core stays narrow because note entry is the only thing MIDI input needs to d
 
 ## Related ADRs
 
-- [ADR-0027: Plugin-Based Audio Architecture](ADRs/0027-Plugin-Based-Audio-Architecture.md) —
+- [ADR-0027: Plugin-Based Audio Architecture](../ADRs/0027-Plugin-Based-Audio-Architecture.md) —
   Why the core has no audio or MIDI output; all playback delegated to frontend plugins
-- [ADR-0031: Frontend Event-Driven Architecture](ADRs/0031-Frontend-Event-Driven-Architecture.md) —
+- [ADR-0031: Frontend Event-Driven Architecture](../ADRs/0031-Frontend-Event-Driven-Architecture.md) —
   The event bus that MIDI events flow through
-- [ADR-0032: Flow Mode](ADRs/0032-Flow-Mode.md) —
+- [ADR-0032: Flow Mode](../ADRs/0032-Flow-Mode.md) —
   The input paradigm that consumes MIDI pitch events
-- [ADR-0041: Ooloi Virtual Instrument Definition (OVID)](ADRs/0041-Ooloi-Virtual-Instrument-Definition-OVID.md) —
+- [ADR-0041: Ooloi Virtual Instrument Definition (OVID)](../ADRs/0041-Ooloi-Virtual-Instrument-Definition-OVID.md) —
   How playback plugins control virtual instruments without MIDI output
-- [ADR-0043: Frontend Settings](ADRs/0043-Frontend-Settings.md) —
+- [ADR-0043: Frontend Settings](../ADRs/0043-Frontend-Settings.md) —
   Device selection persistence and the settings system
-- [ADR-0044: MIDI Input Library and Boundary Architecture](ADRs/0044-MIDI-Input-Library-and-Boundary-Architecture.md) —
+- [ADR-0044: MIDI Input Library and Boundary Architecture](../ADRs/0044-MIDI-Input-Library-and-Boundary-Architecture.md) —
   The formal decisions behind this guide: `javax.sound.midi`, CoreMidi4J, and the hard input boundary filter

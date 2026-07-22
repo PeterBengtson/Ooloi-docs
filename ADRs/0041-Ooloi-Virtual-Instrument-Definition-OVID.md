@@ -925,7 +925,7 @@ These interfaces are VST3-specific. AU provides different mechanisms for similar
 ## References
 
 - [ADR-0027: Plugin-Based Audio Architecture](0027-Plugin-Based-Audio-Architecture.md) — Establishes audio belongs in plugins
-- [ADR-0003: Plugin Architecture](0003-Plugin-Architecture.md) — Plugin system design
+- [ADR-0003: Plugin Architecture](0003-Plugins.md) — Plugin system design
 - Igor Engraver Synth Matrices (1996-2001) — Precursor device description architecture
 - [EBU R128](https://tech.ebu.ch/docs/r/r128.pdf) — Loudness normalisation recommendation
 - [ITU-R BS.1770](https://www.itu.int/rec/R-REC-BS.1770) — Loudness measurement algorithms

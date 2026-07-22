@@ -612,11 +612,11 @@ Remember to run tests (`lein midje`) before packaging to ensure everything is wo
 ## Related Documentation
 
 ### Architecture Guides
-- **[Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Complete server architecture analysis and enterprise patterns
-- **[gRPC Communication and Flow Control](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - Communication patterns and collaborative scenarios
-- **[Piece Manager Guide](/guides/PIECE_MANAGER_GUIDE.md)** - STM-based storage operations and lifecycle management
-- **[Advanced Concurrency Patterns](/guides/ADVANCED_CONCURRENCY_PATTERNS.md)** - STM coordination patterns used in server implementation
+- **[Ooloi Server Architectural Guide](../guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Complete server architecture analysis and enterprise patterns
+- **[gRPC Communication and Flow Control](../guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - Communication patterns and collaborative scenarios
+- **[Piece Manager Guide](../guides/PIECE_MANAGER_GUIDE.md)** - STM-based storage operations and lifecycle management
+- **[Advanced Concurrency Patterns](../guides/ADVANCED_CONCURRENCY_PATTERNS.md)** - STM coordination patterns used in server implementation
 
 ### Technical Documentation
-- **[ADR-0019: In-Process gRPC Transport Optimization](/ADRs/0019-In-Process-gRPC-Transport-Optimization.md)** - Transport performance optimization
-- **[ADR-0024: gRPC Concurrency and Flow Control Architecture](/ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)** - Technical decisions behind communication patterns
+- **[ADR-0019: In-Process gRPC Transport Optimization](../ADRs/0019-In-Process-gRPC-Transport-Optimization.md)** - Transport performance optimization
+- **[ADR-0024: gRPC Concurrency and Flow Control Architecture](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)** - Technical decisions behind communication patterns

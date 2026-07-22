@@ -125,7 +125,7 @@ The verb stays the same, only the VPD depth changes. This is the architectural b
 
 ### The verb hides representation, too — not only depth
 
-The pattern reaches further than depth: the same verb works even when the target's *internal representation* differs from what the verb implies. A **Layout** — a score or a part — does not contain Musicians. It holds `:musician-uuids`, a flat vector of musician *references* into the piece's authoritative musician list (the score/part model, [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md)). Yet you assign musicians to a layout, reorder them, and remove them with the ordinary verbs:
+The pattern reaches further than depth: the same verb works even when the target's *internal representation* differs from what the verb implies. A **Layout** — a score or a part — does not contain Musicians. It holds `:musician-uuids`, a flat vector of musician *references* into the piece's authoritative musician list (the score/part model, [ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md)). Yet you assign musicians to a layout, reorder them, and remove them with the ordinary verbs:
 
 ```clojure
 (api/add-musician     [:l 0] piece-id musician)      ; records the musician's reference in layout 0
@@ -187,7 +187,7 @@ But the add alone is not yet a clone: the copy still carries the source's struct
    {:method-name :individuate    :vpd [:m 1 0] :piece-id piece-id :parameters []}])         ; re-id that copy → an independent clone
 ```
 
-`individuate` re-ids the just-added copy at its landing VPD so it shares no identity with the source ([ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md)). Structural sharing plus copy-on-write means the shared content costs nothing until an edit lands on one copy.
+`individuate` re-ids the just-added copy at its landing VPD so it shares no identity with the source ([ADR-0051](../ADRs/0051-Filesystem-Operations-Real-and-Virtual.md)). Structural sharing plus copy-on-write means the shared content costs nothing until an edit lands on one copy.
 
 The discriminator is `vpd?`: a vector shaped like a VPD (empty, or prefixed `:m`/`:l`/`:musicians`/`:layouts`) is a reference to resolve; anything else — a record, a keyword — is an element in hand, added as-is. Because every `add-<elem>` and `add-item` funnels through the same VPD-form insert, this holds for the whole family, at every level, with no per-operation wiring.
 
@@ -943,7 +943,7 @@ A drag-and-drop reorder in the UI composes exactly one such call inside an [`SRV
 
 ### No whole-piece transfer — you address into the piece
 
-There is no `get-piece` and no `set-piece`: the piece never crosses the wire whole. This is a boundary, not a gap ([ADR-0040](0040-Single-Authority-State-Model.md) §*Operations as the Only Unit of Truth*) — the authoritative piece lives only on the backend, and the frontend never holds it whole. You work with it across `SRV/`:
+There is no `get-piece` and no `set-piece`: the piece never crosses the wire whole. This is a boundary, not a gap ([ADR-0040](../ADRs/0040-Single-Authority-State-Model.md) §*Operations as the Only Unit of Truth*) — the authoritative piece lives only on the backend, and the frontend never holds it whole. You work with it across `SRV/`:
 
 ```clojure
 (require '[ooloi.frontend.api.remote-api :as SRV])
@@ -963,7 +963,7 @@ There is no `get-piece` and no `set-piece`: the piece never crosses the wire who
 
 Element-level get/set is entirely normal — `get-instrument` / `set-instrument`, `get-staff` / `set-staff`, `get-name` / `set-name`. What has no operation is the *whole piece*.
 
-Every call carries values across the wire with full fidelity — `OoloiValue` preserves Clojure types exactly ([ADR-0046](0046-Reference-Passing-In-Process-Transport.md), [ADR-0018](0018-API-gRPC-Interface-and-Events.md)) — so what you read is what the backend holds, and a value you submit lands identical. A whole-piece roundtrip (`get-piece` → edit locally → `set-piece`) would in fact work on that fidelity, and it is the sharpest proof of it — but the pair is deliberately withheld, to underline that the piece lives on the backend and changes only through operations against it ([ADR-0040](0040-Single-Authority-State-Model.md)). The backend's undo/redo now also leans on that absence — every piece mutation is a categorised VPD operation, with nothing uncategorised to escape capture. The boundary is a choice, not a technical limit: reintroducing the pair, were it wanted, is straightforward.
+Every call carries values across the wire with full fidelity — `OoloiValue` preserves Clojure types exactly ([ADR-0046](../ADRs/0046-Reference-Passing-In-Process-Transport.md), [ADR-0018](../ADRs/0018-API-gRPC-Interface-and-Events.md)) — so what you read is what the backend holds, and a value you submit lands identical. A whole-piece roundtrip (`get-piece` → edit locally → `set-piece`) would in fact work on that fidelity, and it is the sharpest proof of it — but the pair is deliberately withheld, to underline that the piece lives on the backend and changes only through operations against it ([ADR-0040](../ADRs/0040-Single-Authority-State-Model.md)). The backend's undo/redo now also leans on that absence — every piece mutation is a categorised VPD operation, with nothing uncategorised to escape capture. The boundary is a choice, not a technical limit: reintroducing the pair, were it wanted, is straightforward.
 
 ## Cross-References
 

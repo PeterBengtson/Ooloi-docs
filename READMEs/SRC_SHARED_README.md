@@ -347,7 +347,7 @@ hacks leak into production and obscure what the multimethod is actually selectin
 When extracting or adding Integrant components, the dependency graph should be visible in the
 config map, not hidden in `init-key` bodies that reach into sibling components' fields. When a
 consumer reads state from a sibling component, that state usually wants to be its own component
-with an explicit `ig/ref`. See [INTEGRANT_COMPONENTS §2a — Component Design Principles](../../../../../guides/INTEGRANT_COMPONENTS.md#2a-component-design-principles)
+with an explicit `ig/ref`. See [INTEGRANT_COMPONENTS §2a — Component Design Principles](../guides/INTEGRANT_COMPONENTS.md#2a-component-design-principles)
 for the full heuristic and worked example.
 
 ## Adding New Multimethods
@@ -464,7 +464,7 @@ tests or production. Use `th/run-on-fx-thread-sync!` in tests, or a `promise` fo
 coordination.
 
 The test helpers live on the test classpath and nowhere else. A test helper may never be placed
-in a production (`src/`) file — see [shared/test/util/README.md](../../../../test/util/README.md).
+in a production (`src/`) file — see [shared/test/util/README.md](../../../../../test/util/README.md).
 
 ### `util.frontend` — JavaFX test helpers
 
@@ -549,7 +549,7 @@ tests can require util.server but never auto-load util.client.
 
 For the full source-root layout, classpath consumption matrix, and the decision
 tree for where to put a new test helper, see
-[`shared/test/util/README.md`](../../../test/util/README.md).
+[`shared/test/util/README.md`](../../../../../test/util/README.md).
 
 **Typical patterns:**
 
@@ -595,24 +595,24 @@ All three test suites (shared, backend, frontend) must pass for project success.
 
 For detailed information on specific architectural topics, see these guides:
 
-- **[POLYMORPHIC_API_GUIDE.md](../../../guides/POLYMORPHIC_API_GUIDE.md)** - Complete guide to Ooloi's dual-dispatch polymorphic API
+- **[POLYMORPHIC_API_GUIDE.md](../guides/POLYMORPHIC_API_GUIDE.md)** - Complete guide to Ooloi's dual-dispatch polymorphic API
   - VPD vs object dispatch patterns
   - Constructors, accessors, and mutators
   - Threading macros and return value guarantees
   - VPD addressing for remote operations
 
-- **[VPDs.md](../../../guides/VPDs.md)** - Vector Path Descriptors usage patterns
+- **[VPDs.md](../guides/VPDs.md)** - Vector Path Descriptors usage patterns
   - Compact vs navigator forms
   - Addressing across the musical tree
   - Remote operation patterns
 
-- **[TIMEWALKING_GUIDE.md](../../../guides/TIMEWALKING_GUIDE.md)** - Musical structure traversal
+- **[TIMEWALKING_GUIDE.md](../guides/TIMEWALKING_GUIDE.md)** - Musical structure traversal
   - Replaces recursive descent with transducer-based temporal coordination
   - Practical timewalk usage
   - Transducer composition patterns
   - Real-world examples
 
-- **[OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](../../../guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Server architecture
+- **[OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](../guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Server architecture
   - STM-based piece management
   - Concurrency patterns
   - Thread-safety guarantees

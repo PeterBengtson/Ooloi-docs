@@ -13,7 +13,7 @@ The core challenges are:
 3. **Variable Thickness Rendering**: Creating slur shapes with rounded endpoints and variable thickness, following copper plate engraving aesthetics
 4. **Visual Integration**: Storing the resulting curves in the appropriate MeasureView visual hierarchy structures
 
-This ADR establishes the foundational algorithms for slur shape computation. A follow-up ADR ([ADR-00XX](00XX-Slur-and-Tie-Geometry.md)) will address the complete geometric constraint solving system — collision detection, the progressive solver, nested and overlapping slurs, cross-system breaks, and the interaction between slurs and other notation elements within the phase-5 processing sequence.
+This ADR establishes the foundational algorithms for slur shape computation. A follow-up ADR (ADR-00XX) will address the complete geometric constraint solving system — collision detection, the progressive solver, nested and overlapping slurs, cross-system breaks, and the interaction between slurs and other notation elements within the phase-5 processing sequence.
 
 ## Musical Slur Characteristics (Based on Traditional Engraving)
 
@@ -272,7 +272,7 @@ This ADR establishes the basic algorithm. The following cases require the progre
 
 ## Related Decisions
 
-- **[ADR-00XX: Slur and Tie Geometry](00XX-Slur-and-Tie-Geometry.md)** — Follow-up: progressive solver, collision detection, nested/overlapping slurs, cross-system breaks, tie geometry, and the complete phase-5 processing sequence
+- **ADR-00XX: Slur and Tie Geometry** — Follow-up: progressive solver, collision detection, nested/overlapping slurs, cross-system breaks, tie geometry, and the complete phase-5 processing sequence
 - **[ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md)** — Slur formatting is part of pipeline stage 5 (Spanners and Margins)
 - **[ADR-0038: Backend-Authoritative Rendering](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)** — Rendering boundary constraints: the slur algorithm consumes resolved semantics and layout decisions without introducing new semantic state or backward causality
 - **[ADR-0014: Timewalk](0014-Timewalk.md)** — Timewalking provides the point collection algorithm

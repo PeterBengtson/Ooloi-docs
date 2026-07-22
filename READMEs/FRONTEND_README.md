@@ -558,10 +558,10 @@ See [ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md) f
 ## Related Documentation
 
 ### Architecture Guides  
-- **[Polymorphic API Guide](/guides/POLYMORPHIC_API_GUIDE.md)** - Type system foundations that frontend development builds upon
-- **[gRPC Communication and Flow Control](/guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - Client-server communication patterns for frontend integration
-- **[Ooloi Server Architectural Guide](/guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Understanding the server architecture that frontend connects to
+- **[Polymorphic API Guide](../guides/POLYMORPHIC_API_GUIDE.md)** - Type system foundations that frontend development builds upon
+- **[gRPC Communication and Flow Control](../guides/GRPC_COMMUNICATION_AND_FLOW_CONTROL.md)** - Client-server communication patterns for frontend integration
+- **[Ooloi Server Architectural Guide](../guides/OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** - Understanding the server architecture that frontend connects to
 
 ### Technical Documentation
-- **[ADR-0023: Shared Model Contracts](/ADRs/0023-Shared-Model-Contracts.md)** - Shared model architecture that frontend uses
-- **[ADR-0022: Lazy Frontend-Backend Architecture](/ADRs/0022-Lazy-Frontend-Backend-Architecture.md)** - Frontend-backend interaction patterns
+- **[ADR-0023: Shared Model Contracts](../ADRs/0023-Shared-Model-Contracts.md)** - Shared model architecture that frontend uses
+- **[ADR-0022: Lazy Frontend-Backend Architecture](../ADRs/0022-Lazy-Frontend-Backend-Architecture.md)** - Frontend-backend interaction patterns
