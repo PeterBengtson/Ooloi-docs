@@ -274,7 +274,7 @@ The gutter is *additional* to the measure's width, not part of it. When a measur
 - `:gutter` must be non-negative (default 0N)
 - At least one feasible segmentation must exist (the entire sequence fits on some number of systems)
 
-The computation of width values is handled by upstream stages. If preconditions are violated, behavior is undefined.
+The computation of width values is handled by upstream stages, and will be specified in a forthcoming ADR on horizontal spacing (ADR-00XX). If preconditions are violated, behavior is undefined.
 
 ### Ideal Width Semantics
 
@@ -1247,6 +1247,7 @@ The formal validation will determine whether the baseline approach is sufficient
 
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) (pipeline architecture, Stage 3 system breaking position, gutter model, closed semantic model)
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (accidental algorithm that closes the semantic model; tied-note bypass rules inform gutter requirements)
+- **ADR-00XX: Horizontal Spacing** — forthcoming: upstream computation of min/ideal/gutter widths
 - [ADR-0014: Timewalk](0014-Timewalk.md) (temporal traversal providing measure discovery)
 - [ADR-0029: Global Hash-Consing](0029-Global-Hash-Consing.md) (immutable data structures enabling stage separation)
 - [Knuth–Plass line-breaking algorithm](https://en.wikipedia.org/wiki/Knuth%E2%80%93Plass_line-breaking_algorithm) - Wikipedia overview
