@@ -1,8 +1,11 @@
 # ADR-0027: Plugin-Based Audio Architecture
 
+## Status
+
+Accepted
+
 ## Table of Contents
 
-- [Status](#status)
 - [Context](#context)
   - [Historical Context: Igor Engraver's Approach (1996-2001)](#historical-context-igor-engravers-approach-1996-2001)
   - [Frontend-Backend Audio Separation](#frontend-backend-audio-separation)
@@ -34,10 +37,6 @@
   - [Advanced Humanisation](#advanced-humanisation)
   - [Professional Workflow Integration](#professional-workflow-integration)
 - [Conclusion](#conclusion)
-
-## Status
-
-Accepted - September 13, 2025
 
 ## Context
 

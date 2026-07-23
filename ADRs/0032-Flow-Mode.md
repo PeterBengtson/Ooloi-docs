@@ -1,9 +1,8 @@
 # ADR-0032: Ooloi Flow Mode
 
-**Status:** ACCEPTED
-**Date:** 2025-10-20
+## Status
 
----
+Accepted
 
 ## Table of Contents
 

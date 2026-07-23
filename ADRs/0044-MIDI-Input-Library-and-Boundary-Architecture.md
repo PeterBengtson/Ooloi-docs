@@ -1,9 +1,8 @@
 # ADR-0044: MIDI Input Library and Boundary Architecture
 
-**Status:** Accepted
-**Date:** 2026-02-21
+## Status
 
----
+Accepted
 
 ## Table of Contents
 

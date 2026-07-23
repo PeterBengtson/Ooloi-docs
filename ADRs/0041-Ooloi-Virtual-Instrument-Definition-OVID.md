@@ -1,8 +1,12 @@
 # ADR-0041: Ooloi Virtual Instrument Definition (OVID)
 
+## Status
+
+Accepted
+
 ## Table of Contents
 
-- [Status](#status)
+
 - [Context](#context)
   - [Relationship to Plugin-Based Audio Architecture](#relationship-to-plugin-based-audio-architecture)
   - [The Vendor Fragmentation Problem](#the-vendor-fragmentation-problem)
@@ -51,10 +55,6 @@
 - [Conclusion](#conclusion)
 - [Appendix A: Vendor Control Surface Research](#appendix-a-vendor-control-surface-research)
 - [References](#references)
-
-## Status
-
-Accepted
 
 ## Context
 

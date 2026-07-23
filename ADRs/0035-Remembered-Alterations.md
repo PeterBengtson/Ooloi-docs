@@ -1,7 +1,10 @@
 # ADR-0035: Remembered Alterations
 
+## Status
+
+Implemented
+
 ## Table of Contents
-- [Status](#status)
 - [Context](#context)
   - [Problem Statement](#problem-statement)
 - [Decision](#decision)
@@ -20,9 +23,6 @@
 - [Architectural Implications](#architectural-implications)
 - [Consequences](#consequences)
 - [References](#references)
-
-## Status
-Accepted
 
 ## Context
 

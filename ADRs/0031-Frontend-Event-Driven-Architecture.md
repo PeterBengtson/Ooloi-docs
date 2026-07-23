@@ -1,11 +1,8 @@
 # ADR-0031: Frontend Event-Driven Architecture
 
-**Status:** ACCEPTED
-**Date:** 2025-10-15
-**Implemented:** 2026-01-26
-**Updated:** 2026-02-13 (Frontend event bus as Integrant component, Event Router as pure pipeline, nomenclature clarification); 2026-02-28 (Added :piece-structure and :piece-settings event categories for Steps 4 and 6 of the development sequence); 2026-03-12 (Added :instrument-library category for the Instrument Library component — ADR-0045); 2026-07-05 (:piece-setting-changed reclassified to per-piece routing, like :piece-structure-changed — it is not a shared :piece-settings category); 2026-07-06 (Added the :piece-dirty-changed per-piece event and the generalised PieceChangeNotifier emission seam — ADR-0052 §5)
+## Status
 
----
+Implemented
 
 ## Table of Contents
 

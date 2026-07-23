@@ -1,5 +1,9 @@
 # ADR-0007: Use of Nippy for File Persistence
 
+## Status
+
+Implemented
+
 ## Table of Contents
 - [Decision](#decision)
 - [Context](#context)

@@ -1,8 +1,8 @@
 # ADR-0028: Hierarchical Rendering Pipeline with Plugin-Based Formatters
 
-**Status**: Accepted
-**Date**: 2024-09-14
-**Updated**: 2026-02-07 (shared thread pool — single pool replaces dual cpu/priority pools)
+## Status
+
+Under implementation
 
 ## Table of Contents
 

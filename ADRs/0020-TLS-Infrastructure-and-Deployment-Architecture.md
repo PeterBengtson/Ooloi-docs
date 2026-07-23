@@ -1,40 +1,39 @@
 # ADR-0020: TLS Infrastructure and Deployment Architecture
 
+## Status
+
+Implemented
+
 ## Table of Contents
 
-1. [Status](#status)
-2. [Implementation](#implementation)
-3. [Context](#context)
-4. [Decision](#decision)
+1. [Implementation](#implementation)
+2. [Context](#context)
+3. [Decision](#decision)
    - [Complete TLS Capability](#complete-tls-capability)
    - [Server Implementation](#server-implementation)
    - [Client Implementation with Certificate Discovery](#client-implementation-with-certificate-discovery)
-5. [Deployment Scenarios and Certificate Management](#deployment-scenarios-and-certificate-management)
+4. [Deployment Scenarios and Certificate Management](#deployment-scenarios-and-certificate-management)
    - [Single Developer (Combined Mode)](#single-developer-combined-mode)
    - [Collaboration Development (Distributed)](#collaboration-development-distributed)
    - [SaaS Production (AWS/Cloud)](#saas-production-awscloud)
    - [Enterprise/Self-Hosted Production](#enterpriseself-hosted-production)
    - [Container/Kubernetes Deployment](#containerkubernetes-deployment)
-6. [Health Endpoint Integration](#health-endpoint-integration)
-7. [Rationale](#rationale)
+5. [Health Endpoint Integration](#health-endpoint-integration)
+6. [Rationale](#rationale)
    - [Design Principles](#design-principles)
    - [Integration with Existing Architecture](#integration-with-existing-architecture)
-8. [Consequences](#consequences)
+7. [Consequences](#consequences)
    - [Positive](#positive)
    - [Negative](#negative)
    - [Mitigations](#mitigations)
-9. [Success Criteria](#success-criteria)
+8. [Success Criteria](#success-criteria)
    - [Server-Side TLS](#server-side-tls)
    - [Client-Side TLS](#client-side-tls)
    - [Integration & Deployment](#integration--deployment)
-10. [Implementation Dependencies](#implementation-dependencies)
-11. [Alternatives Considered](#alternatives-considered)
-12. [References](#references)
-13. [Notes](#notes)
-
-## Status
-
-Accepted - Implemented
+9. [Implementation Dependencies](#implementation-dependencies)
+10. [Alternatives Considered](#alternatives-considered)
+11. [References](#references)
+12. [Notes](#notes)
 
 ## Implementation
 

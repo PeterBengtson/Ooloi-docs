@@ -1,8 +1,8 @@
-# ADR: Choice of Clojure as the Primary Programming Language
+# ADR-0000: Choice of Clojure as the Primary Programming Language
 
 ## Status
 
-Accepted
+Implemented
 
 ## Context
 

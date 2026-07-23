@@ -1,8 +1,11 @@
 # ADR-0018: API-gRPC Interface and Events
 
+## Status
+
+Implemented
+
 ## Table of Contents
 
-- [Status](#status)
 - [Context](#context)
 - [Decision](#decision)
 - [Event Structure and Conventions](#event-structure-and-conventions)
@@ -20,10 +23,6 @@
 - [Alternatives Considered](#alternatives-considered)
 - [References](#references)
 - [Notes](#notes)
-
-## Status
-
-Accepted
 
 ## Context
 

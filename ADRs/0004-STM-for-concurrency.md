@@ -1,4 +1,8 @@
-# ADR: Implementation of Software Transactional Memory (STM) for Concurrency
+# ADR-0004: Implementation of Software Transactional Memory (STM) for Concurrency
+
+## Status
+
+Implemented
 
 Decision: Use Clojure's Software Transactional Memory (STM) for managing concurrent operations in Ooloi, rather than simple atoms.
 

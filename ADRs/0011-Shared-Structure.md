@@ -1,6 +1,8 @@
-# ADR: Shared Structure
+# ADR-0011: Shared Structure
 
-## Status: Accepted (Updated 22 July 2025)
+## Status
+
+Implemented
 
 ## Related ADRs
 

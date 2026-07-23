@@ -1,7 +1,10 @@
 # ADR-0033: Time Signature Architecture
 
+## Status
+
+Implemented
+
 ## Table of Contents
-- [Status](#status)
 - [Context](#context)
   - [Time Signature Complexity in Professional Notation](#time-signature-complexity-in-professional-notation)
   - [String-Based Entry Paradigm](#string-based-entry-paradigm)
@@ -28,9 +31,6 @@
   - [Why String-Based Entry](#why-string-based-entry)
 - [Future Extensions](#future-extensions)
 - [References](#references)
-
-## Status
-Accepted and implemented - November 8, 2025
 
 ## Context
 

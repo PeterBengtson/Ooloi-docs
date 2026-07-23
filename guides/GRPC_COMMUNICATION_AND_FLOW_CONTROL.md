@@ -507,6 +507,16 @@ Concurrency characteristics:
 - gRPC and STM work together without artificial constraints
 - STM handles conflicts through automatic retry mechanisms
 
+### Message Size Limits
+
+gRPC caps the size of a single received message. Ooloi sets this limit to 64 MB on both client and server (gRPC's own default is 4 MB). The limit governs one message — a single API call's request or response. No whole pieces are ever transferred (there is no `get-piece`/`set-piece`), but a single query result or mutation argument can still be large, and 64 MB gives it comfortable headroom.
+
+The limit is enforced by the **receiver**, so it must be set on both sides: a large result has to clear the client's limit, a large argument the server's.
+
+One case is deliberately not bound by this limit: a large multistep atomic batch. Rather than arrive as one oversized message, its operations are chunked and streamed, so the batch is limited only by the memory its resulting transaction needs on the server. In-process transport has no message-size limit at all — it does no serialization.
+
+See [ADR-0024](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) for the authoritative configuration and rationale.
+
 ### Event Structure and Conventions
 
 All events follow a consistent structure to ensure predictable handling across the event streaming pipeline:

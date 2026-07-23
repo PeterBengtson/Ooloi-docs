@@ -1,6 +1,8 @@
 # ADR-0013: Slur Formatting with Convex Hull and Bézier Curves
 
-## Status: Accepted (Revised 18 February 2026)
+## Status
+
+Accepted
 
 ## Context
 

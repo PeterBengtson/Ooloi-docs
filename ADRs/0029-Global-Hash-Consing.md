@@ -1,7 +1,10 @@
 # ADR-0029: Selective Hash-Consing for Musical Objects
 
+## Status
+
+Implemented
+
 ## Table of Contents
-- [Status](#status)
 - [Context](#context)
   - [Object Duplication Characteristics](#object-duplication-characteristics)
   - [Functional Programming Advantage](#functional-programming-advantage)
@@ -27,10 +30,6 @@
   - [Trade-offs](#trade-offs)
   - [Risk Mitigation](#risk-mitigation)
 - [References](#references)
-
-## Status
-Accepted - September 24, 2025
-**IMPLEMENTATION COMPLETE** - September 26, 2025
 
 ## Context
 

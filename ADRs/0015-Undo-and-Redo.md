@@ -1,8 +1,11 @@
 # ADR-0015: Undo and Redo Architecture in Collaborative Environment
 
+## Status
+
+Implemented
+
 ## Table of Contents
 
-- [Status](#status)
 - [Context](#context)
   - [Key Architectural Realities](#key-architectural-realities)
 - [Decision](#decision)
@@ -50,10 +53,6 @@
   - [Resource Types Under the Undo Manager](#resource-types-under-the-undo-manager)
 
 ---
-
-## Status
-
-Accepted
 
 ## Context
 

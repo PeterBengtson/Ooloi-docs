@@ -1,8 +1,11 @@
 # ADR-0023: Shared Model Contracts
 
+## Status
+
+Implemented
+
 ## Table of Contents
 
-- [Status](#status)
 - [Context](#context)
   - [Previous Architecture Limitations](#previous-architecture-limitations)
   - [gRPC Unified Architecture Enables This](#grpc-unified-architecture-enables-this)
@@ -29,10 +32,6 @@
   - [Architectural Isolation](#architectural-isolation)
   - [Plugin Ecosystem Implications](#plugin-ecosystem-implications)
 - [Summary](#summary)
-
-## Status
-
-Accepted - **Implementation Complete** (August 2025)
 
 ## Context
 

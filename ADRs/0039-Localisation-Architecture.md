@@ -1,7 +1,10 @@
 # ADR-0039: Localisation Architecture
 
+## Status
+
+Implemented
+
 ## Table of Contents
-- [Status](#status)
 - [Context](#context)
   - [Architectural Boundary](#architectural-boundary)
   - [Current State](#current-state)
@@ -36,10 +39,6 @@
 - [Out of Scope](#out-of-scope)
 - [Consequences](#consequences)
 - [References](#references)
-
-## Status
-
-Accepted
 
 ## Context
 

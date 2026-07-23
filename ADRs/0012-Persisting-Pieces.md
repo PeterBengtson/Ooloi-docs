@@ -1,7 +1,10 @@
 # ADR-0012: Persisting the Pure Tree Structure — Integer ID References and Piece Identity
 
+## Status
+
+Implemented
+
 ## Table of Contents
-- [Status](#status)
 - [Context](#context)
 - [Decision](#decision)
 - [Detailed Design](#detailed-design)
@@ -14,9 +17,6 @@
 - [Related Decisions](#related-decisions)
 - [Implementation Notes](#implementation-notes)
 - [Future Considerations](#future-considerations)
-
-## Status
-Accepted
 
 ## Context
 

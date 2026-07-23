@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (Updated August 2025)
+Implemented
 
 ## Context
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Implemented
 
 ## Context
 
@@ -132,6 +132,7 @@ Based on rigorous academic research and verified industry benchmarks:
 - **Protobuf serialization bypass**: gRPC documentation states in-process transport "uses method calls and some tricks to avoid message serialization"
 - **Direct object passing**: Eliminates intermediate buffer copies and reduces garbage collection pressure
 - **Zero buffer allocation**: No network transmission buffers or kernel memory structures required
+- **No message-size limits**: because nothing is serialized into wire frames, the network transport's inbound message-size limit (see [ADR-0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)) does not apply in-process — a call passes the object directly, at any size
 
 **Threading and Execution Model Advantages:**
 - **Direct executor capability**: Can use `directExecutor()` for same-thread execution, eliminating thread context switches

@@ -2,9 +2,12 @@
 
 ![Server Dashboard](../img/server-dashboard.png)
 
+## Status
+
+Implemented
+
 ## Table of Contents
 
-- [Status](#status)
 - [Context](#context)
   - [Critical Need for Comprehensive Introspection](#critical-need-for-comprehensive-introspection)
   - [Operational Requirements](#operational-requirements)
@@ -38,10 +41,6 @@
   - [Trade-offs and Considerations](#trade-offs-and-considerations)
   - [Mitigation Strategies](#mitigation-strategies)
 - [Related ADRs](#related-adrs)
-
-## Status
-
-Accepted 2025-08-24
 
 ## Context
 
@@ -644,8 +643,6 @@ The HTTP endpoint **builds on** the gRPC health service:
 This ensures **consistent health status** across both protocols while providing different access patterns for different use cases.
 
 ### Foundational Computed Statistics Implementation
-
-**Status**: ✅ **Implemented** - Basic computed statistics with proper time unit conversions
 
 The foundational layer provides essential computed statistics that support comprehensive server monitoring. This provides the architectural foundation for startup time tracking, time unit standardization, and content negotiation patterns.
 

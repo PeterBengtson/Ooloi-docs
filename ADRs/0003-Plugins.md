@@ -1,4 +1,4 @@
-# ADR: Integration of Plugins as a Core Architectural Component
+# ADR-0003: Integration of Plugins as a Core Architectural Component
 
 ## Status
 

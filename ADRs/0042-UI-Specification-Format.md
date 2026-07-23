@@ -1,8 +1,8 @@
 # ADR-0042: UI Specification Format
 
-**Status:** Accepted
+## Status
 
-**Date:** 2026-01-27
+Implemented
 
 ## Table of Contents
 - [Context](#context)

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (July 2025)
+Implemented
 
 ## Context
 

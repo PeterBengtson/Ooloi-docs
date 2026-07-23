@@ -1,6 +1,8 @@
-# ADR: Pure Tree Structure with Integer ID References
+# ADR-0010: Pure Tree Structure with Integer ID References
 
-## Status: Accepted
+## Status
+
+Implemented
 
 ## Context
 

@@ -1,7 +1,10 @@
 # ADR-0034: Key Signature Architecture
 
+## Status
+
+Implemented
+
 ## Table of Contents
-- [Status](#status)
 - [Context](#context)
 - [Decision](#decision)
   - [Core Architecture](#core-architecture)
@@ -17,9 +20,6 @@
 - [Validation](#validation)
 - [Consequences](#consequences)
 - [References](#references)
-
-## Status
-Accepted
 
 ## Context
 

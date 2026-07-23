@@ -1,8 +1,11 @@
 # ADR-0014: Timewalk Temporal Coordination System
 
+## Status
+
+Implemented
+
 ## Table of Contents
 
-- [Status](#status)
 - [Context](#context)
 - [Decision](#decision)
 - [Paradigm Shift: Musical Time as Computational Foundation](#paradigm-shift-musical-time-as-computational-foundation)
@@ -17,10 +20,6 @@
 - [Performance Validation](#performance-validation)
 - [Related ADRs](#related-adrs)
 - [Documentation](#documentation)
-
-## Status
-
-Accepted
 
 ## Context
 

@@ -1,6 +1,8 @@
-# ADR: gRPC Concurrency and Flow Control Architecture
+# ADR-0024: gRPC Concurrency and Flow Control Architecture
 
-Decision: Implement flow control only for server-to-client event streaming, not for client-to-server API requests, based on gRPC's inherent concurrency model and STM's conflict resolution capabilities.
+## Status
+
+Implemented
 
 ## Table of Contents
 
@@ -273,6 +275,21 @@ These transport-layer threading constraints necessitate careful architectural pa
 - Server events broadcast to all connected clients
 - Piece events routed only to subscribed clients
 - Subscription management via existing API methods
+
+### **Transport Configuration: Message and Frame Limits**
+
+The network server sets explicit transport limits on its gRPC channel builder, configured together with the concurrency and keepalive settings:
+
+- **Inbound message size**: 64 MB, set **symmetrically on client and server**. gRPC's 4 MB default is a conservative guard for public, high-concurrency servers; Ooloi's network deployment serves a handful of trusted collaboration guests, so the relevant constraint is headroom, not adversarial defence. No whole pieces cross the wire — there is no `get-piece`/`set-piece`, and pieces are never transferred — but any single API operation (a query returning a large substructure, or a mutation carrying a large argument) can produce a sizable message. 64 MB is generous-but-bounded: chosen to clear plausible single-operation payloads with comfortable headroom while keeping a meaningful ceiling against a runaway allocation.
+- **Inbound metadata size**: 16 KB — headers only.
+- **Initial flow-control window**: 1 MB.
+- **Max concurrent calls per connection**: unbounded, so API throughput is limited only by STM and the thread pool, never by an artificial gRPC cap (consistent with the no-flow-control-on-input decision above).
+
+The inbound limit is enforced on the **receiving** side, so both directions require it: a large query result must clear the client's inbound limit, and a large mutation argument must clear the server's. Setting only one side leaves the other at gRPC's 4 MB default.
+
+**Large multistep atomic batches are the deliberate exception.** A batch that creates or manipulates a large piece as many operations in one transaction can exceed any single-message ceiling. Such a batch is not bounded by the 64 MB limit: its operation vector is chunked and streamed, removing the single-message ceiling entirely — the batch is then bounded only by the server memory its resulting transaction needs. Raising a single-message limit and streaming a batch address different ends of the spectrum.
+
+These limits apply to **network transport only**. In-process transport does no marshalling and imposes no message- or frame-size limit at all (see [ADR-0019](0019-In-Process-gRPC-Transport-Optimization.md)).
 
 ## Consequences
 

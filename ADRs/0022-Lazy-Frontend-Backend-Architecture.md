@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted 2025-08-06
+Implemented
 
 ## Table of Contents
 

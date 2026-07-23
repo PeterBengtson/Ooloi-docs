@@ -1,6 +1,8 @@
 # ADR-0026: Pitch Representation and Operations
 
-**Decision:** Adopt string-based pitch representation as the canonical format for Ooloi, with comprehensive operations for conversion, sorting, and transposition.
+## Status
+
+Implemented
 
 ## Table of Contents
 

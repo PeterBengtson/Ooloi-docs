@@ -1,8 +1,8 @@
 # ADR-0038: Backend-Authoritative Rendering: Terminal Frontend Execution with GPU Acceleration
 
-**Status:** Accepted
-**Date:** 2026-01-07
-**Updated:** 2026-02-13 (Event Router as pure pipeline publishing to frontend event bus, RDM threading model)
+## Status
+
+Under implementation
 
 ## Table of Contents
 

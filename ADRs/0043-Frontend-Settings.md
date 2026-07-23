@@ -2,12 +2,7 @@
 
 ## Status
 
-Accepted - February 12, 2026
-Updated - February 13, 2026 (Defaults declared in def-app-setting; event bus integration)
-Updated - February 16, 2026 (Settings window implemented; code references added)
-Updated - February 27, 2026 (Testing section: with-frontend-test-config, default-settings, with-event-bus)
-Updated - March 8, 2026 (Testing section: with-ui-manager replaces ig/init-key in primary example)
-Updated - April 12, 2026 (Validation feedback architecture: uniform closure interface, notification-based error display)
+Implemented
 
 ## Table of Contents
 - [Context](#context)

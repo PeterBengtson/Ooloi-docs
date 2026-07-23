@@ -1,7 +1,10 @@
 # ADR-0037: Measure Distribution Optimization
 
+## Status
+
+Accepted
+
 ## Table of Contents
-- [Status](#status)
 - [Context](#context)
   - [Problem Statement](#problem-statement)
   - [Architectural Reduction](#architectural-reduction)
@@ -38,9 +41,6 @@
 - [Relationship to Knuth-Plass](#relationship-to-knuth-plass)
 - [Consequences](#consequences)
 - [References](#references)
-
-## Status
-Accepted
 
 ## Context
 
