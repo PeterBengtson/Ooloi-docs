@@ -630,6 +630,7 @@ Performance depends on:
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - State authority; this document addresses rendering authority
 - [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Format for UI elements (windows) that cljfx renders
 - [ADR-0046: Reference-Passing In-Process Transport](0046-Reference-Passing-In-Process-Transport.md) - Eliminates conversion overhead for in-process paintlist transfer, enabling the <150ms p95 latency target at orchestral scale
+- [ADR-0054: Automatic Semantic Naming and Numbering of Musicians and Instruments](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md) - The engraved score and extracted parts compose their numbered labels from the stored numbers through the same shared composer the Piece Window uses, so page and tree cannot disagree
 
 ## Notes
 

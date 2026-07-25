@@ -257,3 +257,4 @@ sequenceDiagram
 - [ADR-0046: Reference-Passing In-Process Transport](0046-Reference-Passing-In-Process-Transport.md)
 - [ADR-0051: Filesystem Operations, Real and Virtual](0051-Filesystem-Operations-Real-and-Virtual.md)
 - [ADR-0052: Change Detection and Event Generation](0052-Change-Detection-and-Event-Generation.md)
+- [ADR-0054: Automatic Semantic Naming and Numbering of Musicians and Instruments](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md)

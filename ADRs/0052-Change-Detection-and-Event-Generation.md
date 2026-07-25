@@ -259,3 +259,4 @@ sequenceDiagram
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md)
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md)
 - [ADR-0053: The Piece Window and Piece Preferences](0053-Piece-Window-and-Piece-Preferences.md)
+- [ADR-0054: Automatic Semantic Naming and Numbering of Musicians and Instruments](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md)

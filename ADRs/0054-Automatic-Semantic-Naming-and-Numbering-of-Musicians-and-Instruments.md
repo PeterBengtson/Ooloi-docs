@@ -1,4 +1,4 @@
-# ADR-0054: Automatic Semantic Numbering of Musicians and Instruments
+# ADR-0054: Automatic Semantic Naming and Numbering of Musicians and Instruments
 
 ## Status
 

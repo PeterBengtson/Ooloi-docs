@@ -1131,6 +1131,7 @@ the protocol is correct regardless of timing, which is what matters.
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) — backend authority; frontend caches, never owns
 - [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) — `def-app-setting` for language filter; undo/redo integration
 - [ADR-0053: The Piece Window and Piece Preferences](0053-Piece-Window-and-Piece-Preferences.md) — the Piece window reuses this library's selection and drag-and-drop primitives; instruments drag from here into musicians
+- [ADR-0054: Automatic Semantic Naming and Numbering of Musicians and Instruments](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md) — instrument kinds are counted by the exact names defined here, transposition included, so a Horn in F and a Horn in E♭ are never numbered together; a number set on a library entry never enters a piece
 
 ### Guides
 
