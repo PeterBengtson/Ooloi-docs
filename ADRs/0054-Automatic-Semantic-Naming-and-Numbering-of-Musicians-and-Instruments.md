@@ -167,6 +167,10 @@ The numeral wraps the **whole** name, transposition qualifier included — never
 
 The setting is named for the punctuation rather than for a numeral form, because it is not confined to one: *full stop* rather than *period* since a period, in a program about music, is a phrase structure.
 
+**Roman numerals are written in ASCII letters** — `III`, not the precomposed Unicode numeral `Ⅲ`. The precomposed codepoints stop at Ⅻ, their coverage across text fonts is unreliable, and they defeat copy and search.
+
+**The representable range is 1–3999.** Roman numerals have no zero and no negative, and 4000 upward requires the vinculum, which is not supported. **A number outside that range is written as its Arabic digits, whatever the form setting says** — so a musician numbered 4000 reads `4000 Flute` under the Roman form. This is not a tolerance for bad data but a property of the boundary it sits on: `:number` is an unvalidated attribute, so any value can be written through the API by a script, a plugin, or a collaborator, and composing a label is a rendering act. A renderer states what it was given; it does not fail, and it does not silently substitute something else. An exception here would cost a staff label or a paintlist ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)).
+
 Which name the numeral wraps depends on where the label appears, and this is fixed, not a setting: the **main instrument** — the musician's header, its own row — is always shown in **full** form, from `:name`; the **doublings list** (§7) is always shown in **short** form, from `:short-name`, for compactness. So the same third trumpet reads `3. Trompete in B♭` where it is a main instrument and `3. Tr. in B♭` where it appears as another player's doubling. The numeral settings apply identically to both; only the choice of name string differs.
 
 Counting and identity always key on `:name`, never on the composed string or the short name: `:name` groups a kind and counts it (§2), while `:short-name` and the numeral settings only decide how the resulting number is shown.
