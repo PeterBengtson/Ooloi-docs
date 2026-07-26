@@ -185,26 +185,28 @@ shared/src/main/clojure/ooloi/shared/
 
 ### Unified API Access
 
-The shared project provides unified access to all contracts through `core.clj` and `api.clj` that consolidate shared functionality using Potemkin's `import-vars`:
+The shared project provides unified access to all contracts through `models/core.clj` and `api.clj`. Aggregation is **metadata-driven, not hand-listed**: an operation reaches these namespaces by being tagged in `interfaces.clj`, and no export list anywhere names it.
 
 ```clojure
-;; shared/src/main/clojure/ooloi/shared/core.clj
-(ns ooloi.shared.core
-  (:require [ooloi.shared.interfaces :as interfaces]
-            [ooloi.shared.predicates :as predicates]
-            [potemkin :refer [import-vars]]))
+;; shared/src/main/clojure/ooloi/shared/models/core.clj
+;; Interns every interfaces multimethod carrying :api or :vpd-category metadata.
+(doseq [[sym source-var] (ns-publics 'ooloi.shared.interfaces)
+        :when (let [m (meta source-var)] (or (:vpd-category m) (:api m)))]
+  (let [new-var (intern *ns* sym @source-var)]
+    (alter-meta! new-var merge (dissoc (meta source-var) :name))
+    (link-vars source-var new-var)))
 
-;; Unified access point for all shared contracts
-(import-vars
-  [ooloi.shared.interfaces
-   get-duration add-item set-name ...]
-  [ooloi.shared.predicates  
-   pitch? chord? measure? ...]
-  [ooloi.shared.models.musical.piece
-   create-piece]
-  [ooloi.shared.models.musical.pitch
-   create-pitch])
+;; shared/src/main/clojure/ooloi/shared/api.clj
+;; The public surface is DERIVED from :api metadata — not a list.
+(def ^:private core-operations
+  (->> (ns-publics 'ooloi.shared.models.core)
+       (filter (fn [[_ v]] (:api (meta v))))
+       (map first)))
 ```
+
+So exposing a new operation is a matter of metadata alone: `^{:api true}` places it on the `api`/`SRV` surface, and `^{:vpd-category <cat>}` additionally generates its VPD dispatch. Neither file is edited.
+
+Two things remain hand-listed, both for the same reason — they carry no metadata to select them by: the `create-*` constructors in `api.clj`'s `constructor-functions`, and the predicates, which `models/core.clj` still re-exports through Potemkin's `import-vars`. The multimethod re-export deliberately does *not* use `import-vars`: that macro emits one `def` per var, and past roughly two hundred vars the combined bytecode exceeded the JVM's 64KB method-size limit during AOT compilation. The `doseq` costs one bytecode entry regardless of how many vars it interns.
 
 This approach provides a single import point while preserving function metadata, docstrings, and identity.
 
