@@ -492,7 +492,7 @@ Key implementation aspects:
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Backend event router delivers piece-setting-changed events to the frontend event bus for collaborative settings awareness
 - [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) - Companion system for global application preferences (frontend-only); borrows validation patterns from this ADR
 - [ADR-0053: The Piece Window and Piece Preferences](0053-Piece-Window-and-Piece-Preferences.md) - The Piece Preferences window presents these piece settings (§6)
-- [ADR-0054: Automatic Semantic Naming and Numbering of Musicians and Instruments](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md) - Declares three numeral piece settings (form, placement, Arabic period) that compose a stored number into its displayed label
+- [ADR-0054: Automatic Semantic Naming and Numbering of Musicians and Instruments](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md) - Declares three numeral piece settings (form, placement, full stop) that compose a stored number into its displayed label
 
 ### Technical Dependencies
 - **Methodical**: Multimethod system providing polymorphic dispatch foundation

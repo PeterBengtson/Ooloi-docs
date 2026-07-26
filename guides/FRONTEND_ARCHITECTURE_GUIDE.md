@@ -898,7 +898,7 @@ The backend side of this contract — where a change is detected and how it beco
 
 That is the whole division. The structural channel answers *what the piece is*; the pipeline channel answers *what the music looks like*, and neither can express the other's changes. One write can legitimately drive both: a setting such as beam thickness or the music font is part of the piece's configuration *and* changes how the music is drawn, so it travels down both channels — refreshing what the window says about the piece, and separately what the score looks like.
 
-A note on vocabulary: "structural" is historical. It began as a piece's containment makeup and now also covers configuration, which is not containment at all. Read it as *everything about a piece that is not the music*.
+A note on vocabulary: "structural" covers more than containment — besides a piece's makeup it covers its configuration. Read it as *everything about a piece that is not the music*.
 
 ### 5.3 Example Flow
 

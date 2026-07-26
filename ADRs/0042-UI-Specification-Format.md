@@ -91,7 +91,7 @@ Per ADR-0039, all user-facing strings use translation keys (`:window/title-key`,
 
 UI specifications are **pure Clojure maps** conforming to cljfx structure, augmented with `:window/` namespace-qualified metadata for lifecycle management.
 
-Backend plugins currently use piece settings (ADR-0016) with auto-generated UI via `SRV/get-settings-ui-metadata`. Frontend provides all custom windows. Backend-described dialog capability via gRPC is an extensibility point for future use:
+Backend plugins store their configuration as piece settings ([ADR-0016](0016-Settings.md)). How the UI for those settings is generated is **undecided** — a plugin's declarations live in backend plugin code, not in `shared/`, so the frontend cannot read them locally the way it reads the core ones; a `SRV/get-settings-ui-metadata` call is one **suggestion** and does not exist ([ADR-0003](0003-Plugins.md) §Backend Plugin Settings states the requirement and what remains open). Frontend provides all custom windows. Backend-described dialog capability via gRPC is an extensibility point for future use:
 
 ```clojure
 ;; Backend plugin sending a window spec over gRPC (future extensibility)

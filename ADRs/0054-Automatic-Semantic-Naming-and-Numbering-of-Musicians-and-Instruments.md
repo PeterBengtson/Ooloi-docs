@@ -150,11 +150,22 @@ The **displayed name** — "1. Flute", "3. Trompete in B♭" — is not stored a
 
 How a number joins its name to make a displayed label is governed by three piece settings ([ADR-0016](0016-Settings.md)), declared with `defsetting` and read over the polymorphic API like any other piece setting. They control presentation only — the stored `:number` is always a plain integer.
 
-- **Numeral form** — Arabic or Roman. Default Arabic.
-- **Placement** — the numeral precedes or follows the name. Default precede.
-- **Arabic period** — whether an Arabic numeral is followed by a full stop and a space. Applies to Arabic only (Roman numerals take no period). Default on.
+- **Numeral form** (`:numbering-form`) — Arabic or Roman. Default Arabic.
+- **Placement** (`:numbering-placement`) — the numeral precedes or follows the name. Default precede.
+- **Full stop** (`:numbering-includes-full-stop?`) — whether the numeral carries a full stop. Governs every numeral form, so `III.` is as expressible as `3.`. Default on.
 
-The numeral wraps the **whole** name, transposition qualifier included — never the middle of it. With the defaults (Arabic, precede, period on) a third trumpet in B♭ is `3. Trompete in B♭`; set to Roman and follow it is `Trompete in B♭ III`; Roman and precede gives `III Trompete in B♭`. The full stop is the Arabic-precede convention alone; every other combination separates numeral and name with a single space.
+**The three are independent, and each is read on its own.** The form decides which numeral is written, the full stop whether that numeral carries one, and the placement which side of the name it goes on. All eight combinations are therefore expressible, and none of them silently ignores a setting — a user who toggles the full stop sees it change whichever form and placement are in force:
+
+| | precede | follow |
+|---|---|---|
+| **Arabic, full stop** | `3. Trompete in B♭` | `Trompete in B♭ 3.` |
+| **Arabic, no full stop** | `3 Trompete in B♭` | `Trompete in B♭ 3` |
+| **Roman, full stop** | `III. Trompete in B♭` | `Trompete in B♭ III.` |
+| **Roman, no full stop** | `III Trompete in B♭` | `Trompete in B♭ III` |
+
+The numeral wraps the **whole** name, transposition qualifier included — never the middle of it. The full stop belongs to the numeral rather than to the join, which is always a single space. With the defaults — Arabic, precede, full stop on — a third trumpet in B♭ is `3. Trompete in B♭`: the German ordinal convention those three defaults exist to produce.
+
+The setting is named for the punctuation rather than for a numeral form, because it is not confined to one: *full stop* rather than *period* since a period, in a program about music, is a phrase structure.
 
 Which name the numeral wraps depends on where the label appears, and this is fixed, not a setting: the **main instrument** — the musician's header, its own row — is always shown in **full** form, from `:name`; the **doublings list** (§7) is always shown in **short** form, from `:short-name`, for compactness. So the same third trumpet reads `3. Trompete in B♭` where it is a main instrument and `3. Tr. in B♭` where it appears as another player's doubling. The numeral settings apply identically to both; only the choice of name string differs.
 
@@ -247,7 +258,7 @@ sequenceDiagram
 
 ## Consequences
 
-- **Three new piece settings** — numeral form, placement, and the Arabic period — are added with `defsetting` ([ADR-0016](0016-Settings.md)) and, being user-visible, carry translated labels across every interface locale. Their defaults render `3. Trompete in B♭`.
+- **Three new piece settings** — numeral form, placement, and the full stop — are added with `defsetting` ([ADR-0016](0016-Settings.md)) and, being user-visible, carry translated labels across every interface locale. Their defaults render `3. Trompete in B♭`.
 - **The numbering helper is a new shared function**, and the composed-name function it feeds is shared between the Piece Window and the backend's paintlist generation, so both render numbers identically. Neither introduces a stored composed string; both derive from the model.
 - **The Piece Window's add, clone, and delete handlers gain a call to the helper** and fold its operations into their existing `SRV/atomic` batch; the instruments reorder, which runs no numbering pass, folds in the musician re-derivation alone. No new event, transaction, or undo boundary is created — both reuse the gesture's.
 - **The `:number` and `:short-name` fields already exist** on both Musician and Instrument as structural slots, so their writes are detected and projected by construction ([ADR-0052 §3](0052-Change-Detection-and-Event-Generation.md)); no model or change-detection change is required.

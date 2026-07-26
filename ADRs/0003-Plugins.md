@@ -191,8 +191,13 @@ Backend plugins store configuration as piece settings (ADR-0016):
 - Settings declared using `defsetting` with `:plugin/` namespace
 - Settings travel with piece data (collaboration, version control, undo)
 - No separate plugin settings files for backend plugins
-- Frontend auto-generates settings UI from metadata via `SRV/get-settings-ui-metadata`
 - Example: `(defsetting ::h/Piece :plugin/musicxml/format-version "4.0" #{"3.0" "3.1" "4.0"})`
+
+> **How a plugin's settings UI is generated is UNDECIDED — this is a requirement, not yet a design.** The need is real and specific: a plugin's `defsetting` declarations live in *backend plugin code*, so unlike the core piece settings — which sit in `shared/` and are therefore on the frontend's classpath already ([ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6) — a plugin's declarations are not available to the frontend locally. Something must carry them across.
+>
+> One **suggestion**, no more than that, is a `SRV/get-settings-ui-metadata` call returning a description of each plugin setting. It does not exist, nothing depends on it, and it should not be read as available or as chosen. It also leaves the hard part open: what a description contains. A set validator enumerates its values, from which a control type and a precise message follow; an arbitrary predicate yields neither. Alternatives not yet weighed include plugins shipping their declarations in shared code, or a plugin supplying its own window spec.
+>
+> Values are a settled matter either way, and only the *declarations* are at issue: a plugin setting's value reaches the frontend in the structural projection like any other, since `:settings` is a structural slot ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a).
 
 **Benefits:**
 - Settings persist with pieces (sharing, version control)
