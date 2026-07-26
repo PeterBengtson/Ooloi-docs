@@ -120,7 +120,7 @@ A piece event is fixed by two **independent** choices; separating them is what d
 
 Two points that have misled before:
 
-- **Only `:piece-invalidation` touches the Fetch Coordinator.** Its sole job is fetching stale *paintlists*, and only an invalidation names stale paintlist VPDs. `:piece-structure-changed` refetches the *structure snapshot* (`get-piece-structure`) itself; `:piece-playback-*` and the collaboration cursor move overlays over already-rendered content and fetch nothing; a setting change's *visual* consequence is a **separate** `:piece-invalidation`, and *that* reaches the Fetch Coordinator (the two-channel split of [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6).
+- **Only `:piece-invalidation` touches the Fetch Coordinator.** Its sole job is fetching stale *paintlists*, and only an invalidation names stale paintlist VPDs. `:piece-structure-changed` refetches the *structure snapshot* (`get-piece-structure`) itself; `:piece-playback-*` and the collaboration cursor move overlays over already-rendered content and fetch nothing; a setting change's *visual* consequence is a **separate** `:piece-invalidation`, and *that* reaches the Fetch Coordinator (the channel split of [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6 — a setting write also emits `:piece-structure-changed`, since `:settings` is a structural slot).
 - **Each batched stream has its own cadence and its own per-piece queue** — invalidation ~50–100 ms, playback ~16 ms, cursor ~33 ms. Structure and settings do not batch: structure is already one event per transaction ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §4), settings are rare.
 
 ### Routing diagram

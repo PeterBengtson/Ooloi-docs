@@ -117,6 +117,8 @@ Ooloi operates through two complementary communication mechanisms:
 
 **Key Insight**: Events tell clients *which local objects are now stale*, gRPC requests provide *fresh data to update local cache*, local API provides *fast access to current cache*.
 
+**Not every change travels this way.** The invalidations above are how a change to the **music** becomes visible: they are produced asynchronously by the formatting pipeline ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)), and a musical mutation emits nothing else. Changes to the things that **contain** the music — which musicians a piece has, what they play, on how many staves, in which layouts, under what names, and the piece's settings — take a different channel entirely: a single `:piece-structure-changed` per transaction, emitted synchronously with the write, which the piece window answers by refetching its structural snapshot. Neither channel can express the other's changes. [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6 specifies the division; both channels obey the same identifiers-not-deltas rule stated above.
+
 ### Foundational Principles
 
 **Backend Authority, Frontend Rendering**:
@@ -584,6 +586,7 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 - [ADR-0023: Shared Model Contracts](0023-Shared-Model-Contracts.md) - Multi-project architecture enabling frontend-backend integration
 - [ADR-0024: gRPC Concurrency and Flow Control Architecture](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - Event streaming flow control for collaborative synchronization
 - [ADR-0025: Server Statistics Architecture](0025-Server-Statistics-Architecture.md) - Collaborative session analytics and performance monitoring
+- [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) - Produces the visual-hierarchy invalidations described here; the sole notification channel for changes to the music itself
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Complete implementation of the event-driven synchronization architecture specified here
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) - Backend-authoritative rendering with GPU-accelerated frontend execution implementing the lazy rendering patterns specified here
 - [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Single-authority model enabling lazy frontend architecture

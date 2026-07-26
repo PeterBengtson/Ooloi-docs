@@ -394,7 +394,12 @@ Key implementation aspects:
 7. **Data Integrity**: Invalid settings prevented at write time with clear error messages
 8. **Declarative Constraints**: Validation requirements explicit and co-located with definitions
 9. **Reduced Boilerplate**: Eliminated separate validation functions and :around methods
-10. **Collaborative Awareness**: When a piece setting changes, the backend emits a piece-setting-changed event, routed per-piece to that piece's subscribers — never a shared category ([ADR-0031 §Per-Piece Event Routing](0031-Frontend-Event-Driven-Architecture.md#per-piece-event-routing)). The frontend reacts only when a piece settings window is open — refreshing stale values so a collaborating user does not work on outdated settings. Visual consequences of piece setting changes (e.g. re-rendering after beam thickness changes) are handled separately by the backend's own cache-invalidation events, not by the settings event. The Piece Preferences window that presents these settings, and this two-channel behaviour, is specified in [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6.
+10. **Collaborative Awareness**: A setting write notifies on three channels, each with one consumer, and none doing another's work:
+    - `:piece-structure-changed` — because `:settings` is a structural slot, the write announces itself exactly as a rename does, and every open piece window refetches the snapshot in which the values ride ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a).
+    - `:piece-setting-changed` — payload-bearing and per-setting, routed per-piece to that piece's subscribers, never a shared category ([ADR-0031 §Per-Piece Event Routing](0031-Frontend-Event-Driven-Architecture.md#per-piece-event-routing)). An open Piece Preferences window refreshes the individual control, so a collaborating user does not work on an outdated value. It never triggers paintlist fetching.
+    - cache invalidation — the visual consequences (re-rendering after a beam-thickness or music-font change) travel out of the formatting pipeline, and only this channel reaches the paintlists.
+
+    The first two concern *what the piece is*, the third *what the music looks like* — the division [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6 draws for change detection generally. Settings sit deliberately across that line: they are part of what a piece *is*, and many also govern how it is *drawn*. The Piece Preferences window that presents these settings is specified in [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6.
 
 ### Negative
 

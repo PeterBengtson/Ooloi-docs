@@ -153,12 +153,15 @@ That correspondence extends to how the settings are **grouped**. Both windows ar
 
 Within a tab, settings appear in the order they were declared — again as in the application-settings window. Order is therefore a matter of authorship rather than accident: related settings can be placed together, and the one a reader most likely wants can be put first, which alphabetical ordering would scatter and insertion-order-by-chance would leave to whoever edited the file last.
 
-Two independent event flows keep the window and the score correct, and their separation is deliberate:
+Three independent event flows keep the windows and the score correct, and their separation is deliberate:
 
+- Because `:settings` is a **structural** slot of the Piece, a setting write emits **`:piece-structure-changed`** exactly as a rename does ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a), and every open piece window refetches the structural snapshot the values ride in. This is what keeps a projected setting from going stale in a window that is not the Preferences window.
 - When a piece setting changes on the backend, a **`:piece-setting-changed`** event is delivered to the piece's subscribers — per-piece, never a shared category ([ADR-0031 §Per-Piece Event Routing](0031-Frontend-Event-Driven-Architecture.md#per-piece-event-routing)). An open Preferences window for that piece reacts by refreshing its displayed values, so a collaborator editing the same setting does not leave this window showing a stale one. This event, in itself, never triggers paintlist fetching.
 - The **visual consequence** of a setting change travels separately, as ordinary cache-invalidation. Having changed the setting, the backend issues the invalidations the change entails, and those flow through the normal Fetch Coordinator pipeline ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md), [ADR-0031](0031-Frontend-Event-Driven-Architecture.md)): changing the music font invalidates the whole piece and the score is recomputed, while changing one notehead mapping invalidates only the affected noteheads. The granularity is the backend's decision, carried as identifiers of what is stale, not as a delta ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)).
 
-The settings event refreshes the settings *window*; the invalidation events refresh the *score*. Neither does the other's work.
+The structure event refreshes what a window says the *piece is*; the settings event refreshes the individual *control*; the invalidation events refresh the *score*. None does another's work.
+
+The first two are about the piece; the third is about the music. That is the division [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6 draws for change detection generally — changes to the things that *contain* the music announce themselves structurally, while changes to the music itself emit no structure event and defer to the asynchronous formatting pipeline. Settings sit across that line on purpose: they are part of what a piece *is*, and many of them also govern how it is *drawn*.
 
 ### 7. Everything under undo/redo
 
@@ -199,14 +202,15 @@ sequenceDiagram
     Note over PW: apply to *piece-state →<br/>the Layouts pane shows the new score
 ```
 
-### A settings change: two channels, one for the window and one for the score
+### A settings change: three channels, for the control, the piece window, and the score
 
-Changing the music font in the Piece Preferences window refreshes the settings window over one channel and recomputes the score over another, entirely separate one.
+Changing the music font in the Piece Preferences window refreshes that window's control over one channel, refreshes every open piece window's projected settings over a second, and recomputes the score over a third, entirely separate one.
 
 ```mermaid
 sequenceDiagram
     participant U as User
     participant PP as Piece Preferences<br/>window
+    participant PW as Piece Window
     participant SRV as SRV / gRPC
     participant BE as Backend<br/>(STM)
     participant ER as Event Router
@@ -222,6 +226,11 @@ sequenceDiagram
     par settings channel
         BE->>ER: :piece-setting-changed {:piece-id}
         ER->>PP: refresh displayed values
+    and structure channel
+        BE->>ER: :piece-structure-changed {:piece-id}
+        ER->>PW: refetch get-piece-structure
+        PW->>SRV: get-piece-structure
+        SRV-->>PW: snapshot incl. dense :settings
     and invalidation channel
         BE->>ER: cache-invalidation (font → whole piece)
         ER->>FC: mark stale

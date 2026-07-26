@@ -891,6 +891,15 @@ No component assumes it “knows” the final structure based on partial updates
 
 The backend side of this contract — where a change is detected and how it becomes an invalidation event — is specified in [ADR-0052: Change Detection and Event Generation](../ADRs/0052-Change-Detection-and-Event-Generation.md): detection at the single VPD write funnel, structural changes emitting `:piece-structure-changed`, and emission coalesced to one event per outermost transaction.
 
+**Two kinds of change, two channels.** Not every change travels the same way, and the split is by *subject* rather than by size:
+
+* **The containers of the music, and how they are configured** — which musicians a piece has, what they play, on how many staves, in which layouts, under what names, and the piece's settings. A change here emits `:piece-structure-changed` for that piece, and the piece window refetches the whole structural snapshot.
+* **The music itself** — pitches, measures, voices, items. A change here emits no structure event at all. Its notification is deferred entirely to the invalidations that come out of the asynchronous formatting pipeline, which name the stale regions of the visual hierarchy — the mechanism §5.3 below traces.
+
+That is the whole division. The structural channel answers *what the piece is*; the pipeline channel answers *what the music looks like*, and neither can express the other's changes. One write can legitimately drive both: a setting such as beam thickness or the music font is part of the piece's configuration *and* changes how the music is drawn, so it travels down both channels — refreshing what the window says about the piece, and separately what the score looks like.
+
+A note on vocabulary: "structural" is historical. It began as a piece's containment makeup and now also covers configuration, which is not containment at all. Read it as *everything about a piece that is not the music*.
+
 ### 5.3 Example Flow
 
 Consider a concrete interaction: the user changes a pitch.
@@ -902,7 +911,7 @@ Consider a concrete interaction: the user changes a pitch.
    The command is sent through the polymorphic API. The backend applies semantic rules: accidentals, key signature context, remembered alterations, layout consequences.
 
 3. **Invalidation event.**
-   The backend publishes an event describing which structural regions are stale.
+   The backend publishes an event describing which regions of the visual hierarchy are stale. This is the music channel of §5.2, not the structural one: a pitch change emits no `:piece-structure-changed`, because it alters no container and no setting.
 
 4. **Frontend reaction.**
    The Rendering Data Manager marks corresponding paintlists invalid and schedules a fetch.

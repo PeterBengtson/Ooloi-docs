@@ -57,7 +57,9 @@ The same out-of-band property governs *maintenance*, not only detection. An `:ar
 
 The structural entities — Piece, Musician, Instrument, Staff, Layout — carry the `::h/Structural` trait (`hierarchy.clj`) and emit `:piece-structure-changed` for the affected piece when one of them is mutated through the VPD path. Membership is the trait, tested with the `structural?` predicate (`predicates.clj`); each structural entity additionally declares, co-located with its model, the `non-structural-fields` set the projection uses (§3a). A new structural entity — including one defined by a plugin — opts in by deriving `::h/Structural` and declaring its `non-structural-fields`, with no change to the funnel.
 
-The event is the standard invalidation: it names the piece and reports its structure stale; it carries no structural payload, and the frontend responds by refetching the structural snapshot. The set of mutations the trait covers is exactly the set that changes what `get-piece-structure` projects — membership, ordering, identity, naming, and staff participation across those five entities — and the covered set and the projection are kept in agreement by construction (§3b states the detection rule).
+The event is the standard invalidation: it names the piece and reports its structure stale; it carries no structural payload, and the frontend responds by refetching the structural snapshot. The set of mutations the trait covers is exactly the set that changes what `get-piece-structure` projects — membership, ordering, identity, naming, staff participation, and settings across those five entities — and the covered set and the projection are kept in agreement by construction (§3b states the detection rule).
+
+What the trait does **not** cover is the music: measures, voices and items. A content edit emits no structure event at all; its notification is the business of the formatting pipeline (§6 states the division, §7 the pipeline side).
 
 The event type `:piece-structure-changed` is registered as an amendment to [ADR-0018](0018-API-gRPC-Interface-and-Events.md). It is a **piece event**: `send-piece-event` delivers it only to clients subscribed to that piece, and [ADR-0031 §Per-Piece Event Routing](0031-Frontend-Event-Driven-Architecture.md#per-piece-event-routing) routes it per-piece to that piece's window through the piece subscription (`subscribe-to-piece-events`) — **not** through a shared bus category. That section is the canonical account of how every `:piece-*` event is routed. The name is `:piece-structure-changed` throughout; the earlier `:piece-structure-invalidated` is retired.
 
@@ -148,20 +150,27 @@ The dirty flag is held by the Piece Manager, beside the piece, and **never insid
 
 ### 6. Two emission regimes
 
-One detection mechanism feeds two regimes that differ in granularity, and the difference is deliberate:
+One detection mechanism feeds two regimes. They differ in granularity, but the deeper difference is in **subject** — and stating it that way is what keeps them apart:
 
-- **Structure** is coarse-grained: a structural change emits a single `:piece-structure-changed` per transaction, and the subscribed window refetches the whole structural snapshot — no delta, no finer-grained structural events ([ADR-0040](0040-Single-Authority-State-Model.md): the frontend refetches canonical state). The event reaches only that piece's subscribers — per-piece, never broadcast (§3; [ADR-0031](0031-Frontend-Event-Driven-Architecture.md)).
-- **Formatting / content** is fine. A content change can require more than one invalidation (see §7).
+- **The containers of the music, and how they are configured.** What the piece consists of and how it is set up: membership, ordering, identity, naming, staff participation, and — since piece settings became structural (§3a) — configuration. A change here emits a single `:piece-structure-changed` per transaction, and the subscribed window refetches the whole structural snapshot — no delta, no finer-grained structural events ([ADR-0040](0040-Single-Authority-State-Model.md): the frontend refetches canonical state). The event reaches only that piece's subscribers — per-piece, never broadcast (§3; [ADR-0031](0031-Frontend-Event-Driven-Architecture.md)).
+- **The music itself.** Measures, voices, items, the change-sets. A change here emits **no** structure event at all. Its notification is deferred entirely to the invalidations that come out of the asynchronous formatting pipeline (§7), which name what has gone stale in the visual hierarchy.
+
+That is the complete division, and it is a purity property rather than an implementation detail. The projection answers *what the piece is and how it is configured*; the pipeline answers *what the music looks like*. Neither regime can express the other's changes, and neither is consulted about them. A content edit cannot reach the window's panes, and a rename cannot reach the paintlists.
+
+**A caveat on the name.** "Structural" is now doing more work than it did originally. It began as the *containment* makeup of a piece — who plays what, on how many staves, in which layouts — and now also covers configuration, which is not containment at all. The trait, the event and the multimethod keep the name for continuity; read it as *everything about a piece that is not the music*, rather than literally its structure.
+
+**One write can legitimately drive both regimes, and that is not a contradiction.** A piece setting is projected, so writing one emits `:piece-structure-changed` — but a setting such as beam thickness or the music font also changes how the music is *drawn*, and that consequence travels as formatting invalidations. The two are not alternatives and must never be collapsed into one event: one refreshes what the window says the piece is, the other refreshes what the score looks like. §3a records the same separation from the settings side, and [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6 from the window's.
 
 Both regimes honour the same principle: an event carries identifiers of what is stale, not a delta ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)). The single-event-per-transaction rule of §4 is **specific to structure** and must not be read as governing formatting.
 
 ### 7. Formatting-pipeline invalidations (future consumer)
 
-When content changes, the formatting engine must run and the resulting invalidations must be generated. This regime is a **future consumer** of the detection mechanism of §1–§2; it is described here only to the extent presently known, and its engine is **not specified by this ADR**:
+This is the other half of the division in §6: it is how a change to the **music** — and to anything else that alters how the music is drawn — becomes visible. When content changes, the formatting engine must run and the resulting invalidations must be generated. This regime is a **future consumer** of the detection mechanism of §1–§2; it is described here only to the extent presently known, and its engine is **not specified by this ADR**:
 
 - A single change may produce **more than one** invalidation, at **different levels of the visual hierarchy** — layout, page, system, staff, measure (the levels [ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md) enumerates).
 - *Which* levels and *how many* are the **formatting engine's** decision, not the detector's.
 - The invalidation sequence **may be optimised by subsumption** — a containing invalidation absorbing the finer ones it covers. Where that collapsing lives — the engine, the Event Router, or the emit layer — is left open.
+- Its inputs are not only content edits. A **setting** that governs how the music is drawn — beam thickness, the music font — reaches the pipeline too, on top of the structure event its write already emits (§6). Settings are therefore the one place where both regimes fire for a single write, and legitimately so.
 
 These invalidations are forward staleness signals out of formatting; they do not let the renderer renegotiate semantic or layout decisions — the rendering boundary holds. How the engine derives them belongs to a later decision, taken when the formatting pipeline exists and can be driven by tests.
 

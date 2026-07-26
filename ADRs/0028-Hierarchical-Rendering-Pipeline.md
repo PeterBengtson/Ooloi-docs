@@ -430,6 +430,8 @@ Pipeline results are cached until local edits change them. The atom-relative geo
 
 Invalidation works hierarchically: musical events trigger measure recalculation, which may trigger system recalculation, which may trigger page recalculation.
 
+**These invalidations are the whole notification channel for the music.** A change to the musical content emits no structural event of any kind — its notification *is* the invalidation sequence this pipeline produces, asynchronously and at whatever granularity the recalculation determines. That is one half of a complete division: changes to the things that *contain* the music — which musicians a piece has, what they play, on how many staves, in which layouts, under what names, and the piece's settings — announce themselves immediately and synchronously with the write, as `:piece-structure-changed`, and never reach this pipeline ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6). Settings are the one input that legitimately travels both ways: a setting like beam thickness or the music font is part of what the piece *is* and also governs how it is *drawn*, so it announces itself structurally *and* invalidates here.
+
 ```mermaid
 flowchart TD
     A[Musical Event Change] --> B[Measure Invalidation]
@@ -570,6 +572,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) - Accidental decision algorithm; semantic model that is closed before rendering
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) - GPU-accelerated terminal frontend execution of paintlists produced by this rendering pipeline
 - [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) - Stage 3 algorithm computing preamble on-demand and consuming gutter_width values for system breaking
+- [ADR-0052: Change Detection and Event Generation](0052-Change-Detection-and-Event-Generation.md) - The other half of the notification division: changes to the containers of the music announce themselves structurally and never reach this pipeline, while musical changes notify solely through the invalidations it produces
 
 ### Technical Dependencies
 - **Claypoole**: Threadpool-based parallel processing library providing controlled CPU-intensive task execution, consumed via shared thread pool Integrant component (`ooloi.shared.components.thread-pool`)
