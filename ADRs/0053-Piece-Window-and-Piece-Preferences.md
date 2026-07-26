@@ -134,7 +134,7 @@ The two prefix glyphs are applied through the generic `:window/title-decorators`
 
 ### 6. Piece Settings: the Piece Preferences window
 
-Each piece carries its own settings — the configuration that travels with the piece: accidental behaviour, staff spacing, the music font, notehead mappings, and the rest. These are **piece settings** ([ADR-0016](0016-Settings.md)): declared on the backend with `defsetting`, held in the piece's STM-managed state, and — because the frontend reads no piece data directly ([ADR-0040](0040-Single-Authority-State-Model.md)) — reached only through the polymorphic API over gRPC. Piece settings live on the Piece, so their VPD is always `[]`:
+Each piece carries its own settings — the configuration that travels with the piece: accidental behaviour, staff spacing, the music font, notehead mappings, and the rest. These are **piece settings** ([ADR-0016](0016-Settings.md)): declared with `defsetting` in *shared* code, so their declarations — default, validator, category — are available to backend and frontend alike, while their **values** are held in the piece's STM-managed state and, because the frontend reads no piece data directly ([ADR-0040](0040-Single-Authority-State-Model.md)), are reached only through the polymorphic API over gRPC. The distinction matters: what a setting *is* is shared knowledge; what a particular piece has it *set to* is the backend's alone. Piece settings live on the Piece, so their VPD is always `[]`:
 
 ```clojure
 (SRV/get-keyless-accidentals [] piece-id)

@@ -1351,7 +1351,7 @@ The solution is to pass `@tr/current-locale` as a `:locale` prop through the for
 Application settings in Ooloi are not an afterthought and not a collection of ad-hoc preference reads scattered across the UI. They form two independent systems serving different scopes:
 
 * **Frontend app settings** — global application preferences (theme, UI language, editor preferences). Declared on the frontend with `def-app-setting`, stored in an EDN file, accessed directly through an in-process atom API. Described in full below.
-* **Piece settings** — configuration that travels with piece data (beam thickness, staff spacing, accidental behaviour). Declared on the backend with `defsetting`, stored in STM-managed piece state, accessed exclusively through the polymorphic API over gRPC. The frontend reads and writes piece settings via `SRV/` calls — no direct access.
+* **Piece settings** — configuration that travels with piece data (beam thickness, staff spacing, accidental behaviour). Declared with `defsetting` in *shared* code, so the declarations — default, validator, category — are on both projects' classpaths; their **values** are stored in STM-managed piece state. The frontend reads and writes those values exclusively through the polymorphic API over gRPC, via `SRV/` calls, never by touching piece data directly. What a setting *is* is shared knowledge; what a piece has it *set to* belongs to the backend.
 
 These two systems are architecturally independent. Piece settings concern musical semantics and belong to the backend. Frontend app settings concern application behaviour and belong to the frontend. Mixing the two would compromise the backend-authoritative invariant (Section 13.1).
 
