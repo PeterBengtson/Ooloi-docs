@@ -108,6 +108,26 @@ New `defsetting` macro in `models.core` generates functions that look identical 
 (defsetting Piece :french-ties? false boolean?)
 ```
 
+**Category**: every setting declares the category it belongs to, and declaring it is **mandatory** —
+`defsetting` throws if it is missing, so a setting cannot come into existence without a place to
+appear. The category is what a settings window groups by, one tab per category, and it is declared
+rather than inferred because a setting's public interface is generated from its *name*:
+`:keyless-accidentals` becomes the `get-keyless-accidentals` and `set-keyless-accidentals` that
+clients call. Carrying the grouping in the name instead would corrupt both, giving names that no
+longer read as a complete thought where they are called, and groups that depend on a spelling
+convention holding. The category is therefore separate data, recorded in the defaults registry
+beside the default and the validator.
+
+Requiring it rather than allowing it to default is deliberate. An optional category admits settings
+that belong nowhere, and a window must then invent a home for them — a residual tab that accretes
+whatever nobody troubled to classify, which is precisely the outcome grouping exists to prevent.
+Asking the question at the point of declaration is the cheaper discipline: whoever adds a setting
+knows where it belongs, and no window has to guess.
+
+**Within a tab, settings appear in declaration order** — the order in which the `defsetting` forms
+are read, neither alphabetical nor incidental — so the author of a group controls how it reads. The
+defaults registry must therefore preserve that order.
+
 #### Validation Architecture
 
 The validation system provides declarative constraints alongside setting definitions:
@@ -180,15 +200,53 @@ Users experience identical interfaces regardless of underlying storage or valida
 
 **Defaults Registry Architecture**: 
 
-A central, dynamically-populated registry provides default value and validator storage with discoverability:
+A central, dynamically-populated registry provides default value, validator and category storage with discoverability:
 
 ```clojure
 ;; Central registry - populated at compile-time by defsetting macro
 (defonce defaults-registry (atom {}))
 ;; Structure: {Staff {:beam-thickness {:default 0.5 :validator (constantly true)}
 ;;                     :staff-spacing {:default 10.0 :validator pos?}}
-;;            Measure {:width {:default 100.0 :validator pos-int?}}}
+;;            Measure {:width {:default 100.0 :validator pos-int?}}
+;;            Piece {:keyless-accidentals {:default :standard
+;;                                         :validator #{:standard :all-except-repeated :all}
+;;                                         :category :accidentals}}}
 ```
+
+The category rides in the same entry as the default and the validator rather than in a structure of
+its own, so a settings window has everything it needs to build itself — what the setting is, what it
+may be set to, and which tab it belongs on — from one lookup. Every entry carries one; there is no
+uncategorised case to handle.
+
+The registry must also **preserve declaration order**, since that is the order in which a tab
+presents its settings. A plain map does not, so the registry is ordered by construction rather than
+by a separate index kept alongside it — the frontend settings registry solves the identical problem
+by holding a vector of pairs, and re-declaring an existing key replaces its entry in place so that
+reloading a namespace does not reorder what it declares.
+
+#### Scope of a Setting
+
+A setting is **strictly local to the entity it is set on**. Reading consults that entity's own
+`:settings` map and falls back to the declaration default; it does not consult enclosing entities.
+Setting beam thickness on a musician therefore does not change what an enclosed staff reports — the
+staff returns the declaration default until a value is set on the staff itself. VPD access behaves
+identically, resolving the addressed entity and reading it locally. Note also that a default belongs
+to the entity type it was declared for, not to the setting: a setting declared for staves has no
+meaning on a piece, and reading it there is a dispatch failure rather than a fallback.
+
+Hierarchical defaulting — an unset entity inheriting from its container, ending at the piece — is a
+natural extension of this design and is deliberately not part of it yet. Two properties would have
+to be revisited first, recorded here so the possibility stays open:
+
+- **Storing a value equal to the default removes it.** The cleanup that keeps `:settings` maps small
+  leaves "explicitly set" and "never set" indistinguishable in the data. Under inheritance those are
+  different intentions — pinning a value so that a later change to an enclosing entity does not move
+  it is exactly what the cleanup erases — so reading would need three states where the storage
+  affords two, at some cost to the efficiency this ADR prizes.
+- **Entities hold no reference to their container.** A cascade can therefore only be driven where
+  the path is known, which is VPD access; a direct call on an entity object could not participate.
+  The two forms agree exactly today, and inheritance would separate them unless every direct caller
+  moved to VPD access.
 
 ## Rationale
 
@@ -240,7 +298,7 @@ A central, dynamically-populated registry provides default value and validator s
 
 ## Implementation
 
-The Universal Entity Settings architecture is implemented in `backend/src/main/clojure/ooloi/backend/ops/access.clj` with comprehensive test coverage in the corresponding test namespace.
+The Universal Entity Settings architecture is implemented in `shared/src/main/clojure/ooloi/shared/ops/access.clj` with comprehensive test coverage in the corresponding test namespace.
 
 Key implementation aspects:
 - `defsetting` macro with optional validation parameter, runtime validation, and defaults registry integration
@@ -365,9 +423,9 @@ Key implementation aspects:
 - **Integrant**: Component system managing piece lifecycle and references
 
 ### Code References
-- `backend/src/main/clojure/ooloi/backend/ops/access.clj`: Settings implementation including `defsetting` macro, validation logic, and helper functions
-- `backend/src/main/clojure/ooloi/backend/models/core.clj`: VPD wrapper macros and dispatch generation
-- `backend/test/clojure/ooloi/backend/ops/access_test.clj`: Comprehensive test coverage including validation scenarios
+- `shared/src/main/clojure/ooloi/shared/ops/access.clj`: Settings implementation including `defsetting` macro, validation logic, and helper functions
+- `shared/src/main/clojure/ooloi/shared/models/core.clj`: VPD wrapper macros and dispatch generation
+- `shared/test/clojure/ooloi/shared/ops/access_test.clj`: Comprehensive test coverage including validation scenarios
 
 ## Notes
 
