@@ -248,6 +248,79 @@ to be revisited first, recorded here so the possibility stays open:
   The two forms agree exactly today, and inheritance would separate them unless every direct caller
   moved to VPD access.
 
+#### Which settings reach the Piece Window
+
+Whether an entity's settings appear in the structural projection, and whether writing one notifies
+subscribers, is decided by that **entity's** `non-structural-fields` declaration and not by the
+setting ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a/§3b). The two follow together
+by construction: the same declaration the projection strips is the one whose complement fires
+`:piece-structure-changed`, so a setting cannot be visible to the window without its change being
+announced, nor announced without being visible.
+
+Piece settings are therefore projected, because some of them decide what the Piece Window *displays* —
+the numeral settings of [ADR-0054](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md)
+§6 govern every musician header and instrument row in it. Settings on lower entities are not, because
+none of them currently does.
+
+**The projection must be dense, and sparse storage is what forces it.** Storage omits any setting at
+its default, and removes the `:settings` map once it empties — so a piece whose settings are all
+default has no `:settings` key at all, and a setting returned to its default becomes
+indistinguishable from one never touched. Projected raw, that tells a reader nothing: absence would
+have to be resolved against the declarations, and a client resolving it against *its own* copy of
+them would render from a default its build happened to hold rather than the one the piece is actually
+governed by. So the projection carries **every declared setting of that entity at its effective
+value** — stored value where present, declared default where absent — resolved on the authoritative
+side, from the registry, at projection time. This is also consistent by construction: the effective
+value is computed by the same stored-else-default rule the getters use, so the projection and
+`get-<setting>` cannot disagree.
+
+The shape is a map keyed by setting, each entry a map of its own:
+
+```clojure
+{:settings {:numbering-form      {:value :arabic  :default :arabic}
+            :numbering-placement {:value :follow  :default :precede}}}
+```
+
+`:default` costs nothing to include — densification has just read it to compute the effective value —
+and it earns two things. It makes "has this piece overridden the setting?" answerable from the
+projection alone, and it puts the **server's** notion of the default behind the Preferences window's
+per-field reset, which both decides whether that control appears and supplies the value it writes. A
+client built against an older default would otherwise offer to reset a value that already *is* the
+current default, and write one the server considers an override.
+
+The nesting is what allows that, and it will earn its keep again: hierarchical defaulting needs a
+further key — which level the effective value came from, the third state sparse storage cannot
+express. Ordering within the map is irrelevant; order is a property of the declarations.
+
+**The projection describes a setting's state; the registry describes how to present it.** From the
+projection a client learns what a setting *is set to* and what it *would be* unset — enough to render
+the value and to know whether it has been overridden, with nothing else consulted. From the registry,
+which is on its classpath already, it learns category, declaration order, labels, control type and
+validator. Only state crosses the wire; presentation never needs to.
+
+**There is a second reason, and it is this ADR's own.** A setting is required to be
+indistinguishable from a direct slot — "Users experience identical interfaces regardless of underlying
+storage", "users don't need to know whether an attribute is a direct slot or settings-backed", and
+Alternative 4 was rejected precisely for splitting the two. But a write to a direct slot of a
+structural entity *announces itself*: `set-title` and `set-name` emit `:piece-structure-changed`
+([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3b). So while a settings write stayed
+silent, a caller promised an identical interface met a difference in observable consequence — the very
+distinguishability this ADR exists to prevent. Making `:settings` structural on the Piece was
+therefore required by the uniformity principle, independently of what any window needs.
+
+**That reasoning does not stop at the Piece.** A Staff's `:name` emits, so a Staff's settings should
+too, and until they do the principle is unsatisfied there. It is unsatisfied only *potentially*: no
+entity below the Piece declares a setting today, so nothing yet exists to be distinguishable from.
+The trigger for revisiting is therefore narrower than it looks — not "when a lower setting affects the
+Piece Window" but **when any lower entity gains a setting at all**, since at that moment it becomes
+distinguishable from its own slots whether or not anything renders from it.
+
+At that moment uniformity and precision will pull against each other: uniformity says emit, while
+nothing may consume the event. The question is vacuous today and is left for then, recorded rather
+than answered. What must not be forgotten is that it arrives with the first lower-entity setting, and
+that hierarchical defaulting and projection have to land together — one keyword per entity, small, but
+not automatic.
+
 ## Rationale
 
 ### Alignment with Existing Architecture
