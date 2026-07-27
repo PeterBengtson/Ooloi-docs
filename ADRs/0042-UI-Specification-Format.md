@@ -12,6 +12,8 @@ Implemented
 - [Decision](#decision)
   - [Approach](#approach)
   - [Metadata Keys](#metadata-keys)
+  - [Dynamic window titles: raw `:title` vs the `:window/title-key` fallback](#dynamic-window-titles-raw-title-vs-the-windowtitle-key-fallback)
+  - [Modal dialogs: one core, two entry points](#modal-dialogs-one-core-two-entry-points)
   - [Content Builder Pattern](#content-builder-pattern)
   - [Custom cljfx Component Functions](#custom-cljfx-component-functions)
   - [Per-Window Reactive Renderer](#per-window-reactive-renderer)
@@ -21,6 +23,7 @@ Implemented
   - [Command Descriptors (Menu Specialisation)](#command-descriptors-menu-specialisation)
   - [Validation Strategy](#validation-strategy)
   - [Window Manager Integration](#window-manager-integration)
+  - [Application startup: window-set, menu, and readiness](#application-startup-window-set-menu-and-readiness)
 - [Benefits](#benefits)
 - [Trade-offs](#trade-offs)
 - [Alternatives Considered](#alternatives-considered)
@@ -91,7 +94,7 @@ Per ADR-0039, all user-facing strings use translation keys (`:window/title-key`,
 
 UI specifications are **pure Clojure maps** conforming to cljfx structure, augmented with `:window/` namespace-qualified metadata for lifecycle management.
 
-Backend plugins store their configuration as piece settings ([ADR-0016](0016-Settings.md)). How the UI for those settings is generated is **undecided** — a plugin's declarations live in backend plugin code, not in `shared/`, so the frontend cannot read them locally the way it reads the core ones; a `SRV/get-settings-ui-metadata` call is one **suggestion** and does not exist ([ADR-0003](0003-Plugins.md) §Backend Plugin Settings states the requirement and what remains open). Frontend provides all custom windows. Backend-described dialog capability via gRPC is an extensibility point for future use:
+Backend plugins store their configuration as piece settings ([ADR-0016](0016-Settings.md)). How the UI for those settings is generated is **undecided**, and the difficulty is specific: a core setting's declaration lives in `shared/`, on both classpaths, so the frontend reads its category, control type and validator locally and builds the row without asking the backend anything. A *plugin's* declaration lives in backend plugin code, which the frontend has no copy of — so the one mechanism that makes the core settings window work is unavailable, and nothing has been decided to replace it. What remains open is not merely how to transport the declarations but what a transported declaration would have to contain: a set validator enumerates its legal values, from which a control and a precise message follow, while an arbitrary predicate yields neither. [ADR-0003](0003-Plugins.md) §Backend Plugin Settings states the requirement and the alternatives not yet weighed. Frontend provides all custom windows. Backend-described dialog capability via gRPC is an extensibility point for future use:
 
 ```clojure
 ;; Backend plugin sending a window spec over gRPC (future extensibility)
@@ -172,6 +175,39 @@ Backend plugins store their configuration as piece settings ([ADR-0016](0016-Set
   `dissoc`ed before registration). They are orthogonal axes: a window may carry both, e.g. a
   factory-built dialog — `:window/factory :plugin-config` (build) + `:window/type :dialog`
   (classification). The factory is keyed by a `factory-key`, never by a `:window/type`.
+
+**`:window/piece-id`** (string, optional — present exactly on piece-**owned** windows)
+- Names the piece a window belongs to, for a window that is *not itself* the piece window. A piece
+  window needs no such key, its `:window/id` being its piece-id already; a Piece Preferences window
+  or a layout window does, and carrying this key is what makes it **piece-owned**
+  ([ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §7, which specifies the category and its
+  rules). `register-window!` stores it verbatim on the registry entry.
+- **Ownership is expressed as data here rather than through JavaFX parenting, and must be.** A Stage
+  has exactly one owner, and on macOS that owner is already the menu-bar host, through which every
+  managed window inherits the system menu bar (§*macOS Behaviour*); re-pointing it at the piece
+  window would cost the owned window its menu bar. A Stage closed by the toolkit would also bypass
+  `close-window!` and so skip geometry persistence, watch removal, renderer unmount and the
+  `:window-closed` announcement — the very things centralising the lifecycle exists to guarantee.
+- **`close-window!` cascades on it.** Closing a piece window closes every registered window whose
+  `:window/piece-id` is that piece, and does so *before* the piece window's own teardown, so each
+  owned window is dismantled while the state it watches still belongs to a live window. The cascade
+  hangs off the **actual close**, never `:window/on-close-request`: a piece window may prompt before
+  closing and the user may cancel, and a cancelled close must not have already closed the windows it
+  owns.
+- **It does not confer restorability.** Session membership is decided by `:window/type` against the
+  restorable set (§*Two layers: per-window state, and session membership*), and a piece-owned
+  window's type is absent from it — so it never enters the session list and can never be restored
+  after, or without, its piece.
+- **It is how an owned window reaches the piece's state.** The owned window declares a
+  `:window/watches` on the piece window's state atom, found in the registry by piece id; the
+  pipeline adds the watch on open and removes it on close. It must **not** take a piece subscription
+  of its own — that is client-to-backend, one per client and piece, and its unsubscribe would revoke
+  delivery for every other consumer in the client ([ADR-0031](0031-Frontend-Event-Driven-Architecture.md)
+  §*Two kinds of subscription*).
+- **File-menu commands divide on it.** `active-piece-id` resolves it, so **Save** and **Save As**
+  act on the owning piece when an owned window is foremost — the owned window has no save of its
+  own, so the command has one available meaning. **Close** does not: it acts on the foremost window
+  itself, closing that window and leaving its piece window open.
 
 **First-open position and size** (plain `:x` / `:y` / `:width` / `:height`, optional)
 - A window's position and size before any persisted geometry exist are ordinary `:x` / `:y` / `:width` / `:height` in the spec — not `:window/*` keys. `show-window!` merges persisted geometry over them, so they govern only the first-ever open (see §"Established Usage Patterns: Floating windows → Ambient indicators" for how the collaboration palette computes its first-open `:x` / `:y`). There is no dedicated `:window/default-*` key.
@@ -771,11 +807,16 @@ All UI Manager operations that create, modify, or close JavaFX objects must be c
 ```clojure
 ;; ✅ CORRECT — post to JAT from background thread
 (fx/run-later!
-  (fn [] (um/show-window! mgr {:window/id :tool-palette ...})))
+  (fn [] (wr/request-window-open! mgr {:window/id :tool-palette ...})))
 
 ;; ❌ WRONG — calling directly from background thread
-(future (um/show-window! mgr {:window/id :tool-palette ...}))
+(future (wr/request-window-open! mgr {:window/id :tool-palette ...}))
 ```
+
+(Note the entry point: application code publishes a request and never calls `show-window!` itself
+— see §Architectural Invariants. The threading rule above is about *which thread* you publish from;
+the invariant is about *what you call*. Both hold at once, and the ❌ example is wrong on the
+thread only.)
 
 **Plugin implication:** Backend plugins sending specs over gRPC are unaffected — the frontend's gRPC handler is responsible for dispatching to the JAT. Frontend plugins that call UI Manager functions directly must ensure they are on the JAT or use `fx/run-later!`.
 
@@ -813,7 +854,7 @@ The spec author never calls `tr` — the rendering infrastructure does. This ens
 | `mdal-check` | `cljfx.clj` | Default icon for `:success` notifications |
 | `mdmz-warning` | `cljfx.clj` | Default icon for `:warning` notifications |
 | `mdal-error` | `cljfx.clj` | Default icon for `:error` notifications |
-| `mdmz-undo` | `settings_window.clj` | Reset-to-default button beside each setting field |
+| `mdmz-undo` | `app_settings_window.clj` | Reset-to-default button beside each setting field |
 
 **Icon packs:** Only Material Design 2 (`ikonli-material2-pack`) is currently included. Additional packs (Feather, FontAwesome, etc.) can be added as separate dependencies if needed. Browse available icons: [Material2 cheat sheet](https://kordamp.org/ikonli/cheat-sheet-material2.html).
 
@@ -1420,7 +1461,7 @@ Startup is orchestrated by `start-app!` in a fixed order, so that "the applicati
 
 1. **Splash.** `start-app!` shows the splash screen and brings the system up behind it (backend components, gRPC, the UI Manager).
 2. **Menu host.** When the splash closes, the menu host is installed *first*. On macOS this is the single global system menu bar (see *Platform-split menus* below); on Windows/Linux there is no global menu, so the per-window bars instead arrive with their windows in step 3.
-3. **The startup window-set.** `open-startup-windows!` then opens the initial set of piece windows. There is no fixed "open the untitled piece" step; the rule is an **invariant** — *if no piece window would be on screen, open one*. A future session restore reopens the previous session's windows; when nothing is restored (or a restored window fails to open), the **untitled fallback** runs — mint one New untitled, unsaved backend piece (`SRV/new-piece`, off the JAT) and open its subscribed window through `open-piece-window!`. The set is whatever actually opens.
+3. **The startup window-set.** `open-startup-windows!` then opens the initial set of windows. There is no fixed "open the untitled piece" step; the rule is an **invariant** — *if no piece window would be on screen, open one*. First the **restore arm** reopens the windows recorded in the session list (§*Two layers: per-window state, and session membership*), one at a time and back-most first so the recorded stacking order is reproduced, skipping any piece whose UUID no longer resolves. Then, if that left **no piece window** on screen — no session at all, or every recorded piece skipped — the **untitled fallback** runs: mint one New untitled, unsaved backend piece (`SRV/new-piece`, off the JAT) and open its subscribed window through `open-piece-window!`. Note the fallback gates on *piece* windows specifically, so a session that restored only the Instrument Library still falls through to a New piece. The set is whatever actually opens.
 4. **Readiness last.** `:app-ready` is published only once the whole window-set has opened and registered — never partway. `open-startup-windows!` owns the signal and fires it when the set settles, so a restore that opens nothing, or fails partway, cannot starve readiness (the ADR-0031 ordering guarantee).
 
 Every startup window is keyed by its **piece UUID**, like any other piece window — there is no distinguished `:untitled-piece` id. Code that needs "the startup piece window" looks it up by kind (`ui-manager/piece-windows`), never by a fixed id.
@@ -1528,14 +1569,21 @@ This is consistent with how events work: they're boundary data, so they're maps.
 ### With cljfx Rendering
 
 ```clojure
-;; Frontend code calls show-window! (never creates Stage directly)
-(defn show-about! [manager]
-  (let [content (cljfx/instance (cljfx/create-component (about-content-spec manager)))]
-    (um/show-window! manager
-      {:window/id :about
-       :window/content content
-       :window/style :undecorated
-       :window/title-key :window.about.title})))
+;; Frontend code publishes a request; the UI Manager creates the Stage internally.
+;; It does NOT call show-window! — see §Architectural Invariants — and it does NOT
+;; materialise content itself with create-component, which would freeze that content
+;; at the locale active when the window opened (§All Window Content Must Live Inside
+;; the Renderer Spec). It declares a spec-fn and a state atom, and the pipeline does
+;; the rest.
+(defn show-about! [manager dispatch-fn]
+  (fx/assert-fx-thread!)
+  (wr/request-window-open! manager
+    {:window/id        :about
+     :window/type      :dialog
+     :window/spec-fn   (fn [_] (about-content-spec manager))
+     :window/handler   dispatch-fn
+     :window/state     (atom {:_v 0})
+     :window/title-key :window.about.title}))
 
 ;; Theme application is global — one call sets the UA stylesheet for all windows
 ;; (Application/setUserAgentStylesheet sets it once for the entire application)
@@ -1576,10 +1624,11 @@ This is consistent with how events work: they're boundary data, so they're maps.
            :root {:fx/type :v-box
                   :children [...]}}})
 
-;; Frontend receives, validates, renders
-(defn handle-show-dialog [spec]
+;; Frontend receives, validates, and publishes the open request —
+;; never calling show-window! itself (§Architectural Invariants)
+(defn handle-show-dialog [manager spec]
   (validate-window-spec spec)
-  (show-window spec))
+  (wr/request-window-open! manager spec))
 
 ;; No serialization issues - it's just a map
 ```

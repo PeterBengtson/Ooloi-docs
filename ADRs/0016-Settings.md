@@ -88,25 +88,39 @@ We will implement a **Universal Entity Settings Architecture** that provides con
 
 #### Settings-Backed Attribute Functions
 
-New `defsetting` macro in `models.core` generates functions that look identical to existing attribute functions but use map-based storage with optional validation:
+The `defsetting` macro (`ops/access.clj`, alongside `defattribute`) generates functions that look identical to existing attribute functions but use map-based storage with optional validation:
 
 ```clojure
-;; Existing direct slot attribute
+;; Existing direct slot attribute — dispatches on the RECORD
 (defattribute Staff :name)          ; Direct field access
 ;; → get-name, set-name
 
-;; New settings-backed attribute with no validation
-(defsetting Staff :beam-thickness 0.5)  ; Map-based with default
+;; Settings-backed attribute — dispatches on the HIERARCHY KEYWORD
+(defsetting ::h/Staff :beam-thickness 0.5)  ; Map-based with default
 ;; → get-beam-thickness, set-beam-thickness
 
 ;; Settings with enumerated value validation
-(defsetting Piece :keyless-accidentals :standard 
+(defsetting ::h/Piece :keyless-accidentals :standard
   #{:standard :all-except-repeated :all})
 
-;; Settings with predicate validation  
-(defsetting Piece :max-lookahead-measures 50 pos-int?)
-(defsetting Piece :french-ties? false boolean?)
+;; Settings with predicate validation
+(defsetting ::h/Piece :max-lookahead-measures 50 pos-int?)
+(defsetting ::h/Piece :french-ties? false boolean?)
 ```
+
+**Note the asymmetry in the first argument, because it is easy to get wrong and fails loudly.**
+`defattribute` takes the **record** (`Staff`); `defsetting` takes the **hierarchy keyword**
+(`::h/Staff`) and *throws* on anything else — it requires a keyword in the
+`ooloi.shared.hierarchy` namespace. The difference is not cosmetic: a hierarchy keyword is what
+lets a setting be declared against a **trait** as well as a concrete type, so
+`(defsetting ::h/Structural :beam-thickness 0.5)` would install the accessors on Piece, Musician,
+Instrument, Staff and Layout from one declaration. A record name cannot express that.
+
+The examples above show the macro's **current** arity. They do not show the mandatory category
+described below, because the form that argument takes is not yet settled — the validator occupies
+the optional fourth position and a Clojure map is itself callable as a predicate, so an options map
+placed there would be silently read *as* the validator. The category therefore needs an unambiguous
+position or shape, and this ADR specifies the requirement without yet fixing the syntax.
 
 **Category**: every setting declares the category it belongs to, and declaring it is **mandatory** —
 `defsetting` throws if it is missing, so a setting cannot come into existence without a place to
@@ -203,14 +217,16 @@ Users experience identical interfaces regardless of underlying storage or valida
 A central, dynamically-populated registry provides default value, validator and category storage with discoverability:
 
 ```clojure
-;; Central registry - populated at compile-time by defsetting macro
+;; Central registry - populated at load time by the defsetting macro
 (defonce defaults-registry (atom {}))
-;; Structure: {Staff {:beam-thickness {:default 0.5 :validator (constantly true)}
-;;                     :staff-spacing {:default 10.0 :validator pos?}}
-;;            Measure {:width {:default 100.0 :validator pos-int?}}
-;;            Piece {:keyless-accidentals {:default :standard
-;;                                         :validator #{:standard :all-except-repeated :all}
-;;                                         :category :accidentals}}}
+;; Keyed by the HIERARCHY KEYWORD the setting was declared against — the macro's
+;; first argument — never by the record:
+;; {::h/Staff {:beam-thickness {:default 0.5 :validator (constantly true)}
+;;             :staff-spacing  {:default 10.0 :validator pos?}}
+;;  ::h/Measure {:width {:default 100.0 :validator pos-int?}}
+;;  ::h/Piece {:keyless-accidentals {:default :standard
+;;                                   :validator #{:standard :all-except-repeated :all}
+;;                                   :category :accidentals}}}
 ```
 
 The category rides in the same entry as the default and the validator rather than in a structure of
@@ -345,7 +361,7 @@ not automatic.
 
 **Fail-Fast Behavior**: Invalid values rejected at write time with clear error messages, preventing invalid state propagation.
 
-**Zero Runtime Overhead**: Validation logic generated once at compile time, stored in registry for runtime use.
+**Zero Runtime Overhead**: The generated setter **closes over** its validator and its default directly, so validating a write consults no registry and performs no lookup. The registry holds the same values for *discovery* — a settings window enumerating what exists, and the projection densifying a piece's settings (ADR-0052 §3a) — not for the write path.
 
 **Consistent Error Messages**: Set validators automatically include valid values in error messages for better developer experience.
 
@@ -357,7 +373,7 @@ not automatic.
 
 **Scalability**: Approach scales to any number of setting types without per-entity overhead.
 
-**Validator Efficiency**: Single validator function stored in registry, not duplicated per entity.
+**Validator Efficiency**: One validator per setting, closed over by the generated setter and recorded once in the registry — never duplicated per entity.
 
 ### Development Experience
 

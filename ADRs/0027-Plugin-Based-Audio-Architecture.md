@@ -142,7 +142,7 @@ The Ooloi core provides no audio or MIDI functionality whatsoever. All audio pro
 - **Individual configuration**: Each client manages its own audio setup, plugins, and device configuration
 - **Personalized workflows**: Musicians can use preferred audio tools without affecting other collaborators
 - **Local optimization**: Audio processing optimized for individual client hardware capabilities
-- **Offline capability**: Clients can provide audio playback without backend connectivity for local work
+- **No backend round trip**: Audio is produced entirely on the client, so playback latency owes nothing to the network and nothing to backend load. This is about where audio is *processed*, not about working without a backend: the music being played comes from the piece, the piece lives on the backend, and there is no offline mode in which a client edits or plays one without it ([ADR-0040](0040-Single-Authority-State-Model.md)).
 
 ### Plugin Architecture Benefits
 

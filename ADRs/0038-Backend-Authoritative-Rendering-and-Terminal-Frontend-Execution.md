@@ -430,11 +430,11 @@ On reconnect:
 **Cache Invalidation Flow:**
 
 ```
-Backend Event
+:piece-invalidation (that piece's subscribers only)
     ↓
-Event Router: categorise → batch → eb/publish!
+Event Router: coalesce in this piece's invalidation queue (~50-100ms)
     ↓
-Frontend Event Bus → UI Manager
+flush batch → UI Manager
     ↓
 UI Manager handler (Claypoole thread):
     RDM: mark VPD stale (atom — background-safe)
@@ -599,7 +599,7 @@ Performance depends on:
 
 ### Trade-offs
 
-1. **Network Dependency:** Frontend rendering requires backend paintlists. Offline capability limited to cached paintlists.
+1. **Network Dependency:** Frontend rendering requires backend paintlists, and there is **no offline mode** — a client with no backend has no piece ([ADR-0040](0040-Single-Authority-State-Model.md)), so cached paintlists are not a degraded working mode but merely what has not yet been discarded. Nothing can be edited without the backend, and nothing diverges locally to be reconciled later.
 
 2. **Latency Floor:** Visible edits require backend recomputation + network fetch. Cannot achieve sub-backend-batch latency.
 

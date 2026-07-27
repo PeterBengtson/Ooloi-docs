@@ -22,6 +22,7 @@
    - [4.4 Custom cljfx Component Functions](#44-custom-cljfx-component-functions)
    - [4.5 Per-Window Reactive Renderer](#45-per-window-reactive-renderer)
    - [4.6 Style Classes — The setAll() Trap](#46-style-classes--the-setall-trap)
+   - [4.7 Nested TitledPane Event Handling](#47-nested-titledpane-event-handling)
 5. [Event Architecture](#5-event-architecture)
 6. [The JAT Boundary](#6-the-jat-boundary)
 7. [Rendering Pipeline](#7-rendering-pipeline)
@@ -157,37 +158,38 @@ This is not an aesthetic choice. It is foundational to the architecture:
 
 Window lifecycle is handled by the UI Manager, but window *content* is described using cljfx specs.
 
-One detail matters for correctness: the UI Manager owns window lifecycle. Frontend code supplies a **plain map with `:window/*` metadata and a materialised content node** as an event; it does not construct `Stage` or `Scene` directly, and it does not call `show-window!` directly ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)).
+One detail matters for correctness: the UI Manager owns window lifecycle. Frontend code supplies a **plain map with `:window/*` metadata** describing what the window is and how to render it; it does not construct `Stage` or `Scene` directly, and it does not call `show-window!` directly ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). It does not materialise the content either — it declares a **spec function** and a **state atom**, and the UI Manager's pipeline builds the renderer, mounts it, and tears it down.
 
 A minimal example illustrates the pattern:
 
 ```clojure
+(require '[ooloi.frontend.ui.core.window-request :as wr])
+
 (tr-declare
   {:hello.window/title "Hello"
    :hello.label/text  "Hello, Ooloi"})
 
-(defn- hello-content-spec []
+(defn- hello-content-spec [_state]
   {:fx/type :v-box
    :children [{:fx/type :label
                :text-key :hello.label/text}]})
 
 (defn show-hello! [ui-manager]
-  (eb/publish! (:event-bus ui-manager) :window-requests
-    [{:type             :window-open-requested
-      :window/id        :hello
-      :window/title-key :hello.window/title
-      :window/content   (cljfx/instance
-                          (cljfx/create-component
-                            (hello-content-spec)))}]))
+  (wr/request-window-open! ui-manager
+    {:window/id        :hello
+     :window/title-key :hello.window/title
+     :window/spec-fn   hello-content-spec
+     :window/state     (atom {})}))
 ```
 
 This shows the intended layering:
 
 1. Window identity and lifecycle metadata are `:window/*` keys.
-2. Content is a pure cljfx description produced by a private spec function.
-3. `cljfx/create-component` + `cljfx/instance` materialise the description into a JavaFX Node before it is placed in the event.
-4. The event is published to `:window-requests`; the UI Manager subscriber handles Stage creation.
-5. User-facing strings are translation keys (resolved at materialisation time by the i18n layer, per [ADR‑0039](../ADRs/0039-Localisation-Architecture.md)).
+2. Content is a pure function of window state returning a cljfx description — **not** a materialised node. The UI Manager creates a renderer from it, so every later `swap!` of the state atom re-evaluates the spec and cljfx patches only what changed.
+3. The request goes through the `window-request` facade, which supplies the event `:type` itself and publishes to `:window-requests`; the UI Manager subscriber creates the Stage.
+4. User-facing strings are translation keys, resolved by `tr` **on each render pass** ([ADR‑0039](../ADRs/0039-Localisation-Architecture.md)) — which is what makes the window locale-reactive for free.
+
+**Why the spec function rather than a materialised node.** It would be possible to build the content once with `cljfx/create-component` + `cljfx/instance` and pass the resulting node as `:window/content`. Do not: content materialised once is never re-evaluated, so its strings keep whatever locale was active when the window opened and do not follow a language change (ADR‑0042, *All Window Content Must Live Inside the Renderer Spec*). One-time materialisation is correct only for `show-confirmation!`, which is transient and dismissed before a locale could change under it.
 
 The pattern is consistent whether a window is simple or complex. For windows that need imperative wiring — an action handler on a specific button, a focus request after construction — the private spec function may use `ext-on-instance-lifecycle` to attach behaviour at node creation time ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). Section 4 covers this in full.
 
@@ -301,7 +303,7 @@ The facade supplies the `:type` (`:window-open-requested` / `:window-close-reque
 
 **Common window spec keys**
 
-The recognised `:window/*` keys for `:window-open-requested` events:
+The `:window/*` keys most call sites use. This is a working subset, not the allowlist — ADR-0042 §Metadata Keys carries the complete set, including `:window/type`, `:window/piece-id`, `:window/title-decorators`, `:window/always-on-top?`, `:window/on-close-request`, `:window/factory` and `:window/preserve-previous-focus-on-open?`:
 
 | Key | Purpose |
 |-----|---------|
@@ -334,7 +336,7 @@ A piece window's title is **dynamic**, not the static `:window/title-key` above:
 | `:window/on-open` | Lifecycle hook `(fn [ctx])` — invoked with `{:window/id :window/state :stage}` after the window is shown, registered, and wired (the last open step) |
 | `:window/on-close` | Lifecycle hook `(fn [ctx])` — invoked with `{:window/id :window/state :stage}` as the first close step, before unsubscribe/unwatch/unmount and before the Stage closes |
 
-All four renderer windows (About, Piece, Settings, Instrument Library) use this pipeline. The complete lifecycle — renderer creation, mounting, registration, bus subscriptions, atom watches, stylesheet loading, and all cleanup — is fully automatic. No window module subscribes to `:window-lifecycle` directly or manages its own teardown.
+Every renderer window uses this pipeline — currently About, Settings, the Instrument Library, the piece window, the piece picker and the connect dialog, with the Piece Preferences window to come. The complete lifecycle — renderer creation, mounting, registration, bus subscriptions, atom watches, stylesheet loading, and all cleanup — is fully automatic. No window module subscribes to `:window-lifecycle` directly or manages its own teardown.
 
 Unknown `:window/*` keys throw at construction time. Non-`:window/*` keys (`:width`, `:height`, etc.) pass through to the Stage directly.
 
@@ -486,7 +488,7 @@ See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) for the full specificati
 
 ## 4. Pure Builders and Materialisation
 
-Section 2 showed the basic pattern: a private spec function returns a cljfx description map, a public `show-*!` function materialises it and hands the Node to `show-window!`. This section examines why that pattern exists, how it extends to the full range of UI construction, and where its firm boundaries lie.
+Section 2 showed the basic pattern: a private spec function returns a cljfx description map, and a public `show-*!` function declares it — together with a state atom — in an open request the UI Manager's pipeline turns into a mounted renderer and a Stage. This section examines why that pattern exists, how it extends to the full range of UI construction, and where its firm boundaries lie.
 
 ### 4.1 Two-Level Abstraction
 
@@ -702,7 +704,7 @@ This is the standard path for all interactive windows going forward. The manual 
 
 #### Declarative Convergence
 
-Every window type in Ooloi converges on the same fully declarative pattern: a single `eb/publish!` call with a data map that declares intent — spec function, event handler, state atom, subscriptions, watches, and stylesheets. The UI Manager's pipeline handles all lifecycle plumbing: renderer creation, mounting, registration, event bus subscriptions, atom watches, stylesheet loading, and cleanup on close. No window module subscribes to `:window-lifecycle` directly, calls `register-renderer!`, calls `cljfx/unmount-renderer`, or manages its own cleanup. All four renderer windows (About, Piece, Settings, Instrument Library) use this pipeline.
+Every window type in Ooloi converges on the same fully declarative pattern: a single `eb/publish!` call with a data map that declares intent — spec function, event handler, state atom, subscriptions, watches, and stylesheets. The UI Manager's pipeline handles all lifecycle plumbing: renderer creation, mounting, registration, event bus subscriptions, atom watches, stylesheet loading, and cleanup on close. No window module subscribes to `:window-lifecycle` directly, calls `register-renderer!`, calls `cljfx/unmount-renderer`, or manages its own cleanup. Every renderer window uses this pipeline, without exception.
 
 `ooloi-openable-pane` provides two properties that carry forward to all future window types: opt-in lazy content (`:lazy-content`) and built-in drag-and-drop support (`:on-drag-over` event filter). The Piece window is the next consumer: instruments dragged from the Instrument Library window create Musicians and auxiliary instruments in the piece; Musicians dragged within the Piece window assign to Layouts, creating scores and parts for musicians playing instruments. The same `ooloi-openable-pane` with `:arrow-only-expand`, `:on-drag-over`, and `:on-expanded-changed` serves the Musicians and Layouts panels without new infrastructure. The Piece window as a whole — its two panes, drag-and-drop gestures, title, piece settings, and undo — is specified in [ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md).
 
@@ -800,7 +802,7 @@ AtlantaFX's border and background CSS for `ComboBox` is on `.combo-box-base`; fo
 
 **CSS child selectors on themed parent nodes.** Adding a custom class to a `TitledPane` — for example `"setting-tile"` — means that CSS child selectors now match TitledPane's internal structure. `.setting-tile > .content` matches the collapsible body pane. Setting any solid background colour on that pane (including `-color-bg-subtle`) can make all controls nested inside it appear borderless, because AtlantaFX simulates borders via multi-stop `-fx-background-color` layers whose outer stop blends into the parent surface. Use `transparent` for TitledPane content backgrounds when controls are placed inside.
 
-### 4.6 Nested TitledPane Event Handling
+### 4.7 Nested TitledPane Event Handling
 
 When TitledPanes are nested (e.g. instrument editors containing staff editors), `Node.lookup(selector)` returns ambiguous results — depth-first search may return the inner pane's `.title` instead of the outer's. This breaks MOUSE_PRESSED consumption, causes title clicks to toggle expand, arrow clicks to double-toggle (appearing dead), and style mirroring to target wrong nodes.
 
@@ -843,24 +845,30 @@ The frontend event bus is a category-based pub/sub mechanism. All frontend coord
 
 The separation is deliberate. Input, semantic mutation, and UI reaction are not collapsed into one mechanism. Each layer speaks in its own vocabulary.
 
+Note that these are three *systems*, not three stages of one pipeline. A key press does not flow
+into the Event Router; it becomes an API call, and what the Router later delivers is the backend's
+answer arriving by a different road.
+
 ```
-  ┌─────────────────────────────────────┐
-  │  1. JavaFX Input Events             │
-  │     gestures, keys, resize          │
-  │     vocabulary: user intent         │
-  └──────────────┬──────────────────────┘
-                 │
-  ┌──────────────▼──────────────────────┐
-  │  2. Backend Event Router            │
-  │     semantic processing             │
-  │     vocabulary: VPD staleness       │
-  └──────────────┬──────────────────────┘
-                 │
-  ┌──────────────▼──────────────────────┐
-  │  3. Frontend Event Bus              │
-  │     lifecycle, settings, rendering  │
-  │     vocabulary: categories          │
-  └─────────────────────────────────────┘
+  1. JavaFX Input Events          ── gestures, keys, resize
+     vocabulary: user intent         handled on the JAT, converted to intent
+            │
+            │ becomes a polymorphic API call (never an event)
+            ▼
+        [ backend ]
+            │
+            │ …later, and independently: the backend says what went stale
+            ▼
+  2. Backend Event Router         ── receives the gRPC event stream
+     vocabulary: VPD staleness       classifies, coalesces, hands on
+            │
+            ▼
+  3. Frontend Event Bus           ── category pub/sub, in-process only
+     vocabulary: categories          lifecycle, settings, collaboration,
+                                     and the Router's category-routed events
+
+     (the two window-refetch events skip the bus entirely — the Router
+      dispatches them straight to the piece's window)
 ```
 
 ### 5.2 Invalidation-Based Synchronisation
@@ -1399,7 +1407,7 @@ Instead:
 * Boolean settings become checkboxes.
 * Text and validated settings become TextFields.
 
-The settings window (`settings_window.clj`) follows the content builder pattern ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). `show-settings!` manages lifecycle through the UI Manager; `show-window!` ensures the window is a singleton — opening it twice brings the existing instance to the front. Internally, the window is a TabPane with one tab per settings category namespace, each tab holding a ScrollPane of setting rows. Controls derive from registry metadata: a `:choices` entry becomes a ComboBox inside an AtlantaFX Tile; a validator-equipped text setting becomes a TextField that commits on Enter or focus loss. Each field has a per-field reset button; a "Reset All to Defaults" button at the bottom resets every setting in the active tab category after confirmation.
+The settings window (`app_settings_window.clj`) follows the content builder pattern ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). `show-app-settings!` publishes the open request and the UI Manager's pipeline manages the lifecycle; because the window is registered under a fixed `:window/id`, opening it twice brings the existing instance to the front rather than creating a second. Internally, the window is a TabPane with one tab per settings category namespace, each tab holding a ScrollPane of setting rows. Controls derive from registry metadata: a `:choices` entry becomes a ComboBox inside an AtlantaFX Tile; a validator-equipped text setting becomes a TextField that commits on Enter or focus loss. Each field has a per-field reset button; a "Reset All to Defaults" button at the bottom resets every setting in the active tab category after confirmation.
 
 Each setting tile renders the translated description as a Label with `:wrap-text true` and `:max-width 480.0`. Long descriptions — a sentence or two — break to multiple lines instead of stretching the row beyond the scroll-pane viewport, and the cap keeps the tile column visually consistent even when the user resizes the window wide. In choice tiles the description Label also takes `:h-box/hgrow :always` so it claims horizontal space ahead of the control block on the right (no spacer needed); in text rows the surrounding VBox already provides the width constraint. New settings must keep this pattern — a Label without `:wrap-text` widens the row to its single-line preferred width and defeats the scroll-pane's `:fit-to-width true` constraint, surprising the user with horizontal scroll or a stretched window.
 

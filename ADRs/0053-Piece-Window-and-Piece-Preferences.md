@@ -14,7 +14,8 @@ Under implementation
   - [4. Drag-and-drop across the workspace](#4-drag-and-drop-across-the-workspace)
   - [5. The window title](#5-the-window-title)
   - [6. Piece Settings: the Piece Preferences window](#6-piece-settings-the-piece-preferences-window)
-  - [7. Everything under undo/redo](#7-everything-under-undoredo)
+  - [7. Piece-owned windows](#7-piece-owned-windows)
+  - [8. Everything under undo/redo](#8-everything-under-undoredo)
 - [Sequence Diagrams](#sequence-diagrams)
 - [Rationale](#rationale)
 - [Consequences](#consequences)
@@ -164,13 +165,13 @@ A dedicated per-setting event was considered and rejected. It would carry the ch
 
 The first flow is about the piece; the second is about the music. That is the division [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6 draws for change detection generally — changes to the things that *contain* the music announce themselves structurally, while changes to the music itself emit no structure event and defer to the asynchronous formatting pipeline. Settings sit across that line on purpose: they are part of what a piece *is*, and many of them also govern how it is *drawn*.
 
-#### Piece-owned windows
+### 7. Piece-owned windows
 
-The Preferences window belongs to exactly one piece and has no purpose without it. So does a Layout window (§3), and the rule below is one rule for both.
+Some windows belong to exactly one piece and have no purpose without it: the Preferences window of §6, and the Layout window a double-click opens from the Layouts pane (§4). This section is one rule for both, and for any that follow.
 
 A piece-owned window declares **`:window/piece-id`**, and the UI Manager closes it when that piece's window closes. Ownership is carried as data rather than by JavaFX parenting, for two reasons: a Stage has exactly one owner, and on macOS that owner is already the menu-bar host, through which every managed window inherits the system menu bar ([ADR-0042](0042-UI-Specification-Format.md)); and a Stage closed by the toolkit behind the UI Manager's back would skip geometry persistence, watch removal, renderer unmount and the `:window-closed` announcement. The cascade therefore runs inside `close-window!`, keyed on `:window/piece-id`, ahead of the piece window's own teardown — so each owned window is dismantled while the state it watches still belongs to a live window. It hangs off the **actual close**, never `:window/on-close-request`: a piece window may prompt before closing and the user may cancel, and a cancelled close must not have already closed the windows it owns.
 
-A piece-owned window is **not modal** — it is a normal managed window, as §6 says of the Preferences window. It is **not a singleton**: three open pieces have three Preferences windows. Its window id is a string derived from the piece's, which yields per-piece singleton behaviour without further machinery, the same piece's window being brought forward rather than duplicated. That id is never decomposed to recover the piece; `:window/piece-id` is the authoritative association, and encoding the same fact twice is what a structured id would do. And it is **not restorable**: it is absent from the session membership list, which records only windows something knows how to reopen, so it can never be restored after — or without — its piece.
+A piece-owned window is **not modal** — it is a normal managed window, as §6 says of the Preferences window. It is **not a *global* singleton**, as the application-settings window is: three open pieces have three Preferences windows. It *is* a singleton **per piece**, and that comes free rather than being enforced — its window id is a string derived from the piece's, so a second request for the same piece's settings brings the existing window forward instead of opening another. That id is never decomposed to recover the piece; `:window/piece-id` is the authoritative association, and encoding the same fact twice is what a structured id would do. And it is **not restorable**: it is absent from the session membership list, which records only windows something knows how to reopen, so it can never be restored after — or without — its piece.
 
 It reads the piece's state by **watching**, not by subscribing. The window declares a `:window/watches` on the piece window's state atom, reached from the window registry by piece id; the UI Manager adds the watch when the window opens and removes it when it closes ([ADR-0042](0042-UI-Specification-Format.md)).
 
@@ -180,7 +181,7 @@ A piece-owned window simply has no reason to consume them directly. The projecti
 
 **File-menu commands divide by what their object is.** A command follows the *piece* when the owned window has no competing meaning for it, and the *window* when it does. **Save** and **Save As** resolve through `:window/piece-id` and act on the owning piece — the Preferences window commits every field immediately over `SRV/`, so it has no save of its own and the command has exactly one available meaning. **Close** acts on the foremost window itself: with a Preferences or Layout window in front, it closes that window and leaves the piece window open.
 
-### 7. Everything under undo/redo
+### 8. Everything under undo/redo
 
 Every edit made in the window is undoable, and undo belongs to the backend, not to the window. Piece undo/redo is Tier 1 backend undo ([ADR-0015](0015-Undo-and-Redo.md)): the backend keeps one undo/redo stack per piece, shared across every client subscribed to that piece, and emits a lightweight `:undo-state-changed` notification when a stack changes — delivered, like every other piece event, only to that piece's subscribers and to no one else. (A globally shared resource such as the Instrument Library is the other case in [ADR-0015](0015-Undo-and-Redo.md)'s delivery table: having no subscription to scope it, its undo state does reach every connected client.) The window consumes undo state — it enables and labels its Undo and Redo affordances from those notifications — but it neither owns nor stores history.
 

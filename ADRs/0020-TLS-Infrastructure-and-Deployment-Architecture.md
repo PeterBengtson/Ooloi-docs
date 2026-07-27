@@ -236,7 +236,7 @@ This design ensures:
 - **Zero configuration**: No certificate management needed
 - **Immediate startup**: No TLS handshake or certificate validation delays  
 - **Maximum performance**: Direct in-memory communication with 37.5-75x faster response times (98.7-99.3% latency reduction vs network gRPC, per ADR-0019)
-- **No network dependencies**: Works offline or in restricted network environments
+- **No network dependencies**: The combined app needs no network at all, because its backend is in the same process — so it runs in restricted or air-gapped environments with nothing to configure. This is the opposite of an offline mode rather than an instance of one: the backend is *present*, merely local. There is no offline editing, no operation queueing and no later sync ([ADR-0040](0040-Single-Authority-State-Model.md), where "offline" means the backend crashed).
 
 ### Local Development (No TLS) - Default
 **Architecture**: Combined desktop application with in-process transport
