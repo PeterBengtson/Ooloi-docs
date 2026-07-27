@@ -12,6 +12,17 @@ Under implementation
   - [2. Direct manipulation, not modes or dialogs](#2-direct-manipulation-not-modes-or-dialogs)
   - [3. Anatomy: the two panes](#3-anatomy-the-two-panes)
   - [4. Drag-and-drop across the workspace](#4-drag-and-drop-across-the-workspace)
+    - [Move and copy](#move-and-copy)
+    - [Spring-loaded expansion](#spring-loaded-expansion)
+    - [Shared selection and drag infrastructure](#shared-selection-and-drag-infrastructure)
+    - [Where a drop lands](#where-a-drop-lands)
+    - [References, not copies](#references-not-copies)
+    - [The ordinary musician API, on a layout](#the-ordinary-musician-api-on-a-layout)
+    - [The complete verb family, and two layers](#the-complete-verb-family-and-two-layers)
+    - [A musician appears at most once in a layout](#a-musician-appears-at-most-once-in-a-layout)
+    - [One gesture is one transaction](#one-gesture-is-one-transaction)
+    - [Destructive gestures are guarded](#destructive-gestures-are-guarded)
+    - [A gesture is a network-transparent ACID transaction](#a-gesture-is-a-network-transparent-acid-transaction)
   - [5. The window title](#5-the-window-title)
   - [6. Piece Settings: the Piece Preferences window](#6-piece-settings-the-piece-preferences-window)
   - [7. Piece-owned windows](#7-piece-owned-windows)
@@ -85,17 +96,26 @@ Every structural edit in the window is a drag, a drop, or a deletion. The gestur
 | A Musician | a position within an existing Layout | The musician's uuid is inserted into that layout's `:musician-uuids` at the drop position |
 | _(double-click)_ | a Layout | The layout's own window opens, showing its score or part |
 
+#### Move and copy
+
 **Move and copy.** The transfer mode follows the platform convention, carried by JavaFX's `TransferMode/COPY_OR_MOVE` so the operating system supplies the drag cursor that distinguishes the two. A plain drag **moves**: it reorders within a pane, or assigns a musician to a layout — the musician stays where it is and the layout gains a reference to it. A drag with the clone modifier held (⌥ on macOS, Ctrl elsewhere) **copies**: it clones the dragged entity, regenerating the structural ids of the copy. The one drag that is always a copy, whatever the modifier, is a drag out of the Instrument Library: the library is global and authoritative ([ADR-0045](0045-Instrument-Library.md)), a catalogue the piece copies from rather than a container it draws from, so dropping a library instrument always leaves a fresh copy in the piece and never depletes the library.
+
+#### Spring-loaded expansion
 
 **Spring-loaded expansion.** A container closed at the moment of a drag is not a dead end. Hovering a compatible drag over a *collapsed* container — a staff over a closed Instrument, an instrument over a closed Musician, a Musicians selection over a closed Layout — opens it after a short dwell, so the drop lands inside where the user can see it, rather than being rejected. The behaviour belongs to the drop *target*, not the drag: a container opens for any drag it would accept, whatever the drag's source or window (an Instrument-Library instrument opens a closed Musician exactly as a within-pane one does). The dwell distinguishes a deliberate hover from a cursor merely passing over on its way elsewhere.
 
+#### Shared selection and drag infrastructure
+
 **Shared selection and drag infrastructure.** Selection and drag-and-drop are shared infrastructure, not per-pane code. The Instrument Library and both piece-window panes use the same openable-pane component — its drag-over event filter and its selection support — and the same selection model: **one selection, tagged with the context it was made in** (which pane, and which layout for a musician shown inside one), so the same musician — which appears in the Musicians pane and in every layout that lists it — highlights only where it was clicked, not in every copy. A multi-selection is assembled in a pane and dragged as a unit (all of a piece's musicians selected and dragged to the Layouts pane at once), and clicking a selectable entity selects it. Selection-on-drag holds throughout: beginning a drag on an unselected entity selects it first.
+
+#### Where a drop lands
 
 **Where a drop lands is one calculation, not one per surface.** A reorder needs an answer to a single
 question — *between which two rows was the cursor released?* — and that question has one answer
-everywhere, so it is computed in one place, over any container's rows: the drop lands after the **last
-row whose visual midpoint lies above the cursor**, or at the front when the cursor is above all of
-them. Consequently an off-row release is never a special case. The enclosing scroll pane accepts the
+everywhere, so it is computed in one place: `compute-rows-drop-target-id`, a scan over any container's
+rows, with `staff-drop-target-id` wrapping it for an instrument editor's staff rows. The drop lands
+after the **last row whose visual midpoint lies above the cursor** in scene coordinates, or at the
+front when the cursor is above all of them. Consequently an off-row release is never a special case. The enclosing scroll pane accepts the
 drag across its **whole viewport**, so a release in a gap between rows, on a header, or below the last
 row is resolved by the same arithmetic rather than rejected; the drop handler receives an insert
 position, not a hovered row, and never needs a fallback for "released on nothing".
@@ -109,9 +129,15 @@ a no-op: a gesture that resolves a position in one container but lands in anothe
 is what makes cross-container drags an explicit part of the grammar above rather than an accident of
 geometry.
 
+#### References, not copies
+
 **References, not copies.** Because a layout holds `:musician-uuids` — references at musician granularity, never copies — the two panes cannot diverge. Adding an instrument to a musician, a doubling, appears in every score and part that lists that musician with no further edit, and renaming a musician renames it wherever it appears; reordering within one layout, by contrast, touches only that layout's vector. The Musicians pane owns the musicians; the Layouts pane composes them by reference.
 
+#### The ordinary musician API, on a layout
+
 **The ordinary musician API, on a layout.** That a layout *references* musicians rather than *owning* them is an implementation choice the API hides completely. The standard polymorphic musician operations work on a layout target as though it nested Musicians: `add-musician` on a layout records a reference, `reorder-musician` on a layout reorders its references, and cloning a piece remaps them — each carried, transparently, by `:around` methods on the generic operation (the reference-maintenance family). Because clients invoke the VPD form and the object form is out of band ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §2), each obligation is wired as **two `:around` twins** — object-form (value-in-hand) and VPD-form (the client path, a piece-level transform routing through the change funnel) — and an object-form-only `:around` upholds the invariant for internal callers yet is a latent bug for every client, caught only by a client-path test, never by an object-form unit test. Removal has two scopes and the one verb serves both: removing a musician from a *layout* drops only that reference — the musician stays in the piece and in every other score or part — while deleting the musician from the *piece* additionally prunes its reference from every layout that listed it (referential integrity). A caller — the window's drop handler, a script, a plugin, or backend code — writes the natural operation and never needs to know, or work around, the flat-id-vector representation. And because `:musician-uuids` is a structural slot of the Layout, every such write is detected and projected *by construction* ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3), so the coverage is complete with no per-operation wiring; should a future gesture need an operation not yet redirected to a layout, a failing test surfaces the one missing `:around` rather than a silent gap.
+
+#### The complete verb family, and two layers
 
 **The complete verb family, and two layers.** The redirect is not special to `add`/`reorder`/`remove`: every musician verb works on a layout target, each an operation on its references.
 
@@ -129,13 +155,21 @@ geometry.
 
 Reads resolve to `Musician` records in the layout's order (not the piece's). **`copy-musician` on a layout is refused — it throws**: a layout lists each musician at most once (uniqueness — `add-musician` is idempotent), so a reference cannot be duplicated, and there is no `individuate` to rescue it (a `[:l n idx]` VPD cannot descend into a musician). To place a distinct copy of a musician in a layout, clone it at the piece (`copy-musician []` clones — a structural copy is a fresh-id clone) and reference the clone with `add-musician [:l n]`. `copy` is the one musician verb that does not extend to a layout. These are the api/SRV surface. Beneath them is a second, **backend-only** family — the internal accessors of the `:musician-uuids` vector itself: `get-`/`set-musician-uuid`, `get-`/`set-musician-uuids`, `add-`/`remove-musician-uuid`, declared `:vpd-category` **without `:api`**. No client ever calls a `*-musician-uuid` operation or writes `:musician-uuids` directly; the public verb maintains the vector on the caller's behalf, through the reference-maintenance family, which uses those internal accessors as its primitives. `set-musician-uuids` (internal primitive) and `set-musicians [:l n]` (public verb) are different operations at different layers, not two names for one. The internal vector is declared `:no-move :no-copy` (and, without `:has-id`, has no `reorder-musician-uuid`): not a claim that a layout cannot be moved-within — it plainly can, through `move-musician [:l n]` — but only that the redirects maintain the vector through whole-vector `set-musician-uuids`, so per-item mover primitives on the internal vector are never needed. (`copy-musician [:l n]` is refused, above — a reference cannot be duplicated — which is a separate matter from the internal vector's `:no-copy`.)
 
+#### A musician appears at most once in a layout
+
 **A musician appears at most once in a layout.** A score or part lists each of its musicians once. This is a model invariant, enforced on *every* path, `api`/`SRV` included: adding a musician already listed is a no-op that returns the piece identically — no `:piece-structure-changed`, no dirty flag ([ADR-0052](0052-Change-Detection-and-Event-Generation.md)) — and never an error the caller must handle, because duplication is not a fault but a request the model simply absorbs. The gesture honours it too: a Musicians selection dropped onto a layout that already lists any of them is **refused** — the whole drop composes nothing, the first refused drop in the workspace: the descendant drag-over filter overrides the pane-wide accept with an empty transfer-mode set. Its intended affordance is the operating system's *no-drop* cursor, though on macOS that cursor does not currently appear during the refused drag-over (its behaviour on Windows and Linux is unverified); the refusal itself holds on every platform. A drop onto empty space always creates a fresh layout, which can never duplicate.
+
+#### One gesture is one transaction
 
 **One gesture is one transaction.** Every gesture above is a single atomic operation on the piece. The window does not stream a gesture to the backend as separate edits and leave the backend to infer their grouping; it composes the gesture itself into an explicit list of backend calls and submits that list as one `SRV/atomic` batch — a vector of `{:method-name :vpd :piece-id :parameters}` operations executed inside one backend STM transaction. Dragging several musicians onto the Layouts pane to make a score is therefore not several operations but one: the window builds the call list — add a new layout, then `add-musician` each dragged musician onto it (the backend records each reference in the layout's `:musician-uuids`; the window never writes that vector, and no client operation sets it) — submits it once, and the backend commits it once. This differs from how the Instrument Library edits its catalogue, where the backend derives the effective change from a submitted new version ([ADR-0045](0045-Instrument-Library.md)); the Piece Window knows the calls a gesture comprises and groups them itself.
 
 That single transaction yields, by [ADR-0052](0052-Change-Detection-and-Event-Generation.md), exactly one `:piece-structure-changed` event for the piece — its structural coalescing scope collapses the transaction's changes to one event — delivered per-piece to this window, which refetches the structural snapshot and re-renders. And by [ADR-0015](0015-Undo-and-Redo.md) the same transaction boundary is one named undo step. One gesture is one transaction, one event, one refetch, and one entry on the piece's undo stack.
 
+#### Destructive gestures are guarded
+
 **Destructive gestures are guarded.** Deletion is the one gesture that can lose work, and it alone is confirmed. Deleting a Layout, an Instrument, or a Musician that contains music raises a confirmation — the blocking OK/Cancel dialog `show-confirmation!` ([ADR-0042](0042-UI-Specification-Format.md), "Modal dialogs: one core, two entry points") — before the operation is composed; deleting one that contains no music, a freshly created musician or an empty layout, proceeds without a prompt. The prompt is a single, **neutral** one — *"The selection contains music. Delete it anyway?"* — for every entity and any selection, rather than one that names the entity or counts the music-bearing items: on a mixed selection a counted prompt would understate what is removed, since the whole selection is deleted and not only its music-bearing part, and a uniform prompt is less for the reader to weigh. "Contains music" means there is musical content — measures with notes or rests — in the staves the entity owns, or, for a layout, in the staves of the musicians it references. The check itself is cheap: it is a bounded timewalk ([ADR-0014](0014-Timewalk.md)) over those staves whose transducer halts at the first musical item it discovers — a note, a rest, or anything else — so an entity that holds any content is settled by that first item rather than by traversing the rest. This early exit is inherent to the mechanism: the timewalker is a true push transducer, driving the reducing function as each item is discovered and stopping the traversal itself the moment that function returns `reduced`. Once confirmed, a deletion is an ordinary structural operation: one `SRV/atomic` batch, one event, one undo step, undoable like any other.
+
+#### A gesture is a network-transparent ACID transaction
 
 **A gesture is a network-transparent ACID transaction.** Because a gesture is one `SRV/atomic` batch, it is atomic, consistent, isolated, and durable — and it stays so across the network. When the window is a remote guest's, connected over gRPC to another Ooloi's backend ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md)), the batch is still one transaction, executed on the host backend's STM exactly as a local batch is ([ADR-0046](0046-Reference-Passing-In-Process-Transport.md): the handler is identical across in-process and network transport). It is **not** two-phase-committed across machines, because there is nothing to commit across: Ooloi's backend is the single authority and its STM the single serialisation point ([ADR-0004](0004-STM-for-concurrency.md), [ADR-0040](0040-Single-Authority-State-Model.md)). What is distributed is the clients, not the state. No collaborator ever observes a partial gesture — half a score, or a musician added to a layout but not yet to the piece — and there is no last-write-wins reconciliation, because writes serialise through one STM rather than racing across many. This is the concrete editing surface of the model in which a piece is a database with a permanent identity ([ADR-0012](0012-Persisting-Pieces.md)) and distributed ACID access: a guest's drag-and-drop gesture is a transaction on that database, carried over gRPC and serialised with everyone else's.
 

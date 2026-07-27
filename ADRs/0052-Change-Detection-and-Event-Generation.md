@@ -12,6 +12,13 @@ Implemented
   - [2. Detection keys on the VPD shape](#2-detection-keys-on-the-vpd-shape)
   - [3. Structural change emits `:piece-structure-changed`](#3-structural-change-emits-piece-structure-changed)
   - [3a. The structural projection: `get-piece-structure`](#3a-the-structural-projection-get-piece-structure)
+    - ["Structural" is a GUI scope, not the general term](#structural-is-a-gui-scope-not-the-general-term)
+    - [What the projection returns](#what-the-projection-returns)
+    - [Why `:settings` is structural on the Piece alone](#why-settings-is-structural-on-the-piece-alone)
+    - [How an entity declares its structural fields](#how-an-entity-declares-its-structural-fields)
+    - [The projection is plain maps, not records](#the-projection-is-plain-maps-not-records)
+    - [Kept and dropped, per entity](#kept-and-dropped-per-entity)
+    - [Naming, and the virtual session fields](#naming-and-the-virtual-session-fields)
   - [3b. Detection: the slot flag](#3b-detection-the-slot-flag)
   - [4. Exactly one event per outermost transaction](#4-exactly-one-event-per-outermost-transaction)
   - [5. The dirty flag](#5-the-dirty-flag)
@@ -65,9 +72,15 @@ The event type `:piece-structure-changed` is registered as an amendment to [ADR-
 
 ### 3a. The structural projection: `get-piece-structure`
 
+#### "Structural" is a GUI scope, not the general term
+
 **"Structural" here is a GUI scope, not the general term.** It means the *makeup* of a piece as shown and rearranged in the **Piece Window** — its Musicians, their Instruments, those Instruments' Staves, and the piece's Layouts (rooted at the Piece): the entities a user manipulates there by drag-and-drop. The Structural trait exists to serve that window — what it displays (`get-piece-structure`) and what a structural change notifies it to refetch (`:piece-structure-changed`) — and has no consumer outside it. It is not the computer-science sense of "structural", and it is not the musical content. Everything below follows from that scope.
 
+#### What the projection returns
+
 The snapshot the frontend refetches is produced by `get-piece-structure`, which returns the piece reduced to its **structural fields**, recursively. It is a *keep-the-structural, drop-the-non-structural* projection, not an allowlist of named fields: every editable definitional field (transposition, ranges, `:clefs`, family, short-names, …) is kept automatically, and a new structural slot added later is kept for free. Dropped at every level are the large or content-bearing fields — measures, voices and items; the per-level change-sets; the layout visual hierarchy; and internal counters. These dropped fields are permanent piece content, not transient: the axis is *structural vs non-structural*, never *permanent vs temporary*.
+
+#### Why `:settings` is structural on the Piece alone
 
 **`:settings` is dropped on every entity except the Piece.** The exception is not a concession: some piece settings decide what the Piece Window *displays* — the numeral settings of [ADR-0054](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md) §6 govern every musician header and instrument row in it — and this projection is what that window renders from. Keeping them here is what makes them visible to it, and, because §3b reads the same declaration, is also what makes a write to one announce itself. The two arrive together by construction: a setting cannot be visible to the window without its change being announced, nor announced without being visible.
 
@@ -79,7 +92,11 @@ The cost accepted is over-signalling: a write to *any* piece setting refetches t
 
 **When settings become hierarchical, this must be revisited.** Musicians, Instruments and Staves are all displayed and rearranged in the Piece Window, so the moment a setting on one of them can affect what is shown there — directly, or through a cascade resolving against it — its `:settings` must become structural in the same way. Otherwise the window renders from values it cannot see and is never told have changed. One keyword per entity, but not automatic: hierarchical defaulting and projection have to land together.
 
+#### How an entity declares its structural fields
+
 Membership in the structural set is the `::h/Structural` trait (`hierarchy.clj`), tested with the `structural?` predicate; each structural entity additionally declares the set of fields the projection drops via a `non-structural-fields` `defmethod`, co-located with its model. The **same** `non-structural-fields` set is read by both the projection (which strips it) and the detection (§3b, which fires on a write to a slot outside it), so the kept fields and the covered set cannot drift. A new structural entity — core or plugin — opts in by deriving `::h/Structural` and declaring its `non-structural-fields`, with no central map and no change to the funnel or the projection. The recursive `structural-fields` helper keeps each node's structural fields and recurses into the structural children it retains.
+
+#### The projection is plain maps, not records
 
 **The projection is plain maps, not records — and that is a contract, not an implementation detail.**
 `structural-fields` reduces each record into a map, so what the frontend holds is a `Musician`-shaped
@@ -93,6 +110,8 @@ the running application throws on. Any test driving an operation the frontend fe
 projected map.
 
 
+#### Kept and dropped, per entity
+
 **Structural fields kept / non-structural fields dropped, per entity:**
 
 | Entity | non-structural (dropped) | structural (kept) |
@@ -105,6 +124,8 @@ projected map.
 | Layout | `:page-views` `:stack-formatters` | `:id` `:name` `:musician-uuids` |
 
 A Layout's `:musician-uuids` is the ordered vector of musician references that determines which musicians the layout renders, and so whether it is a score or a part ([ADR-0053](0053-Piece-Window-and-Piece-Preferences.md)). It is structural: changing which musicians a layout lists, or their order, changes the makeup shown in the Piece Window, so the projection keeps it and a write to it fires the event (§3b).
+
+#### Naming, and the virtual session fields
 
 **Naming.** Entity naming is `:name` (with `:short-name` only where a score abbreviates the label — Instrument, Staff, Musician), read and written through `get-name`/`set-name`. The piece's human label is `:title` (no short name), through a separate `get-title`/`set-title` family — the head of a title-block family (subtitle, composer, arranger, … added later). Musician `:name` (derived from its **main** instrument, and re-derived when a structural gesture installs a different main — [ADR-0054](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md)) and Layout `:name` (initial value derived from its musicians) are user-overridable slots; the derivations themselves are out of scope here. The filename is never piece *data* — it is external catalogue state ([ADR-0012](0012-Persisting-Pieces.md) provenance) — but it **is** surfaced in the projection as a **virtual `:filename` field**: conj'd at projection time from the piece's recorded provenance (the leaf only, never the path — [ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md)), looked up in the Piece Manager by the piece's own id rather than read from the piece. It is one of a small family of **virtual session/catalogue fields** the projection surfaces this way — conj'd from Piece-Manager (or session) state, looked up by the piece's id, never stored in the piece and so never captured by undo/redo. The window title's two decorators ride the same pattern: `:dirty` (the dirty flag of §5) drives the `●`, and — host-side — `:shared` (true when a network guest has this piece subscribed) drives the `⇄`; both are conj'd per piece exactly as `:filename` is, and the one reactive title watch reads all three from each refetched projection (see [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §5). Unlike the recorded location — which is *both* projected (as `:filename`) *and* separately queried (`piece-location`, for the Save-vs-picker decision, [ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md)) — `:dirty` reaches the frontend through the projection **only**: Save enablement (`active-piece-dirty?`) and the close decision (`piece-window-dirty?`) both read the projected `:dirty` off the refetched `*piece-state`, never a direct query. `piece-dirty?` is a server-side reader — the projection conj's through it and `save-piece` clears through it — never called from the frontend. Reading `:dirty` only off the projection the window already holds is the whole point of surfacing it as a virtual field. A piece with no recorded location has no `:filename`. The window title derives from `:title`, falling back to that filename with its `.ooloi`/`.ool` extension stripped, then to "Untitled" via `tr` on the frontend.
 
