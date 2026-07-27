@@ -153,19 +153,36 @@ That correspondence extends to how the settings are **grouped**. Both windows ar
 
 Within a tab, settings appear in the order they were declared — again as in the application-settings window. Order is therefore a matter of authorship rather than accident: related settings can be placed together, and the one a reader most likely wants can be put first, which alphabetical ordering would scatter and insertion-order-by-chance would leave to whoever edited the file last.
 
-Three independent event flows keep the windows and the score correct, and their separation is deliberate:
+Two independent event flows keep the windows and the score correct, and their separation is deliberate:
 
-- Because `:settings` is a **structural** slot of the Piece, a setting write emits **`:piece-structure-changed`** exactly as a rename does ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a), and every open piece window refetches the structural snapshot the values ride in. This is what keeps a projected setting from going stale in a window that is not the Preferences window.
-- When a piece setting changes on the backend, a **`:piece-setting-changed`** event is delivered to the piece's subscribers — per-piece, never a shared category ([ADR-0031 §Per-Piece Event Routing](0031-Frontend-Event-Driven-Architecture.md#per-piece-event-routing)). An open Preferences window for that piece reacts by refreshing its displayed values, so a collaborator editing the same setting does not leave this window showing a stale one. This event, in itself, never triggers paintlist fetching.
+- Because `:settings` is a **structural** slot of the Piece, a setting write emits **`:piece-structure-changed`** exactly as a rename does ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a), and every window subscribed to that piece refetches the structural snapshot the values ride in. **One event serves every consumer of a setting's value.** The Piece Window's numeral labels ([ADR-0054](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md) §6) and the Preferences window's own controls read the same projected entries, so neither can display a value the other has already been told has changed. It is also what makes two Preferences windows on two clients agree: a collaborator's write reaches both through a refetch each already performs, with nothing added for the purpose. This event never triggers paintlist fetching.
 - The **visual consequence** of a setting change travels separately, as ordinary cache-invalidation. Having changed the setting, the backend issues the invalidations the change entails, and those flow through the normal Fetch Coordinator pipeline ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md), [ADR-0031](0031-Frontend-Event-Driven-Architecture.md)): changing the music font invalidates the whole piece and the score is recomputed, while changing one notehead mapping invalidates only the affected noteheads. The granularity is the backend's decision, carried as identifiers of what is stale, not as a delta ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)).
 
-The structure event refreshes what a window says the *piece is*; the settings event refreshes the individual *control*; the invalidation events refresh the *score*. None does another's work.
+The structure event refreshes what a window says the *piece is*; the invalidation events refresh the *score*. Neither does the other's work.
 
-The first two are about the piece; the third is about the music. That is the division [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6 draws for change detection generally — changes to the things that *contain* the music announce themselves structurally, while changes to the music itself emit no structure event and defer to the asynchronous formatting pipeline. Settings sit across that line on purpose: they are part of what a piece *is*, and many of them also govern how it is *drawn*.
+A dedicated per-setting event was considered and rejected. It would carry the changed key and its new value so a Preferences window could refresh one control without a refetch — but the refetch happens regardless, driven by the same write, and the projection it returns already carries every setting's value. The second event would deliver, more precisely, information the first has already brought. The cost of the coarser channel is over-signalling — a write to any setting refetches the whole projection — and [ADR-0016](0016-Settings.md) accepts it deliberately: piece settings change rarely, and the projection carries no measures, voices or items.
+
+The first flow is about the piece; the second is about the music. That is the division [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6 draws for change detection generally — changes to the things that *contain* the music announce themselves structurally, while changes to the music itself emit no structure event and defer to the asynchronous formatting pipeline. Settings sit across that line on purpose: they are part of what a piece *is*, and many of them also govern how it is *drawn*.
+
+#### Piece-owned windows
+
+The Preferences window belongs to exactly one piece and has no purpose without it. So does a Layout window (§3), and the rule below is one rule for both.
+
+A piece-owned window declares **`:window/piece-id`**, and the UI Manager closes it when that piece's window closes. Ownership is carried as data rather than by JavaFX parenting, for two reasons: a Stage has exactly one owner, and on macOS that owner is already the menu-bar host, through which every managed window inherits the system menu bar ([ADR-0042](0042-UI-Specification-Format.md)); and a Stage closed by the toolkit behind the UI Manager's back would skip geometry persistence, watch removal, renderer unmount and the `:window-closed` announcement. The cascade therefore runs inside `close-window!`, keyed on `:window/piece-id`, ahead of the piece window's own teardown — so each owned window is dismantled while the state it watches still belongs to a live window. It hangs off the **actual close**, never `:window/on-close-request`: a piece window may prompt before closing and the user may cancel, and a cancelled close must not have already closed the windows it owns.
+
+A piece-owned window is **not modal** — it is a normal managed window, as §6 says of the Preferences window. It is **not a singleton**: three open pieces have three Preferences windows. Its window id is a string derived from the piece's, which yields per-piece singleton behaviour without further machinery, the same piece's window being brought forward rather than duplicated. That id is never decomposed to recover the piece; `:window/piece-id` is the authoritative association, and encoding the same fact twice is what a structured id would do. And it is **not restorable**: it is absent from the session membership list, which records only windows something knows how to reopen, so it can never be restored after — or without — its piece.
+
+It reads the piece's state by **watching**, not by subscribing. The window declares a `:window/watches` on the piece window's state atom, reached from the window registry by piece id; the UI Manager adds the watch when the window opens and removes it when it closes ([ADR-0042](0042-UI-Specification-Format.md)).
+
+Two different subscriptions must be kept apart here, because only one of them is constrained. **A client subscribes to a piece once.** The backend holds each client's subscriptions as a set, so a repeat subscribe is idempotent while an unsubscribe revokes the piece for that client outright — and, under close-on-last-release ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)), may close the piece on the backend if no other client holds it. That lifecycle belongs to the piece window, which subscribes when it opens and unsubscribes when it closes; a piece-owned window never issues either call. **Inside the client, there is no such limit** — any number of components may consume the events that one subscription brings, and the frontend event machinery exists to let them.
+
+A piece-owned window simply has no reason to consume them directly. The projection it displays has already been fetched and applied by the piece window in answer to that same event, so taking delivery of the event itself would buy a duplicate round-trip and a second copy of one snapshot. It watches the result instead of re-deriving it.
+
+**File-menu commands divide by what their object is.** A command follows the *piece* when the owned window has no competing meaning for it, and the *window* when it does. **Save** and **Save As** resolve through `:window/piece-id` and act on the owning piece — the Preferences window commits every field immediately over `SRV/`, so it has no save of its own and the command has exactly one available meaning. **Close** acts on the foremost window itself: with a Preferences or Layout window in front, it closes that window and leaves the piece window open.
 
 ### 7. Everything under undo/redo
 
-Every edit made in the window is undoable, and undo belongs to the backend, not to the window. Piece undo/redo is Tier 1 backend undo ([ADR-0015](0015-Undo-and-Redo.md)): the backend keeps one undo/redo stack per piece, shared across every client subscribed to that piece, and broadcasts lightweight `:undo-state-changed` notifications when a stack changes. The window consumes undo state — it enables and labels its Undo and Redo affordances from those notifications — but it neither owns nor stores history.
+Every edit made in the window is undoable, and undo belongs to the backend, not to the window. Piece undo/redo is Tier 1 backend undo ([ADR-0015](0015-Undo-and-Redo.md)): the backend keeps one undo/redo stack per piece, shared across every client subscribed to that piece, and emits a lightweight `:undo-state-changed` notification when a stack changes — delivered, like every other piece event, only to that piece's subscribers and to no one else. (A globally shared resource such as the Instrument Library is the other case in [ADR-0015](0015-Undo-and-Redo.md)'s delivery table: having no subscription to scope it, its undo state does reach every connected client.) The window consumes undo state — it enables and labels its Undo and Redo affordances from those notifications — but it neither owns nor stores history.
 
 Because a gesture is one transaction (§4), it is one undo step. The structural coalescing scope of [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §4 and the undo grouping of [ADR-0015](0015-Undo-and-Redo.md) key on the same outermost-transaction boundary, so the multi-musician score of §4 is a single entry on the piece's undo stack, exactly as it is a single `:piece-structure-changed` event; undoing it removes the score in one step. Structural and content edits alike are grouped by that boundary, so "one gesture, one undo step" holds across the whole window.
 
@@ -202,9 +219,9 @@ sequenceDiagram
     Note over PW: apply to *piece-state →<br/>the Layouts pane shows the new score
 ```
 
-### A settings change: three channels, for the control, the piece window, and the score
+### A settings change: two channels, for the piece and for the score
 
-Changing the music font in the Piece Preferences window refreshes that window's control over one channel, refreshes every open piece window's projected settings over a second, and recomputes the score over a third, entirely separate one.
+Changing the music font in the Piece Preferences window refreshes every window subscribed to that piece over one channel — the Preferences window included, watching the piece window's refetched state — and recomputes the score over a second, entirely separate one.
 
 ```mermaid
 sequenceDiagram
@@ -220,17 +237,15 @@ sequenceDiagram
     U->>PP: change the music font
     PP->>SRV: SRV/set-music-font [] piece-id value
     SRV->>BE: ExecuteMethod
-    Note over BE: STM — the setting is updated
+    Note over BE: STM — :settings is a structural slot,<br/>so the write announces itself
     BE-->>SRV: {:ok}
     SRV-->>PP: {:ok}
-    par settings channel
-        BE->>ER: :piece-setting-changed {:piece-id}
-        ER->>PP: refresh displayed values
-    and structure channel
+    par structure channel
         BE->>ER: :piece-structure-changed {:piece-id}
         ER->>PW: refetch get-piece-structure
         PW->>SRV: get-piece-structure
         SRV-->>PW: snapshot incl. dense :settings
+        PW-->>PP: watch fires → controls re-render
     and invalidation channel
         BE->>ER: cache-invalidation (font → whole piece)
         ER->>FC: mark stale

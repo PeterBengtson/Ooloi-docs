@@ -394,12 +394,13 @@ Key implementation aspects:
 7. **Data Integrity**: Invalid settings prevented at write time with clear error messages
 8. **Declarative Constraints**: Validation requirements explicit and co-located with definitions
 9. **Reduced Boilerplate**: Eliminated separate validation functions and :around methods
-10. **Collaborative Awareness**: A setting write notifies on three channels, each with one consumer, and none doing another's work:
-    - `:piece-structure-changed` — because `:settings` is a structural slot, the write announces itself exactly as a rename does, and every open piece window refetches the snapshot in which the values ride ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a).
-    - `:piece-setting-changed` — payload-bearing and per-setting, routed per-piece to that piece's subscribers, never a shared category ([ADR-0031 §Per-Piece Event Routing](0031-Frontend-Event-Driven-Architecture.md#per-piece-event-routing)). An open Piece Preferences window refreshes the individual control, so a collaborating user does not work on an outdated value. It never triggers paintlist fetching.
+10. **Collaborative Awareness**: A setting write notifies on two channels, and neither does the other's work:
+    - `:piece-structure-changed` — because `:settings` is a structural slot, the write announces itself exactly as a rename does, and **every window subscribed to that piece** refetches the snapshot in which the values ride ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a). One event serves every consumer of a setting's value: a Piece Window's numeral labels and a Piece Preferences window's own controls read the same projected entries, so a collaborator's write cannot leave either showing a value the other has already been told has changed.
     - cache invalidation — the visual consequences (re-rendering after a beam-thickness or music-font change) travel out of the formatting pipeline, and only this channel reaches the paintlists.
 
-    The first two concern *what the piece is*, the third *what the music looks like* — the division [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6 draws for change detection generally. Settings sit deliberately across that line: they are part of what a piece *is*, and many also govern how it is *drawn*. The Piece Preferences window that presents these settings is specified in [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6.
+    A third, payload-bearing per-setting channel was considered and rejected. It would have carried the changed key and its new value so a Preferences window could refresh one control without a refetch — but the refetch happens regardless, driven by the same write, and the projection it returns already carries every setting's value, so the second event would have delivered more precisely what the first had already brought. The cost of the coarser channel is over-signalling, accepted deliberately: a write to any setting refetches the whole projection, which is cheap because piece settings change rarely and the projection carries no measures, voices or items.
+
+    The first channel concerns *what the piece is*, the second *what the music looks like* — the division [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6 draws for change detection generally. Settings sit deliberately across that line: they are part of what a piece *is*, and many also govern how it is *drawn*. The Piece Preferences window that presents these settings is specified in [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6.
 
 ### Negative
 
@@ -489,7 +490,7 @@ Key implementation aspects:
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural boundaries maintained by settings-in-piece-data approach
 - [ADR-0008: Vector Path Descriptors](0008-VPDs.md) - VPD integration providing uniform access patterns
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) - Establishes that backend has no application settings, only piece data
-- [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Backend event router delivers piece-setting-changed events to the frontend event bus for collaborative settings awareness
+- [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - How a settings write reaches other clients: `:piece-structure-changed` delivered to that piece's subscribers, and why no separate per-setting event exists
 - [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) - Companion system for global application preferences (frontend-only); borrows validation patterns from this ADR
 - [ADR-0053: The Piece Window and Piece Preferences](0053-Piece-Window-and-Piece-Preferences.md) - The Piece Preferences window presents these piece settings (§6)
 - [ADR-0054: Automatic Semantic Naming and Numbering of Musicians and Instruments](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md) - Declares three numeral piece settings (form, placement, full stop) that compose a stored number into its displayed label

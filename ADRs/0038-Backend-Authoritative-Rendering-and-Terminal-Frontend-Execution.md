@@ -117,7 +117,7 @@ We establish **backend-authoritative rendering with terminal frontend execution*
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │  Event Router (Integrant Component - ADR-0031)             │ │
 │  │  - Receives gRPC event stream                              │ │
-│  │  - Categorises and batches events (50-100ms windows)       │ │
+│  │  - Classifies and batches events (16-100ms, by stream)     │ │
 │  │  - Publishes batches to frontend event bus (eb/publish!)   │ │
 │  │  - No direct handlers; downstream via UI Manager           │ │
 │  └────────────────────────────────────────────────────────────┘ │
@@ -256,8 +256,8 @@ The following components implement the terminal frontend execution model. Events
                 ▼
 ┌─────────────────────────────────────┐
 │    UI Manager (central mediator)    │
-│  subscribes to all categories       │
-│  dispatches reactions               │
+│  subscribes to the categories it    │
+│  serves; dispatches reactions       │
 └───────┬─────────────────┬───────────┘
         │                 │
         │ fx/run-later!   │ background work
@@ -271,7 +271,7 @@ The following components implement the terminal frontend execution model. Events
 
 #### 1. Event Router (Integrant Component)
 
-Pure protocol adapter for category-routed events: categorises backend gRPC events, batches them by category with time windows, and publishes each batch to the frontend event bus (ADR-0031). Per-piece events such as `:piece-structure-changed` are the exception — the Event Router dispatches them directly to the subscribing window, not categorised or batched (see ADR-0031). JavaFX local events remain in JavaFX.
+Pure protocol adapter: it classifies each arriving backend event, coalesces it in the appropriate queue at that stream's cadence, and hands each batch to its consumer (ADR-0031 §Per-Piece Event Routing, which is where routing is specified). The two window-refetch events — `:piece-structure-changed` and `:piece-dirty-changed` — are the exception: they are dispatched straight to the subscribing piece's window, neither classified nor batched. JavaFX local events remain in JavaFX.
 
 **Responsibilities:**
 - Subscribe to gRPC event streams
@@ -279,20 +279,28 @@ Pure protocol adapter for category-routed events: categorises backend gRPC event
 - Batch events by category with time windows
 - Publish one `eb/publish!` per category batch to the frontend event bus
 - No direct category handlers — category processing happens through bus subscribers mediated by the UI Manager
-- Per-piece events (`:piece-structure-changed`) are dispatched directly to the subscribing window's registered handler, bypassing categorisation and batching (ADR-0031)
+- The window-refetch events (`:piece-structure-changed`, `:piece-dirty-changed`) are dispatched directly to the subscribing window's registered handler, bypassing classification and batching (ADR-0031)
 - No rendering details; no UI chrome
 
 **Invalidation Flow:**
 
-For `:cache-invalidation` events (the routing category derived from `:piece-invalidation` event types — see ADR-0031), the UI Manager's bus subscriber coordinates RDM and Fetch Coordinator:
+`:piece-invalidation` is a piece event: delivered only to that piece's subscribers, and coalesced
+per piece at the invalidation cadence (~50–100 ms) rather than mingled with other pieces' events.
+Routing is specified in ADR-0031 §Per-Piece Event Routing and is not restated here; what matters at
+this boundary is the reaction, which the UI Manager performs on a pool thread:
 
 ```clojure
-;; UI Manager's :cache-invalidation handler (runs on Claypoole future thread)
+;; runs on a Claypoole future thread — never the JAT
 (rdm/mark-stale! rendering-data-manager vpd)              ; Mark stale (background-safe)
 (fc/queue-fetch! fetch-coordinator vpd piece-id :critical) ; Queue refetch
 ```
 
-This coordination ensures no intermediate state where cache is marked stale but no refetch is queued.
+The two calls belong together: marking stale without queueing a fetch would leave the viewport
+showing data known to be wrong with nothing on its way to replace it.
+
+**Neither this stream nor the Fetch Coordinator's use of it is built yet** — `:piece-invalidation`
+has no emitter and no consumer today. The design is specified here and in ADR-0028 so that the
+rendering pipeline has somewhere to deliver to when it lands.
 
 #### 2. Rendering Data Manager
 
@@ -376,7 +384,7 @@ cljfx is used for windowing, menus, palettes, and input handling. It provides Ja
 2. Frontend sends an API command to backend (gRPC call). This is the only way rendering can change.
 3. Backend updates piece in STM, recomputes affected paintlists via ADR-0028 pipeline.
 4. Backend emits `:piece-invalidation` events with VPD scope (ADR-0024 FIFO per client).
-5. Event Router categorises `:piece-invalidation` events as `:cache-invalidation`, batches (50–100ms), publishes batch to frontend event bus.
+5. Event Router coalesces the piece's `:piece-invalidation` events in that piece's invalidation queue (50–100 ms) and hands the batch to its consumer.
 6. UI Manager's bus subscriber marks affected VPDs stale in RDM and queues refetches.
 7. Fetch Coordinator performs background gRPC fetches for fresh paintlists.
 8. Fetch Coordinator updates RDM paintlists (background), then schedules `fx/run-later!` to invalidate Pictures and request repaint.

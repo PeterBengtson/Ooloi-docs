@@ -70,7 +70,7 @@ Traditional music notation software operates in single-user desktop contexts whe
 **Interactive UI Requirements**:
 - Users click on rendered notation elements (notes, symbols, measures) requiring mapping to backend operations
 - Frontend must identify clicked elements using cached backend identification data
-- Immediate visual feedback before backend confirmation
+- No optimistic local mutation: a gesture reaches the backend and the display changes when the resulting invalidation is answered by a refetch
 - Graceful handling of backend operation failures
 
 **Synchronization Complexity**:
@@ -197,12 +197,12 @@ Backend uses configurable raster (e.g., 100ms) for computation-heavy operations 
 - **VPD extraction**: Selected element provides VPD for backend API calls  
 - **Item identification**: Specific musical items within measures require unique identifiers
 - **Operation dispatch**: VPD + item-id enables targeted backend mutations
-- **State validation**: Frontend must verify data currency before allowing operations
+- **Currency is a rendering precondition**: an element must be rendered to be clicked; nothing further is validated client-side
 
 **Architectural Constraints**:
 - **No musical logic**: Frontend performs pure geometric-to-logical mapping
 - **Backend authority**: All musical operations routed through backend API
-- **Version synchronization**: Operations blocked on stale frontend data
+- **Staleness affects hit-testing, not authority**: an element whose paintlist is stale cannot be hit-tested, because there is nothing current to test against. This is not a version check on the operation
 - **Clean cache requirement**: Hit-testing only functions with current visual data
 
 ### Clean/Dirty State Integration
@@ -335,12 +335,12 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 
 **Single-Client Operations**:
 1. User clicks note → Frontend resolves VPD → API call `(add-articulation note-vpd piece-id :staccato)`
-2. Backend updates musical data → Backend broadcasts event: `{:type :piece-measures-invalidated :measures [127]}`
+2. Backend updates musical data → Backend emits `{:type :piece-invalidation :measures [127]}` to that piece's subscribers
 3. Same client receives event → Marks measure 127 dirty → Requests fresh data when visible
 
 **Multi-Client Operations** (identical pattern):
 1. User A clicks note → Frontend resolves VPD → API call `(add-articulation note-vpd piece-id :staccato)`
-2. Backend updates musical data → Backend broadcasts event to **ALL subscribed clients**: `{:type :piece-measures-invalidated :measures [127]}`
+2. Backend updates musical data → Backend emits `{:type :piece-invalidation :measures [127]}` to **every client subscribed to that piece** — and to no other
 3. Users A, B, C receive same event → Each marks measure 127 dirty → Each requests fresh data when visible
 
 **Key Insight**: Collaboration requires no special code - it's simply multiple clients receiving the same events and using the same lazy data retrieval patterns.
@@ -357,13 +357,13 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 **Manual Piece Subscriptions**: Clients explicitly subscribe to piece-specific events
 ```clojure
 ;; Client subscribes when opening a piece
-(execute-method :subscribe-to-piece {:piece-id "symphony-no-5"})
+(execute-method :subscribe-to-piece-events {:piece-id "symphony-no-5"})
 
 ;; Client receives piece-specific invalidation events
-{:type :piece-measures-invalidated :piece-id "symphony-no-5" :measures [127]}
+{:type :piece-invalidation :piece-id "symphony-no-5" :measures [127]}
 
 ;; Client unsubscribes when closing piece  
-(execute-method :unsubscribe-from-piece {:piece-id "symphony-no-5"})
+(execute-method :unsubscribe-from-piece-events {:piece-id "symphony-no-5"})
 ```
 
 **Server-Side Subscription Management**: Backend maintains subscription registry for targeted event routing
@@ -407,11 +407,11 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 **Conflict Resolution Through Backend Authority**:
 - **No conflict resolution needed**: Backend processes mutations sequentially
 - **Last-write-wins**: Backend STM handles concurrent mutations using established precedence
-- **Optimistic UI updates**: Frontend shows immediate feedback, corrected by backend events if needed
-- **Version tracking**: Frontend prevents operations on stale data using version stamps
+- **No optimistic updates**: the frontend never mutates its own view of piece state in anticipation of a backend result. A gesture is submitted, the backend commits, the resulting event marks data stale, the refetch supplies the new state, and only then does the display change. Rolling back a speculative change is thereby not a case that can arise ([ADR-0040](0040-Single-Authority-State-Model.md))
+- **No version stamps.** The frontend holds no version counter and blocks nothing. Two mechanisms cover what one might expect version stamps to do, and neither is a version stamp: the backend's STM serialises concurrent mutations so a gesture composed against a slightly stale view still applies to current state (or fails cleanly if its VPD no longer resolves), and **latest-wins timestamps** discard a *refetch* that lands out of order — a property of the refresh path, not a gate on operations
 
 **Collaborative Efficiency**:
-- **Event deduplication**: Single backend event notifies all clients simultaneously
+- **Event deduplication**: one backend event notifies every subscriber of that piece simultaneously
 - **Raster synchronization**: Multiple clients requesting same data get shared computation
 - **Viewport independence**: Users in different score sections don't interfere with each other
 - **Network optimization**: 4KB event broadcast instead of megabytes per client
@@ -449,7 +449,7 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 - Native iOS/Android clients with platform-specific rendering
 - Platform rendering systems handle bitmap caching independently
 - Touch interaction patterns using same VPD resolution
-- Offline capability with sync-when-connected patterns
+- No offline capability: the piece lives on the backend and a client with no backend has no piece ([ADR-0040](0040-Single-Authority-State-Model.md)). There is no local authority to diverge and therefore nothing to reconcile
 
 **Future Technologies**:
 - VR/AR clients with 3D spatial rendering
@@ -559,7 +559,7 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 1. Frontend calls `(add-articulation note-vpd piece-id :staccato)` **via gRPC** to backend
 2. Backend modifies musical data, queues layout recalculation for next 100ms raster
 3. On 100ms raster: Backend recalculates affected MeasureView data
-4. Backend broadcasts: `{:type :piece-measures-invalidated :piece-id "symphony" :measures [127]}`
+4. Backend emits `{:type :piece-invalidation :piece-id "symphony" :measures [127]}` to that piece's subscribers
 5. All clients invalidate local measure 127 cache (set to nil, :dirty, or remove)
 6. **Viewport-aware client responses**:
    - Client viewing pages 12-13 with measure 127 visible: request fresh data **via gRPC**, update local cache

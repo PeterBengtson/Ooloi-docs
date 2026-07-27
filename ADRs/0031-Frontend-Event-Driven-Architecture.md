@@ -12,13 +12,17 @@ Implemented
 - [Decision](#decision)
   - [Why This Decision](#why-this-decision)
   - [Alternatives Considered](#alternatives-considered)
+- [Per-Piece Event Routing](#per-piece-event-routing)
+  - [Two kinds of subscription, and why the word is dangerous](#two-kinds-of-subscription-and-why-the-word-is-dangerous)
+  - [Two orthogonal axes for a piece event](#two-orthogonal-axes-for-a-piece-event)
+  - [Routing diagram](#routing-diagram)
 - [Consequences](#consequences)
   - [Core Pattern](#core-pattern)
   - [Component Architecture](#component-architecture)
   - [Visual Architecture](#visual-architecture)
   - [Event Envelope Structure](#event-envelope-structure)
-  - [Event Type Taxonomy and Category Derivation](#event-type-taxonomy-and-category-derivation)
-  - [Event Categories and Routing](#event-categories-and-routing)
+  - [Event Type Taxonomy](#event-type-taxonomy)
+  - [What Reacts to What](#what-reacts-to-what)
   - [Event Flow Examples](#event-flow-examples)
   - [Key Architectural Properties](#key-architectural-properties)
   - [Connection Management](#connection-management)
@@ -98,6 +102,57 @@ Events reach the frontend through **three lanes**, and every routing decision fo
 
 **The invariant, and why the prefix carries it.** A `:piece-*` event is **never** broadcast to all clients and filtered locally, and **never** placed on a shared frontend category that other pieces' windows also receive. It is delivered per-piece at the source and handled per-piece at the destination. The **`:piece-` prefix is the scope marker**: the router's rule is simply *"`:piece-*` → per-piece; everything else → its category."* A scope lookup table — deciding per event type whether it is piece-scoped — would drift, because a new event could be added on the wrong side. The prefix makes scope structural, so it cannot. This is why a piece-scoped collaboration cursor is `:piece-collaboration-cursor-moved`, not `:collaboration-cursor-moved`: the former routes per-piece by rule; the latter would be a scope lookup waiting to go wrong.
 
+### Two kinds of subscription, and why the word is dangerous
+
+**"Subscription" names two unrelated things in this system.** They have different owners, different
+rules and different costs, and the only thing they share is the word. Conflating them produces
+confident, wrong conclusions — most reliably the belief that a component wanting a piece's events
+must somehow compete for the one subscription the client already has.
+
+> **The test, and it is mechanical: a piece subscription goes over the wire. A local subscription
+> never touches the wire.** Everything else below follows from that one fact. If the act involves a
+> gRPC call, it is a piece subscription and it is limited to one per client and piece. If it does
+> not leave the process, it is a local subscription and there may be as many as you like.
+
+**A piece subscription** is between a **client and the backend**. It is established by
+`subscribe-to-piece-events` and held server-side in that client's `:piece-subscriptions`, a set.
+There is exactly **one per client and piece**: subscribing again is idempotent, and unsubscribing
+revokes the piece for that client outright — which, under close-on-last-release
+([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)), may close the piece on the backend if no
+other client holds it. It decides **whether an event reaches this client at all**, and its lifecycle
+belongs to the windowing system, which subscribes when a piece is opened and unsubscribes when it is
+closed (see *Event Router* below).
+
+**A local subscription** is **inside one client**. It is a handler registered on the frontend event
+bus for a category (`eb/subscribe!`), or registered with the Event Router against a piece id. There
+may be **any number** of them, they cost nothing, and adding or removing one is invisible to the
+backend and to every other component. It decides **which components see an event that has already
+arrived**.
+
+The two map onto the axes below: a piece subscription governs *scope*, a local subscription governs
+who consumes the result of a *regime*. Neither constrains the other. In particular, **the single
+piece subscription places no limit whatever on how many components within the client may consume
+that piece's events** — that fan-out is what the frontend event machinery is for.
+
+**A worked example, in the running system.** `notify-all-events!` (the UI Manager) takes a *wildcard*
+local subscription across every category and renders each event it sees as a notification toast — a
+development aid that makes all bus traffic visible. It observes events that other components are
+consuming at the same moment, adds nothing to the wire, requires no coordination with any existing
+subscriber, and can be switched on or off without the backend ever knowing it existed. That is the
+whole property in one function: local subscriptions are additive, free, and unlimited. Nothing about
+a piece's single subscription over the wire is implicated by it, and a component wanting to visualise,
+audit, log or debug a piece's events adds itself the same way.
+
+**The trap is a call site that does both.** The Event Router's `subscribe-to-piece` registers a local
+handler *and* issues the piece subscription, under one name that reveals neither. A reader of that
+call site sees "subscribe to piece" and cannot tell which of the two sets of rules applies — so when
+in doubt, ask which side of the wire the subscription lives on.
+
+The rule that follows: a component that wants a piece's events **never issues its own piece
+subscription, and above all never its own unsubscribe** — that would revoke delivery for every other
+consumer in the client and can close the piece on the backend. It takes a local subscription, or
+reads state that another component already maintains from those events.
+
 ### Two orthogonal axes for a piece event
 
 A piece event is fixed by two **independent** choices; separating them is what dissolves the confusion.
@@ -110,18 +165,19 @@ A piece event is fixed by two **independent** choices; separating them is what d
 |---|---|---|---|---|
 | `:piece-structure-changed` | direct → window | — | window refetches the structure snapshot | live |
 | `:piece-dirty-changed` | direct → window | — | window refetches; drives the `●` dirty title + Save enablement | live |
-| `:piece-setting-changed` | direct → window | — | settings window refreshes the control | prepared |
 | `:piece-invalidation` | per-piece batched | ~50–100 ms | **Fetch Coordinator** fetches stale paintlists | prepared |
 | `:piece-playback-*` | per-piece batched | ~16 ms | playback | prepared |
 | `:piece-collaboration-cursor-moved` | per-piece batched | ~33 ms | presence overlay | prepared |
 | `:undo-state-changed` for a piece resource | direct → window | — | undo-menu state | prepared |
 
-"Direct" regimes carry no queue; "batched" regimes use their prepared cadence in a **per-piece** queue. Only `:piece-structure-changed` is built; the rest are prepared. `:undo-state-changed` is the one event split by `:resource-key`: a **piece** resource routes per-piece like the rest of this table; the **Instrument Library** resource is global and broadcasts (Lane 1).
+"Direct" regimes carry no queue; "batched" regimes use their prepared cadence in a **per-piece** queue. Only `:piece-structure-changed` and `:piece-dirty-changed` are built; the rest are prepared. `:undo-state-changed` is the one event split by `:resource-key`: a **piece** resource routes per-piece like the rest of this table; the **Instrument Library** resource is global and goes to every connected client (Lane 1).
+
+**There is no separate settings event, and that is deliberate.** A piece's `:settings` is a structural slot of the Piece ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a), so a settings write emits `:piece-structure-changed` like any other structural write, and the projection the window refetches in answer carries every declared setting at its effective value. A dedicated per-setting event would deliver, more precisely, what that refetch has already brought — see [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6 for the reasoning and the over-signalling cost accepted in exchange.
 
 Two points that have misled before:
 
 - **Only `:piece-invalidation` touches the Fetch Coordinator.** Its sole job is fetching stale *paintlists*, and only an invalidation names stale paintlist VPDs. `:piece-structure-changed` refetches the *structure snapshot* (`get-piece-structure`) itself; `:piece-playback-*` and the collaboration cursor move overlays over already-rendered content and fetch nothing; a setting change's *visual* consequence is a **separate** `:piece-invalidation`, and *that* reaches the Fetch Coordinator (the channel split of [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6 — a setting write also emits `:piece-structure-changed`, since `:settings` is a structural slot).
-- **Each batched stream has its own cadence and its own per-piece queue** — invalidation ~50–100 ms, playback ~16 ms, cursor ~33 ms. Structure and settings do not batch: structure is already one event per transaction ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §4), settings are rare.
+- **Each batched stream has its own cadence and its own per-piece queue** — invalidation ~50–100 ms, playback ~16 ms, cursor ~33 ms. Structure does not batch, and needs no cadence: it is already one event per outermost transaction ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §4), and settings writes — which travel on it — are rare.
 
 ### Routing diagram
 
@@ -221,11 +277,11 @@ Categories are arbitrary keywords — any component can define new ones. Backend
 categories (`:cache-invalidation`, `:presence`, `:playback`, `:system`, `:notification`,
 `:instrument-library`, `:undo`) appear on the same
 bus as the frontend-originated ones above — the bus is the delivery mechanism for all
-category-routed frontend events. (The `:piece-*` events — `:piece-structure-changed` and
-`:piece-setting-changed` — are **not** categories: they are per-piece events the Event Router
-dispatches to the subscribing window; see *Piece Structure* and *Piece Settings* below.)
-See [Event Type Taxonomy and Category Derivation](#event-type-taxonomy-and-category-derivation)
-for the complete backend-event-to-category mapping.
+category-routed frontend events. (The window-refetch events — `:piece-structure-changed` and
+`:piece-dirty-changed` — are **not** categories: they are per-piece events the Event Router
+dispatches to the subscribing window; see *Piece Structure* and *Piece Dirty State* below.)
+See [Event Type Taxonomy](#event-type-taxonomy) for every event's own facts, and
+[Per-Piece Event Routing](#per-piece-event-routing) for how each is delivered and dispatched.
 
 **Backend Events on the Bus:**
 
@@ -296,7 +352,7 @@ Components that react to events via frontend event bus subscriptions mediated by
 - Connection Manager: System events, reconnection
 - Notification Manager: User-facing messages, errors
 
-The UI Manager subscribes to both frontend and backend event categories and dispatches reactions. Individual subsystems do not subscribe to the bus directly.
+The UI Manager subscribes to the categories whose reactions it mediates, and dispatches to these subsystems. It is not a wildcard subscriber, and it is not the only one: windows take their own local subscriptions through `:window/subscriptions` (ADR-0042), `undo-redo` subscribes to `:backend` for its own cache, and the `notify-all-events!` development aid subscribes to every category at once. What the mediation rule means is narrower — a *rendering* subsystem (Rendering Data Manager, Fetch Coordinator, playback, presence) does not subscribe on its own behalf; the UI Manager receives and dispatches to it.
 
 #### 6. JavaFX Scene
 - Render pass checks data staleness at hierarchy elements (detects whether paintlist is current or needs refetch)
@@ -341,8 +397,8 @@ The UI Manager subscribes to both frontend and backend event categories and disp
                 ▼
 ┌─────────────────────────────────────┐
 │    UI Manager (central mediator)    │
-│  subscribes to all categories       │
-│  dispatches reactions               │
+│  subscribes to the categories it    │
+│  serves; dispatches reactions       │
 └───────┬─────────────────┬───────────┘
         │                 │
         │ fx/run-later!   │ background work
@@ -374,7 +430,7 @@ graph TB
     end
 
     subgraph "UI Manager"
-        UM[UI Manager<br/>Central mediator<br/>Subscribes to all categories]
+        UM[UI Manager<br/>Central mediator<br/>Subscribes to the categories it serves]
     end
 
     subgraph "Data Layer"
@@ -438,11 +494,11 @@ sequenceDiagram
 
     U2->>BE: Edit measure 47
     BE->>BE: STM transaction
-    BE->>ER: :measure-view-updated<br/>VPD [:layouts 0 :page-views 2...]
-    ER->>CA: Route to :cache-invalidation
+    BE->>ER: :piece-invalidation<br/>VPD [:layouts 0 :page-views 2...]
+    ER->>CA: Route to this piece's invalidation queue
     Note over CA: Batch 50-100ms
     CA->>CA: Window expires
-    CA->>BUS: eb/publish! :cache-invalidation [events]
+    CA->>BUS: flush batch → consumer
     BUS->>UM: Claypoole future → handler
     UM->>RDM: Mark VPD stale
     RDM->>FC: Queue fetch (CRITICAL priority)
@@ -476,11 +532,11 @@ sequenceDiagram
     UM->>UI: Show "Disconnected"
     Note over NET: 30 seconds pass
     NET->>ER: Connection restored
-    ER->>BE: Reconnect + resubscribe
-    BE->>ER: Acknowledge subscription
-    ER->>BUS: eb/publish! :cache-invalidation [invalidate-all]
-    BUS->>UM: UI Manager handler
-    UM->>RDM: Invalidate ALL data
+    ER->>BE: Reconnect + resubscribe (remembered piece set)
+    BE->>ER: Acknowledge subscriptions
+    Note over ER: no backend event says "everything is stale" —<br/>the client concludes it, per piece it holds
+    ER->>UM: mark this client's cached data stale
+    UM->>RDM: Invalidate data for each resubscribed piece
     RDM->>FC: Queue viewport fetches<br/>(CRITICAL priority)
     FC->>BE: Parallel gRPC fetches
     BE->>FC: Current paintlists
@@ -568,7 +624,7 @@ graph LR
 
 The frontend event bus carries heterogeneous event shapes — each category defines its own format. There is no universal envelope contract across all categories. Backend events and frontend-originated events have different structures:
 
-**Backend events** arrive with the following structure (per ADR-0018). Subscribers for backend categories (`:cache-invalidation`, `:presence`, `:playback`, `:system`, `:notification`) receive events in this format:
+**Backend events** arrive with the following structure (per ADR-0018). Subscribers for backend categories (`:system`, `:notification`, `:instrument-library`, `:undo`) receive events in this format, as do the per-piece consumers of piece events:
 
 ```clojure
 {:type :piece-invalidation        ; Required keyword, validated by backend
@@ -584,7 +640,7 @@ The frontend event bus carries heterogeneous event shapes — each category defi
 
 Events received by frontend are **pre-validated** and guaranteed to have:
 - `:type` field exists and is a keyword
-- `:type` matches pattern: `server-*`, `client-*`, `piece-*`, `collaboration-*`, or contains `/`
+- `:type` matches pattern: `server-*`, `client-*`, `piece-*`, `collaboration-*`, `instrument-library-*`, `undo-*`, or contains `/`
 - `:timestamp` field exists and is a number (epoch µs, added by `send-*-event`)
 - `:piece-id` field exists and is a string (for piece-* and collaboration-* events)
 - All field names are keywords (kebab-case)
@@ -595,37 +651,47 @@ Events received by frontend are **pre-validated** and guaranteed to have:
 
 **Frontend-originated events** (`:app-lifecycle`, `:window-lifecycle`, `:app-settings`) are maps with at minimum `:type` and `:timestamp`. Subscribers for these categories know their specific event shapes. The `:type` and `:timestamp` fields are a convention for frontend events, not a bus-wide contract — backend events happen to share these fields because the backend validation guarantees them, but this is coincidence of design rather than a universal bus requirement.
 
-### Event Type Taxonomy and Category Derivation
+### Event Type Taxonomy
 
-The Event Router derives routing categories from backend event types. This mapping is deterministic and based on the `:type` field prefix.
+**Routing is specified once, in [§Per-Piece Event Routing](#per-piece-event-routing), and is not
+restated here.** This section catalogues each event's *own* facts — its required fields, its scope
+or context fields, and what a consumer does with it. Where an entry names a regime or a cadence it
+is quoting the axes table in that section, not defining anything.
 
-#### Backend Event Types → Frontend Categories
+The short form, so an entry below can be read alone: a **piece event** (`:piece-` prefix) is
+delivered by `send-piece-event` to the clients subscribed to that piece, and handled per-piece on
+arrival — either dispatched straight to that piece's window, or coalesced in a queue belonging to
+that piece and that stream. A **global event** is delivered by `send-server-event` to every
+connected client and handled through a shared bus category. No piece event is ever placed on a
+shared category, and no global event is ever piece-scoped.
 
-**Cache Invalidation** (`:cache-invalidation` category):
-```clojure
-:piece-invalidation  ; Visual hierarchy invalidation at any level
-```
+#### Piece events
+
+**Cache Invalidation** — `:piece-invalidation`, visual hierarchy invalidation at any level.
 
 **Required fields**: `:piece-id` (string), `:timestamp` (number)
 **Scope fields** (one of): `:vpd` (single VPD vector), `:vpds` (multiple VPD vectors), `:measures` (measure numbers)
-**VPD depth indicates level**: `[:layouts 0]` = layout, `[:layouts 0 :page-views 2]` = page, etc.
+**VPD depth indicates level**: `[:layouts 0]` = layout, `[:layouts 0 :page-views 2]` = page, etc. There is deliberately **one** invalidation event rather than one per hierarchy level; the depth of the VPD carries the level.
+**Regime**: per-piece batched, ~50–100 ms. **Consumer**: the Fetch Coordinator, which fetches the stale paintlists. This is the only event that reaches it.
 
 ---
 
-**Presence/Collaboration** (`:presence` category):
+**Presence / Collaboration** — piece-scoped, and named accordingly:
 ```clojure
-:collaboration-user-joined
-:collaboration-user-left
-:collaboration-cursor-moved
-:collaboration-selection-changed
+:piece-collaboration-user-joined
+:piece-collaboration-user-left
+:piece-collaboration-cursor-moved
+:piece-collaboration-selection-changed
 ```
 
 **Required fields**: `:piece-id` (string), `:timestamp` (number)
 **Context fields**: `:vpd` (for cursor position), `:vpds` (for selections), `:user-id`, `:user-name`
+**Regime**: per-piece batched, ~33 ms (30 fps — smooth cursors without overwhelming the UI). **Consumer**: the presence overlay, which moves avatars, cursors and selection highlights over already-rendered content and fetches nothing.
+**On the names.** Collaboration in Ooloi is always *about a piece* — a cursor is somewhere in a score, a selection is of something in one — so these carry the `:piece-` prefix like every other piece event, and the prefix means here exactly what it means everywhere: delivered only to that piece's subscribers. A bare `collaboration-` prefix would put the scope in a lookup table instead of in the name. (`:collaboration-state-changed` is unrelated and keeps its name: it is frontend-local, this client's own transport state, and never crosses the wire — see the lane list in §Per-Piece Event Routing.)
 
 ---
 
-**Playback** (`:playback` category):
+**Playback** —
 ```clojure
 :piece-playback-position
 :piece-playback-started
@@ -634,34 +700,7 @@ The Event Router derives routing categories from backend event types. This mappi
 
 **Required fields**: `:piece-id` (string), `:timestamp` (number)
 **Context fields**: `:vpd` (current playback position), `:tempo`, `:time-signature`
-
----
-
-**System** (`:system` category):
-```clojure
-:server-maintenance
-:server-shutdown
-:server-status
-:server-client-connected
-:server-client-disconnected
-```
-
-**Required fields**: `:type` (keyword), `:timestamp` (number)
-**Context fields**: `:message` (human-readable), `:client-count`, `:affected-services`
-
----
-
-**Notification** (`:notification` category):
-```clojure
-:piece-validation-error
-:piece-operation-failed
-:server-warning
-:server-info
-:client-registration-confirmed
-```
-
-**Required fields**: `:type` (keyword), `:timestamp` (number)
-**Context fields**: `:message` (human-readable), `:severity`, `:piece-id` (if piece-related)
+**Regime**: per-piece batched, ~16 ms (60 fps — a fluid playback cursor). **Consumer**: the playback controller, which moves the timeline cursor and highlights active measures over already-rendered content and fetches nothing.
 
 ---
 
@@ -704,26 +743,69 @@ dropped and the window settles on the freshest structure.
 
 ---
 
-**Piece Settings** (`:piece-setting-changed` — a **per-piece event, not a bus category**):
+**Piece Settings — no event of their own.** A `defsetting` value changing on the backend emits
+**`:piece-structure-changed`**, exactly as above and for the same reason: a piece's `:settings` is a
+structural slot of the Piece ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a), so a
+settings write is a structural write. The projection the window refetches in answer carries every
+declared setting at its effective value, so every consumer of a setting's value — the piece window's
+own labels, and any Piece Preferences window watching that window's state — is served by the one
+event. There is deliberately **no** per-setting event carrying `:setting-key` and a new value: it
+would deliver, more precisely, what the refetch has already brought. [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md)
+§6 states the reasoning and the over-signalling cost accepted in exchange.
+
+**The graphical consequence is a separate channel, and this separation is load-bearing.** A settings
+write announces *that the piece changed*; what it looks like afterwards is not carried by that
+announcement. Any repaint the change entails travels independently as `:piece-invalidation` (→
+`:cache-invalidation`) and reaches the Fetch Coordinator by the ordinary route. The structural
+announcement itself **never triggers paintlist fetching**, and the two must never be conflated: a
+music-font change and a musician rename produce the same structural event and entirely different
+invalidations.
+
+---
+
+**Piece notifications** — a failure concerning one piece:
 ```clojure
-:piece-setting-changed  ; A defsetting value changed on the backend
+:piece-validation-error
+:piece-operation-failed
 ```
 
 **Required fields**: `:piece-id` (string), `:timestamp` (number)
-**Payload fields**: `:setting-key` (keyword), `:old-value`, `:new-value`
-**Routing — per-piece, not categorised.** Like `:piece-structure-changed` above (and every
-`:piece-*` event), `send-piece-event` delivers this only to clients subscribed to that piece, and the
-Event Router dispatches it to that piece's registered handler. It does **not** pass through
-`derive-category` or a shared `:piece-settings` category — there is no fan-out to other pieces'
-windows and no client-side `:piece-id` filter. The two per-piece regimes differ only in the
-subscriber's reaction, never in the routing.
-**Note**: The `:piece-setting-changed` event **never triggers paintlist fetching**. Graphical
-consequences of setting changes travel independently as `:piece-invalidation` events (→
-`:cache-invalidation`). The two event types are architecturally separate and must never be
-conflated.
-**Subscriber reaction**: the piece's subscribed settings window refreshes the control for
-`:setting-key` using `:new-value` — no client-side filter (the per-piece subscription already scopes
-it). No Fetch Coordinator involvement.
+**Context fields**: `:message` (human-readable), `:severity`
+**Regime**: batched, ~75 ms. **Consumer**: the notification manager, which formats the message through `tr` and raises a toast or banner.
+**Note the two axes at work.** Delivery is per-piece — a validation failure on a piece concerns the clients editing *that* piece and no one else — while the consumer is client-scoped, one notification manager serving every piece this client has open. Piece-scoped delivery, shared consumer: the general case, and the reason the prefix cannot be read as naming a consumer.
+
+---
+
+#### Global events
+
+Delivered by `send-server-event` to every connected client, and dispatched through a shared bus
+category. None is piece-scoped; none carries a `:piece-id`.
+
+**System** (`:system` category):
+```clojure
+:server-maintenance
+:server-shutdown
+:server-status
+:server-client-connected
+:server-client-disconnected
+```
+
+**Required fields**: `:type` (keyword), `:timestamp` (number)
+**Context fields**: `:message` (human-readable), `:client-count`, `:affected-services`
+**Regime**: batched, ~75 ms. **Consumer**: the connection manager, and the notification manager for anything the user should see.
+
+---
+
+**Server messages and registration** (`:notification` category):
+```clojure
+:server-warning
+:server-info
+:client-registration-confirmed
+```
+
+**Required fields**: `:type` (keyword), `:timestamp` (number)
+**Context fields**: `:message` (human-readable), `:severity`
+**Regime**: batched, ~75 ms. **Consumer**: the notification manager. `:client-registration-confirmed` is the exception that never reaches it — it is the registration handshake, consumed by the event client to complete the connection and to compute this client's clock offset from the server's `:server-timestamp`.
 
 ---
 
@@ -764,10 +846,14 @@ invalidate→fetch model and timestamp-based routing.
 
 #### Category Derivation Logic
 
+`derive-category` classifies an arriving event. Below is the function **as it stands today** —
+quoted, not paraphrased, so it can be checked against the source
+(`frontend/…/event_router/core.clj`):
+
 ```clojure
 (defn derive-category
   "Derives routing category from validated backend event type.
-   Frontend can trust event structure - backend validation guarantees correctness."
+  Frontend can trust event structure - backend validation guarantees correctness."
   [event]
   (case (:type event)
     ;; Cache invalidation
@@ -791,25 +877,42 @@ invalidate→fetch model and timestamp-based routing.
      :server-client-connected
      :server-client-disconnected) :system
 
-    ;; Piece structure is NOT categorised — :piece-structure-changed is a per-piece event the
-    ;; Event Router dispatches directly to the subscribing window (see "Piece Structure" above);
-    ;; it never reaches derive-category.
-
-    ;; Piece settings are NOT categorised — :piece-setting-changed is a per-piece event the
-    ;; Event Router dispatches directly to the subscribing window (see "Piece Settings" above),
-    ;; exactly like :piece-structure-changed; it never reaches derive-category.
-
-    ;; Instrument library (global singleton — not piece-scoped)
+    ;; Instrument Library
     :instrument-library-changed :instrument-library
 
-    ;; Undo state (scoped: IL global, pieces per-subscription)
+    ;; Undo/Redo state
     :undo-state-changed :undo
 
     ;; Everything else defaults to notification
     :notification))
 ```
 
+**Three things to read carefully here, because the function is ahead of some streams and behind
+others.**
+
+**The window-refetch events are absent, and that is correct.** `:piece-structure-changed` and
+`:piece-dirty-changed` never reach `derive-category` at all — the Event Router dispatches them
+straight to the piece's window before classification. A settings change travels on
+`:piece-structure-changed` and so needs no entry either.
+
+**The first three entries are placeholders for streams not yet built.** Invalidation, presence and
+playback are specified as **per-piece** regimes with per-piece queues (§Per-Piece Event Routing);
+the shared-category mappings above are what the classifier does in the meantime, while nothing emits
+those events. When each stream is built it acquires per-piece delivery and a per-piece queue at its
+already-prepared cadence. Do not read these three lines as the design.
+
+**The collaboration entries also lag the naming.** The events are specified as
+`:piece-collaboration-*`; the unprefixed forms above predate that and will change with the same
+work. Nothing emits them today, so nothing depends on the current spelling.
+
+The last three entries — `:system`, `:instrument-library`, `:undo` — are live and correct as written.
+
 #### Scope Extraction for Invalidation Events
+
+**Specified, not yet implemented.** Unlike `derive-category` above, this function and the two
+helpers it calls (`measure-number->vpd`, `layout-id->index`) do not exist in the source — they
+arrive with the invalidation stream. The shape is specified here so the scope-field variants of
+`:piece-invalidation` have one agreed reading:
 
 ```clojure
 (defn extract-invalidation-scope
@@ -837,67 +940,37 @@ invalidate→fetch model and timestamp-based routing.
     :else []))
 ```
 
-### Event Categories and Routing
+### What Reacts to What
 
-#### 1. Cache Invalidation Events
+One table, for the question "who consumes this, and what do they do with it?". Fields and regimes
+are in [§Event Type Taxonomy](#event-type-taxonomy); end-to-end walkthroughs are in
+[§Event Flow Examples](#event-flow-examples) below; routing is in
+[§Per-Piece Event Routing](#per-piece-event-routing). Nothing here restates any of them.
 
-**Event Type:** `:piece-invalidation`
+**Piece events** — delivered only to that piece's subscribers:
 
-**Reaction:** UI Manager → Rendering Data Manager → Fetch Coordinator
+| Event | Consumer | Reaction |
+|---|---|---|
+| `:piece-structure-changed` · `:piece-dirty-changed` | that piece's **window** | refetch the structural projection, apply latest-wins, re-render the panes, recompose the title |
+| `:piece-invalidation` | **Fetch Coordinator**, via the Rendering Data Manager | mark the named VPDs stale, fetch fresh paintlists by viewport priority, invalidate Pictures, repaint |
+| `:piece-collaboration-*` | **presence overlay** | move avatars, collaborative cursors and selection highlights over already-rendered content |
+| `:piece-playback-*` | **playback controller** | move the timeline cursor, highlight active measures, update transport controls |
+| `:piece-validation-error` · `:piece-operation-failed` | **notification manager** | localise through `tr`, raise a toast or banner |
 
-**Batching:** 50-100ms time windows to coalesce rapid updates
+**Global events** — delivered to every connected client:
 
-**Processing:**
+| Event | Consumer | Reaction |
+|---|---|---|
+| `:server-*` (maintenance, shutdown, status, client connected/disconnected) | **connection manager**, and the notification manager for anything user-visible | update connection state, possibly begin reconnection |
+| `:server-warning` · `:server-info` | **notification manager** | localise, raise a toast or banner |
+| `:client-registration-confirmed` | **event client** | complete the handshake and compute this client's clock offset from `:server-timestamp` |
+| `:instrument-library-changed` | **Instrument Library cache** | refetch if the window is open, else mark stale and defer |
+| `:undo-state-changed` | **undo/redo menu state** | cache the timestamps for that `:resource-key`, mark any cached description stale |
 
-Event arrives → Add to batch aggregator → After 50-100ms window: flush batch → `eb/publish!` to frontend event bus → UI Manager handler marks VPDs stale in Rendering Data Manager → Fetch Coordinator: prioritize by viewport → Background thread: gRPC fetch for paintlist at VPD level → Update rendering data on background thread → `fx/run-later!` triggers repaint with fresh paintlist
-
-#### 2. Presence/Collaboration Events
-
-**Event Types:** `:collaboration-user-joined`, `:collaboration-user-left`, `:collaboration-cursor-moved`, `:collaboration-selection-changed`
-
-**Reaction:** UI Manager → Collaboration UI Manager
-
-**Batching:** 33ms windows (30fps) for cursor movements, join/leave immediate
-
-**Processing:**
-
-Event arrives → Add to category aggregator → After 33ms window: flush batch → `eb/publish!` to frontend event bus → UI Manager handler dispatches to Collaboration UI Manager → `fx/run-later!` for scene graph updates → Update avatar positions → Update collaborative cursors → Update selection highlights
-
-#### 3. Playback Events
-
-**Event Types:** `:piece-playback-position`, `:piece-playback-started`, `:piece-playback-stopped`
-
-**Reaction:** UI Manager → Playback UI Controller
-
-**Batching:** ≤16ms windows (60fps) for position, start/stop immediate
-
-**Processing:**
-
-Event arrives → Add to category aggregator → After ≤16ms window: flush batch → `eb/publish!` to frontend event bus → UI Manager handler dispatches to Playback UI Controller → `fx/run-later!` for scene graph updates → Update timeline cursor → Highlight active measures → Update playback controls
-
-#### 4. System Events
-
-**Event Types:** `:server-maintenance`, `:server-shutdown`, `:server-status`, `:server-client-connected`, `:server-client-disconnected`
-
-**Reaction:** UI Manager → Connection Manager + Notification Manager
-
-**Batching:** None - immediate processing
-
-**Processing:**
-
-Event arrives → Immediate `eb/publish!` to frontend event bus → UI Manager handler dispatches to Connection Manager and Notification Manager → Update connection state → `fx/run-later!` for UI updates → Show system notification → May trigger reconnection logic
-
-#### 5. Error/Notification Events
-
-**Event Types:** `:piece-validation-error`, `:piece-operation-failed`, `:server-warning`, `:server-info`, `:client-registration-confirmed`
-
-**Reaction:** UI Manager → Notification Manager
-
-**Batching:** None - immediate user feedback
-
-**Processing:**
-
-Event arrives → Immediate `eb/publish!` to frontend event bus → UI Manager handler dispatches to Notification Manager → Format message (i18n) → `fx/run-later!` → Show toast/banner/status bar → Auto-dismiss or sticky based on severity
+**The threading rule is the same for every row**, so it is stated once rather than repeated: the
+consumer runs on a Claypoole pool thread, and only the part that mutates the JavaFX scene graph is
+handed to the JAT via `fx/run-later!`. Atom updates — the Rendering Data Manager included — stay off
+the JAT.
 
 ### Event Flow Examples
 
@@ -944,7 +1017,7 @@ Event arrives → Immediate `eb/publish!` to frontend event bus → UI Manager h
 5. Network restored after 30 seconds
 6. Event Router reconnects, resubscribes to pieces
 7. Resumes receiving invalidation events
-8. Event Router publishes invalidate-all to bus → UI Manager marks all rendering data stale
+8. No backend event announces wholesale staleness — the client concludes it: for each piece in the Event Router's remembered subscription set, the UI Manager marks that piece's rendering data stale
 9. Fetch Coordinator queues CRITICAL priority for viewport elements (stale data visible)
 10. Background threads make gRPC API calls for current paintlists
 11. Fetches complete → update rendering data → `fx/run-later!` triggers repaint
@@ -963,9 +1036,9 @@ Event arrives → Immediate `eb/publish!` to frontend event bus → UI Manager h
 
 **Guaranteed Event Ordering:** ADR-0024 per-client drainer threads ensure FIFO delivery. Events arrive in exact STM transaction order. Each client has dedicated queue with strict ordering. gRPC streaming provides reliable, ordered transport. No sequence numbers or ordering logic needed in Event Router.
 
-**Natural Priorities:** UI events process immediately (JavaFX native priority). Backend events flow through the bus on Claypoole futures, naturally behind UI work. Fetch priorities: Critical (viewport stale) > High (viewport missing) > Normal (prefetch) > Low (background). System events published immediately (no batching) for rapid UI Manager response.
+**Natural Priorities:** UI events process immediately (JavaFX native priority). Backend events flow through the bus on Claypoole futures, naturally behind UI work. Fetch priorities: Critical (viewport stale) > High (viewport missing) > Normal (prefetch) > Low (background).
 
-**Precise Batching Timings:** Invalidations: 50-100ms (balances latency vs throughput). Cursors: 33ms (30fps, smooth without overwhelming UI). Playback: ≤16ms (60fps for fluid playback cursor). System/Errors: Immediate (no batching).
+**Precise Batching Timings:** Every category is batched; the window differs by how time-sensitive the stream is. Playback 16 ms (60 fps, fluid playback cursor); presence 33 ms (30 fps, smooth cursors without overwhelming the UI); invalidation, system, notification, instrument-library and undo 75 ms (the midpoint of the 50–100 ms band that balances latency against throughput). A batch that finds its queue empty publishes nothing, so an idle category costs only its scheduled tick. The one exception is not a shorter window but no queue at all: the two window-refetch events are dispatched straight to the piece's window (§Per-Piece Event Routing).
 
 **Automatic Coalescence:** Time-windowed batching in Event Router. Category-specific batching strategies. Viewport-aware fetch batching. Reduces event storms from rapid edits.
 
@@ -1002,7 +1075,7 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 
 **Disconnection:** Connection lost → Event Router detects → Stops receiving events → Publishes `:system` disconnect to bus → UI Manager shows connection status → Rendering data remains as-is
 
-**Reconnection:** Connection restored → Event Router resubscribes to pieces → Resumes receiving invalidation events → Publishes invalidate-all to bus → UI Manager marks all rendering data stale → Fetch Coordinator queues HIGH priority for viewport → Normal fetch mechanism requests fresh paintlists
+**Reconnection:** Connection restored → Event Router resubscribes to the pieces in its remembered subscription set → Resumes receiving invalidation events → the client marks each resubscribed piece's rendering data stale (no backend event says so; the client concludes it) → Fetch Coordinator queues HIGH priority for viewport → Normal fetch mechanism requests fresh paintlists
 
 **Key insight:** Clients don't need to "catch up" on missed events. They just fetch current state when they need it.
 

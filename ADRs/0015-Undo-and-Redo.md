@@ -74,7 +74,7 @@ The architectural constraints established by previous ADRs create specific requi
 **Backend (Server):**
 - Stores authoritative piece data using STM refs (single authority — ADR-0040)
 - Handles all piece modifications with automatic conflict resolution
-- Broadcasts lightweight staleness notifications via gRPC event streaming
+- Emits lightweight staleness notifications via gRPC event streaming, each to its audience
 - Does NOT store UI preferences or client-specific state
 
 **Frontend (Clients):**
@@ -98,7 +98,7 @@ We will implement a **three-tier undo/redo architecture** that separates concern
 - **Implementation**: Resource-agnostic Undo Manager component; closures over immutable state
 - **Coordination**: One undo/redo stack per resource (per piece, one for IL), shared across all clients subscribed to that resource
 - **Storage**: Backend server maintains per-resource undo/redo history in the Undo Manager component
-- **Distribution**: Lightweight `:undo-state-changed` notifications (timestamps only) broadcast to subscribed clients via gRPC streaming; descriptions fetched lazily on demand
+- **Distribution**: Lightweight `:undo-state-changed` notifications (timestamps only) over gRPC streaming, **delivered by audience** — a piece's notifications reach only the clients subscribed to that piece, the Instrument Library's reach every connected client (see *Push-Based State Notification*); descriptions fetched lazily on demand
 
 ### Tier 2: Frontend UI Undo/Redo (Local)
 - **Scope**: Client-specific UI state (themes, panel arrangements, zoom levels)
@@ -281,12 +281,13 @@ does not distinguish between resource types — the closure abstracts the storag
 *and* every other side effect that a state change implies for that resource. For the
 Instrument Library, a state change is three coupled side effects: `reset!` the atom,
 persist the new state to disk via the writer agent, and broadcast
-`:instrument-library-changed` to subscribed clients. The mutation path and the undo path
+`:instrument-library-changed` to every connected client — the Library being global, there is
+no subscription to scope it to. The mutation path and the undo path
 both invoke the same canonical write helper inside the IL component — typically a single
 `(apply-state! component new-state)` function — so the closure is one call, not three.
-For STM-based resources (pieces), the closure performs `ref-set` inside `dosync` and
-broadcasts the resource's invalidation event. Each resource defines what "apply a state"
-means for it; the closure captures a snapshot and invokes that helper.
+For STM-based resources (pieces), the closure performs `ref-set` inside `dosync` and emits
+the resource's invalidation event to that piece's subscribers. Each resource defines what
+"apply a state" means for it; the closure captures a snapshot and invokes that helper.
 
 **Anti-pattern: a closure that does only `reset!` (or only `ref-set`).** Any resource
 whose successful mutation triggers additional side effects (persistence, broadcast,
@@ -340,15 +341,16 @@ the public operations described in [gRPC Extensions](#grpc-extensions) below.
 
 (push-undo! undo-mgr resource-key description-key description-params undo-fn redo-fn)
 ;; Pushes an undo entry. Clears the redo stack for this resource (standard undo semantics:
-;; a new forward mutation invalidates any redo history). Broadcasts :undo-state-changed.
+;; a new forward mutation invalidates any redo history). Emits :undo-state-changed to the
+;; resource's audience (see Push-Based State Notification).
 
 (undo! undo-mgr resource-key)
 ;; Pops the top undo entry, calls its undo-fn, pushes the entry to the redo stack.
-;; Broadcasts :undo-state-changed. Returns the entry, or nil if the stack was empty.
+;; Emits :undo-state-changed to the resource's audience. Returns the entry, or nil if empty.
 
 (redo! undo-mgr resource-key)
 ;; Pops the top redo entry, calls its redo-fn, pushes the entry to the undo stack.
-;; Broadcasts :undo-state-changed. Returns the entry, or nil if the stack was empty.
+;; Emits :undo-state-changed to the resource's audience. Returns the entry, or nil if empty.
 
 (current-state undo-mgr resource-key)
 ;; Returns {:undo {:description-key ... :description-params ... :timestamp ...}
@@ -576,7 +578,7 @@ each mutation.
 
 #### Push-Based State Notification
 
-Every `push-undo!`, `undo!`, and `redo!` operation broadcasts an `:undo-state-changed`
+Every `push-undo!`, `undo!`, and `redo!` operation emits an `:undo-state-changed`
 notification through the existing gRPC event streaming infrastructure. This follows the
 standard Ooloi invalidation pattern: a lightweight notification tells the client that its
 cached state is stale; the client fetches details on demand.
@@ -594,18 +596,41 @@ The client caches these timestamps per subscribed resource and marks the descrip
 stale. Descriptions are fetched lazily via `SRV/get-undo-description` only when the menu
 needs to display them — see [Unified Frontend Routing](#unified-frontend-routing--tier-1-and-tier-2-merge).
 
-The notification is routed via `derive-category` to a new `:undo` bus category.
-Notifications are scoped by audience: IL notifications go to all connected clients (the IL
-is a shared global resource); piece notifications go only to clients subscribed to that
-piece. This follows the same scoping as other piece events (`:piece-structure-changed`).
+**Delivery is decided by `:resource-key`, and this is normative.** The event type is one —
+`:undo-state-changed` — but the audience is two, and which one applies is read from the resource
+the notification is about:
 
-After `undo!` or `redo!`, the undo manager broadcasts **two** events:
-1. `:undo-state-changed` — so subscribed clients update their undo/redo menu state
+| `:resource-key` | Sent with | Reaches |
+|---|---|---|
+| a piece UUID | `send-piece-event` | **only** the clients subscribed to that piece |
+| `:instrument-library` | `send-server-event` | **every** connected client |
+
+Both are correct, and for the same reason in each case: an undo stack's audience is the set of
+clients that can see the resource. A piece is held by the clients that subscribed to it, so a
+piece's undo state is theirs alone and reaches nobody else — exactly the scoping every other
+piece event has (`:piece-structure-changed`). The Instrument Library is a single globally shared
+resource with no subscription to scope it, so its undo state concerns everyone. Future globally
+shared catalogues take the Instrument Library's side of this table; everything piece-scoped takes
+the piece's.
+
+**A note on the word "broadcast".** It is used in this document, and elsewhere, for both cases,
+and it is only accurate for the second. A piece's notification is *not* broadcast: it is delivered
+to a known, bounded set of subscribed clients through the per-piece machinery, and never sent to a
+client that has not subscribed to that piece. Where this document says "broadcast" of a piece
+resource, read "delivered to that piece's subscribers".
+
+Delivery scope and frontend dispatch are separate questions. Having arrived, the notification is
+routed by `derive-category` to the `:undo` bus category in both cases — the consumer being the
+undo/redo menu, which is client-scoped and reads `:resource-key` to know which resource the
+notification concerns ([ADR-0031](0031-Frontend-Event-Driven-Architecture.md)).
+
+After `undo!` or `redo!`, the undo manager emits **two** events, each to its own audience:
+1. `:undo-state-changed` — so the clients that can see the resource update their undo/redo menu state
 2. The resource-specific event (`:instrument-library-changed` or
-   `:piece-structure-changed`) — so all clients see the state change through
+   `:piece-structure-changed`) — so those same clients see the state change through
    the normal invalidate→fetch→replace pipeline
 
-This dual broadcast means the undo operation is transparent to all existing event handlers.
+The pairing means the undo operation is transparent to all existing event handlers.
 A client that refetches on `:instrument-library-changed` will see the restored state without
 knowing it was caused by an undo.
 
@@ -624,7 +649,8 @@ knowing it was caused by an undo.
   │  Undo Manager                                         │
   │  1. Push entry to undo stack                          │
   │  2. Clear redo stack for this resource                │
-  │  3. Broadcast :undo-state-changed notification        │
+  │  3. Emit :undo-state-changed to the resource's        │
+  │     audience (piece → its subscribers, IL → all)      │
   └──────────────────────┬───────────────────────────────┘
                          │ gRPC event stream
                          ▼
@@ -656,8 +682,8 @@ sequenceDiagram
     UM->>UM: Push entry to redo stack
     UM-->>G: Response {undo-ts, redo-ts}
     G-->>C: Update timestamp cache immediately
-    UM->>E: Broadcast :undo-state-changed {undo-ts, redo-ts}
-    UM->>E: Broadcast :instrument-library-changed
+    UM->>E: :undo-state-changed {undo-ts, redo-ts} → resource's audience
+    UM->>E: :instrument-library-changed → all clients (global resource)
     E->>C: :undo-state-changed (other clients update cache)
     E->>C: :instrument-library-changed (all clients refetch)
 ```

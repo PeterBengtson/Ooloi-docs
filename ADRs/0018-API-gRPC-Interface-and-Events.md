@@ -147,7 +147,7 @@ The `Disconnect` RPC is identity-bound asymmetrically with `RegisterClient`: `Re
 
 - **Type safety trade-off**: Unified schema reduces compile-time type checking compared to generated specific messages
 - **Debugging challenges**: Dynamic method resolution and async event flows can be harder to trace
-- **Connection management**: Client reconnection, event replay, and subscription management complexity  
+- **Connection management**: Client reconnection and subscription management complexity  
 - **Performance overhead**: Recursive conversion for complex nested structures
 
 ### Mitigations
@@ -167,7 +167,7 @@ All events in Ooloi's gRPC system follow a consistent structure to ensure predic
 ```clojure
 ;; Standard event structure
 {:type :event-type-keyword          ; Required: Event type as keyword
- :timestamp 1693827465123456789     ; Required: Nanosecond timestamp (added automatically by system)
+ :timestamp 1729800000000000        ; Required: epoch microseconds (added automatically by the server)
  :client-id "client-123"            ; Optional: Originating client identifier
  :message "Human readable message"  ; Optional: User-friendly description
  :piece-id "piece-123"              ; Required for piece events: Target piece identifier
@@ -177,73 +177,83 @@ All events in Ooloi's gRPC system follow a consistent structure to ensure predic
 ### Event Type Conventions
 
 **Event Type Field** (`:type`):
-- **Always a keyword**: `:server-maintenance`, `:client-registration-confirmed`, `:piece-updated`
+- **Always a keyword**: `:server-maintenance`, `:client-registration-confirmed`, `:piece-structure-changed`
 - **Never a string**: Avoid `"server-maintenance"` or `{:event-type "..."}`
 - **Kebab-case naming**: Use dashes for multi-word types (`:client-registration-confirmed`)
-- **Hierarchical naming**: Use namespace-style for complex events (`:piece/content-changed`)
+- **Namespace-style is permitted by the validator but unused**: no event in Ooloi uses a `/` in its name, and none should without a reason the prefix cannot express
 
 **Event Type Taxonomy** (Complete Catalog):
 
-All event types must follow naming pattern enforced by `validate-event-structure`:
-- Prefix with `server-`, `client-`, `piece-`, or `collaboration-`
-- OR use namespace-style with `/` separator
+Every event type must satisfy the naming rule enforced by `validate-event-structure` (private, in
+`backend/src/main/clojure/ooloi/backend/grpc/server.clj`): the name begins with `server-`,
+`client-`, `piece-`, `collaboration-`, `instrument-library-` or `undo-`, or contains a `/`.
 
-**Cache Invalidation Events**:
-- `:piece-invalidation` - Visual hierarchy invalidation at any level (Layout/PageView/SystemView/StaffView/MeasureView)
+**The prefix is not decoration — it names the delivery**, and delivery is the single most
+consequential fact about an event, so the catalogue below is organised by it rather than by topic.
+A **`piece-`** prefix means the event is sent with `send-piece-event` and reaches **only the clients
+subscribed to that piece**; every other prefix means `send-server-event` and **every connected
+client**. There is one event whose delivery depends on its payload rather than its name, and it is
+called out where it appears.
 
-**Presence/Collaboration Events**:
-- `:collaboration-user-joined` - User joins collaborative session
-- `:collaboration-user-left` - User leaves collaborative session
-- `:collaboration-cursor-moved` - User cursor position updated
-- `:collaboration-selection-changed` - User selection updated
+What a receiving client then *does* with an event — dispatch it to a window, to a per-piece queue,
+or to a shared bus category — is a separate question, specified in
+[ADR-0031](0031-Frontend-Event-Driven-Architecture.md) §Per-Piece Event Routing and not repeated
+here.
 
-**Playback Events**:
-- `:piece-playback-position` - Playback position updated
-- `:piece-playback-started` - Playback started
-- `:piece-playback-stopped` - Playback stopped
+`collaboration-` remains in the validator's accepted set but is **currently unused**: collaboration
+in Ooloi is always about a piece, so those events take the `piece-` prefix like any other piece
+event.
 
-**System Events**:
-- `:server-maintenance` - Server maintenance notification
-- `:server-shutdown` - Server shutting down
-- `:server-status` - Server status update
-- `:server-client-connected` - Client connected to server
-- `:server-client-disconnected` - Client disconnected from server
+#### Piece events — only that piece's subscribers
 
-**Notification Events**:
-- `:piece-validation-error` - Validation error occurred
-- `:piece-operation-failed` - Operation failed
-- `:server-warning` - Warning message
-- `:server-info` - Informational message
-- `:client-registration-confirmed` - Client registration successful
-
-**Piece Structure Events**:
 - `:piece-structure-changed` — Structural metadata changed: musicians, instruments, layouts,
-  staff participation, or piece title. Carries no payload beyond `:piece-id` and
-  `:timestamp`; clients fetch current structure via `get-piece-structure`. Valid under the
-  `piece-` prefix naming rule.
+  staff participation, piece title, or a `defsetting` value (a piece's `:settings` is a structural
+  slot — [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a). Carries no payload beyond
+  `:piece-id` and `:timestamp`; clients fetch current state via `get-piece-structure`, whose
+  projection carries every declared setting at its effective value. There is deliberately no
+  separate per-setting event; see [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6.
+- `:piece-dirty-changed` — The piece's unsaved-changes flag flipped: clean→dirty on the first edit
+  after a save, dirty→clean on a save. Emitted on the transition only, not per edit. Carries no
+  payload beyond `:piece-id` and `:timestamp`; the flag rides the same projection, as its virtual
+  `:dirty` field ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §5).
+- `:piece-invalidation` — Visual hierarchy invalidation at any level
+  (Layout/PageView/SystemView/StaffView/MeasureView). One event for every level: the **depth of the
+  VPD** carries the level, so there is no per-level event name. Scope fields below.
+- `:piece-playback-position` · `:piece-playback-started` · `:piece-playback-stopped` — Playback
+  position updated, started, stopped.
+- `:piece-collaboration-user-joined` · `:piece-collaboration-user-left` ·
+  `:piece-collaboration-cursor-moved` · `:piece-collaboration-selection-changed` — A collaborator
+  joined or left this piece, moved a cursor within it, or changed a selection in it.
+- `:piece-validation-error` · `:piece-operation-failed` — A validation failure or a failed operation
+  concerning one piece. Piece-scoped delivery — a failure on a piece concerns the clients editing
+  *that* piece — with a client-scoped consumer, the notification manager.
 
-**Piece Settings Events**:
-- `:piece-setting-changed` — A `defsetting` value changed. Carries `:piece-id`,
-  `:setting-key`, `:old-value`, `:new-value`, `:timestamp`. Graphical consequences travel
-  separately as `:piece-invalidation`. The two event types must never be conflated. Valid
-  under the `piece-` prefix naming rule.
+#### Global events — every connected client
 
-**Library Events**:
-- `:instrument-library-changed` — The server-side Instrument Library was modified by any
-  client. Carries only `:timestamp`; no payload. Clients fetch current library state via
-  `get-instrument-library`. This establishes the invalidate-only event pattern that
-  `:piece-structure-changed` follows. See [ADR-0045](0045-Instrument-Library.md) for the
-  full event architecture and frontend caching model.
+- `:server-maintenance` · `:server-shutdown` · `:server-status` — Server lifecycle notifications.
+- `:server-client-connected` · `:server-client-disconnected` — A client joined or left the server.
+- `:server-warning` · `:server-info` — Warning and informational messages.
+- `:client-registration-confirmed` — Registration succeeded. The one event a client receives about
+  itself: it completes the handshake and carries `:server-timestamp`, from which the client computes
+  its clock offset.
+- `:instrument-library-changed` — The server-side Instrument Library was modified by any client.
+  Carries only `:timestamp`; no payload. Clients fetch current library state via
+  `get-instrument-library`. Global because the Library is a single shared resource with no
+  subscription to scope it. This establishes the invalidate-only event pattern that
+  `:piece-structure-changed` follows. See [ADR-0045](0045-Instrument-Library.md) for the full event
+  architecture and frontend caching model.
 
-**Undo/Redo Events**:
-- `:undo-state-changed` — The undo/redo stacks for a backend-managed resource changed
-  (any client's `push-undo!`, `undo!`, or `redo!`). Carries `:resource-key` (`:instrument-library`
-  or piece UUID), `:undo-timestamp` (number or `nil` if undo unavailable), and
-  `:redo-timestamp` (number or `nil` if redo unavailable). No descriptions are carried —
-  clients fetch them lazily via `get-undo-description` when the menu needs to display them.
-  Scoping mirrors the resource: IL notifications go to all connected clients; piece
-  notifications go only to clients subscribed to that piece. Valid under the namespace-style
-  naming rule. See [ADR-0015](0015-Undo-and-Redo.md) for the full architecture.
+#### The one event whose delivery depends on its payload
+
+- `:undo-state-changed` — The undo/redo stacks for a backend-managed resource changed (any client's
+  `push-undo!`, `undo!`, or `redo!`). Carries `:resource-key` (`:instrument-library` or a piece
+  UUID), `:undo-timestamp` (number or `nil` if undo unavailable), and `:redo-timestamp` (number or
+  `nil` if redo unavailable). No descriptions are carried — clients fetch them lazily via
+  `get-undo-description` when the menu needs to display them. **Delivery follows the resource, not
+  the name**: an Instrument Library notification goes to every connected client, a piece's goes only
+  to that piece's subscribers. Valid under the `undo-` prefix. See
+  [ADR-0015](0015-Undo-and-Redo.md) §Push-Based State Notification for the delivery table and the
+  full architecture.
 
 ### Event Lifecycle and Processing
 
@@ -254,7 +264,7 @@ All event types must follow naming pattern enforced by `validate-event-structure
   {:type :server-maintenance
    :message "System update in 5 minutes"})
 
-;; Piece events (broadcast to subscribed clients) - automatic piece-id extraction
+;; Piece events (delivered only to that piece's subscribers) - automatic piece-id extraction
 (send-piece-event server-component
   {:type :piece-invalidation
    :piece-id "symphony-123"
@@ -284,7 +294,7 @@ All event types must follow naming pattern enforced by `validate-event-structure
 {:type :client-registration-confirmed
  :client-id "test-client-42h"
  :message "Registration successful"
- :timestamp 1693827465123456789}  ; Nanosecond precision added during client processing
+ :timestamp 1729800000000000}     ; epoch microseconds, merged in during client processing
 ```
 
 ### Event Consistency Requirements
@@ -295,15 +305,23 @@ All event types must follow naming pattern enforced by `validate-event-structure
 - Use consistent field names across similar event types
 
 **Timestamp Handling**:
-- **Server responsibility**: Automatically generated at event creation time using `System/nanoTime()`
+- **Server responsibility**: Automatically generated at event creation time by `ops.time/epoch-usec`
 - **Transport level**: Timestamp carried in `EventMessage.timestamp`
 - **Client processing**: Merge timestamp into final event data
-- **Format**: Nanosecond precision timestamp for high precision and drift avoidance
+- **Format**: **Epoch microseconds** — microseconds since 1970-01-01T00:00:00Z, from
+  `java.time.Instant` truncated to µs
+- **Why epoch and not monotonic**: `System/nanoTime` is monotonic but has no epoch relation, so its
+  values are meaningless across machines or across a JVM restart. Two mechanisms depend on
+  comparability across the wire: the clock-offset handshake, where a client computes
+  `(- :server-timestamp (epoch-usec))` from `:client-registration-confirmed`, and the latest-wins
+  gate, where a window applies a refetch only if its source timestamp is newer than the last
+  applied. Both are nonsense with a monotonic clock. Use `epoch-usec` for anything that crosses the
+  wire; `System/nanoTime` is correct only for measuring a duration inside one process.
 
 **Event Broadcasting Functions**:
 Both `send-server-event` and `send-piece-event` feature simplified signatures with automatic derivation:
 - **Perfect signature parity**: `(send-server-event server-component event-data)` and `(send-piece-event server-component event-data)`
-- **Automatic timestamp generation**: Nanosecond precision timestamps added internally
+- **Automatic timestamp generation**: epoch-microsecond timestamps added internally
 - **Automatic event-type derivation**: Protobuf event-type string derived from validated `:type` keyword field
 - **Automatic piece-id extraction**: `send-piece-event` extracts `:piece-id` from event data for subscription routing
 - **Comprehensive validation**: All events validated against field naming, type requirements, and piece-id presence before broadcast
@@ -321,13 +339,13 @@ All events emitted by `send-server-event` and `send-piece-event` are validated b
 **Structural Guarantees** (all events):
 - Event data is a map (not nil, not a scalar)
 - `:type` field exists and is a keyword
-- `:type` matches naming pattern: `server-*`, `client-*`, `piece-*`, `collaboration-*`, or contains `/`
+- `:type` matches naming pattern: `server-*`, `client-*`, `piece-*`, `collaboration-*`, `instrument-library-*`, `undo-*`, or contains `/`
 - All field names are keywords (kebab-case)
-- `:timestamp` field added automatically (nanosecond precision number)
+- `:timestamp` field added automatically (epoch microseconds, a number)
 
 **Type-Specific Guarantees**:
 - **Piece events** (sent via `send-piece-event`): `:piece-id` field exists and is a string
-- **Collaboration events** (sent via `send-piece-event`): `:piece-id` field exists and is a string
+- **Collaboration events** (`:piece-collaboration-*`, sent via `send-piece-event`): `:piece-id` field exists and is a string
 
 **Optional Field Type Guarantees** (when present):
 - `:client-id` is a string if present
@@ -391,14 +409,14 @@ Visual hierarchy invalidation events use one of these scope patterns:
 
 ```clojure
 ;; Cursor position
-{:type :collaboration-cursor-moved
+{:type :piece-collaboration-cursor-moved
  :piece-id "symphony-123"
  :vpd [:layouts 0 ... :measure-views 47]
  :user-id "user-456"
  :timestamp ...}
 
 ;; Selection (multiple VPDs)
-{:type :collaboration-selection-changed
+{:type :piece-collaboration-selection-changed
  :piece-id "symphony-123"
  :vpds [[:layouts 0 ... :measure-views 47]
         [:layouts 0 ... :measure-views 48]]
@@ -429,7 +447,7 @@ The server provides two primary functions for event broadcasting with automatic 
 **Automatic Processing**:
 - Validates event structure against ADR conventions
 - Derives protobuf event-type string from `:type` field
-- Generates nanosecond precision timestamp
+- Generates an epoch-microsecond timestamp
 - Broadcasts to all clients in connection registry
 
 **Example**:
@@ -442,7 +460,7 @@ The server provides two primary functions for event broadcasting with automatic 
 
 #### `send-piece-event`
 
-**Purpose**: Broadcasts events only to clients subscribed to the specified piece.
+**Purpose**: Delivers events only to the clients subscribed to the specified piece. Not a broadcast — a client that has not subscribed to the piece never receives it.
 
 **Signature**: `(send-piece-event server-component event-data)`
 
@@ -454,17 +472,15 @@ The server provides two primary functions for event broadcasting with automatic 
 - Validates event structure including required `:piece-id` field
 - Derives protobuf event-type string from `:type` field
 - Extracts piece-id for subscription routing
-- Generates nanosecond precision timestamp
-- Broadcasts only to clients subscribed to the specified piece
+- Generates an epoch-microsecond timestamp
+- Delivers only to the clients subscribed to the specified piece
 
 **Example**:
 ```clojure
 (send-piece-event server-component
-  {:type :piece-content-changed
+  {:type :piece-invalidation
    :piece-id "symphony-123"
-   :measures [12 13 14]
-   :change-type :notes-added
-   :editor-client "user-456"})
+   :measures [12 13 14]})
 ```
 
 #### Function Design Principles
@@ -527,27 +543,27 @@ The server provides two primary functions for event broadcasting with automatic 
 
 The generated gRPC service implements the complete streaming architecture detailed in [ADR-0002: gRPC Streaming Architecture](0002-gRPC.md#grpc-streaming-architecture):
 
-**Server Streaming for Real-Time Collaboration**:
-```protobuf
-// Generated service method for piece event streaming
-rpc SubscribeToPieceEvents(PieceSubscriptionRequest) returns (stream PieceEvent);
-```
+**Server Streaming for Real-Time Collaboration**: there is **no** per-piece streaming RPC. The
+service has the three RPCs given above and no others; a client receives every event — global and
+piece-scoped alike — down the single `RegisterClient` stream it already holds, and piece
+subscription is an ordinary `ExecuteMethod` call (`subscribe-to-piece-events` /
+`unsubscribe-from-piece-events`) that adds a piece id to that client's server-side subscription set.
 - **Event classification**: Musical changes, graphics updates, collaboration events, user presence
-- **Piece-based subscriptions**: Clients subscribe to specific pieces or global events
-- **Event filtering**: Intelligent filtering to prevent overwhelming clients with irrelevant updates
-- **Connection recovery**: Automatic reconnection with event replay for missed updates
+- **Piece-based subscriptions**: A client's subscription set determines which piece events reach it; global events reach it regardless
+- **Event filtering**: Filtering happens at the source — `send-piece-event` walks the registry and skips clients not subscribed to the piece — never by the client discarding what it should not have received
+- **Connection recovery**: Automatic reconnection, after which the client re-subscribes to its remembered piece set and refetches. **No event replay** — see below
 
 **Atomic batches ride the unary `ExecuteMethod`.** A multi-operation atomic batch is submitted as one `SRV/atomic` call over the unary `ExecuteMethod` RPC, and the backend runs it in a single STM transaction (`execute-atomic-operations`' `dosync`). The ACID guarantee is that **handler-level** STM transaction — gRPC has no transaction semantics of its own — so no dedicated streaming RPC is needed for atomicity. A client-streaming RPC would earn its place only for **large-body** transport (chunking a very large MusicXML/MIDI import so it need not arrive as one message — size ceiling, backpressure); that, and bulk file transfer, are streaming concerns for a future ADR, to be written when a concrete consumer arrives.
 
-**Bidirectional Streaming for Interactive Collaboration**:
-```protobuf
-// Generated service method for real-time interactive editing
-rpc CollaborateOnPiece(stream CollaborationInput) returns (stream CollaborationOutput);
-```
-- **Real-time coordination**: Multiple users editing simultaneously with immediate feedback
-- **Conflict resolution**: Server-side coordination of simultaneous edits to same elements
-- **Interactive feedback**: Immediate visual responses to collaborative actions
-- **Session management**: User join/leave events, presence indicators, collaborative cursors
+**Bidirectional Streaming for Interactive Collaboration**: likewise **not** a separate RPC. There
+is no `CollaborateOnPiece`, and collaboration needs none: an edit is an ordinary `ExecuteMethod`
+call, and what other clients learn of it travels back as ordinary piece events on the streams they
+already hold. Collaboration in Ooloi is a consequence of the architecture, not a protocol of its own
+([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md) §Natural Multi-Client Support).
+- **Real-time coordination**: Multiple users editing simultaneously, each edit an ordinary API call
+- **Conflict resolution**: None needed at the protocol level — the backend's STM serialises mutations ([ADR-0004](0004-STM-for-concurrency.md))
+- **Interactive feedback**: Through the invalidate→refetch cycle, never an optimistic local mutation
+- **Session management**: User join/leave, presence and cursors are `:piece-collaboration-*` events on the existing stream
 
 **Streaming Performance Characteristics**:
 - **Connection persistence**: Single connection handles both API calls and streaming events
@@ -556,10 +572,14 @@ rpc CollaborateOnPiece(stream CollaborationInput) returns (stream CollaborationO
 - **Resource efficiency**: Shared connection state reduces memory overhead for multiple concurrent operations
 
 **Event Streaming Architecture**:
-- **Event sourcing**: All piece changes captured as events for replay and synchronization
-- **Client state synchronization**: Event replay ensures clients stay synchronized after disconnection
-- **Selective subscription**: Clients subscribe only to relevant events (specific pieces, event types)
-- **Event ordering**: Guaranteed ordering within piece context prevents race conditions
+- **No event sourcing, and no replay.** Events are notifications of staleness, not a durable log:
+  each carries identifiers, never a delta, so there is nothing in an event to replay and no history
+  kept to replay from ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)).
+- **Recovery is refetch, not replay**: on reconnect a client re-subscribes to its remembered piece
+  set and fetches current state. Missing an event costs nothing, because the event carried nothing —
+  the fetch that follows returns the same answer either way.
+- **Selective subscription**: Clients subscribe to the pieces they hold; global events reach every client
+- **Event ordering**: Guaranteed FIFO per client by the per-client queue and drainer ([ADR-0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md)), so events arrive in commit order
 
 **Parallel Command Processing**:
 - **Non-blocking operations**: Long-running operations (MIDI generation, complex layouts) don't block UI
