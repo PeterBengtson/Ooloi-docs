@@ -81,6 +81,18 @@ The cost accepted is over-signalling: a write to *any* piece setting refetches t
 
 Membership in the structural set is the `::h/Structural` trait (`hierarchy.clj`), tested with the `structural?` predicate; each structural entity additionally declares the set of fields the projection drops via a `non-structural-fields` `defmethod`, co-located with its model. The **same** `non-structural-fields` set is read by both the projection (which strips it) and the detection (§3b, which fires on a write to a slot outside it), so the kept fields and the covered set cannot drift. A new structural entity — core or plugin — opts in by deriving `::h/Structural` and declaring its `non-structural-fields`, with no central map and no change to the funnel or the projection. The recursive `structural-fields` helper keeps each node's structural fields and recurses into the structural children it retains.
 
+**The projection is plain maps, not records — and that is a contract, not an implementation detail.**
+`structural-fields` reduces each record into a map, so what the frontend holds is a `Musician`-shaped
+map, never a `Musician`. Every consumer of a projected entity must therefore read its fields by plain
+keyword access — `(:id x)` — and never through a record-typed accessor. The distinction is not
+cosmetic: a `defattribute` multimethod such as `get-id` dispatches on the record type and throws on a
+plain map, so code written against records fails on the first projected value it meets. The same
+constraint binds tests hardest, because it is invisible from inside one: a test that builds its input
+with `create-musician` is exercising a data shape production never produces, and can pass against code
+the running application throws on. Any test driving an operation the frontend feeds must feed it a
+projected map.
+
+
 **Structural fields kept / non-structural fields dropped, per entity:**
 
 | Entity | non-structural (dropped) | structural (kept) |
@@ -250,7 +262,7 @@ sequenceDiagram
     Note over BE,PM: project the piece, conj :filename<br/>= provenance leaf (extension intact)
     BE-->>SRV: snapshot {..., :filename "score.ooloi"}
     SRV-->>FE: snapshot
-    Note over FE: apply to *piece-state; the title watch sees<br/>:filename change → set-window-title! "score"<br/>(.ooloi/.ool stripped)
+    Note over FE: apply to *piece-state — the title watch sees<br/>:filename change → set-window-title! "score"<br/>(.ooloi/.ool stripped)
 ```
 
 ## Rationale

@@ -112,6 +112,39 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural decision requiring frontend GUI framework choice
 - [ADR-0006: SMuFL](0006-SMuFL.md) - Musical symbol standard that will be rendered through JavaFX/Skija
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - JavaFX Application Thread integration with backend event streams using Platform.runLater() patterns
+- [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - The UI built on these choices: window specification and lifecycle, the menu system, theming and styling — and §*macOS native integration*, the Cocoa mechanics implementing the native-parity position taken here
+
+## Going Past the Toolkit: Native Platform Integration
+
+A cross-platform toolkit is chosen for reach, and reach is bought with abstraction. Where that abstraction lands short of a platform's own convention, Ooloi's position is to **go to the platform layer rather than approximate**. Parity between supported platforms means parity of *nativeness*, not a uniform lowest common denominator: an Ooloi window on macOS should behave as a Mac application, not as a Java application running on a Mac.
+
+This is the first rationale point above — "native-like performance across different platforms" — taken to its conclusion. Native-*like* is where a toolkit stops; a music notation application that a professional will live inside all day has to go further, and the cost of doing so is bounded and known.
+
+**Today this bites in exactly one place: the macOS application menu** — the bold app-name menu carrying About, Hide, Hide Others, Show All and Quit. JavaFX has no first-class support for it, and its absence is conspicuous to any Mac user. Windows and Linux need no equivalent intervention, their menu conventions being close enough to JavaFX's own model. Three libraries supply what JavaFX does not:
+
+| Library | Version | Why it is here |
+|---|---|---|
+| **NSMenuFX** (`de.jangassen:nsmenufx`) | 3.1.0 | Replaces JavaFX's auto-generated application menu with a real one, converting JavaFX MenuItems into native `NSMenuItem`s. The de-facto standard for this problem — there is no maintained alternative. |
+| **JFA** (`de.jangassen:jfa`) | 1.2.0 | Java Foundation Access: a JNA wrapper over AppKit (`NSApplication`, `NSMenu`, `NSMenuItem`, `NSWorkspace`), mapping Java calls to Objective-C message sends. |
+| **JNA** (`net.java.dev.jna:jna`) | 5.7.0 | The native interop layer beneath JFA. Transitive. |
+
+The mechanics — the conversion chain, the native selector each standard item uses, the known NSMenuFX defects and their workarounds, and the two non-obvious JFA interop rules — are specified in [ADR-0042](0042-UI-Specification-Format.md) §*macOS native integration*, beside the menu system they serve.
+
+### The position on an unmaintained dependency
+
+NSMenuFX has had no meaningful commit since February 2021. That is a real liability and it is recorded here rather than discovered later, together with the reason it is an acceptable one.
+
+The realistic prospects, in rough order of likelihood:
+
+1. **JavaFX gains first-class application-menu support** — unlikely. The request has sat in the OpenJFX tracker for years with no sign of work; macOS is a minority target for its maintainers and the application menu is a non-trivial native-integration project.
+2. **NSMenuFX is actively maintained again** — also unlikely. The maintainer has moved on.
+3. **Fork it** — feasible. The codebase is around a thousand lines. This trades an unmaintained external dependency for a small internal one, with the benefit of fixing defects at source rather than patching around them. The reasonable step if two or three more defects accumulate on the scale of the one already found.
+4. **Bypass it entirely using JFA directly** — doable, and the cleanest long-term answer. The bridging infrastructure already exists, having been used to patch NSMenuFX from outside. A full bypass means reimplementing the callback trampoline that turns a native click into a JavaFX event handler, which is the bulk of what NSMenuFX provides.
+5. **Move from JNA to Project Panama** — Java 22 stabilised the Foreign Function and Memory API. If option 4 is taken, building the replacement on Panama rather than JNA is the modern choice: JDK-native, no extra dependency, better performance. Independent of NSMenuFX itself, and relevant only when replacing it.
+
+**The escape hatch is what bounds the risk.** Any NSMenuFX defect is patchable at the Cocoa level from outside the library, by sending Objective-C messages directly and by replacing an item's native target and action with a direct pair. This has already been done once, for a real defect. Ooloi is therefore not held hostage to the library's state of repair for any individual menu item, which is what turns an unmaintained dependency from a structural risk into a maintenance cost.
+
+**The position, then:** stay on NSMenuFX while it works, patch specific defects at the Cocoa level as they arise, and escalate to option 3 or 4 only if the patch surface grows. This is where every serious JavaFX-on-macOS application stands; NSMenuFX is the de-facto standard precisely because no better option exists.
 
 ## Theme Implementation
 

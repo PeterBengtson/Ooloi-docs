@@ -22,7 +22,8 @@
    - [4.4 Custom cljfx Component Functions](#44-custom-cljfx-component-functions)
    - [4.5 Per-Window Reactive Renderer](#45-per-window-reactive-renderer)
    - [4.6 Style Classes — The setAll() Trap](#46-style-classes--the-setall-trap)
-   - [4.7 Nested TitledPane Event Handling](#47-nested-titledpane-event-handling)
+   - [4.7 JavaFX Event Phases and the Interactive Control Guard](#47-javafx-event-phases-and-the-interactive-control-guard)
+   - [4.8 Nested TitledPane Event Handling](#48-nested-titledpane-event-handling)
 5. [Event Architecture](#5-event-architecture)
 6. [The JAT Boundary](#6-the-jat-boundary)
 7. [Rendering Pipeline](#7-rendering-pipeline)
@@ -802,7 +803,48 @@ AtlantaFX's border and background CSS for `ComboBox` is on `.combo-box-base`; fo
 
 **CSS child selectors on themed parent nodes.** Adding a custom class to a `TitledPane` — for example `"setting-tile"` — means that CSS child selectors now match TitledPane's internal structure. `.setting-tile > .content` matches the collapsible body pane. Setting any solid background colour on that pane (including `-color-bg-subtle`) can make all controls nested inside it appear borderless, because AtlantaFX simulates borders via multi-stop `-fx-background-color` layers whose outer stop blends into the parent surface. Use `transparent` for TitledPane content backgrounds when controls are placed inside.
 
-### 4.7 Nested TitledPane Event Handling
+### 4.7 JavaFX Event Phases and the Interactive Control Guard
+
+A JavaFX mouse click is not one event but three, each with a capturing phase (event *filters*, top-down) followed by a bubbling phase (event *handlers*, bottom-up):
+
+1. **MOUSE_PRESSED** — control interaction *begins* here. TextFields gain focus, ComboBoxes open popups, Spinner buttons fire, CheckBoxes arm.
+2. **MOUSE_RELEASED** — CheckBoxes and ToggleButtons commit their state change.
+3. **MOUSE_CLICKED** — synthesised after a press and release on the same node. Selection logic and focus-reclaim filters typically live here.
+
+That ordering has a consequence which is not obvious and has caused real regressions. **A MOUSE_CLICKED filter runs *after* a control has begun its interaction on MOUSE_PRESSED but *before* it has completed it.** So a filter that calls `.requestFocus`, `.consume`, or triggers a cljfx re-render will interrupt controls mid-gesture — and which controls break depends entirely on when they commit:
+
+| Control | Commits on | Survives a MOUSE_CLICKED focus steal? |
+|---------|-----------|---------------------------------------|
+| CheckBox | MOUSE_RELEASED (action event) | **Yes** — the toggle is already committed |
+| Spinner | MOUSE_PRESSED (arrow buttons) | **Yes** — the value has already changed |
+| ComboBox | MOUSE_PRESSED (popup opens) | **No** — the popup closes when focus is stolen |
+| TextField | MOUSE_PRESSED (gains focus) | **No** — the caret vanishes when focus is stolen |
+
+This is why the bug presents so confusingly: checkboxes and spinners keep working while combo-boxes and text fields quietly stop, in the same container, from the same filter.
+
+**The guard.** Any container — ScrollPane, TitledPane, VBox — that installs a MOUSE_CLICKED filter for focus management, selection dispatch, or any other side effect **must** guard against clicks landing on interactive children. `inside-interactive-control?` (`ui/core/cljfx.clj`) walks up from the event target checking for `TextInputControl`, `ComboBoxBase`, `CheckBox` and `Spinner`:
+
+```clojure
+;; ✅ CORRECT — the guard prevents stealing focus from an interactive control
+(.addEventFilter container MouseEvent/MOUSE_CLICKED
+  (reify javafx.event.EventHandler
+    (handle [_ event]
+      (let [target (.getTarget ^MouseEvent event)]
+        (when-not (ofx/inside-interactive-control? target)
+          (.requestFocus container))))))
+
+;; ❌ WRONG — unconditional requestFocus breaks ComboBox popups and TextField focus
+(.addEventFilter container MouseEvent/MOUSE_CLICKED
+  (reify javafx.event.EventHandler
+    (handle [_ _]
+      (.requestFocus container))))
+```
+
+The guard is equally required for a MOUSE_CLICKED handler that merely updates an atom, because a cljfx re-render during MOUSE_CLICKED can recreate nodes that were mid-interaction from MOUSE_PRESSED — destroying popup state or focus just as directly as a `.requestFocus` would.
+
+**Rule:** every `addEventFilter` on `MOUSE_CLICKED` in a container with interactive children checks `inside-interactive-control?` on the event target before performing any side effect. No exceptions.
+
+### 4.8 Nested TitledPane Event Handling
 
 When TitledPanes are nested (e.g. instrument editors containing staff editors), `Node.lookup(selector)` returns ambiguous results — depth-first search may return the inner pane's `.title` instead of the outer's. This breaks MOUSE_PRESSED consumption, causes title clicks to toggle expand, arrow clicks to double-toggle (appearing dead), and style mirroring to target wrong nodes.
 
@@ -1013,6 +1055,24 @@ This rhythm — compute off-thread, materialise on-thread — is steady througho
 Because UI structure is described as data (Section 4), most frontend logic can execute without touching JavaFX at all. The JAT becomes a thin materialisation layer rather than a central execution engine.
 
 The result is a frontend that feels immediate while remaining architecturally composed. Threading follows a consistent, system-wide pattern rather than being redefined by each subsystem. Once that pattern is understood, it fades into the background and simply supports the work.
+
+### 6.4 Coordinating With the JAT
+
+Production and tests wait on the JAT differently, and conflating the two is how a test utility ends up
+holding a deadline over a user's decision.
+
+| Mechanism | Where it belongs |
+|---|---|
+| `fx/run-later!` | **The production default.** Fire-and-forget; the only bridge onto the JAT. Use it from event-bus handlers, startup chains, and every off-thread callback that must touch a node. |
+| `promise` + `(deref p timeout-ms nil)` | **The preferred way to wait**, in production and in tests alike. Waiting on an event-bus handler, a pool-thread callback, or a window lifecycle event is a promise delivered from the callback. When waiting on *a person* — a dialog the user must answer — the deref carries no timeout at all. |
+| `util.frontend/run-on-fx-thread-sync!` | **Test synchronisation only.** Blocks the caller until the JAT work completes, returns its value, propagates its exceptions, and is JAT-safe (it calls directly when already on the JAT). Its ten-second deadlock timeout is what makes it a test tool: it exists to fail a suite rather than hang it. It lives in `util.frontend`, on the test classpath, so production cannot reach it. |
+| `CountDownLatch` | **Never.** A legacy Java pattern with no remaining uses anywhere in Ooloi. To wait for N callbacks, count them down in an atom and deliver a promise at zero. |
+| `Thread/sleep` | On the **test runner thread** only, never on the JAT — sleeping on the JAT freezes the very pulse the test is waiting for. Acceptable when a brief wait is genuinely simpler than a promise; a lifecycle promise is better whenever one is available. |
+
+**A halted pool is not a quiesced pool.** `ig/halt-key!` on the thread pool calls `shutdown()`, which
+returns immediately rather than after the workers finish. A test asserting on state that pool workers
+mutate must wait for `awaitTermination` before reading. `with-ui-manager` does this; a test that halts
+a combined system directly must apply it to the pool itself.
 
 ---
 
@@ -1566,7 +1626,7 @@ The frontend continues to perform the same role: a computationally strong execut
 
 Where that pipeline runs may vary. The discipline of the frontend remains constant.
 
-### 11.3 Frontend Permission Gating
+### 11.4 Frontend Permission Gating
 
 **File:** `frontend/src/main/clojure/ooloi/frontend/permissions.clj`
 
@@ -1645,6 +1705,32 @@ The explicit boundaries make integration testing narrower and more predictable.
 
 **Cross the dispatch seam for any user-facing claim.** A test may carry a user-facing name — "Cancel closes the window", "clicking a root lists its directory" — only if it enters through the production seam and reaches the observable effect through the real wiring: fire the real node (`.fire()` on a `Button`, a synthesised `MouseEvent` through `Event/fireEvent`) or dispatch through the renderer's installed `:fx.opt/map-event-handler`. A test that calls the event-handler function directly tests the handler in isolation and is blind to the seam — the wiring between gesture and handler — which is exactly where "the mechanism exists but production never invokes it" hides; such a direct-call test may carry only the handler's name. A window whose spec emits map-form `:event/type` events must declare `:window/handler` for this seam to exist at all — without it the `:fx.opt/map-event-handler` is nil and every event is dropped. This is why `event_wiring_test.clj` fires synthetic events through real filter chains rather than calling helpers: the `.lookup`-based regressions it guards were invisible to helper-only unit tests. The litmus check before naming a test: list the links the behaviour traverses — the button, the `MouseEvent`, the `map-event-handler` / `:window/handler` — and confirm the test crosses each one its name claims.
 
+**Crossing the seam at a virtualised list cell.** For a `Button` the seam is one call: walk the mounted
+scene to the real node — picking it by JavaFX role (`.isCancelButton`, `.isDefaultButton`) rather than
+by rendered text, which depends on locale — and `.fire` it. A `ListView` cell is harder, because
+`VirtualFlow` defers cell creation to a **layout pulse** rather than to a synchronous `.layout()` call.
+On a never-shown headless Stage the list has zero viewport height, one `applyCss`/`layout` materialises
+no cells at all, `lookupAll ".list-cell"` returns empty, and firing at the resulting `nil` throws
+`Event target must not be null!`. The technique that reaches the genuine cell: give the `ListView` and
+scene a definite size and force `applyCss` + `layout` on the JAT; then **poll from the test thread**,
+sleeping *there* between rounds so the JAT is free to run the pulse that materialises cells; each round,
+`lookupAll ".list-cell"` and match the cell whose `.getItem` carries the target datum, then fire a
+synthetic `MouseEvent` on it. This stays headless. If pulses never materialise cells without showing,
+escalate to a genuinely shown window (`:ui-mode :graphical`) — but never hand-build a cell by driving
+the cell factory with `.updateIndex`: a cell created outside `VirtualFlow`'s lifecycle is a parallel
+world, and defeats the point of crossing the seam.
+
+**Drag-and-drop needs a Robot, and a Robot has one blind spot.** Synthetic `Event/fireEvent` cannot
+initiate a drag: `startDragAndDrop` is triggered by toolkit-level input, so a D&D test needs
+`javafx.scene.robot.Robot` driving a real Stage with the production renderer mounted. The shared
+`util.robot` namespace supplies the gestures — move, press, release, drag between two `Point2D`s, a
+copy-drag holding the platform copy modifier (Option on macOS, Ctrl elsewhere), and click — each
+executed on the JAT with brief pauses between steps so events are processed. The blind spot: **Robot
+suppresses MOUSE_CLICKED after a successful drop**, so the post-D&D synthetic-click bug described in
+Section 4.7 cannot be reproduced with it. That class of bug needs a handler-level test with a
+`MouseEvent` constructed with `stillSincePress` false. A Robot test proves the gesture works; it cannot
+prove the gesture leaves selection alone afterwards.
+
 **Cross-platform scene graph traversal.** When an integration test navigates a live scene graph (for example, walking VBox → MenuBar → Menu → MenuItem to find and fire a menu item), all of that traversal must happen inside `run-on-fx-thread-sync!`. This is not a convenience — it is a correctness requirement. On Windows, scene graph reads from the test thread return stale or nil data and produce NPE. The fix is always to move the traversal onto the JAT, never to add nil-guards in production code. When matching menu items by text, use `(tr/tr :translation-key)` rather than a hardcoded English string: `start-app!` sets the locale to the machine locale, so hardcoded strings break on non-English machines.
 
 ### 12.4 Invariants as Tests
@@ -1669,6 +1755,15 @@ When structure is clear, testing becomes calmer. You test pure functions where p
 
 Frontend tests that touch app settings, the platform directory, locale, or JavaFX stages share a common isolation namespace: `frontend/test/clojure/util/frontend.clj` (namespace `util.frontend`). Requiring it initialises JavaFX automatically — no explicit init call needed.
 
+Three categories of process-global state make this mandatory rather than merely tidy. The **platform
+directory**: settings and persistence read and write `~/.ooloi`, so an unredirected test contaminates
+the developer's real files and its successors read whatever it left. The **settings atoms**: the
+settings map and its loader delay are `defonce`, so one test's values bleed into every later test in
+the same JVM. And the **locale**: `tr/current-locale` is a global atom that any UI Manager
+initialisation overwrites with the machine locale, silently breaking a later test's translated-string
+assertion. None of the three produces a failure at the point of contamination — each fails somewhere
+else, later, which is why isolation is infrastructure rather than a per-test courtesy.
+
 The namespace exposes a layered set of isolation macros. For any test that needs a UI Manager, the standard setup is `with-ui-manager`, optionally combined with `with-frontend-test-config` for settings/locale isolation:
 
 ```clojure
@@ -1692,7 +1787,22 @@ Additional macros for specific situations:
 - **`with-event-bus`** — wrap inside `with-frontend-test-config` when the test calls `set-app-setting!` and needs the `:setting-changed` event to actually publish
 - **`with-zero-animation-times`** — for notification lifecycle tests; sets all animation durations to zero so state transitions complete instantly
 - **`with-stage`** — creates a JavaFX Stage on the JAT for lightweight tests that need a real Stage but not a full UI Manager
-- **Visual testing modes** (`OOLOI_UI_VISUAL`, `OOLOI_UI_VISUAL_INTERACTIVE`) — show real windows during test runs for screenshot capture or manual inspection; call `(visual-pause)` at inspection points (no-op in headless mode)
+- **Visual testing modes** — show real windows during a test run, for screenshot capture or manual inspection:
+
+  | Mode | Variable | Behaviour |
+  |---|---|---|
+  | Headless | *(default)* | No windows, no pauses. The CI mode. |
+  | Timed | `OOLOI_UI_VISUAL=true` | Shows windows and auto-pauses ten seconds at each inspection point. |
+  | Interactive | `OOLOI_UI_VISUAL_INTERACTIVE=true` | Shows windows and waits for ENTER; `t`, `h`, `q` switch mode mid-run. |
+
+  Call `(visual-pause)` — or `(visual-pause ms)` — where an inspection point is useful. It is a no-op in headless mode, so it can be left in place.
+
+**Where a test file goes.** A test lives beside the module it tests, mirroring the source layout — a
+window's tests under that window's directory, a component's under the component's. Tests that
+orchestrate the whole application, rather than one module of it, belong to the combined system's own
+suite in `shared/test/app/`. Where a *helper* goes is a separate question with its own decision tree,
+in [shared/test/util/README.md](../shared/test/util/README.md); the one rule that admits no exception
+is that a test helper never lives in a `src/` namespace.
 
 For the complete treatment of Integrant lifecycle, the `with-combined-system` macro, and how Integrant components are wired across all three projects, see the [INTEGRANT_COMPONENTS.md](INTEGRANT_COMPONENTS.md) guide.
 

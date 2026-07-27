@@ -20,10 +20,16 @@ Implemented
     - [Event Dispatch Pipeline](#event-dispatch-pipeline)
   - [Architectural Invariants](#architectural-invariants)
   - [Theme-Independent Styling](#theme-independent-styling)
+    - [Theme State Ownership and Propagation](#theme-state-ownership-and-propagation)
+    - [Icons — Ikonli Material Design 2](#icons--ikonli-material-design-2)
   - [Command Descriptors (Menu Specialisation)](#command-descriptors-menu-specialisation)
+  - [Accelerator Architecture](#accelerator-architecture)
+  - [Dynamic Enablement and the Modal Menu Gate](#dynamic-enablement-and-the-modal-menu-gate)
   - [Validation Strategy](#validation-strategy)
   - [Window Manager Integration](#window-manager-integration)
   - [Application startup: window-set, menu, and readiness](#application-startup-window-set-menu-and-readiness)
+    - [Platform-split menus](#platform-split-menus)
+    - [macOS native integration](#macos-native-integration)
 - [Benefits](#benefits)
 - [Trade-offs](#trade-offs)
 - [Alternatives Considered](#alternatives-considered)
@@ -1148,7 +1154,7 @@ Tests and debugging sessions that read paint state on AtlantaFX-themed input con
 3. **Direct `-fx-background-color` is the wrong mechanism for Category 1 targets.** It replaces the multi-stop layer with a single flat colour, erasing the simulated border entirely. Inline strings like `-fx-background-color: -color-accent-muted;` on a `TextField` produce a control without a border. Direct `-fx-background-color` is however the correct mechanism for Category 2 targets (see `panel-style`, `selected-style`) — regions that do not use multi-stop simulated borders.
 4. **Self-referencing declarations resolve.** `-color-bg-default: -color-bg-default;` does not produce a CSS loop. The right-hand side is resolved against the parent scope because the current scope is in the process of being declared. Self-references can be used to force a node's cascade scope to re-read theme defaults, clearing any inherited styling from an ancestor. However, self-referencing `-color-fg-default: -color-fg-default;` on a node whose foreground is painted by that same token causes the value to resolve to null/transparent — the declaration and consumption are on the same node, creating a circular reference. This was discovered when `selected-style` as a Category 1 cascade made TitledPane disclosure arrows invisible.
 
-Layer 1 tests read `.getBackground().getFills()` after `.applyCss()`, assert the returned list has the expected number of stops, and compare each stop to `Color/rgb` values encoding the exact Nord-palette hex values above. See UI_ARCHITECTURE §7 for the full inspection procedure and the Layer 1 test pattern.
+Layer 1 tests read `.getBackground().getFills()` after `.applyCss()`, assert the returned list has the expected number of stops, and compare each stop to `Color/rgb` values encoding the exact Nord-palette hex values above.
 
 #### Established Usage Patterns
 
@@ -1327,6 +1333,64 @@ Ooloi relies on the platform's system font as selected by JavaFX — no applicat
 
 **Font family overrides are discouraged.** Specifying `-fx-font-family` ties the UI to a font that may not exist on all platforms. If a specific font family is ever required (e.g., for music-specific glyphs), it should be declared as a project-level decision and loaded as a resource, not hardcoded in individual components.
 
+#### Theme State Ownership and Propagation
+
+Theme independence works only if exactly one place owns which theme is active. That owner is the
+`:ui/theme` **app setting** (ADR-0043) — not the theme namespace, not the UI Manager, not any window.
+`ui/core/theme.clj` provides pure functions only: the theme-keyword → stylesheet-URI mapping,
+`apply-theme!` (sets the global user-agent stylesheet), and the `toggle-theme!` / `set-dark-mode!`
+convenience writers. It holds no state; it reads the current theme from the setting.
+
+A theme change therefore travels the ordinary settings path, with no special case:
+
+1. Something writes `:ui/theme` — the Settings window, a menu command, or `toggle-theme!`.
+2. The settings system publishes `{:type :setting-changed :key :ui/theme …}` on the `:app-settings`
+   category of the frontend event bus (ADR-0031).
+3. The UI Manager's `:app-settings` subscriber calls `apply-theme-to-all!`.
+
+`apply-theme-to-all!` sets the global user-agent stylesheet once, and because a UA stylesheet
+propagates to every Scene automatically, no window, renderer or menu host needs per-scene stylesheet
+manipulation. What it must handle are the three things the UA stylesheet cannot reach:
+
+- **Dynamic menu text.** It calls `refresh-menu-text!`, because some labels name the *other* theme
+  ("Switch to Light Mode"), so the theme change alters the text, not merely the styling.
+- **Inline styles.** It walks the window registry for nodes whose inline style is theme-branched —
+  identified by the CSS id `#theme-dependent-overlay` — and recomputes them. These exist only under
+  the documented transparency-overlay exception above; a node styled by tokens needs nothing.
+- **Notification severity.** The notification overlay Stage picks up the global UA theme like any
+  other Scene. Its severity colours are applied inline to the skin's container node, and are token
+  references, so they re-resolve without intervention.
+
+The rule that generalises: **anything that cannot be expressed as a token is a propagation
+obligation.** Every entry in the list above exists because something escaped the token system, and
+each is therefore a cost of the corresponding exception — which is the practical argument for keeping
+those exceptions as narrow as they are.
+
+#### Icons — Ikonli Material Design 2
+
+Icons are font glyphs, not images, supplied by [Ikonli](https://kordamp.org/ikonli/) — the
+`ikonli-javafx` and `ikonli-material2-pack` artifacts, declared in both `shared/project.clj` and
+`frontend/project.clj`. This follows from theme independence: a font glyph takes its colour from CSS,
+so it adapts across themes; a bitmap does not, and would need a second asset per theme.
+
+An icon is a `FontIcon` node constructed from a **string literal** (`"mdal-info"`, `"mdmz-warning"`) —
+no enum import is needed from Clojure — and being a `Node` it can go anywhere JavaFX accepts one:
+`Notification.setGraphic`, `Button.setGraphic`, `MenuItem.setGraphic`.
+
+```clojure
+(FontIcon. "mdal-info")
+(doto (FontIcon. "mdal-check") (.setIconSize 24))
+```
+
+**Colour is inherited, never set.** `FontIcon` takes the `-fx-icon-color` CSS property from its parent
+control, and the AtlantaFX severity classes (`.success`, `.warning`, `.danger`, `.accent`) set that
+property. An icon placed inside a severity-styled control is therefore correctly coloured with no code
+— and setting an icon colour explicitly is the same violation as any other hardcoded colour.
+
+The established conventions: notification severities use `mdal-info`, `mdal-check`, `mdmz-warning` and
+`mdal-error` for `:info`, `:success`, `:warning` and `:error` respectively; `mdmz-undo` marks a
+reset-to-default control.
+
 ### Command Descriptors (Menu Specialisation)
 
 Menu items in Ooloi are defined as **command descriptors** — pure maps that each describe a single menu command. A command descriptor holds everything needed to render a menu item: the i18n text key, the keyboard accelerator, an enablement predicate, and the action handler. This eliminates duplication — each command is defined once, and the menu bar is generated from the collection of descriptors.
@@ -1358,6 +1422,89 @@ The menu bar itself is also pure data. A function assembles descriptors into a c
 **macOS system menu bar** (the menu bar embedded in the macOS top bar rather than in the window frame) is controlled by `:use-system-menu-bar` on the MenuBar spec. MenuBar specs are produced by the UI toolkit layer, which injects this flag based on an injectable OS predicate. Developer-authored and plugin-authored specs never contain this flag — infrastructure decides, specifications don't know.
 
 **Stub commands** are descriptors with `(constantly false)` as their enablement predicate and no `:on-action`. They exist to stabilise menu structure during early development. They are intentionally inert and do not imply feature commitment.
+
+### Accelerator Architecture
+
+Keyboard shortcuts must work whether the menu bar lives in the window, in the macOS system bar, or in
+the native application menu — three surfaces, so three layers:
+
+1. **MenuItem accelerators.** `build-menu-item!` calls `.setAccelerator` on each item. This is what
+   serves a menu bar present in the scene graph — the per-window bars on Windows and Linux.
+2. **Scene-level accelerators (Windows/Linux only).** `collect-accelerators` derives
+   `KeyCodeCombination` → handler pairs from the command catalogue, taking every command that carries
+   both an `:accelerator` and an `:on-action`. `open-piece-window!` — the sole production call site —
+   registers them in its `:window/on-open`, binding them to that window's own scene, because the
+   embedded menu bar exists per window. Not used on macOS: there the system menu bar already carries
+   MenuItem accelerators as native key equivalents (layer 1).
+3. **Native Cocoa accelerators.** `setup-macos-app-menu!` gives the application-menu items native key
+   equivalents via `native-modifier-map`, which maps to `META_DOWN` rather than `SHORTCUT_DOWN` —
+   NSMenuFX inspects `getMeta()` directly and does not resolve the platform-agnostic modifier.
+
+The catalogue is the source of truth for every binding; the maintained table of current assignments is
+in the [Frontend Architecture Guide](../guides/FRONTEND_ARCHITECTURE_GUIDE.md) §*Appendix: Key Bindings*.
+
+Note the asymmetry with the `:shortcut` rule above: **specifications** always use `:mods [:shortcut …]`,
+and only layer 3 — infrastructure, not specification — translates it to a native modifier.
+
+### Dynamic Enablement and the Modal Menu Gate
+
+Menu enablement is not fixed at materialisation. It is re-evaluated continuously, through one seam.
+
+**The single-source seam.** `refresh-menu-text!` re-evaluates every command's `:enabled?` predicate
+against the **live** combined-app system map — read from a provider installed once at startup, not
+threaded in by the caller — and applies the result to **both** menu surfaces in one pass:
+
+- **Surface A** — the JavaFX `MenuBar`: File/Edit/View and the rest, on every platform, including the
+  `useSystemMenuBar` bar on macOS. Each item's stored `:enabled?` predicate is re-evaluated and
+  `.setDisable` applied; Glass reflects that into the macOS system bar.
+- **Surface B** — the macOS application menu (About, Settings). Its enabled state must be set on the
+  native `NSMenuItem` through JFA, because a JavaFX `.setDisable` on the item *handle* does not
+  propagate: the converter binds no `disableProperty`. See §*macOS native integration* above for the
+  interop, and for why this additionally requires `autoenablesItems` to be NO.
+
+The refresh is **idempotent**, and that is what makes it reliable. Because it reads the one live
+source, any trigger — a locale change, a collaboration-state change, undo/redo, a theme toggle, a
+window lifecycle event — produces correct enablement, and the menu cannot be left stale by whichever
+refresh happened to run last. Sourcing the state inside the refresh rather than from the caller is
+load-bearing: a stateless caller resolving predicates against an empty map would otherwise clobber
+enablement that another seam had just set correctly.
+
+**The modal gate.** An `APPLICATION_MODAL` window blocks input to every other *window* — but a menu
+surface is not a window, and the macOS system menu bar in particular is not subject to that block. So
+without intervention a structural command (New, Open, a locale change) could fire from behind a modal,
+against state the modal assumes is frozen. The gate closes this by making effective enablement carry
+one extra live term:
+
+```clojure
+(and (not (application-modal-open? manager))
+     ((:enabled? cmd) live-state))
+```
+
+`application-modal-open?` is true when either modal entry point is blocking input: a **registered**
+`APPLICATION_MODAL` Stage in the window registry — the `show-window!` path, where the Stage itself is
+the source of truth — **or** the transient blocking dialog from `show-modal!`, which is not registered
+and so raises a flag on the manager for the duration of its nested event loop.
+
+Because the refresh already re-evaluates *every* item, ANDing this single term gates all commands
+uniformly: no blanket disable, and no per-item bookkeeping to restore afterwards. When the modal
+closes, the next idempotent refresh re-evaluates with the modal absent and each command returns to its
+own predicate.
+
+The two paths drive the refresh differently, and the blocking one has a subtlety worth stating.
+The registered path rides the `:window-lifecycle` bus (`:window-shown` / `:window-hidden` /
+`:window-closed`) — the same subscriber seam every other refresh uses. The blocking path drives the
+refresh from inside `show-modal!`: raise the flag and refresh (disable) *before* `.showAndWait`, then
+**re-assert after the show** via `.setOnShown` and a deferred refresh, then lower the flag and refresh
+(restore) in a `finally`. The re-assertion is not belt-and-braces: showing the Stage makes Glass
+re-sync the `useSystemMenuBar` native menu and reset the application submenu's `autoenablesItems` to
+YES, so a Surface B disable applied only before `.showAndWait` is clobbered by the on-display
+validation pass.
+
+Platform differences follow from where the items live. On macOS, About and Settings are gated on
+Surface B, while Quit, Hide, Hide Others and Show All are unconditionally valid and stay enabled. On
+Windows and Linux, About/Settings/Quit are ordinary MenuBar commands gated on Surface A like any
+other. The notification overlay is a separate Stage and `Popup`, not in the window registry and not a
+menu item, so the gate has no path to it and notification dismissal is unaffected.
 
 ### Validation Strategy
 
@@ -1468,14 +1615,140 @@ Every startup window is keyed by its **piece UUID**, like any other piece window
 
 #### Platform-split menus
 
-Where the menu bar lives is platform-specific, by design:
+Both the menu structure and the menu bar's location are platform-specific, by design.
+
+The menus themselves are declared per platform in `menus.clj`, and differ only in where the three
+standard application commands sit — which is a parity decision, not a structural one:
+
+| Platform | Menus | About / Settings / Quit |
+|---|---|---|
+| macOS | File, Edit, View, Collaboration, Window, Help | In the NSMenuFX application menu |
+| Windows | File, Edit, View, Collaboration, Tools, Window, Help | Exit in File, Options in Tools, About in Help |
+| Linux | File, Edit, View, Collaboration, Window, Help | Quit in File, Settings in Edit, About in Help |
+
+Each platform's structure is assembled from **shared item fragments** — file items, edit items, view
+items, collaboration items — so a command is declared once and placed per platform; a separator is the
+keyword `:---`. The Collaboration menu carries the session commands (host, terminate, invite, connect,
+disconnect); the Collaborators *panel* toggle belongs under Window with the other panel toggles.
+
+Where the bar *lives* is likewise platform-specific:
 
 - **macOS** has one **global system menu bar**, installed once at startup (step 2) and shared by every window. Piece windows attach no menu of their own.
-- **Windows / Linux** have no global menu, so **each piece window carries its own**. `open-piece-window!` is platform-sensitive: on those platforms it builds a `MenuBar` for the window and attaches it (with the command accelerators) to that window's scene; on macOS it attaches none. Every New / Open / startup window therefore has a working menu on every platform — closing the earlier gap where New/Open windows were menu-less on Windows/Linux.
+- **Windows / Linux** have no global menu, so **each piece window carries its own**. `open-piece-window!` is platform-sensitive: on those platforms it builds a `MenuBar` for the window and attaches it (with the command accelerators) to that window's scene; on macOS it attaches none. Every window that can act on a piece therefore has a working menu on every platform, however it was opened — New, Open, or session restore.
 
 Because the menu can exist in *many* places on Windows/Linux (one bar per piece window), dynamic menu-text updates — locale changes, enablement-driven labels — go through a **multi-bar `refresh-menu-text!`**: it iterates every open piece window's bar on Windows/Linux, and updates the single global bar on macOS. The command descriptors (the menu *items*) are identical across platforms; only their *placement* and *refresh fan-out* differ.
 
 The same multi-bar fan-out carries one further piece of dynamic content: the Window menu's live list of the open piece windows, spliced below the static commands on each surface by `refresh-window-menus!` — the sibling of `refresh-menu-text!`, iterating the same per-window bars and macOS host bar. Unlike the command items, these entries are driven by the window registry rather than the command descriptors; see [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §5.
+
+#### macOS native integration
+
+The macOS global menu bar above is not only *placed* differently — its **application menu**, the bold
+app-name menu carrying About, Hide, Hide Others, Show All and Quit, cannot be built with JavaFX at
+all. Ooloi reaches past the toolkit into Cocoa to build it. *Why* it does so, which libraries were
+chosen, and Ooloi's position on the unmaintained one are in
+[ADR-0005](0005-JavaFX-and-Skija.md) §*Going Past the Toolkit*; what follows is how it works and what
+to watch for.
+
+Platform detection is always `platform/macos?` from `ooloi.shared.platform` — never a raw
+`System/getProperty` check.
+
+**The conversion chain.** A native menu click ends up invoking an ordinary JavaFX event handler,
+through five steps:
+
+1. `setup-macos-app-menu!` builds JavaFX `MenuItem`s with `onAction` handlers, as anywhere else.
+2. `MenuToolkit.setApplicationMenu` calls `MenuConverter.convert`, which iterates them.
+3. `MenuItemConverter.convert` wraps each JavaFX `EventHandler` in a `FoundationCallback` — a JNA
+   callback registered with the Objective-C runtime.
+4. Native `NSMenuItem`s are created via `initWithTitle(title, callbackSelector, keyEquivalent)`, with
+   that callback as target.
+5. On a click, AppKit sends the callback selector to the callback target, which invokes the JavaFX
+   handler.
+
+**The standard items and how each is wired.** Three go through the callback chain; three are answered
+by the system directly.
+
+| Item | ObjC selector | Target | How it is built |
+|---|---|---|---|
+| About Ooloi | FoundationCallback | callback target | JavaFX MenuItem, `onAction` → action-handlers |
+| Settings… ⌘, | FoundationCallback | callback target | JavaFX MenuItem with accelerator |
+| Hide Ooloi ⌘H | `hide:` | NSApp | `MenuToolkit.createHideMenuItem` → JFA proxy |
+| Hide Others ⌥⌘H | `hideOtherApplications:` | NSWorkspace | `MenuToolkit.createHideOthersMenuItem` → JFA proxy |
+| Show All | `unhideAllApplications:` | NSApp | native target/action, patched after conversion — see below |
+| Quit Ooloi ⌘Q | FoundationCallback | callback target | JavaFX MenuItem, `onAction` → action-handlers |
+
+**The menu title.** A JavaFX application's bold menu-bar title defaults to "java".
+`set-native-app-menu-title!` reaches `NSApplication.sharedApplication.mainMenu.itemAtIndex(0)`
+through JFA and sets both the item title and its submenu title to "Ooloi" natively.
+
+##### Known NSMenuFX defects, and their workarounds
+
+**Show All sends the wrong selector.** `MacNativeAdapter.showAllWindows()` calls `[NSApp unhide:]`
+rather than `[NSApp unhideAllApplications:]`. `unhide:` merely reverses `hide:` for the current
+application, so after "Hide Others" — the one situation in which a user reaches for Show All — it is
+a no-op. JFA's `NSApplication` interface does not declare `unhideAllApplications`, so the fix patches
+the native item directly, after NSMenuFX has finished converting:
+
+```clojure
+;; Overwrite the Show All item's target/action, bypassing the buggy callback.
+(let [ns-app      (NSApplication/sharedApplication)
+      app-submenu (.submenu (.itemAtIndex (.mainMenu ns-app) 0))
+      show-all    (.itemAtIndex app-submenu 6)]        ; 0-indexed position
+  (.setTarget show-all (ObjcToJava/toID ns-app))
+  (.setAction show-all (Foundation/createSelector "unhideAllApplications:"))
+  ;; Disable auto-validation so manual setEnabled: states hold. The BOOL must be an
+  ;; ID-wrapped 0 inside an explicit Object[] — see the interop rules below.
+  (Foundation/invoke (ObjcToJava/toID app-submenu)
+                     "setAutoenablesItems:" (into-array Object [(ID. (long 0))])))
+```
+
+This replaces a four-hop chain (native click → callback → JavaFX handler → message send) with the
+direct native target/action pair a Cocoa application would use.
+
+**`setAutoenablesItems: NO` will not stay set.** Without it, `NSMenuValidation` re-evaluates — and
+re-enables — items every time the menu is displayed, so any manual `setEnabled: NO` is undone. But
+setting it once at construction is *not enough*: JavaFX/Glass re-syncs the `useSystemMenuBar` native
+menu at startup and on window lifecycle events, resetting `autoenablesItems` back to YES. Verified by
+reading the property back at runtime. **It must therefore be re-asserted on every refresh** — the
+application-modal menu gate does so on the same pass that sets the items' enabled state, after the
+re-sync. The trade-off is that Hide Others and Show All no longer auto-grey when inapplicable, which
+is acceptable since both are effectively always valid.
+
+**A cautionary case: this call was silently broken and nothing noticed.** It was originally written in
+the bare-argument form, which raises `No matching method` because Clojure does not auto-pack varargs —
+and the exception was swallowed by a surrounding `try`. Auto-validation was never actually disabled.
+Nothing appeared wrong, because Show All worked anyway (NSApp answers `unhideAllApplications:`
+regardless of validation state), so the defect stayed invisible until the modal gate needed a manual
+disable to hold. Two lessons carried in the rules below: interop that *appears* to work may never have
+executed, and a `try` around native calls hides exactly that.
+
+##### JFA `Foundation.invoke` — two rules that are not obvious
+
+When JFA's typed proxies lack a method, `Foundation.invoke` sends an arbitrary Objective-C message.
+Two interop rules govern it, and violating either fails **silently**:
+
+```clojure
+;; 1. Selector arguments are Java varargs (Object...), and Clojure does NOT auto-pack a
+;;    bare trailing argument. They must be an explicit Object[]:
+(Foundation/invoke target-id "isEnabled"   (into-array Object []))       ; no args
+(Foundation/invoke target-id "setEnabled:" (into-array Object [arg]))    ; one arg
+;;    A bare argument raises IllegalArgumentException: No matching method invoke found.
+
+;; 2. An ObjC primitive (BOOL, integer) must be an ID wrapping the numeric value — it
+;;    marshals as the raw native word. A java.lang.Boolean or Integer is accepted and
+;;    then IGNORED: the message is sent, but the argument never reaches the parameter.
+(Foundation/invoke item-id "setEnabled:" (into-array Object [(ID. (long 0))]))  ; NO
+(Foundation/invoke item-id "setEnabled:" (into-array Object [(ID. (long 1))]))  ; YES
+```
+
+- `Foundation/invoke(ID, String, Object...)` — builds the selector from the string and sends it.
+- `Foundation/createSelector(String)` — returns a `Pointer` for `NSMenuItem.setAction`.
+- `ObjcToJava/toID(Object)` — extracts the native Foundation ID from a JFA proxy.
+- `ID` (`de.jangassen.jfa.foundation.ID`) — wraps a native word. Construct `(ID. (long n))` to pass a
+  primitive; read a BOOL return with `(.booleanValue (Foundation/invoke id "isEnabled" (into-array Object [])))`.
+
+Both rules were verified at runtime against the live native menu. This is how the codebase closes gaps
+in JFA's interface declarations without forking it — and, more generally, it is the escape hatch that
+makes any future NSMenuFX defect patchable from outside ([ADR-0005](0005-JavaFX-and-Skija.md)).
 
 ## Benefits
 

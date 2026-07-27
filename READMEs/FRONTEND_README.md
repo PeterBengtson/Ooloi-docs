@@ -76,9 +76,9 @@ frontend/
 │   ├── rendering/                   ; Score rendering infrastructure
 │   │   └── data_manager.clj         ; Rendering data management
 │   ├── settings/                    ; App settings declarations (one file per tab)
-│   │   ├── notifications.clj        ; Notifications settings
-│   │   ├── ui.clj                   ; Appearance settings
-│   │   └── user.clj                 ; User settings
+│   │   ├── collaboration.clj        ; Collaboration settings (:collaboration/*)
+│   │   ├── instrument_library.clj   ; Instrument Library settings
+│   │   └── ui.clj                   ; Appearance settings (:ui/*)
 │   └── ui/                          ; User interface (see ui/README.md)
 │       ├── core/                    ; General reusable UI machinery
 │       └── app/                     ; Ooloi-specific application UI

@@ -91,6 +91,24 @@ Every structural edit in the window is a drag, a drop, or a deletion. The gestur
 
 **Shared selection and drag infrastructure.** Selection and drag-and-drop are shared infrastructure, not per-pane code. The Instrument Library and both piece-window panes use the same openable-pane component — its drag-over event filter and its selection support — and the same selection model: **one selection, tagged with the context it was made in** (which pane, and which layout for a musician shown inside one), so the same musician — which appears in the Musicians pane and in every layout that lists it — highlights only where it was clicked, not in every copy. A multi-selection is assembled in a pane and dragged as a unit (all of a piece's musicians selected and dragged to the Layouts pane at once), and clicking a selectable entity selects it. Selection-on-drag holds throughout: beginning a drag on an unselected entity selects it first.
 
+**Where a drop lands is one calculation, not one per surface.** A reorder needs an answer to a single
+question — *between which two rows was the cursor released?* — and that question has one answer
+everywhere, so it is computed in one place, over any container's rows: the drop lands after the **last
+row whose visual midpoint lies above the cursor**, or at the front when the cursor is above all of
+them. Consequently an off-row release is never a special case. The enclosing scroll pane accepts the
+drag across its **whole viewport**, so a release in a gap between rows, on a header, or below the last
+row is resolved by the same arithmetic rather than rejected; the drop handler receives an insert
+position, not a hovered row, and never needs a fallback for "released on nothing".
+
+Two consequences of *what a drop means* fall out of that one calculation. **A move excludes the
+dragged rows from the scan** — they are about to vanish from their old places — so a drop inside the
+dragged block resolves to the row above it and the gesture is a no-op by value rather than an error to
+detect. **A copy counts every row**, because the original stays put and the copy belongs at the
+cursor. And because a container marks itself as the hovered one, a drop over a *foreign* container is
+a no-op: a gesture that resolves a position in one container but lands in another does nothing, which
+is what makes cross-container drags an explicit part of the grammar above rather than an accident of
+geometry.
+
 **References, not copies.** Because a layout holds `:musician-uuids` — references at musician granularity, never copies — the two panes cannot diverge. Adding an instrument to a musician, a doubling, appears in every score and part that lists that musician with no further edit, and renaming a musician renames it wherever it appears; reordering within one layout, by contrast, touches only that layout's vector. The Musicians pane owns the musicians; the Layouts pane composes them by reference.
 
 **The ordinary musician API, on a layout.** That a layout *references* musicians rather than *owning* them is an implementation choice the API hides completely. The standard polymorphic musician operations work on a layout target as though it nested Musicians: `add-musician` on a layout records a reference, `reorder-musician` on a layout reorders its references, and cloning a piece remaps them — each carried, transparently, by `:around` methods on the generic operation (the reference-maintenance family). Because clients invoke the VPD form and the object form is out of band ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §2), each obligation is wired as **two `:around` twins** — object-form (value-in-hand) and VPD-form (the client path, a piece-level transform routing through the change funnel) — and an object-form-only `:around` upholds the invariant for internal callers yet is a latent bug for every client, caught only by a client-path test, never by an object-form unit test. Removal has two scopes and the one verb serves both: removing a musician from a *layout* drops only that reference — the musician stays in the piece and in every other score or part — while deleting the musician from the *piece* additionally prunes its reference from every layout that listed it (referential integrity). A caller — the window's drop handler, a script, a plugin, or backend code — writes the natural operation and never needs to know, or work around, the flat-id-vector representation. And because `:musician-uuids` is a structural slot of the Layout, every such write is detected and projected *by construction* ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3), so the coverage is complete with no per-operation wiring; should a future gesture need an operation not yet redirected to a layout, a failing test surfaces the one missing `:around` rather than a silent gap.
