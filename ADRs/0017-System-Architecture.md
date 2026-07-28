@@ -52,6 +52,54 @@ We will use **Integrant for component lifecycle management** combined with **str
 - **User-friendly error messages** with actionable guidance
 - **Partial cleanup handling**: Failed component initialization cleans up successful components
 
+#### Surfacing Unexpected Runtime Failures
+
+The exit codes above classify failures that prevent the system from *starting*. Once it is running,
+a different hazard applies: a failure on a thread nobody is waiting on disappears without trace. A
+`cp/future` whose body throws captures the exception and re-throws it only when the result is
+dereferenced, and the UI paths never dereference; a `Platform.runLater` runnable has no caller at
+all. Neither produces a crash or a freeze — merely an application that silently fails to do what
+was asked. Because the failure is *unexpected* by definition, no call site can be relied upon to
+catch it, so the coverage lives at the two boundaries where work is dispatched rather than at the
+call sites that dispatch it.
+
+- **Off-thread work** — the shared thread pool is a `ScheduledThreadPoolExecutor` that recovers the
+  throwable of any completed task in `afterExecute`, taking it from the executor's own argument or,
+  where a thrown `cp/future` body deposits it, from the task's future. It hands the throwable to a
+  per-pool handler, replaceable via `install-ooloi-error-handler!`.
+- **The JavaFX Application Thread** — every renderer is created with an explicit `:error-handler`.
+  The cljfx default prints to stderr and re-throws `Error`s, which is not sufficient: a render
+  failure would reach no user, and a re-thrown `Error` escapes onto a thread with nothing above it.
+
+**Routing follows the deployment, not the call site.** Where a UI Manager exists — the combined
+desktop application — the failure becomes an error notification in the persistent, user-dismissed
+tier ([ADR-0043](0043-Frontend-Settings.md) §Error Display). Where none exists — the standalone
+backend server — it goes to stderr; a log file is a natural future refinement, and the routing is
+therefore a decision the boundary makes rather than a hardcoded call. This gating is the general
+rule for all notifications, stated in [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md)
+§Notification Model.
+
+**The exception detail is shown to the user, deliberately.** The message resolves through `tr` like
+every user-facing string ([ADR-0039](0039-Localisation-Architecture.md)), carrying the exception
+text as a parameter rather than by concatenation. A user who can see what failed can report it; a
+user shown only that "something went wrong" cannot. This is as valuable in the finished application
+as during development.
+
+**Rendering a throwable to text must be depth-bounded.** `ExceptionInfo.toString` folds `ex-data`
+into the message, and Ooloi's own structures are legitimately cyclic — a piece window's state atom
+holds `:*piece-state` pointing back at itself, so that gesture handlers resolve against live
+structure after a refetch. Printing such a value without a depth bound recurses until the stack
+overflows. The consequence is worse than a long message: a `StackOverflowError` is an `Error`, so it
+escapes the very handler meant to report the failure, destroying the original diagnostic and
+replacing it with a thousand frames of the printer calling itself. The bound is what makes the net
+trustworthy, and it belongs at the boundary — the only place that knows it is about to print
+something arbitrary.
+
+The net is a backstop for the genuinely unexpected. A failure that can be anticipated — an
+unreadable file, a rejected write — belongs caught at its source and surfaced as typed data the
+application presents deliberately, well before it could arrive here as a raw exception
+([ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md)).
+
 ## Rationale
 
 ### Why Integrant Over Alternatives
