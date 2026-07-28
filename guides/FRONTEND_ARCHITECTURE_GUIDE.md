@@ -1071,8 +1071,29 @@ holding a deadline over a user's decision.
 
 **A halted pool is not a quiesced pool.** `ig/halt-key!` on the thread pool calls `shutdown()`, which
 returns immediately rather than after the workers finish. A test asserting on state that pool workers
-mutate must wait for `awaitTermination` before reading. `with-ui-manager` does this; a test that halts
-a combined system directly must apply it to the pool itself.
+mutate must wait for `awaitTermination` before reading. `with-thread-pool` does this for you — it
+awaits termination on exit and **throws** if the pool will not quiesce, since work outliving the body
+means the assertions ran against an unfinished gesture. A test that halts a combined system directly
+must apply the same wait to the pool itself.
+
+**Consequently, install mocks OUTSIDE `with-thread-pool`, not inside it:**
+
+```clojure
+(with-redefs [SRV/atomic …]          ; correct — the drain happens while
+  (with-thread-pool [pool]           ; the redefs are still in place
+    …))
+```
+
+The inner nesting races: the redefs unwind when the body exits, and only then does the drain run. The
+failure this prevents is silent rather than loud — a gesture submits its batch, the test's promise
+resolves on that batch, the body exits and restores the real collaborator, and the pool thread then
+calls it for real, throwing on a thread nothing asserts on while the suite reports green.
+
+**`{:drain? false}` is the escape hatch, and it is rarely right.** Use it only where a *working* pool
+is the test's subject: the event-bus latency facts saturate every thread with sleeping handlers and
+assert that `publish!` returns anyway, so draining would make each test wait out the very sleep it
+exists to prove nobody waits for. Everywhere else, a pool that will not quiesce is a leak, not a
+slow test.
 
 ---
 
