@@ -1069,6 +1069,8 @@ holding a deadline over a user's decision.
 | `CountDownLatch` | **Never.** A legacy Java pattern with no remaining uses anywhere in Ooloi. To wait for N callbacks, count them down in an atom and deliver a promise at zero. |
 | `Thread/sleep` | On the **test runner thread** only, never on the JAT — sleeping on the JAT freezes the very pulse the test is waiting for. Acceptable when a brief wait is genuinely simpler than a promise; a lifecycle promise is better whenever one is available. |
 
+### 6.5 `with-thread-pool`: draining the pool, and where mocks belong
+
 **A halted pool is not a quiesced pool.** `ig/halt-key!` on the thread pool calls `shutdown()`, which
 returns immediately rather than after the workers finish. A test asserting on state that pool workers
 mutate must wait for `awaitTermination` before reading. `with-thread-pool` does this for you — it

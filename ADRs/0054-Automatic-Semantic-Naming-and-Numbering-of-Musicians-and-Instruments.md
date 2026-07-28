@@ -101,7 +101,11 @@ Drag in a second, and the crossing numbers both — the one already there takes 
 
 **The second crossing — two becomes one — is the only time a number is removed.** Removing an instrument so that exactly one of its name remains clears that survivor's number back to `nil`: the lone survivor of a section reverts to the bare name. This is the mirror of the first crossing, and it is the sole exception to the invariant — the one case in which the automation changes an existing number, and it changes it only to `nil`. Removing an instrument that leaves *two or more* of its name renumbers nothing: the remaining numbers stand exactly as they were, holes and all.
 
+#### Deleting an instrument, or deleting the player holding it: both cross
+
 **The crossing turns on the kind's count, not on which gesture emptied it.** An instrument leaves the piece when the user deletes the instrument itself, and equally when the user deletes the *player* holding it — a musician's deletion takes its instruments with it. Both are removals, so both can carry a kind across a crossing, and both are numbering gestures: delete one of two flautists and the remaining flute reverts to the bare name exactly as it would had the flute been deleted from within its player. The rule is stated in terms of instruments because instruments are what carry numbers (§2), never to confine it to one route by which an instrument can go.
+
+So `handle-delete!` folds the numbering pass into **both** its piece-scoped musician arm and its instrument arm. Its *layout-scoped* arm is the exception, and not an inconsistency: deleting a musician row inside a Layout drops that layout's reference only, so no instrument leaves the piece and no kind changes count.
 
 The reverse empties a section back out. Delete one of those two flutes and a single flute remains, which loses its number and reverts to the bare name:
 
