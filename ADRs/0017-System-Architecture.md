@@ -92,8 +92,16 @@ structure after a refetch. Printing such a value without a depth bound recurses 
 overflows. The consequence is worse than a long message: a `StackOverflowError` is an `Error`, so it
 escapes the very handler meant to report the failure, destroying the original diagnostic and
 replacing it with a thousand frames of the printer calling itself. The bound is what makes the net
-trustworthy, and it belongs at the boundary — the only place that knows it is about to print
-something arbitrary.
+trustworthy.
+
+**The bound belongs wherever a throwable becomes text — including where the JDK does it on your
+behalf.** It is tempting to read the rule as "bound your printers", and that reading is not
+sufficient. Recovering the failure is itself enough to trigger the fault: asking a completed task
+for its outcome constructs an `ExecutionException`, and `java.lang.Throwable(Throwable cause)` sets
+`detailMessage` to `cause.toString()`. The payload is therefore walked inside JDK code, during
+recovery, before any handler of the application's own has been reached and with none of its bindings
+in scope. A net that bounds only its reporting still overflows on the way in. Both the recovery and
+the reporting carry the bounds.
 
 The net is a backstop for the genuinely unexpected. A failure that can be anticipated — an
 unreadable file, a rejected write — belongs caught at its source and surfaced as typed data the
