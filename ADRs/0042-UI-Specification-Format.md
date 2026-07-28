@@ -1750,6 +1750,38 @@ Both rules were verified at runtime against the live native menu. This is how th
 in JFA's interface declarations without forking it — and, more generally, it is the escape hatch that
 makes any future NSMenuFX defect patchable from outside ([ADR-0005](0005-JavaFX-and-Skija.md)).
 
+##### Testing against the native app menu: it is process-global, and it kills the JVM
+
+The application menu is **one per process**, installed once by `setup-macos-app-menu!`. Two
+consequences govern every test that touches it, and both have cost real debugging time.
+
+**A failed native index terminates the process.** Indexing past the end of an `NSMenu` raises an
+Objective-C `NSInternalInconsistencyException` — *"Invalid parameter not satisfying: index <
+[_itemArray count]"* — which aborts the JVM with `SIGABRT` (exit 134). It is **not** a Java exception:
+the surrounding `(try … (catch Exception _))` never sees it, no Clojure stack is printed, and the
+run dies where it stands rather than failing a check. `.numberOfItems` is available directly on the
+JFA proxy (no `Foundation/invoke` needed) and is the way to ask before indexing.
+
+**Per-manager state is not evidence that the process-global menu exists.** A UI Manager's
+`:macos-menu-items` atom is populated by `setup-macos-app-menu!` — but a *test* can populate it
+directly, and one does, to assert that `refresh-menu-text!` relabels those items. That same function
+ends by calling `set-macos-app-menu-enablement!`, which reaches into the native menu. If the process
+never installed it, the submenu is empty and the run aborts.
+
+This produces a failure with a memorably misleading signature: **the namespace passes in a suite and
+kills the JVM when run alone.** In a suite, some earlier namespace has already installed the
+process-global menu, so the native call succeeds. Alone, nothing has. It looks like load-order
+non-determinism and is nothing of the kind.
+
+So, for any test that drives `refresh-menu-text!` or otherwise reaches the app menu:
+
+- If the subject is **the native menu**, install it first — `init-menu-bar-host!`, as
+  `menu_bar_test` and `stacking_order_test` do.
+- If the subject is **something else** that merely happens to route through it — menu-item text,
+  locale refresh — stub `menus/set-macos-app-menu-enablement!`. It is a collaborator, not the
+  thing under test.
+- Never take a populated `:macos-menu-items` as licence to touch the native menu.
+
 ## Benefits
 
 ✅ **Matches event pattern** - Events already use pure maps with namespace-qualified keys  
