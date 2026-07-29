@@ -110,12 +110,29 @@ The network gRPC server is managed through standard Integrant lifecycle methods,
 
 **Start.** The host selects the **"Host Collaboration Session…"** menu item from the application's UI. This menu action calls the backend API which adds the `network-grpc-server` component to the running Integrant system via `ig/init-key`. The new component shares all backend state with the in-process server through Integrant refs to the shared components named in §Hybrid Transport Architecture above. Start and stop each publish `:collaboration-state-changed` on the frontend event bus so the menu-enablement seam re-evaluates (§Collaboration Menu Enablement); the full per-transition event flow is tabulated in §Connect / Disconnect Event Sequence.
 
-**Stop.** The network server stops via `ig/halt-key!` under either of two triggers:
+**Stop.** The network server stops via `ig/halt-key!` under any of three triggers:
 
 - **Manual termination**: the host selects the **"Terminate Collaboration Session"** menu item. If guests are currently connected, the host is presented with a confirmation dialog warning about the disconnection before the server is halted.
 - **Automatic halt**: a configurable grace period after the last external collaborator disconnects. See §Auto-Halt Grace Period Setting below for the setting name, semantics, and defaults.
+- **Application shutdown**: quitting while a session is hosted halts the server along with the rest of the system. The host does not have to terminate the session first, and guests are disconnected by a server that stopped rather than one that vanished.
 
 A new guest connection during the automatic-halt grace period cancels the pending halt — the server stays up.
+
+Shutdown reaches the server only because it is registered in the system's `::origin`
+metadata when the session starts. `ig/halt!` does not iterate the system map — it iterates
+the `::origin` config held in the map's metadata, filtered by the map's keys. A component
+added to a running system by `ig/init-key` is therefore recorded in that metadata as well
+as in the map, with its dependencies declared as `ig/ref`s: `::origin` is read only to
+order a halt, and refs are what place the server ahead of the shared state it uses.
+
+**Pitfall.** A component present in the map but absent from `::origin` is skipped in
+silence — `halt-key!` is never called, nothing is raised, and the server keeps running
+with its port bound. A quitting application exits its JVM and the operating system
+reclaims the port, so this is invisible in production and surfaces only where no process
+exits, such as a test suite, in which the abandoned server carries its port into every
+namespace that follows. The general form of the requirement, applying to any dynamic
+component, is in [INTEGRANT_COMPONENTS](../guides/INTEGRANT_COMPONENTS.md)
+§Dynamic (On-Demand) Components.
 
 **Lifecycle state diagram:**
 

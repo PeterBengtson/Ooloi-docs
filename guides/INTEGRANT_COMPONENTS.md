@@ -310,9 +310,16 @@ The pattern for dynamic components:
 
 - Their config keys live alongside the static `combined-config` keys; the `init-key` and `halt-key!` methods are normal Integrant methods.
 - The application's backend API adds the component to the running system map by calling `ig/init-key` directly, threading the live refs from the running system into the new component's config.
+- **It also registers the component in the system's `::origin` metadata**, declaring its dependencies there as `ig/ref`s rather than as the live components threaded into its config. This is what allows a system-wide `ig/halt!` to reach it, and what orders it correctly against the state it depends on.
 - `ig/halt-key!` removes the component when its lifecycle ends; the next reference to the system map omits the entry.
 - The `:status :running` invariant applies while the component is running; the system-health functions (§10) walk every key in the system map uniformly — they need no special handling for dynamic components.
 - The §30 conformance test enforces the invariant on whatever is present in the running system: components added dynamically during the test must comply too.
+
+**The `::origin` registration is the step that is easy to omit, and omitting it fails silently.** `ig/halt!` does not walk the system map. It walks the `::origin` config in the map's metadata, filtered by the map's keys — so a component that was only `assoc`ed in is not part of what halt considers. Nothing raises; `halt-key!` is simply never called, and whatever the component holds — a bound port, an open channel, a running thread — it keeps holding.
+
+Two properties make this worth stating explicitly rather than leaving to be discovered. It is **invisible in production**, because an exiting JVM has the operating system reclaim what the component failed to release, so the application appears to shut down cleanly. And it is **loud in a test suite**, where no process exits between namespaces: the resource survives into everything that follows, and the failure surfaces far from its cause, as a later namespace unable to acquire something an earlier one never let go of.
+
+Declare the dependencies in that metadata entry as `ig/ref`s, not as the live components passed to `ig/init-key`. Integrant reads `::origin` only to compute halt order, and refs are what create the edges — without them the component has no declared dependencies and may be halted after the state it uses.
 
 The same pattern can host future dynamic components — a future HTTP REST gateway, a future MIDI listener, anything that is not part of every application run but follows the Integrant lifecycle when it does run.
 
