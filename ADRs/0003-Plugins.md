@@ -116,6 +116,32 @@ We will implement a robust plugin system as a central architectural component of
 - **Type Fidelity Preservation**: Ratios, keywords, custom types maintain semantics across network
 - **No Schema Changes**: Static unified schema never needs regeneration
 
+#### Namespace Naming Requirement for Plugin Defrecords
+
+**A Clojure plugin's namespaces must be named with hyphens, never with literal underscores.**
+
+A defrecord crosses the wire as its Java class name, and Clojure *munges* a hyphen in a namespace
+name into an underscore in the compiled package and file name: the namespace
+`my.plugin.custom-notation` produces the class `my.plugin.custom_notation.CustomNotation`.
+Reconstruction reverses that. `resolve-defrecord-constructor`, in
+`shared/src/main/clojure/ooloi/shared/grpc/clojure_conversion.clj`, demunges the package segment
+back into a namespace name before requiring it and resolving `map->CustomNotation`.
+
+Munging is not invertible. Given only `my.plugin.custom_notation`, nothing distinguishes a
+hyphenated namespace from one containing a literal underscore, so the demunge necessarily assumes
+the hyphen. A plugin that names its namespaces with underscores will have its records arrive as
+plain maps instead of records — and *silently*, because an unresolvable constructor falls back to
+the map form by design. That fallback is deliberate and valuable: it lets data from an unknown
+plugin travel intact rather than failing. It also means a naming mistake degrades quietly rather
+than announcing itself, which is why the requirement is stated here rather than left to be
+discovered.
+
+**Scope: this applies to Clojure defrecords only.** The `:defrecord-val` wire path is entered
+solely for values satisfying `record?`. A plugin written in Java, Kotlin, Scala or any other JVM
+language sends its data as maps and collections, which round-trip with perfect fidelity and
+without any namespace resolution whatsoever. Record *reconstruction* is a Clojure-defrecord
+facility; the rest of the plugin interface remains language-agnostic as described above.
+
 **Plugin Use Cases Enabled**:
 - **Streaming Data**: MIDI, audio analysis, real-time collaboration data
 - **Custom Notation**: Microtonal systems, extended techniques, cultural notation
