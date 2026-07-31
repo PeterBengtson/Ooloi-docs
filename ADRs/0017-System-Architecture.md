@@ -79,6 +79,16 @@ therefore a decision the boundary makes rather than a hardcoded call. This gatin
 rule for all notifications, stated in [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md)
 §Notification Model.
 
+**There is no logging framework, and nothing may depend on one.** Ooloi carries no logging
+dependency — by decision, not omission. In the combined desktop application the surface *is* the
+notification tier, and the frontend acquires no log surface at all. In the standalone backend
+server, which has no frontend, the surface is stderr, and writing to a text file may additionally be
+made *activatable*; the same option may later be offered for the combined application. Such a file
+is an additional sink and never a required one: no code may assume a log exists, and no diagnostic
+may be reachable only through one. This keeps a consumer application free of machinery it does not
+need, while leaving the server free to acquire a file sink without disturbing the boundary — which
+is precisely why the routing is a decision the boundary makes.
+
 **The exception detail is shown to the user, deliberately.** The message resolves through `tr` like
 every user-facing string ([ADR-0039](0039-Localisation-Architecture.md)), carrying the exception
 text as a parameter rather than by concatenation. A user who can see what failed can report it; a

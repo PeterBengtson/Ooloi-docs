@@ -223,7 +223,7 @@ Context switching is **asymmetric** by design.
 4. UI shows collaboration mode with the new host name and guest role.
 
 **Involuntary Reversion** (remote → in-process, ADR-0040):
-1. Remote connection is lost (server shutdown, network partition, etc.); the response-observer's `onCompleted` fires on the client.
+1. Remote connection is lost. gRPC delivers exactly one terminal event on the client's response observer, never both: a graceful server close (`ig/halt-key!`, an orderly shutdown) delivers `onCompleted`, while an abrupt loss — network partition, TLS failure, server death — delivers `onError`. **Both arms revert.** Neither may leave the client configured for a transport that is gone.
 2. The observer's `revert-fn` posts a persistent red "host disconnected" notification, then invokes `switch-to! :in-process` automatically. No intent confirmation; no gate.
 3. The recursive `switch-to!` clears `subscription-state` and publishes the same three switch events as a voluntary Disconnect (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection), so the collaboration menu reverts to `:local` enablement and the Tier 1 backend cache clears.
 4. UI returns to standalone mode; the red notification persists until the user dismisses it.
@@ -283,7 +283,7 @@ Transport switching from the frontend is mediated by a single named operation on
 
 These are frontend-internal event-bus publishes that fire *after* the gRPC re-registration completes; they are distinct from the gRPC wire events of the connection handshake itself (ADR-0024 §Connection Lifecycle). The end-to-end client/server sequence for a guest connect and disconnect — wire handshake plus these frontend publishes plus the user notification — is shown in §Connect / Disconnect Event Sequence below.
 
-ADR-0031 §Subscription State Management's resubscribe flow is for **single-backend reconnection** after a network blip (same backend, restored channel) — not for transport switching. The piece-ids tracked there are meaningful only against the backend that issued them.
+ADR-0031 §Subscription State Management records which pieces this client holds. It is **not** a recovery mechanism: there is no resubscribe-after-a-blip flow, because a lost connection reverts rather than reconnects (§Involuntary Reversion, [ADR-0040](0040-Single-Authority-State-Model.md) §Deployment Model). The record serves this operation instead — as the outbound precondition below, and cleared on every completed switch, since the piece-ids tracked there are meaningful only against the backend that issued them.
 
 **Targets**:
 
@@ -311,7 +311,7 @@ Each collaboration transition produces a fixed sequence of gRPC wire events (the
 | Guest connect (in-process → remote) | `Disconnect`(in-process, best-effort); `registerClient`(remote); `client-registration-confirmed`; `server-client-connected` broadcast | `:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` | green "Connected to <host>" (guest) |
 | Switch hosts (remote → remote) | `Disconnect`(old remote); `registerClient`(new remote); `client-registration-confirmed`; `server-client-connected` broadcast | the same three | green "Connected to <host>" (guest) |
 | Voluntary disconnect (remote → in-process) | `Disconnect`(remote); `server-client-disconnected` broadcast; `registerClient`(in-process) | the same three | info "Disconnected from <host>" (guest) |
-| Involuntary reversion (remote → in-process) | `onCompleted` (server closed the stream); `registerClient`(in-process) | the same three | red "Host disconnected", persistent (guest) |
+| Involuntary reversion (remote → in-process) | `onCompleted` (graceful close) or `onError` (abrupt loss); `registerClient`(in-process) | the same three | red "Host disconnected", persistent (guest) |
 | Host start | none on the wire — `network-grpc-server` added to the running system | `:collaboration-state-changed` | green "Hosting at <host:port>", persistent (host) |
 | Terminate / auto-halt | none on the wire — `network-grpc-server` removed | `:collaboration-state-changed` | green "Session stopped" (+ red ousted-guests, if any) (host) |
 
@@ -346,8 +346,8 @@ sequenceDiagram
     BUS->>SUB: IL refetch · menu → :local · clear Tier 1 cache
     FE->>U: info "Disconnected from <host>"
 
-    Note over U,SUB: Involuntary reversion (server closed the stream)
-    SRV-->>FE: onCompleted  [PHASE 7 backstop]
+    Note over U,SUB: Involuntary reversion (the connection is lost)
+    SRV-->>FE: onCompleted (graceful) or onError (abrupt)  [PHASE 7 backstop]
     FE->>U: red "Host disconnected" (persistent)
     FE->>SRV: registerClient on in-process backend
     FE->>BUS: publish :instrument-library-changed, :collaboration-state-changed, :backend-changed
@@ -387,7 +387,7 @@ Connect and disconnect events are surfaced to the user primarily through notific
 | Guest left | Host | info | ephemeral | event-bus subscriber on `:server-client-disconnected` |
 | Connected to remote | Guest | success (green) | ephemeral | `switch-to!` success branch when target is a remote map |
 | Voluntary disconnect | Guest | info | ephemeral | "Disconnect" action handler after the intent confirmation completes the switch |
-| Involuntary disconnect | Guest | error (red) | persistent until the user dismisses it | `switch-to!` revert-fn (response-observer `onCompleted` from the remote server) |
+| Involuntary disconnect | Guest | error (red) | persistent until the user dismisses it | `switch-to!` revert-fn (response-observer `onCompleted` or `onError` from the remote server) |
 
 All notification text uses `tr` for i18n. Host-side joined/left notifications include the guest's display name (when supplied via the Connect dialog) or the remote IP/port as the fallback identifier. Connect/disconnect notifications on the guest side include the host:port the guest was connected to.
 

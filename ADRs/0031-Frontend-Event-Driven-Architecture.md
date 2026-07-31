@@ -76,7 +76,7 @@ The frontend must handle two fundamentally different event sources with incompat
 
 **Respect for Timing Characteristics:** JavaFX events are synchronous, immediate, and deterministic. Backend events are asynchronous, network-delayed, and distributed. These are fundamentally different event models that should not be conflated. JavaFX's native event infrastructure is optimized for local interactions (mouse clicks, repaints, timers) and forcing it to handle large-scale pub/sub over the network fights its design assumptions.
 
-**Clear Failure Boundaries:** gRPC stream failures, reconnection logic, and backpressure handling are protocol concerns that belong in a dedicated component, not mixed into JavaFX event handling. When the network fails, the Event Router handles it; the UI continues processing local events normally.
+**Clear Failure Boundaries:** gRPC stream failures, connection lifecycle, and backpressure handling are protocol concerns that belong in a dedicated component, not mixed into JavaFX event handling. When the network fails, the Event Router handles it; the UI continues processing local events normally.
 
 **Architectural Alignment:** ADR-0024 already provides per-client FIFO event delivery via backend drainer threads. The Event Router simply receives ordered events and routes them - no complex synchronization needed. ADR-0022 specifies invalidation-based data synchronization with pull-based fetching, which requires protocol adaptation (events → invalidations → fetches) rather than event translation. Backend computes all layout via ADR-0028 - all clients must see those results.
 
@@ -216,7 +216,7 @@ Backend events are notifications of staleness, not data carriers. When rendering
 **Key Properties:**
 - Category aggregation: One `eb/publish!` per event category batch
 - Pull-based fetching: Client requests rendering data at appropriate hierarchy level when needed
-- Simple reconnection: Just invalidate stale data and refetch
+- Simple recovery: invalidate stale data and refetch; no replay, no catchup
 - Precise batching: Invalidations 50-100ms, cursors 33ms, playback ≤16ms
 
 **What This Architecture Does NOT Include:**
@@ -308,9 +308,9 @@ Integrant component (`:ooloi.frontend.components/event-bus`), depending only on 
 - No direct category handlers — category processing happens through frontend event bus subscribers mediated by the UI Manager
 - Dependencies: **grpc-clients** (for the event stream) and **event-bus** (for publishing batched events)
 - Manages lifecycle with Integrant
-- Subscription management: The **Windowing System is authoritative** — it initiates subscribe/unsubscribe calls when pieces are opened or closed. The Event Router is a service that executes these requests, proxies them to the backend, and remembers the active subscription set. On reconnect, the Router autonomously replays its remembered set (re-subscribing to all pieces that were active at disconnect). On piece close during disconnect, the unsubscribe call updates the Router's internal state so the piece is not resubscribed on reconnect.
+- Subscription management: The **Windowing System is authoritative** — it initiates subscribe/unsubscribe calls when pieces are opened or closed. The Event Router is a service that executes these requests, proxies them to the backend, and remembers the active subscription set. The remembered set is never replayed onto a new connection: `switch-to!` clears it, because piece-ids are issued by, and meaningful only against, the backend that issued them.
 - On disconnect: Stops receiving events, publishes `:system` disconnect to bus
-- On reconnect: Replays subscription set, resumes receiving events, no special protocol needed
+- On involuntary loss: operation reverts to the in-process backend ([ADR-0040](0040-Single-Authority-State-Model.md) §Deployment Model, [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Involuntary Reversion). Reconnecting is the user's decision; nothing is resubscribed automatically
 
 #### 3. Rendering Data Manager
 - Maintains VPD-indexed hierarchy mirroring backend visual structure:
@@ -510,44 +510,6 @@ sequenceDiagram
     JAT->>JAT: Invalidate Picture, trigger repaint
 
     Note over U2,JAT: Total latency: 86-157ms<br/>(batch 50-100ms + fetch 20-40ms + render 16ms)
-```
-
-#### Sequence Diagram: Reconnection Flow
-
-```mermaid
-sequenceDiagram
-    participant NET as Network
-    participant ER as Event Router
-    participant BUS as Frontend<br/>Event Bus
-    participant UM as UI Manager
-    participant BE as Backend
-    participant RDM as Rendering<br/>Data Manager
-    participant FC as Fetch<br/>Coordinator
-    participant UI as UI Status
-
-    NET->>ER: Connection lost
-    ER->>ER: Stop receiving events
-    ER->>BUS: eb/publish! :system [disconnected]
-    BUS->>UM: UI Manager handler
-    UM->>UI: Show "Disconnected"
-    Note over NET: 30 seconds pass
-    NET->>ER: Connection restored
-    ER->>BE: Reconnect + resubscribe (remembered piece set)
-    BE->>ER: Acknowledge subscriptions
-    Note over ER: no backend event says "everything is stale" —<br/>the client concludes it, per piece it holds
-    ER->>UM: mark this client's cached data stale
-    UM->>RDM: Invalidate data for each resubscribed piece
-    RDM->>FC: Queue viewport fetches<br/>(CRITICAL priority)
-    FC->>BE: Parallel gRPC fetches
-    BE->>FC: Current paintlists
-    FC->>RDM: Update data
-    FC->>UI: fx/run-later! → repaint
-    ER->>BUS: eb/publish! :system [connected]
-    BUS->>UM: UI Manager handler
-    UM->>UI: Show "Connected"
-    BE->>ER: Resume event stream
-
-    Note over NET,UI: No event replay needed<br/>Just fetch current state
 ```
 
 #### State Diagram: Paintlist Lifecycle
@@ -961,7 +923,7 @@ are in [§Event Type Taxonomy](#event-type-taxonomy); end-to-end walkthroughs ar
 
 | Event | Consumer | Reaction |
 |---|---|---|
-| `:server-*` (maintenance, shutdown, status, client connected/disconnected) | **connection manager**, and the notification manager for anything user-visible | update connection state, possibly begin reconnection |
+| `:server-*` (maintenance, shutdown, status, client connected/disconnected) | **connection manager**, and the notification manager for anything user-visible | update connection state |
 | `:server-warning` · `:server-info` | **notification manager** | localise, raise a toast or banner |
 | `:client-registration-confirmed` | **event client** | complete the handshake and compute this client's clock offset from `:server-timestamp` |
 | `:instrument-library-changed` | **Instrument Library cache** | refetch if the window is open, else mark stale and defer |
@@ -1008,23 +970,17 @@ the JAT.
 
 **Note:** No backend events involved - pure frontend demand loading
 
-#### Example 3: Reconnection After Network Failure
+#### Example 3: Losing a Remote Connection
 
 1. Network drops, Event Router detects
 2. Stops receiving events
 3. Event Router publishes `:system` disconnect event to bus → UI Manager shows "Disconnected"
 4. Rendering data remains as-is
-5. Network restored after 30 seconds
-6. Event Router reconnects, resubscribes to pieces
-7. Resumes receiving invalidation events
-8. No backend event announces wholesale staleness — the client concludes it: for each piece in the Event Router's remembered subscription set, the UI Manager marks that piece's rendering data stale
-9. Fetch Coordinator queues CRITICAL priority for viewport elements (stale data visible)
-10. Background threads make gRPC API calls for current paintlists
-11. Fetches complete → update rendering data → `fx/run-later!` triggers repaint
-12. Event Router publishes `:system` connected event to bus → UI Manager shows "Connected"
-13. Normal event flow resumes
+5. Operation reverts to the in-process backend, with a persistent notification ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Involuntary Reversion)
+6. The remembered subscription set is cleared — its piece-ids belonged to the backend that is gone
+7. Nothing is resubscribed and no events are replayed; the user reconnects when they choose
 
-**Result:** Simple reconnection - invalidate everything, refetch viewport
+**Result:** reversion, not recovery. There is no catchup protocol because there is nothing to catch up on.
 
 ### Key Architectural Properties
 
@@ -1044,9 +1000,9 @@ the JAT.
 
 **Parallelism Control:** Different pieces can fetch in parallel. Same piece fetches can run concurrently (reads are idempotent; last fetch wins). gRPC streaming naturally handles backpressure. Fetch Coordinator manages thread pool.
 
-**Simple Reconnection:** No event replay, no sync barriers, no sequence tracking. On reconnect: invalidate stale data, fetch what's needed. Normal fetch mechanism handles reconnection transparently. Connection-oriented streams - each connection is fresh.
+**No Catchup Protocol:** No event replay, no sync barriers, no sequence tracking. A connection that is lost is not restored — operation reverts to the in-process backend and the user reconnects when they choose. Connection-oriented streams: each connection is fresh, and a fresh connection needs nothing from the one before it.
 
-**Clear Failure Boundaries:** gRPC failures contained in Event Router. Paintlist fetches can fail independently (retry logic in Fetch Coordinator). UI remains responsive during network issues. Reconnection is just "resume receiving events + refetch stale data".
+**Clear Failure Boundaries:** gRPC failures contained in Event Router. Paintlist fetches can fail independently (retry logic in Fetch Coordinator). UI remains responsive during network issues.
 
 **Phase Separation:** Event Architecture: delivers events via the bus. UI Manager: dispatches reactions to subsystems. Windowing System: implements notification UI, collaboration UI, etc. Event Router doesn't know about toasts, banners, or window layout. Clean separation of concerns.
 
@@ -1075,9 +1031,9 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 
 **Disconnection:** Connection lost → Event Router detects → Stops receiving events → Publishes `:system` disconnect to bus → UI Manager shows connection status → Rendering data remains as-is
 
-**Reconnection:** Connection restored → Event Router resubscribes to the pieces in its remembered subscription set → Resumes receiving invalidation events → the client marks each resubscribed piece's rendering data stale (no backend event says so; the client concludes it) → Fetch Coordinator queues HIGH priority for viewport → Normal fetch mechanism requests fresh paintlists
+**Involuntary loss:** Operation reverts to the in-process backend ([ADR-0040](0040-Single-Authority-State-Model.md) §Deployment Model). The remembered subscription set is cleared, since its piece-ids were issued by the backend that is gone. No automatic reconnection, no queue replay, no reconciliation — the user decides when to reconnect, and does so through the same "Connect to other Ooloi…" flow as any other connection.
 
-**Key insight:** Clients don't need to "catch up" on missed events. They just fetch current state when they need it.
+**Key insight:** Clients never need to "catch up" on missed events. A new connection fetches current state when it needs it.
 
 ### Subscription Lifecycle
 
@@ -1145,9 +1101,8 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 - Invalidation rate
 - Fetch-triggered invalidations vs event-triggered
 
-**Reconnection Performance:** Simple approach (invalidate all on reconnect):
-- Reconnect time: <1s (exponential backoff)
-- Viewport refetch: 20-40ms per hierarchy element
+**Connect Performance:** connecting to a backend loads the viewport like any other first fetch:
+- Viewport fetch: 20-40ms per hierarchy element
 - Full viewport load: 200-400ms (10 measures)
 - User sees placeholders → content appears quickly
 
@@ -1236,7 +1191,7 @@ This creates a **write-once, read-many** pattern where paintlist data is fetched
 3. **Batching Timings:** Invalidations 50-100ms, cursors 33ms, playback ≤16ms, system immediate
 4. **Category Aggregation:** One `eb/publish!` per category batch, not per event
 5. **Data Model:** Pull-based - events notify staleness, fetches are normal gRPC API calls
-6. **Reconnection:** No replay, no sequence numbers - just invalidate and refetch
+6. **Connection loss:** revert to the in-process backend; no automatic reconnection, no replay, no sequence numbers — the user reconnects when they choose
 7. **Connection Model:** Connection-oriented - each gRPC stream connection is fresh
 8. **Echo Suppression:** Not used - all clients must see backend-computed layout results
 9. **VPD Granularity:** Fetch at exact level specified by event VPD. Paintlists are independent at each hierarchy level, not nested. API supports fetching any specific paintlist.
@@ -1273,11 +1228,11 @@ Can be consumed directly by Grafana (native JSON data source support) for unifie
 
 19. **Fetch Failure Handling:** Per-VPD exponential backoff with jitter to handle transient network failures gracefully. **Retry strategy:** Initial retry after 200ms, then 500ms, 1s, 2s, capped at 5s between retries. Jitter (±20%) prevents thundering herd if many fetches fail simultaneously. **Max retries:** 5 attempts, then mark VPD as stale+error state and stop retrying. **Recovery:** Next invalidation event for that VPD or explicit user action (refresh/retry) triggers fresh fetch attempt with reset backoff. **User notification:** Route fetch-failure events to Notification Manager (Windowing System). UI implementation deferred to - may show toast notification, status bar indicator, or inline error marker depending on failure severity and duration. Temporary failures (1-2 retries succeed) silent to user. Persistent failures (all retries exhausted) trigger user-visible notification. Rationale: Exponential backoff handles temporary network hiccups without user awareness. Jitter prevents synchronized retry storms. Capped backoff ensures reasonable retry latency. separation keeps Event Router focused on protocol, not UI concerns.
 
-20. **Component Integration and Dependency Injection:** Components wire together via Integrant dependency injection with clear boundaries. **Frontend Event Bus (Integrant Component):** Depends on `thread-pool` (Integrant ref). Pure data structure `{:pool pool :subscribers (atom {})}` created during `init-key`. Both the UI Manager and Event Router receive it as an Integrant dependency. **Event Router (Integrant Component):** Depends on `grpc-clients` (Integrant ref) and `event-bus` (Integrant ref). Pure pipeline for category-routed events: categorise → batch → `eb/publish!` to frontend event bus; per-piece events (`:piece-structure-changed`) are dispatched directly to the subscribing window. No direct category handlers — category processing happens through bus subscribers mediated by the UI Manager. Manages subscription state atom internally for reconnection. **Rendering Data Manager (NOT Integrant Component):** Pure data structure: 4 atoms + pure functions. Created via simple factory function `(create-rendering-data-manager)`. Owned by the Fetch Coordinator. Rationale for NOT being component: No lifecycle needed (atoms don't require cleanup), no stateful resources (no connections, threads, files), purely functional interface. **Fetch Coordinator (Integrant Component):** Depends on `grpc-clients` (Integrant ref), `thread-pool` (Integrant ref to shared Claypoole pool). Creates and owns the Rendering Data Manager. Uses shared pool for concurrent fetches (max 4 via CAS-based slot claiming). Requires component status because it holds mutable dispatch state (in-flight counter, priority queues) requiring cleanup on halt. **Integrant Configuration:** `{:ooloi.shared.components/thread-pool {:size 4}, :ooloi.frontend.components/event-bus {:thread-pool (ig/ref :ooloi.shared.components/thread-pool)}, :ooloi.frontend.components/grpc-clients {}, :ooloi.frontend.components/fetch-coordinator {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients) :thread-pool (ig/ref :ooloi.shared.components/thread-pool)}, :ooloi.frontend.components/event-router {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients) :event-bus (ig/ref :ooloi.frontend.components/event-bus)}, :ooloi.frontend.components/ui-manager {:event-bus (ig/ref :ooloi.frontend.components/event-bus)}}`. Rationale: The Event Router publishes to the bus and the UI Manager subscribes. Neither needs direct references to downstream subsystems (RDM, FC, etc.) — bus-mediated delivery decouples them. This provides clean dependency management without global state, enables testing with mock dependencies, and follows Integrant lifecycle patterns.
+20. **Component Integration and Dependency Injection:** Components wire together via Integrant dependency injection with clear boundaries. **Frontend Event Bus (Integrant Component):** Depends on `thread-pool` (Integrant ref). Pure data structure `{:pool pool :subscribers (atom {})}` created during `init-key`. Both the UI Manager and Event Router receive it as an Integrant dependency. **Event Router (Integrant Component):** Depends on `grpc-clients` (Integrant ref) and `event-bus` (Integrant ref). Pure pipeline for category-routed events: categorise → batch → `eb/publish!` to frontend event bus; per-piece events (`:piece-structure-changed`) are dispatched directly to the subscribing window. No direct category handlers — category processing happens through bus subscribers mediated by the UI Manager. Manages the subscription state atom internally. **Rendering Data Manager (NOT Integrant Component):** Pure data structure: 4 atoms + pure functions. Created via simple factory function `(create-rendering-data-manager)`. Owned by the Fetch Coordinator. Rationale for NOT being component: No lifecycle needed (atoms don't require cleanup), no stateful resources (no connections, threads, files), purely functional interface. **Fetch Coordinator (Integrant Component):** Depends on `grpc-clients` (Integrant ref), `thread-pool` (Integrant ref to shared Claypoole pool). Creates and owns the Rendering Data Manager. Uses shared pool for concurrent fetches (max 4 via CAS-based slot claiming). Requires component status because it holds mutable dispatch state (in-flight counter, priority queues) requiring cleanup on halt. **Integrant Configuration:** `{:ooloi.shared.components/thread-pool {:size 4}, :ooloi.frontend.components/event-bus {:thread-pool (ig/ref :ooloi.shared.components/thread-pool)}, :ooloi.frontend.components/grpc-clients {}, :ooloi.frontend.components/fetch-coordinator {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients) :thread-pool (ig/ref :ooloi.shared.components/thread-pool)}, :ooloi.frontend.components/event-router {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients) :event-bus (ig/ref :ooloi.frontend.components/event-bus)}, :ooloi.frontend.components/ui-manager {:event-bus (ig/ref :ooloi.frontend.components/event-bus)}}`. Rationale: The Event Router publishes to the bus and the UI Manager subscribes. Neither needs direct references to downstream subsystems (RDM, FC, etc.) — bus-mediated delivery decouples them. This provides clean dependency management without global state, enables testing with mock dependencies, and follows Integrant lifecycle patterns.
 
-21. **Subscription State Management:** Event Router maintains internal subscription state to enable autonomous reconnection without external coordination. **State Structure:** `{:subscription-state (atom #{piece-id-1 piece-id-2 ...})}`. **Subscribe Operation:** Proxy subscription request to backend via gRPC, on success add piece-id to subscription-state atom, return result to caller. **Unsubscribe Operation:** Proxy unsubscription request to backend via gRPC, on success remove piece-id from subscription-state atom, return result to caller. **Reconnection Flow:** Event Router detects connection loss (gRPC stream error), connection restored (automatic or manual), Event Router iterates @subscription-state, for each piece-id calls backend subscribe-to-piece-events, resumes normal event processing. **API Surface:** `(subscribe-to-piece event-router piece-id handler)` subscribes to a piece's events: it proxies the subscription to the backend, tracks the piece-id for reconnection, and registers `handler` against that piece-id so the Event Router dispatches that piece's per-piece events (currently `:piece-structure-changed`) directly to it — not via a shared category. `(unsubscribe-from-piece event-router piece-id)` unsubscribes from piece events, proxies to backend, removes the handler, and updates tracking. Both implemented in `ooloi.frontend.components.event-router` namespace. Rationale: Event Router needs subscription state for autonomous reconnection. Alternative considered: External coordinator tracks subscriptions and calls Event Router after reconnect - rejected because it distributes reconnection logic across multiple components and requires coordination protocol. Internal state keeps reconnection logic localized and self-contained. State is simple (set of piece-ids), requires no persistence (subscriptions are session-scoped), and enables Event Router to be self-sufficient for connection management per reconnection scenarios described in this ADR.
+21. **Subscription State Management:** Event Router maintains an internal record of the pieces this client is subscribed to. **State Structure:** `{:subscription-state (atom #{piece-id-1 piece-id-2 ...})}`. **Subscribe Operation:** Proxy subscription request to backend via gRPC, on success add piece-id to subscription-state atom, return result to caller. **Unsubscribe Operation:** Proxy unsubscription request to backend via gRPC, on success remove piece-id from subscription-state atom, return result to caller. **API Surface:** `(subscribe-to-piece event-router piece-id handler)` subscribes to a piece's events: it proxies the subscription to the backend, records the piece-id, and registers `handler` against that piece-id so the Event Router dispatches that piece's per-piece events (currently `:piece-structure-changed`) directly to it — not via a shared category. `(unsubscribe-from-piece event-router piece-id)` unsubscribes from piece events, proxies to backend, removes the handler, and updates the record. Both implemented in `ooloi.frontend.components.event-router` namespace. **Rationale:** the record exists for transport switching, not for recovery. `switch-to!` consults it as an outbound precondition — a switch from the in-process backend to a remote one is refused while local pieces remain open, since local pieces are save-state-bearing and must be closed deliberately ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Frontend Reconnection) — and clears it on every completed switch, because piece-ids are issued by, and meaningful only against, the backend that issued them. The state is simple (a set of piece-ids) and requires no persistence: subscriptions are session-scoped and do not survive a change of backend.
 
-22. **Component API Surfaces:** Clear API boundaries between components enable testing and future evolution. **Frontend Event Bus API:** `(create-event-bus pool)` returns `{:pool pool :subscribers (atom {})}`. `(subscribe! bus category handler-fn)` registers handler for a category. `(unsubscribe! bus category handler-fn)` removes handler. `(publish! bus category events)` dispatches events to all category subscribers via Claypoole futures. **Rendering Data Manager API:** `(create-rendering-data-manager)` returns `{:page-views (atom {}) :system-views (atom {}) :staff-views (atom {}) :measure-views (atom {})}`. `(mark-stale! rdm vpd)` marks paintlist at VPD as stale, returns nil. `(update-paintlist! rdm vpd paintlist)` updates paintlist at VPD, returns nil. `(get-paintlist rdm vpd)` gets paintlist at VPD, returns paintlist or nil if missing/stale. `(is-stale? rdm vpd)` checks if paintlist at VPD is stale, returns boolean. RDM is a pure data cache (atoms) — updates happen on background threads; only the subsequent scene graph repaint uses `fx/run-later!`. **Fetch Coordinator API:** `(queue-fetch! fc vpd priority)` queues paintlist fetch at priority level (`:critical`, `:high`, `:normal`, `:low`), returns nil immediately, fetch happens asynchronously on background thread, completion updates RDM on background thread and schedules repaint via `fx/run-later!`. **Event Router API:** `(subscribe-to-piece event-router piece-id handler)` subscribes to a piece's events — proxies to backend, tracks for reconnection, and registers `handler` for per-piece dispatch of that piece's events to the subscribing window. `(unsubscribe-from-piece event-router piece-id)` unsubscribes — proxies to backend, removes the handler, updates tracking. Rationale: Explicit API surfaces enable component testing in isolation with mocks, clear contracts for future maintainers, API evolution without implementation coupling. These APIs are minimal — only operations needed by collaborating components. Internal operations (aggregator flushing, thread pool management) remain encapsulated.
+22. **Component API Surfaces:** Clear API boundaries between components enable testing and future evolution. **Frontend Event Bus API:** `(create-event-bus pool)` returns `{:pool pool :subscribers (atom {})}`. `(subscribe! bus category handler-fn)` registers handler for a category. `(unsubscribe! bus category handler-fn)` removes handler. `(publish! bus category events)` dispatches events to all category subscribers via Claypoole futures. **Rendering Data Manager API:** `(create-rendering-data-manager)` returns `{:page-views (atom {}) :system-views (atom {}) :staff-views (atom {}) :measure-views (atom {})}`. `(mark-stale! rdm vpd)` marks paintlist at VPD as stale, returns nil. `(update-paintlist! rdm vpd paintlist)` updates paintlist at VPD, returns nil. `(get-paintlist rdm vpd)` gets paintlist at VPD, returns paintlist or nil if missing/stale. `(is-stale? rdm vpd)` checks if paintlist at VPD is stale, returns boolean. RDM is a pure data cache (atoms) — updates happen on background threads; only the subsequent scene graph repaint uses `fx/run-later!`. **Fetch Coordinator API:** `(queue-fetch! fc vpd priority)` queues paintlist fetch at priority level (`:critical`, `:high`, `:normal`, `:low`), returns nil immediately, fetch happens asynchronously on background thread, completion updates RDM on background thread and schedules repaint via `fx/run-later!`. **Event Router API:** `(subscribe-to-piece event-router piece-id handler)` subscribes to a piece's events — proxies to backend, records the piece-id, and registers `handler` for per-piece dispatch of that piece's events to the subscribing window. `(unsubscribe-from-piece event-router piece-id)` unsubscribes — proxies to backend, removes the handler, updates tracking. Rationale: Explicit API surfaces enable component testing in isolation with mocks, clear contracts for future maintainers, API evolution without implementation coupling. These APIs are minimal — only operations needed by collaborating components. Internal operations (aggregator flushing, thread pool management) remain encapsulated.
 
 ### Outstanding
 

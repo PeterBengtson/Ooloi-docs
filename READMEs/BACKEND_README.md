@@ -421,19 +421,19 @@ Error: Missing required configuration: piece-manager dependency
 - **12**: Configuration error (invalid or missing configuration)
 - **13**: Missing dependency (required services unavailable)
 - **14**: Resource exhaustion (insufficient system resources)
-- **1**: Generic failure (check application logs)
+- **1**: Generic failure (check console output)
 
 #### Development vs Production
 
 **Development Mode**:
 - Use `lein run` with command-line arguments
 - Automatic code reloading available
-- Debug logging enabled by default
+- Diagnostics print to the console — Ooloi carries no logging framework
 
 **Production Mode**:
 - Use standalone JAR with environment variables
 - Optimized performance settings
-- Structured logging for monitoring
+- Health and statistics endpoints for monitoring (see below)
 
 ### Monitoring and Health
 
