@@ -36,6 +36,15 @@ Implemented
   - [Build-Time Verification: Custom Leiningen Task](#build-time-verification-custom-leiningen-task)
   - [Dependency Summary](#dependency-summary)
 - [Invariants](#invariants)
+  - [1. Backend never emits localised strings](#1-backend-never-emits-localised-strings)
+  - [2. Frontend contains zero inline user-facing strings](#2-frontend-contains-zero-inline-user-facing-strings)
+  - [3. All localisation through a single API](#3-all-localisation-through-a-single-api)
+  - [4. Named parameters only](#4-named-parameters-only)
+  - [5. No sentence assembly from fragments](#5-no-sentence-assembly-from-fragments)
+  - [6. No localisation logic in protocol, persistence, or collaboration paths](#6-no-localisation-logic-in-protocol-persistence-or-collaboration-paths)
+  - [7. No computed keys](#7-no-computed-keys)
+  - [8. PO files are the sole translator interface](#8-po-files-are-the-sole-translator-interface)
+  - [9. Every bundled catalogue is grammatically correct for every value of `n`](#9-every-bundled-catalogue-is-grammatically-correct-for-every-value-of-n)
 - [Documentation](#documentation)
 - [Out of Scope](#out-of-scope)
 - [Consequences](#consequences)
@@ -492,13 +501,19 @@ Four checks, all implemented in `ooloi.shared.i18n.verify`:
 | Plural arity | `detect-plural-arity-mismatches` | an entry with a different number of `msgstr[N]` forms than its own header declares | crash, or a silently wrong form |
 | Rule resolution | `detect-unknown-plural-rules` | a `Plural-Forms` rule with no implementation in `tr/plural-rules` | that locale renders form 0 for **every** count, silently |
 | Rule range | `detect-plural-range-violations` | a header disagreeing with itself — its rule selecting a form index its own `nplurals` forbids | over-indexes even a correctly sized entry |
-| Count dropped | `detect-count-dropping-forms` | a form the rule reaches at n ≥ 2 that states no count, where another form of the entry does | a selection of 21 asks "Delete this stave?"; the correct forms sit unreachable |
+| Count dropped | `detect-count-dropping-forms` | a form the rule selects for more than one count that states no count | a selection of 21 asks "Delete this stave?"; the correct forms sit unreachable |
 
 None of the four is visible to the PO parser or to the loader — each is valid PO syntax — so they surface only in use, as a wrong form or as no form at all. That is why they are build-time gates rather than runtime concerns, and why they fail in both modes.
 
-The count-dropped check derives the locales it applies to from each catalogue's own rule rather than from a list: a form reached only at n=1 is exempt, which keeps the English singular legitimate, while Ukrainian and Icelandic select form 0 for 1, 21, 31, … and are therefore held to it. A locale added later with a Slavic-shaped rule is covered without being named.
+The count-dropped check names no locales at all. Its criterion is a property of each form's **domain** — the set of counts the catalogue's own rule sends to it:
 
-**Known limit.** The count-dropped check compares an entry's forms against each other, so it needs at least one form that states the count before it can say anything. A single-form locale (`ja_JP`, `ko_KR`, `zh_CN`) whose sole form omits the count states it nowhere and is invisible to the check. Only a comparison against the English source could see it, and none is made.
+> A form selected for exactly one count may omit the number. Every form with a wider domain must state it.
+
+That single property covers every case. `(n != 1)` gives English form 0 the domain {1} and nothing else, which is why the English singular legitimately reads "Delete this stave?". Ukrainian and Icelandic give form 0 the domain {1, 21, 31, …}, so it must state the count. A single-form locale gives its only form *every* count, making it the most obvious violation of the lot rather than a special case. And a locale added later with a Slavic-shaped rule is covered without being named.
+
+The domain runs from n=1 rather than n=0. No rule Ooloi ships gives 0 a form of its own, and including it would hand the `n > 1` locales (`fr_FR`, `pt_BR`) a form-0 domain of {0, 1} — flagged for a count it lacks only at zero, which is not a count any confirmation or undo label is raised for.
+
+**What this check is not.** The presence of a count placeholder is a lint, not a proof. A form may carry `%{n}` and still be wrong in agreement — Ukrainian once carried the genitive plural, the five-and-above form, in the two-to-four slot, so three staves asked for *'ці 3 нотних станів'*. The placeholder was present throughout. Grammatical correctness within a form remains a human judgement; see [Invariants](#invariants) item 9 for the standard it is held to.
 
 ### Non-English Coverage (Soft)
 
@@ -696,23 +711,47 @@ This architecture requires several distinct capabilities. The implementation str
 
 These are architectural constraints, not conventions. Violating any of them breaks determinism, translator usability, or both.
 
-1. **Backend never emits localised strings.** Backend outputs are protocol artifacts: stable English for logs, exceptions, and programmatic matching.
+Each invariant carries its own heading deliberately. A run of numbered items embeds as a single vector averaged across all of them, and no individual constraint then has enough signal to be retrieved — a defect measured on this very section, where a query paraphrasing invariant 9 almost verbatim returned nothing at all.
 
-2. **Frontend contains zero inline user-facing strings.** Every user-visible string passes through `tr`.
+### 1. Backend never emits localised strings
 
-3. **All localisation via a single API.** One function, one mechanism, no alternatives.
+Backend outputs are protocol artifacts: stable English for logs, exceptions, and programmatic matching. Localisation happens only in the frontend, so the same input produces the same backend output regardless of locale.
 
-4. **Named parameters only.** No positional formatting (`%s`, `%d`, `%1$s`).
+### 2. Frontend contains zero inline user-facing strings
 
-5. **No sentence assembly from fragments.** Messages are complete translatable units, not concatenated pieces.
+Every user-visible string passes through `tr`. No string literal reaches a label, a menu item, a window title, or a notification without a translation key behind it.
 
-6. **No localisation logic in protocols, persistence, or collaboration paths.** These layers are locale-agnostic.
+### 3. All localisation through a single API
 
-7. **No computed keys.** Every translation key is a literal keyword in source code — either in a `tr` call or a `tr-declare` map. Keys constructed at runtime are forbidden.
+One function, one mechanism, no alternatives. There is no second path by which user-visible text can be produced — no string concatenation, no formatting helper, no locale-aware sibling of `tr`.
 
-8. **PO files are the sole translator interface.** Translators never edit code, EDN, or internal formats.
+### 4. Named parameters only
 
-9. **Every bundled catalogue is grammatically correct for every value of `n`.** A shipped locale is correct out of the box, for one item and for twenty-one, without a translator having to supply plural structure to make it so. A human translator may refine wording; a human translator must never have to repair grammar. This is enforced rather than intended: the four plural-integrity checks fail the build in both modes, over every catalogue in the directory. See [Plural Integrity](#plural-integrity-hard-gate-both-modes).
+Substitution is by name — `%{name}`, `%{n}`, `%{instrument}` — never by position. No `%s`, `%d`, or `%1$s`. A translator may reorder the parameters in a sentence without knowing the order the caller passed them.
+
+### 5. No sentence assembly from fragments
+
+Messages are complete translatable units, never concatenated pieces. A sentence built from parts cannot be reordered, inflected, or agreed by the translator, because no one place holds the whole of it.
+
+### 6. No localisation logic in protocol, persistence, or collaboration paths
+
+These layers are locale-agnostic. A piece saved by one user and opened by another under a different locale is the same piece; nothing about language survives into the file, the wire format, or a collaboration session.
+
+### 7. No computed keys
+
+Every translation key is a literal keyword in source code — either in a `tr` call or a `tr-declare` map. Keys constructed at runtime are forbidden, because a key that cannot be found by reading the source cannot be extracted, verified, or offered to a translator.
+
+### 8. PO files are the sole translator interface
+
+Translators never edit code, EDN, or internal formats. Everything a translator needs — the message, its context, its plural forms, and the comments explaining what each plural slot covers — lives in the `.po` file itself.
+
+### 9. Every bundled catalogue is grammatically correct for every value of `n`
+
+A shipped locale is correct out of the box, for one item and for twenty-one, without a translator having to supply plural structure to make it so. A human translator may refine wording; a human translator must never have to repair grammar.
+
+This is enforced rather than intended. The four plural-integrity checks — `detect-plural-arity-mismatches`, `detect-unknown-plural-rules`, `detect-plural-range-violations` and `detect-count-dropping-forms` — fail the build in both normal and strict mode, over every catalogue in the i18n directory rather than over `en_GB.po` alone. See [Plural Integrity](#plural-integrity-hard-gate-both-modes).
+
+What enforcement cannot reach is agreement within a form: a plural form may carry its count placeholder and still inflect the noun wrongly. That residue is a human judgement, and this invariant is the standard it is held to.
 
 ## Documentation
 
