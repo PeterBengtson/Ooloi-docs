@@ -455,7 +455,7 @@ lein i18n
 # Scan specific directory (e.g., test files)
 lein i18n :source-dir "test/clojure"
 
-# Strict mode (fails on missing keys or TODO entries)
+# Strict mode (additionally fails on missing keys or TODO entries)
 lein i18n :strict true
 ```
 
@@ -463,9 +463,11 @@ lein i18n :strict true
 - `:source-dir` — Directory to scan (default: `"src/main/clojure"`)
 - `:po-file` — Translation catalog path (default: `"resources/i18n/en_GB.po"`)
 - `:pattern` — File pattern to match (default: `#"\.clj$"`)
-- `:strict` — Fail on incomplete translations (default: `false`)
+- `:strict` — Also fail on *incomplete* translations (default: `false`)
 
 **Development workflow:** Run `lein i18n` as you add new UI strings. Missing keys are automatically added with `[TODO: Translation needed]` placeholders.
+
+**What fails in both modes:** `:strict` governs completeness only. Plural integrity is checked over *every* catalogue in `resources/i18n`, not just `en_GB.po`, and fails the build with or without `:strict` — a missing key is a legitimate work-in-progress state, whereas a plural entry disagreeing with its own catalogue's rule never is. Duplicate keys, computed keys and an unparseable catalogue likewise fail in both modes.
 
 **Build pipeline:** The combined application build (in shared/) runs verification in strict mode, failing if any keys are missing or contain TODO entries. This ensures all translations are complete before artifacts are created.
 

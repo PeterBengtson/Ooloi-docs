@@ -23,6 +23,7 @@ Implemented
 - [Build-Time Verification](#build-time-verification)
   - [Two Operational Modes](#two-operational-modes)
   - [Canonical Completeness (Hard Gate)](#canonical-completeness-hard-gate)
+  - [Plural Integrity (Hard Gate, Both Modes)](#plural-integrity-hard-gate-both-modes)
   - [Non-English Coverage (Soft)](#non-english-coverage-soft)
   - [Orphaned Keys](#orphaned-keys)
 - [Forward Compatibility](#forward-compatibility)
@@ -445,14 +446,18 @@ Build-time verification operates in two modes depending on context:
   - Keys with `tr-declare` defaults: fully populated (msgid and msgstr from default text)
   - Keys from bare `tr` calls only: `[TODO: Translation needed]` placeholder as msgstr
 - Warns about TODO entries and orphaned keys
-- Never fails, supports rapid development iteration
+- Tolerant of *incompleteness*, so development can iterate rapidly
+- **Fails on defects that are never legitimate**: any plural-integrity violation (see below), a duplicate key, a computed key, or a catalogue that parses to nothing
 
 **Strict Mode** (CI/build, `lein i18n :strict true`):
 - Extracts all `tr` keys from source
 - Reports missing keys as errors (does not modify file)
 - Fails build if TODO entries exist (incomplete translations)
 - Fails build if catalog is incomplete
+- Everything normal mode fails on, it fails on too
 - Hard gate preventing incomplete artifacts
+
+The distinction between the modes is **completeness, not correctness**. A missing key or a TODO placeholder is a legitimate work-in-progress state, so only strict mode rejects it. A plural entry that disagrees with its own catalogue's rule is never a legitimate state at any point in development, so both modes reject it.
 
 **Development workflow:**
 Developers run `lein i18n` during active development as new UI strings are added. Missing keys with `tr-declare` defaults are auto-populated with canonical English text; keys from bare `tr` calls get TODO placeholders. The build pipeline then verifies completeness—running `lein i18n :strict true` to ensure all TODO placeholders have been replaced with actual translations before creating artifacts.
@@ -476,15 +481,35 @@ Implementation: Parse source with Clojure reader, extract literal keywords from 
 - Positioned before uberjar creation (fails fast)
 - Colored terminal output for clear visibility
 
+### Plural Integrity (Hard Gate, Both Modes)
+
+Completeness is checked against `en_GB.po` alone. Plural integrity is checked against **every catalogue in the i18n directory**, each held to its own declared `Plural-Forms` rule. Every locale is examined independently because plural shape is per-locale (see [Plural Forms](#plural-forms)): a key may carry plural forms in one catalogue and a single string in another, so a check driven from the English source would miss a defect introduced on a key whose English is simple.
+
+Four checks, all implemented in `ooloi.shared.i18n.verify`:
+
+| Check | Function | Catches | Failure mode if unchecked |
+|---|---|---|---|
+| Plural arity | `detect-plural-arity-mismatches` | an entry with a different number of `msgstr[N]` forms than its own header declares | crash, or a silently wrong form |
+| Rule resolution | `detect-unknown-plural-rules` | a `Plural-Forms` rule with no implementation in `tr/plural-rules` | that locale renders form 0 for **every** count, silently |
+| Rule range | `detect-plural-range-violations` | a header disagreeing with itself — its rule selecting a form index its own `nplurals` forbids | over-indexes even a correctly sized entry |
+| Count dropped | `detect-count-dropping-forms` | a form the rule reaches at n ≥ 2 that states no count, where another form of the entry does | a selection of 21 asks "Delete this stave?"; the correct forms sit unreachable |
+
+None of the four is visible to the PO parser or to the loader — each is valid PO syntax — so they surface only in use, as a wrong form or as no form at all. That is why they are build-time gates rather than runtime concerns, and why they fail in both modes.
+
+The count-dropped check derives the locales it applies to from each catalogue's own rule rather than from a list: a form reached only at n=1 is exempt, which keeps the English singular legitimate, while Ukrainian and Icelandic select form 0 for 1, 21, 31, … and are therefore held to it. A locale added later with a Slavic-shaped rule is covered without being named.
+
+**Known limit.** The count-dropped check compares an entry's forms against each other, so it needs at least one form that states the count before it can say anything. A single-form locale (`ja_JP`, `ko_KR`, `zh_CN`) whose sole form omits the count states it nowhere and is invisible to the check. Only a comparison against the English source could see it, and none is made.
+
 ### Non-English Coverage (Soft)
 
-For other locales:
+Non-English catalogues are gated on **structure but not on completeness**:
 
 - Missing keys are allowed (fall back to UK English at runtime)
 - Coverage percentage can be reported
 - Missing keys do not block build or execution
+- Plural-integrity violations *do* block the build, in both modes — see above
 
-This preserves forward compatibility: an old `sv.po` continues to work when new UI strings are added in a release. Partial translations degrade gracefully rather than failing.
+This preserves forward compatibility: an old `sv.po` continues to work when new UI strings are added in a release. Partial translations degrade gracefully rather than failing. A partial translation is a legitimate state; a structurally broken one is not.
 
 ### Orphaned Keys
 
@@ -634,6 +659,7 @@ This architecture requires several distinct capabilities. The implementation str
 - Compare against `en_GB.po` msgctxt values
 - Auto-add mode: append missing keys (tr-declare defaults as msgstr, TODO for bare tr keys)
 - Strict mode: fail on missing keys or TODO entries
+- Plural integrity across every catalogue in the directory, failing in both modes (see [Plural Integrity](#plural-integrity-hard-gate-both-modes))
 - Colored terminal output (ANSI codes)
 - Multiple source directory support
 - Exclusion patterns with wildcard support (`:exclude ["**/i18n/tr.clj"]` default)
@@ -685,6 +711,8 @@ These are architectural constraints, not conventions. Violating any of them brea
 7. **No computed keys.** Every translation key is a literal keyword in source code — either in a `tr` call or a `tr-declare` map. Keys constructed at runtime are forbidden.
 
 8. **PO files are the sole translator interface.** Translators never edit code, EDN, or internal formats.
+
+9. **Every bundled catalogue is grammatically correct for every value of `n`.** A shipped locale is correct out of the box, for one item and for twenty-one, without a translator having to supply plural structure to make it so. A human translator may refine wording; a human translator must never have to repair grammar. This is enforced rather than intended: the four plural-integrity checks fail the build in both modes, over every catalogue in the directory. See [Plural Integrity](#plural-integrity-hard-gate-both-modes).
 
 ## Documentation
 
