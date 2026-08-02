@@ -17,6 +17,7 @@ Implemented
   - [7. The doubling annotation](#7-the-doubling-annotation)
   - [8. Where it plugs in: the helper and the gestures](#8-where-it-plugs-in-the-helper-and-the-gestures)
 - [Sequence Diagrams](#sequence-diagrams)
+  - [Dropping a second flute: numbering rides the gesture](#dropping-a-second-flute-numbering-rides-the-gesture)
 - [Rationale](#rationale)
 - [Consequences](#consequences)
 - [Related Decisions](#related-decisions)

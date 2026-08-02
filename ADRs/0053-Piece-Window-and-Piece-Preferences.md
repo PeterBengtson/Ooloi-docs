@@ -28,6 +28,8 @@ Under implementation
   - [7. Piece-owned windows](#7-piece-owned-windows)
   - [8. Everything under undo/redo](#8-everything-under-undoredo)
 - [Sequence Diagrams](#sequence-diagrams)
+  - [A drag-and-drop gesture: one batch, one event, one undo step](#a-drag-and-drop-gesture-one-batch-one-event-one-undo-step)
+  - [A settings change: two channels, for the piece and for the score](#a-settings-change-two-channels-for-the-piece-and-for-the-score)
 - [Rationale](#rationale)
 - [Consequences](#consequences)
 - [Related Decisions](#related-decisions)

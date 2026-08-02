@@ -4,6 +4,30 @@
 
 Accepted
 
+## Table of Contents
+
+- [Context](#context)
+- [Musical Slur Characteristics (Based on Traditional Engraving)](#musical-slur-characteristics-based-on-traditional-engraving)
+  - [Visual Examples](#visual-examples)
+- [Decision](#decision)
+- [Detailed Design](#detailed-design)
+  - [1. General Extent Point Collection](#1-general-extent-point-collection)
+  - [2. Layout Coordinate Transformation](#2-layout-coordinate-transformation)
+  - [3. Slur-Specific Hull Calculation](#3-slur-specific-hull-calculation)
+  - [4. The Euler Elastica: Ideal Unrestricted Shape](#4-the-euler-elastica-ideal-unrestricted-shape)
+  - [5. Minkowski Clearance for Thick Curves](#5-minkowski-clearance-for-thick-curves)
+  - [6. Bézier Curve Generation with Variable Thickness](#6-bézier-curve-generation-with-variable-thickness)
+  - [Edge Cases](#edge-cases)
+- [Rationale](#rationale)
+  - [Algorithm Choices](#algorithm-choices)
+  - [Performance Characteristics](#performance-characteristics)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+  - [Neutral](#neutral)
+- [Related Decisions](#related-decisions)
+- [See Also](#see-also)
+
 ## Context
 
 Ooloi needs to render slurs as smooth curves with variable thickness connecting musical elements across temporal spans. Slur formatting is part of **pipeline stage 5** (Spanners and Margins) in the [Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md). By stage 5, atom positions are finalized from stage 4, and each musician's spanners (ties, slurs, beams, hairpins, pedal markings, ottava lines) are computed independently in a fan-out per musician — no cross-musician coordination required. Stage 5 is **height-complete**: system heights become definitive here, providing stage 6 (page breaking) with complete information. See [ADR-0028 §Stage 5](0028-Hierarchical-Rendering-Pipeline.md#pipeline-stage-5-spanners-and-margins-fan-out-per-musician) for the full pipeline architecture.

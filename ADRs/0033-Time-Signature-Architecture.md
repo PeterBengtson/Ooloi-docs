@@ -30,6 +30,7 @@ Implemented
 - [Design Rationale](#design-rationale)
   - [Why String-Based Entry](#why-string-based-entry)
 - [Future Extensions](#future-extensions)
+  - [Arbitrary Numerator Fractions](#arbitrary-numerator-fractions)
 - [References](#references)
 
 ## Context

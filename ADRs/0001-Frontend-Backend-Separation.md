@@ -4,6 +4,30 @@
 
 Implemented
 
+## Table of Contents
+
+- [Context](#context)
+- [Decision](#decision)
+- [Rationale](#rationale)
+- [Project Structure](#project-structure)
+  - [Three-Project Architecture](#three-project-architecture)
+  - [Code Sharing Strategy](#code-sharing-strategy)
+  - [Testing Architecture](#testing-architecture)
+- [Implementation Approach](#implementation-approach)
+  - [1. Communication Architecture](#1-communication-architecture)
+  - [2. Component Management](#2-component-management)
+  - [3. Build Configuration](#3-build-configuration)
+  - [4. Deployment Models](#4-deployment-models)
+  - [5. State Management and Responsibility Boundaries](#5-state-management-and-responsibility-boundaries)
+  - [6. Error Handling and Recovery](#6-error-handling-and-recovery)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+  - [Mitigations](#mitigations)
+- [Alternatives Considered](#alternatives-considered)
+- [References](#references)
+- [Notes](#notes)
+
 ## Context
 
 Ooloi is a complex music notation software that requires both a rich user interface for score editing and manipulation, and powerful backend processing for musical logic, formatting, and data management. We need to decide on the overall architecture of the application, specifically whether to combine frontend and backend into a single Clojure application or separate them into distinct applications.

@@ -15,6 +15,7 @@ Accepted
   - [Why Apple Silicon Only on macOS](#why-apple-silicon-only-on-macos)
   - [The Four-Case Architecture Matrix](#the-four-case-architecture-matrix)
   - [JVM Under Rosetta 2: The Pathological Case](#jvm-under-rosetta-2-the-pathological-case)
+  - [GPU Rendering Path: OpenGL Deprecation and Metal](#gpu-rendering-path-opengl-deprecation-and-metal)
   - [Build-On-Target Discipline](#build-on-target-discipline)
   - [Apple's Deprecation Timeline](#apples-deprecation-timeline)
 - [Consequences](#consequences)

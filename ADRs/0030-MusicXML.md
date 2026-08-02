@@ -6,16 +6,18 @@ Accepted
 
 ## Table of Contents
 
-1. [Context](#context)
-2. [Decision](#decision)
-3. [Rationale](#rationale)
-4. [Non-Goals](#non-goals)
-5. [Architecture Overview](#architecture-overview)
-6. [Plugin Implementation](#plugin-implementation)
-7. [Vendor-Specific Handling](#vendor-specific-handling)
-8. [Implementation Approach](#implementation-approach)
-9. [Success Criteria](#success-criteria)
-10. [Consequences](#consequences)
+1. [Implementation Rationale (October 19, 2025)](#implementation-rationale-october-19-2025)
+2. [MusicXML as External Definition of Done (October 20, 2025)](#musicxml-as-external-definition-of-done-october-20-2025)
+3. [Context](#context)
+4. [Decision](#decision)
+5. [Rationale](#rationale)
+6. [Non-Goals](#non-goals)
+7. [Architecture Overview](#architecture-overview)
+8. [Plugin Implementation](#plugin-implementation)
+9. [Vendor-Specific Handling](#vendor-specific-handling)
+10. [Implementation Approach](#implementation-approach)
+11. [Success Criteria](#success-criteria)
+12. [Consequences](#consequences)
 
 ---
 

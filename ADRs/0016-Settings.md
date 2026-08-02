@@ -4,6 +4,44 @@
 
 Implemented
 
+## Table of Contents
+
+- [Context](#context)
+  - [Current Architecture Analysis](#current-architecture-analysis)
+  - [Architectural Constraints from Previous ADRs](#architectural-constraints-from-previous-adrs)
+  - [Configuration Requirements](#configuration-requirements)
+  - [Current Architecture Foundation](#current-architecture-foundation)
+  - [The Uniform API Requirement](#the-uniform-api-requirement)
+- [Decision](#decision)
+  - [Core Architecture Principles](#core-architecture-principles)
+  - [Implementation Strategy](#implementation-strategy)
+  - [Storage Efficiency](#storage-efficiency)
+  - [API Consistency](#api-consistency)
+  - [Default Value Management](#default-value-management)
+- [Rationale](#rationale)
+  - [Alignment with Existing Architecture](#alignment-with-existing-architecture)
+  - [Uniform Interface Achievement](#uniform-interface-achievement)
+  - [Data Integrity](#data-integrity)
+  - [Storage Optimization](#storage-optimization)
+  - [Development Experience](#development-experience)
+- [Implementation](#implementation)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+  - [Mitigations](#mitigations)
+- [Alternatives Considered](#alternatives-considered)
+  - [Alternative 1: Dedicated Slots for All Configuration](#alternative-1-dedicated-slots-for-all-configuration)
+  - [Alternative 2: Global Configuration Registry](#alternative-2-global-configuration-registry)
+  - [Alternative 3: Trait-Based Configuration Only](#alternative-3-trait-based-configuration-only)
+  - [Alternative 4: Two-Tier Attribute System](#alternative-4-two-tier-attribute-system)
+  - [Alternative 5: Separate Validation Layer](#alternative-5-separate-validation-layer)
+  - [Alternative 6: Runtime Spec Validation](#alternative-6-runtime-spec-validation)
+- [References](#references)
+  - [Related ADRs](#related-adrs)
+  - [Technical Dependencies](#technical-dependencies)
+  - [Code References](#code-references)
+- [Notes](#notes)
+
 ## Context
 
 Ooloi's musical notation system requires extensive configuration capabilities for visual rendering, layout preferences, and performance characteristics. The system needs a systematic approach for managing these configuration attributes across the hierarchical structure of musical entities.

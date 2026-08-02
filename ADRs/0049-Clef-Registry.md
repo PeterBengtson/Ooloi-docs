@@ -17,9 +17,15 @@ Accepted
   - [Piece Lifecycle](#piece-lifecycle)
   - [Impact on Existing Code](#impact-on-existing-code)
 - [Rationale](#rationale)
+  - [Why a registry instead of enriching the keywords](#why-a-registry-instead-of-enriching-the-keywords)
+  - [Why copy into each piece](#why-copy-into-each-piece)
+  - [Why preserve the existing keyword names](#why-preserve-the-existing-keyword-names)
+  - [Why :line / :space instead of a single numeric field](#why-line--space-instead-of-a-single-numeric-field)
 - [Open Questions](#open-questions)
 - [Consequences](#consequences)
 - [References](#references)
+  - [Related ADRs](#related-adrs)
+  - [External References](#external-references)
 
 ---
 

@@ -13,7 +13,7 @@ Accepted
 - [Decision](#decision)
   - [Core Architecture](#core-architecture)
 - [Rationale](#rationale)
-  - [Frontend-Backend Separation](#frontend-backend-separation-1)
+  - [Frontend-Backend Separation](#frontend-backend-separation)
   - [Plugin Architecture Benefits](#plugin-architecture-benefits)
 - [Challenges Addressed](#challenges-addressed)
   - [User Experience](#user-experience)
@@ -27,7 +27,7 @@ Accepted
 - [Alternative Approaches Considered](#alternative-approaches-considered)
   - [Built-in VST/AU Hosting](#built-in-vstau-hosting)
   - [Built-in MIDI Output](#built-in-midi-output)
-  - [Hybrid Core/Plugin Audio](#hybrid-coreugin-audio)
+  - [Hybrid Core/Plugin Audio](#hybrid-coreplugin-audio)
   - [Custom Audio Engine](#custom-audio-engine)
 - [Success Criteria](#success-criteria)
   - [Technical Metrics](#technical-metrics)
@@ -36,6 +36,8 @@ Accepted
 - [Future Extensions](#future-extensions)
   - [Advanced Humanisation](#advanced-humanisation)
   - [Professional Workflow Integration](#professional-workflow-integration)
+- [Related ADRs](#related-adrs)
+- [Related Guides](#related-guides)
 - [Conclusion](#conclusion)
 
 ## Context

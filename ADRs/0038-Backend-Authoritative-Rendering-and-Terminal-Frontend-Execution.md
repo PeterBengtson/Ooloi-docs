@@ -7,6 +7,10 @@ Under implementation
 ## Table of Contents
 
 - [Context](#context)
+  - [The Rendering Boundary Problem](#the-rendering-boundary-problem)
+  - [The Terminal Execution Principle](#the-terminal-execution-principle)
+  - [Performance Requirements](#performance-requirements)
+  - [Technology Considerations](#technology-considerations)
 - [Decision](#decision)
 - [Architecture](#architecture)
   - [Component Architecture](#component-architecture)
@@ -19,7 +23,14 @@ Under implementation
   - [Performance Characteristics](#performance-characteristics)
   - [Implementation Phases](#implementation-phases)
 - [Rationale](#rationale)
+  - [Why Backend Authority is Absolute](#why-backend-authority-is-absolute)
+  - [Why Terminal Execution](#why-terminal-execution)
+  - [Why Two-Level Cache](#why-two-level-cache)
+  - [Why GPU Acceleration is Required](#why-gpu-acceleration-is-required)
 - [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Trade-offs](#trade-offs)
+  - [Risks and Mitigations](#risks-and-mitigations)
 - [Related ADRs](#related-adrs)
 - [Notes](#notes)
 

@@ -4,6 +4,23 @@
 
 Implemented
 
+## Table of Contents
+
+- [Context](#context)
+- [Decision](#decision)
+  - [Core Decisions](#core-decisions)
+  - [Key Architectural Patterns](#key-architectural-patterns)
+- [Rationale](#rationale)
+  - [Why Integrant Over Alternatives](#why-integrant-over-alternatives)
+  - [Architectural Benefits](#architectural-benefits)
+  - [Key Problem Solutions](#key-problem-solutions)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+  - [Mitigations](#mitigations)
+- [Alternatives Considered](#alternatives-considered)
+- [References](#references)
+
 ## Context
 
 Ooloi requires a system architecture that can support multiple deployment modes (backend-only standalone server, combined desktop app bundling both layers) while providing production-ready operational capabilities. There is no frontend-only deployment — the frontend always runs together with an in-process backend in the combined app. The architecture must handle component lifecycle management, configuration-driven deployment, error handling, and operational requirements like health monitoring and graceful shutdown.

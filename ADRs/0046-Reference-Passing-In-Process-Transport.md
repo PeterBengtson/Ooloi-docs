@@ -28,8 +28,13 @@ Implemented
   - [Why Custom Marshallers Rather Than Custom Transport](#why-custom-marshallers-rather-than-custom-transport)
   - [Relationship to ADR-0019](#relationship-to-adr-0019)
 - [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+  - [Mitigations](#mitigations)
 - [Implementation Scope](#implementation-scope)
+  - [Implementation Phases](#implementation-phases)
 - [Notes](#notes)
+- [Implementation Notes](#implementation-notes)
 - [Related ADRs](#related-adrs)
 
 ---

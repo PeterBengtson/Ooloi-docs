@@ -4,6 +4,19 @@
 
 Under implementation
 
+## Table of Contents
+
+- [Context](#context)
+- [Decision](#decision)
+- [Rationale](#rationale)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+- [Alternatives Considered](#alternatives-considered)
+- [Related Decisions](#related-decisions)
+- [External References](#external-references)
+- [Notes](#notes)
+
 ## Context
 
 Ooloi requires a standardised and comprehensive system for rendering musical symbols and notation. The choice of font system affects rendering quality, cross-platform consistency, interoperability with other music software, and the ability to support a wide range of musical notations. Traditionally, music notation software has relied on proprietary or non-standardised font layouts, leading to inconsistencies and limitations in symbol support.

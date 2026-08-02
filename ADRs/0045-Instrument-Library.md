@@ -26,8 +26,16 @@ Implemented
   - [Concurrent Writes: Conflict and Retry](#concurrent-writes-conflict-and-retry)
   - [Authorization Gate: Guest Without Write Permission](#authorization-gate-guest-without-write-permission)
 - [Rationale](#rationale)
+  - [Why atom, not STM ref](#why-atom-not-stm-ref)
+  - [Why two API functions, not individual operations](#why-two-api-functions-not-individual-operations)
+  - [Why full replace, not delta](#why-full-replace-not-delta)
+  - [Why lazy fetch](#why-lazy-fetch)
+  - [Why optimistic locking](#why-optimistic-locking)
 - [Consequences](#consequences)
 - [References](#references)
+  - [Related ADRs](#related-adrs)
+  - [Guides](#guides)
+  - [External References](#external-references)
 
 ---
 

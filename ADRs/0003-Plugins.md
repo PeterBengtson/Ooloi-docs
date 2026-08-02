@@ -4,6 +4,27 @@
 
 Accepted
 
+## Table of Contents
+
+- [Context](#context)
+- [Decision](#decision)
+- [Rationale](#rationale)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+- [Implementation Approach](#implementation-approach)
+  - [Core Plugin Architecture](#core-plugin-architecture)
+  - [Hot Plugin Installation Architecture (Enabled by Unified gRPC)](#hot-plugin-installation-architecture-enabled-by-unified-grpc)
+  - [Standard Plugin Development Infrastructure](#standard-plugin-development-infrastructure)
+- [Plugin System Architecture](#plugin-system-architecture)
+- [Alternatives Considered](#alternatives-considered)
+- [Plugin Configuration Architecture](#plugin-configuration-architecture)
+  - [Backend Plugin Settings](#backend-plugin-settings)
+  - [Frontend Plugin Settings](#frontend-plugin-settings)
+  - [UI Responsibility](#ui-responsibility)
+- [Notes](#notes)
+- [Related Decisions](#related-decisions)
+
 ## Context
 
 Ooloi is designed with a philosophy of a minimal, efficient core surrounded by a rich ecosystem of plugins. This approach aims to create a flexible and extensible music notation software that can cater to a wide range of user needs and specialized use cases. While the core application should provide essential functionality for music notation, we recognize that different users may have unique requirements that are best served through a plugin architecture. Additionally, we want to foster a community of developers who can contribute to and extend Ooloi's capabilities, while also allowing for commercial opportunities.

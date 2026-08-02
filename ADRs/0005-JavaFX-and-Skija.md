@@ -4,6 +4,23 @@
 
 Under implementation
 
+## Table of Contents
+
+- [Context](#context)
+- [Decision](#decision)
+- [Rationale](#rationale)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+- [Implementation Approach](#implementation-approach)
+- [Alternatives Considered](#alternatives-considered)
+- [Related Decisions](#related-decisions)
+- [Going Past the Toolkit: Native Platform Integration](#going-past-the-toolkit-native-platform-integration)
+  - [The position on an unmaintained dependency](#the-position-on-an-unmaintained-dependency)
+- [Theme Implementation](#theme-implementation)
+- [Copper Plate Aesthetic Principle](#copper-plate-aesthetic-principle)
+- [Notes](#notes)
+
 ## Context
 
 Ooloi requires a high-performance, cross-platform graphical user interface (GUI) for music notation editing and display. The GUI needs to handle complex musical scores with potentially hundreds of staves and thousands of measures, while providing a responsive and intuitive user experience. Additionally, the chosen technology should integrate well with our Clojure-based backend, support efficient rendering of musical notation, and provide high-quality, consistent printing across all platforms. The ability to produce professional-grade printed output is a critical requirement for a music notation application.

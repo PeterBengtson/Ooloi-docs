@@ -27,6 +27,7 @@ Accepted
   - [Radical Transparency and Open Documentation](#radical-transparency-and-open-documentation)
 - [Tradeoffs and Considerations](#tradeoffs-and-considerations)
 - [Related ADRs](#related-adrs)
+- [Related Guides](#related-guides)
 - [References](#references)
 
 ---

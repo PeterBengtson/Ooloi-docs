@@ -4,6 +4,46 @@
 
 Under implementation
 
+## Table of Contents
+
+- [Context](#context)
+- [Decision](#decision)
+  - [Core Architectural Decisions](#core-architectural-decisions)
+  - [Authentication Protocol Design](#authentication-protocol-design)
+  - [Component Integration Architecture](#component-integration-architecture)
+  - [gRPC Authentication Integration](#grpc-authentication-integration)
+- [Rationale](#rationale)
+  - [Why JWT-Based Architecture](#why-jwt-based-architecture)
+  - [Why Pluggable Providers](#why-pluggable-providers)
+  - [Why Integrant Component Architecture](#why-integrant-component-architecture)
+  - [Integration with Existing Architecture](#integration-with-existing-architecture)
+- [Implementation Approach](#implementation-approach)
+  - [Provider Implementation Tiers](#provider-implementation-tiers)
+  - [Configuration-Driven Provider Selection](#configuration-driven-provider-selection)
+  - [Deployment Scenario Matrix](#deployment-scenario-matrix)
+  - [JWT Token Structure](#jwt-token-structure)
+  - [Google Docs-Style Piece Authorization](#google-docs-style-piece-authorization)
+  - [Security Implementation](#security-implementation)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+  - [Provider Migration Strategies](#provider-migration-strategies)
+  - [Mitigations](#mitigations)
+  - [Testing Strategy](#testing-strategy)
+  - [Performance Considerations](#performance-considerations)
+  - [Compliance and Regulatory Support](#compliance-and-regulatory-support)
+- [Alternatives Considered](#alternatives-considered)
+  - [1. OAuth-Only Authentication](#1-oauth-only-authentication)
+  - [2. Simple Authentication Only](#2-simple-authentication-only)
+  - [3. Session-Based Authentication](#3-session-based-authentication)
+  - [4. Third-Party Authentication Service Only](#4-third-party-authentication-service-only)
+  - [5. Custom Authentication Protocol](#5-custom-authentication-protocol)
+- [References](#references)
+  - [Related ADRs](#related-adrs)
+  - [Technical Documentation](#technical-documentation)
+  - [Security Standards](#security-standards)
+- [Notes](#notes)
+
 ## Context
 
 Ooloi's multi-deployment architecture supports vastly different operational scenarios, from local music teachers to enterprise conservatories and cloud-based SaaS deployments. Each scenario has fundamentally different authentication requirements:

@@ -12,15 +12,21 @@ Implemented
   - [Correctness Invariants](#correctness-invariants)
   - [Data Structure](#data-structure)
   - [Measure Boundary Behavior](#measure-boundary-behavior)
+    - [Tied Note Bypass Specification](#tied-note-bypass-specification)
+    - [Empty Measures and Rest-Only Measures](#empty-measures-and-rest-only-measures)
   - [Courtesy Accidentals](#courtesy-accidentals)
   - [Keyless Mode Behavior](#keyless-mode-behavior)
   - [Grace Notes](#grace-notes)
+    - [Grace Note Positioning and Duration](#grace-note-positioning-and-duration)
     - [Grace Notes at Measure Boundaries](#grace-notes-at-measure-boundaries)
   - [Accidental Settings](#accidental-settings)
   - [Performance Architecture](#performance-architecture)
 - [Integration with Key Signatures](#integration-with-key-signatures)
 - [Hierarchical Scope and Partitioning](#hierarchical-scope-and-partitioning)
 - [Architectural Implications](#architectural-implications)
+  - [Decision Output Format](#decision-output-format)
+  - [Semantic Accidental Types](#semantic-accidental-types)
+  - [Separation of Concerns](#separation-of-concerns)
 - [Consequences](#consequences)
 - [References](#references)
 
@@ -135,7 +141,7 @@ Remembered alterations use an optimized structure that minimizes memory usage wh
 ;; Multiple octaves of same letter grouped together
 {:default {"C" :sharp}
  "C" {3 :natural, 4 :natural, 5 :flat}}  ; All C deviations grouped
- ```
+```
 
 **Structure properties:**
 

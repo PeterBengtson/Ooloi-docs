@@ -4,6 +4,20 @@
 
 Implemented
 
+## Table of Contents
+
+- [Context](#context)
+- [Decision](#decision)
+- [Rationale](#rationale)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+- [Implementation Approach](#implementation-approach)
+- [Related Decisions](#related-decisions)
+- [Additional Implementation Notes](#additional-implementation-notes)
+- [Why Common Lisp is No Longer the Clear Choice](#why-common-lisp-is-no-longer-the-clear-choice)
+- [Notes](#notes)
+
 ## Context
 
 The choice of primary programming language for Ooloi is a fundamental decision that will significantly impact the project's development, performance, maintainability, and ecosystem. We need a language that can handle complex musical data structures, provide high performance for real-time notation rendering and manipulation, support cross-platform development, and foster a productive development environment for both core team and potential contributors.

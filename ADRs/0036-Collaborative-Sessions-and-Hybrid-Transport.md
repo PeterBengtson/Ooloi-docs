@@ -10,11 +10,20 @@ Under implementation
 - [Decision](#decision)
   - [Core Architectural Decisions](#core-architectural-decisions)
   - [Hybrid Transport Architecture](#hybrid-transport-architecture)
+  - [Network Server Lifecycle](#network-server-lifecycle)
+  - [Auto-Halt Grace Period](#auto-halt-grace-period)
   - [Role-Based Permission System](#role-based-permission-system)
   - [Email-Based Invitation System](#email-based-invitation-system)
   - [Frontend Context Switching](#frontend-context-switching)
+  - [Frontend Reconnection: switch-to!](#frontend-reconnection-switch-to)
+  - [Connection Failure and Fallback](#connection-failure-and-fallback)
+  - [Connect / Disconnect Event Sequence](#connect--disconnect-event-sequence)
+  - [Collaboration Menu Enablement](#collaboration-menu-enablement)
+  - [Notification Model](#notification-model)
+  - [Per-Window Indicators and Collaboration Palette](#per-window-indicators-and-collaboration-palette)
   - [Collaboration API](#collaboration-api)
   - [Deployment Scenarios](#deployment-scenarios)
+  - [Delivery Staging](#delivery-staging)
 - [Rationale](#rationale)
   - [Google Docs-Style Collaboration Model](#google-docs-style-collaboration-model)
   - [Why Hybrid Transport Architecture](#why-hybrid-transport-architecture)
@@ -224,9 +233,10 @@ Context switching is **asymmetric** by design.
 
 **Involuntary Reversion** (remote → in-process, ADR-0040):
 1. Remote connection is lost. gRPC delivers exactly one terminal event on the client's response observer, never both: a graceful server close (`ig/halt-key!`, an orderly shutdown) delivers `onCompleted`, while an abrupt loss — network partition, TLS failure, server death — delivers `onError`. **Both arms revert.** Neither may leave the client configured for a transport that is gone.
-2. The observer's `revert-fn` posts a persistent red "host disconnected" notification, then invokes `switch-to! :in-process` automatically. No intent confirmation; no gate.
-3. The recursive `switch-to!` clears `subscription-state` and publishes the same three switch events as a voluntary Disconnect (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection), so the collaboration menu reverts to `:local` enablement and the Tier 1 backend cache clears.
-4. UI returns to standalone mode; the red notification persists until the user dismisses it.
+2. **A terminal event acts only when its own channel is still the live one.** Both arms compare the channel they were opened against with the channel held by the component's current event-client, and do nothing when they differ. Two ordinary situations produce a terminal event on a channel that is no longer current, and neither is a connection loss: a stream closed by `switch-to!` during its own teardown fires a terminal event afterwards, and a target registration that never succeeded fires one while the component still holds the previous (or no) client. Without the identity comparison, the first wipes a freshly registered client's connection and the second reverts a connection the user never had — racing `switch-to!`'s own fallback. The comparison is what distinguishes *this connection died* from *some earlier connection ended*, and it belongs on both arms, not only the graceful one.
+3. The observer's `revert-fn` posts a persistent red "host disconnected" notification, then invokes `switch-to! :in-process` automatically. No intent confirmation; no gate.
+4. The recursive `switch-to!` clears `subscription-state` and publishes the same three switch events as a voluntary Disconnect (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection), so the collaboration menu reverts to `:local` enablement and the Tier 1 backend cache clears.
+5. UI returns to standalone mode; the red notification persists until the user dismisses it.
 
 **Rationale for the asymmetry.** The gate exists to protect the user's own work. Local pieces (those open against the in-process backend) are save-state-bearing and irreplaceable; silently leaving them when switching to a remote context is unacceptable, so the gate forces a deliberate close. Remote pieces, conversely, are the host's work; the guest holds only a view. Dropping that view on Disconnect (or when switching to another remote host) is exactly equivalent to closing a tab on a collaborative document, and adding a "close all remote pieces first" step would be friction without semantic value.
 
@@ -251,6 +261,7 @@ stateDiagram-v2
     OutboundGate: subscription-state empty?
 
     OutboundGate --> LocalWork: Refused — local pieces open<br/>(precondition dialog shown)
+    OutboundGate --> LocalWork: Failed — target unreachable<br/>(fallback to local, dialog stays open to retry)
     OutboundGate --> RemoteCollaboration: Pass — switch-to! succeeds
 
     RemoteCollaboration: Connected to Remote Backend
@@ -266,6 +277,8 @@ stateDiagram-v2
     RemoteCollaboration --> LocalWork: Involuntary reversion<br/>(ADR-0040, no intent dialog)
 
     RemoteCollaboration --> RemoteCollaboration: User invokes Connect to other Ooloi…<br/>(new host — no gate, clears subscription-state)
+
+    RemoteCollaboration --> LocalWork: Failed host switch<br/>(fallback to local, never back to the old host)
 
     LocalWork --> [*]: Application exits
     RemoteCollaboration --> [*]: Application exits
@@ -300,7 +313,18 @@ ADR-0031 §Subscription State Management records which pieces this client holds.
 
 In all three sub-cases, `subscription-state` is cleared defensively before re-registration — the piece-ids tracked there refer only to the backend that issued them, and are meaningless against any other backend.
 
-**Error handling.** `switch-to!` returning an error (target unreachable, TLS handshake failure, etc.) leaves the previous connection intact — the frontend never ends up in an unconnected state. If a remote connection is lost mid-session, the `grpc-clients` component invokes `switch-to! :in-process` automatically per ADR-0040's single-authority reversion model.
+### Connection Failure and Fallback
+
+**The fallback target is always the local in-process backend, never another remote.** When `switch-to!` cannot establish the target connection — unreachable host, TLS handshake failure, registration timeout, or mid-flight cancellation — it re-registers against the local always-on backend and returns an error classification to its caller. It never re-registers against the remote the frontend came from, even one that was reachable moments earlier. The local backend is the only connection guaranteed to be available ([ADR-0040](0040-Single-Authority-State-Model.md) §Deployment Model), which is what makes *the frontend never ends up in an unconnected state* a guarantee rather than a hope: a remote fallback would be a second connection that can itself fail.
+
+The fallback has two shapes, distinguished by where the frontend was when the attempt began:
+
+- *Local → remote, failed*: the frontend lands back on the local backend it started from. Nothing changed, so **no switch events are published** and the backend-scoped caches survive intact.
+- *Remote → remote, failed* (a guest on host A attempting host B): the frontend lands on **local**, not back on A. This is a completed transport change, so the three switch events publish exactly as on any other switch — otherwise the collaboration menu would stay `:guest` while the frontend is local, and the Tier 1 undo cache would keep entries belonging to A.
+
+Notifications follow §Notification Model. The connect failure itself is surfaced by the connect dialog as a red ephemeral notification naming the target, and the dialog stays open so the user can correct the host or port and retry. A failed *host switch* additionally surfaces the ordinary info "Disconnected from <host>" for the remote left behind: departing A was deliberate and only the arrival at B failed, so the persistent red tier — reserved for an unchosen loss of work-context — does not apply.
+
+If a remote connection is lost mid-session rather than failing to establish, that is involuntary reversion, not fallback: the `grpc-clients` component invokes `switch-to! :in-process` automatically per ADR-0040's single-authority reversion model (§Involuntary Reversion).
 
 ### Connect / Disconnect Event Sequence
 
@@ -310,6 +334,8 @@ Each collaboration transition produces a fixed sequence of gRPC wire events (the
 |---|---|---|---|
 | Guest connect (in-process → remote) | `Disconnect`(in-process, best-effort); `registerClient`(remote); `client-registration-confirmed`; `server-client-connected` broadcast | `:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` | green "Connected to <host>" (guest) |
 | Switch hosts (remote → remote) | `Disconnect`(old remote); `registerClient`(new remote); `client-registration-confirmed`; `server-client-connected` broadcast | the same three | green "Connected to <host>" (guest) |
+| Failed connect (in-process → remote) | `Disconnect`(in-process, best-effort); `registerClient`(remote) fails; `registerClient`(in-process) | none — the frontend is back where it started | red "could not connect" from the connect dialog (guest) |
+| Failed host switch (remote → remote) | `Disconnect`(old remote); `registerClient`(new remote) fails; `registerClient`(in-process) | the same three — the frontend moved from the old remote to local | red "could not connect" from the connect dialog, plus info "Disconnected from <old host>" (guest) |
 | Voluntary disconnect (remote → in-process) | `Disconnect`(remote); `server-client-disconnected` broadcast; `registerClient`(in-process) | the same three | info "Disconnected from <host>" (guest) |
 | Involuntary reversion (remote → in-process) | `onCompleted` (graceful close) or `onError` (abrupt loss); `registerClient`(in-process) | the same three | red "Host disconnected", persistent (guest) |
 | Host start | none on the wire — `network-grpc-server` added to the running system | `:collaboration-state-changed` | green "Hosting at <host:port>", persistent (host) |
@@ -336,6 +362,15 @@ sequenceDiagram
     FE->>BUS: publish :backend-changed
     BUS->>SUB: IL refetch · menu → :guest · clear Tier 1 cache
     FE->>U: green "Connected to <host>"
+
+    Note over U,SUB: Failed host switch (guest on A attempts B)
+    U->>FE: "Connect to other Ooloi…" (B)
+    FE->>SRV: Disconnect RPC to A  [PHASE 5]
+    FE->>SRV: registerClient(B) — fails (unreachable, TLS, or timeout)
+    FE->>SRV: registerClient on in-process backend — the fallback is always local
+    FE->>BUS: publish :instrument-library-changed, :collaboration-state-changed, :backend-changed
+    BUS->>SUB: IL refetch · menu → :local · clear Tier 1 cache
+    FE->>U: red "could not connect to B" and info "Disconnected from A"
 
     Note over U,SUB: Voluntary disconnect (remote → in-process)
     U->>FE: "Disconnect" (confirmed)
@@ -369,7 +404,7 @@ A single subscriber, wired in `start-app!`, refreshes the menu on each such even
 
 The single-source rule matters because the collaboration seam is **not** the only thing that refreshes the menu: the undo-redo on-change callback ([ADR-0015](0015-Undo-and-Redo.md) §Frontend Wiring Invariants) and theme changes also call `refresh-menu-text!`. Were the refresh to evaluate predicates against caller-supplied state, a stateless undo-redo or theme refresh would resolve collaboration state against an empty map (`:local`) and clobber the enablement the collaboration seam had just set. Sourcing the live system map inside the refresh removes that whole class of cross-feature interference. (Host/terminate produce a new system map via `swap!`; a transport change mutates an inner atom in place rather than producing a new map — reading the live source at refresh time observes both.)
 
-**Mid-flight cancellation (`on-cancellable`).** `switch-to!` and `register-with-server` take an optional `on-cancellable` callback, preserving their existing arities. When the in-flight channel is created, `register-with-server` hands `on-cancellable` a zero-arg channel-closer; `switch-to!` threads it through to the *target* registration only, never the rollback re-registration. Invoking the closer shuts the in-flight channel down, so the blocking registration fails and `switch-to!`'s existing rollback re-registers the previous backend — the cancellation surfaces through the ordinary error path, not a new error value. This is the seam an interruptible UI uses: a connect dialog runs `switch-to!` through the interruptible-background-work mechanism (`run-interruptible!`, [ADR-0042](0042-UI-Specification-Format.md)) and passes that mechanism's canceller as `on-cancellable`, so clicking Cancel aborts the attempt mid-flight and rolls back. Callers that omit `on-cancellable` are simply non-interruptible.
+**Mid-flight cancellation (`on-cancellable`).** `switch-to!` and `register-with-server` take an optional `on-cancellable` callback, preserving their existing arities. When the in-flight channel is created, `register-with-server` hands `on-cancellable` a zero-arg channel-closer; `switch-to!` threads it through to the *target* registration only, never the rollback re-registration. Invoking the closer shuts the in-flight channel down, so the blocking registration fails and `switch-to!`'s existing rollback re-registers the local backend (§Connection Failure and Fallback) — the cancellation surfaces through the ordinary error path, not a new error value. This is the seam an interruptible UI uses: a connect dialog runs `switch-to!` through the interruptible-background-work mechanism (`run-interruptible!`, [ADR-0042](0042-UI-Specification-Format.md)) and passes that mechanism's canceller as `on-cancellable`, so clicking Cancel aborts the attempt mid-flight and rolls back. Callers that omit `on-cancellable` are simply non-interruptible.
 
 ### Notification Model
 
@@ -739,6 +774,7 @@ Based on network realities, the architecture supports three deployment tiers wit
 - [ADR-0019: In-Process gRPC Transport](0019-In-Process-gRPC-Transport-Optimization.md) - In-process transport for local performance
 - [ADR-0020: TLS Infrastructure](0020-TLS-Infrastructure-and-Deployment-Architecture.md) - Security foundation for network transport
 - [ADR-0021: Authentication](0021-Authentication.md) - JWT-based authentication supporting email identity
+- [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Single-authority model with remote connections as an additive layer; ratifies reversion to the local backend and no automatic reconnection
 - [ADR-0045: Instrument Library](0045-Instrument-Library.md) - First non-piece entity using this permission model; host has unconditional write access, guests are read-only by default, write access requires explicit grant; enforced by `create-api-authentication-interceptor`
 - [ADR-0053: The Piece Window and Piece Preferences](0053-Piece-Window-and-Piece-Preferences.md) - The piece and layout windows' `⇄` shared indicator and the `piece-shared?` predicate
 
@@ -753,15 +789,6 @@ Based on network realities, the architecture supports three deployment tiers wit
 - [Google Docs Sharing Model](https://support.google.com/docs/answer/2494822) - Email-based invitation inspiration
 - [Figma Real-Time Collaboration](https://www.figma.com/blog/how-figmas-multiplayer-technology-works/) - Multi-user editing architecture
 - [VS Code Live Share](https://visualstudio.microsoft.com/services/live-share/) - Developer collaboration patterns
-
-### Related ADRs
-
-- [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Separation architecture enabling hybrid transport
-- [ADR-0002: gRPC Communication](0002-gRPC.md) - Communication protocol for both transports
-- [ADR-0017: System Architecture](0017-System-Architecture.md) - Component lifecycle supporting dynamic server initialization
-- [ADR-0020: TLS Infrastructure](0020-TLS-Infrastructure-and-Deployment-Architecture.md) - TLS certificate management for network transport
-- [ADR-0021: Authentication](0021-Authentication.md) - JWT authentication for collaborative sessions
-- [ADR-0040: Single-Authority State Model](0040-Single-Authority-State-Model.md) - Single-authority model with remote connections as additive layer
 
 ## Notes
 

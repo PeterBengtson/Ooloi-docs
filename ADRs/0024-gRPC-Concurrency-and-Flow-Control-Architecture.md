@@ -17,9 +17,15 @@ Implemented
   - [API Request Concurrency: Flow Control Not Needed](#api-request-concurrency-flow-control-not-needed)
   - [Event Streaming: Flow Control Required](#event-streaming-flow-control-required)
 - [Decision Details](#decision-details)
+  - [API Request Processing: No Flow Control](#api-request-processing-no-flow-control)
+  - [Event Streaming: Sophisticated Flow Control](#event-streaming-sophisticated-flow-control)
+  - [Transport Configuration: Message and Frame Limits](#transport-configuration-message-and-frame-limits)
 - [Consequences](#consequences)
+  - [Pros:](#pros)
+  - [Cons:](#cons)
 - [Related Decisions](#related-decisions)
 - [Implementation References](#implementation-references)
+- [Implementation Notes](#implementation-notes)
 
 ## Context
 

@@ -31,12 +31,14 @@ Implemented
 - [Implementation & Performance](#implementation--performance)
   - [Error Handling](#error-handling)
   - [Multi-Layer Caching Strategy](#multi-layer-caching-strategy)
+  - [Why a Factory](#why-a-factory)
   - [Performance Benchmarks](#performance-benchmarks)
   - [Instrument Integration](#instrument-integration)
 - [Outcome](#outcome)
   - [Delivered Capabilities](#delivered-capabilities)
   - [Architectural Benefits](#architectural-benefits)
   - [Foundation for Higher-Level Features](#foundation-for-higher-level-features)
+- [See Also](#see-also)
 
 ---
 

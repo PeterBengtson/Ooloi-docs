@@ -4,6 +4,26 @@
 
 Implemented
 
+## Table of Contents
+
+- [Related ADRs](#related-adrs)
+- [Context](#context)
+- [Decision](#decision)
+- [Detailed Design](#detailed-design)
+  - [1. Pure Tree Structure](#1-pure-tree-structure)
+  - [2. Integer ID References](#2-integer-id-references)
+  - [3. Timewalker-Based Traversal](#3-timewalker-based-traversal)
+  - [4. Unified Element Collection](#4-unified-element-collection)
+  - [5. Processing Pattern Unification](#5-processing-pattern-unification)
+- [Rationale](#rationale)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+  - [Neutral](#neutral)
+- [Implementation Notes](#implementation-notes)
+- [Future Considerations](#future-considerations)
+- [Example Applications](#example-applications)
+
 ## Related ADRs
 
 This ADR builds on the pure tree structure described in [ADR-0010 Pure Tree Structure](0010-Pure-Trees.md).

@@ -4,6 +4,40 @@
 
 Implemented
 
+## Table of Contents
+
+- [Context](#context)
+  - [Performance Impact of Network Transport in Combined Mode](#performance-impact-of-network-transport-in-combined-mode)
+  - [gRPC Java In-Process Transport Capabilities](#grpc-java-in-process-transport-capabilities)
+  - [Operational Requirements](#operational-requirements)
+- [Decision](#decision)
+  - [1. Transport Selection](#1-transport-selection)
+  - [2. Dual Health Endpoint Architecture](#2-dual-health-endpoint-architecture)
+  - [3. Fail-Fast Error Handling](#3-fail-fast-error-handling)
+- [Rationale](#rationale)
+  - [Performance Benefits](#performance-benefits)
+  - [Technical Mechanisms Driving Performance Gains](#technical-mechanisms-driving-performance-gains)
+  - [Operational Excellence](#operational-excellence)
+  - [Architecture Consistency](#architecture-consistency)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+  - [Mitigations](#mitigations)
+- [Alternatives Considered](#alternatives-considered)
+  - [1. Automatic Fallback to Network Transport](#1-automatic-fallback-to-network-transport)
+  - [2. Optional In-Process Optimization (Opt-In)](#2-optional-in-process-optimization-opt-in)
+  - [3. Single Health Endpoint Architecture](#3-single-health-endpoint-architecture)
+  - [4. HTTP Health Integration with gRPC Server](#4-http-health-integration-with-grpc-server)
+- [Success Criteria](#success-criteria)
+  - [Performance Validation](#performance-validation)
+  - [Operational Integration](#operational-integration)
+  - [Architecture Integration](#architecture-integration)
+- [References](#references)
+  - [Related ADRs](#related-adrs)
+  - [Technical Documentation](#technical-documentation)
+  - [Research References](#research-references)
+- [Notes](#notes)
+
 ## Context
 
 Ooloi's three-deployment architecture ([ADR-0001](0001-Frontend-Backend-Separation.md)) includes a **combined deployment mode** where both frontend and backend components run in the same process. Previously, this mode used network-based gRPC communication over localhost, which introduced unnecessary overhead when both client and server are in the same JVM. This ADR addresses that performance issue through in-process transport optimization.

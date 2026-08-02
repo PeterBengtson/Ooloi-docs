@@ -32,6 +32,7 @@ Implemented
   - [Architectural Isolation](#architectural-isolation)
   - [Plugin Ecosystem Implications](#plugin-ecosystem-implications)
 - [Summary](#summary)
+- [See Also](#see-also)
 
 ## Context
 

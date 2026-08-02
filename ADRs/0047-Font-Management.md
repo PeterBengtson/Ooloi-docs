@@ -20,8 +20,15 @@ Under implementation
   - [Piece Font Manifest and Version Matching](#piece-font-manifest-and-version-matching)
   - [UI Integration](#ui-integration)
 - [Rationale](#rationale)
+  - [Why bundled-first](#why-bundled-first)
+  - [Why discovery without silent substitution](#why-discovery-without-silent-substitution)
+  - [Why exact version matching for pieces](#why-exact-version-matching-for-pieces)
+  - [Why dual registration](#why-dual-registration)
+  - [Why not automatic OS font installation](#why-not-automatic-os-font-installation)
 - [Consequences](#consequences)
 - [References](#references)
+  - [Related ADRs](#related-adrs)
+  - [External References](#external-references)
 
 ---
 

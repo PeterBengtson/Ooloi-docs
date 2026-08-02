@@ -4,6 +4,18 @@
 
 Implemented
 
+## Table of Contents
+
+- [Context](#context)
+- [Decision](#decision)
+- [Rationale](#rationale)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+- [Alternatives Considered](#alternatives-considered)
+- [Notes](#notes)
+- [Related Decisions](#related-decisions)
+
 ## Context
 
 Ooloi's architecture—built around immutability, STM transactions, and client-server separation—makes multi-user collaboration architecturally straightforward to implement. While the primary use case remains single-user desktop notation (99.99% of scenarios), specialized scenarios benefit from multi-client access:

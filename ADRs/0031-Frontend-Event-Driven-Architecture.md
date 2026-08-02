@@ -34,6 +34,7 @@ Implemented
   - [Resolved](#resolved)
   - [Outstanding](#outstanding)
 - [Related ADRs](#related-adrs)
+- [Related Guides](#related-guides)
 - [References](#references)
 
 ---

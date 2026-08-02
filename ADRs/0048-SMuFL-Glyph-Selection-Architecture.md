@@ -26,9 +26,20 @@ Under implementation
     - [Medieval and Renaissance Ranges](#medieval-and-renaissance-ranges)
   - [Ooloi-Defined Classes](#ooloi-defined-classes)
   - [Font Coverage](#font-coverage)
+    - [Overview](#overview)
+    - [Core Notation Classes](#core-notation-classes)
+    - [Notehead Sets](#notehead-sets)
+    - [Accidentals](#accidentals)
+    - [Observations](#observations)
 - [Rationale](#rationale)
+  - [Why class-driven selection](#why-class-driven-selection)
+  - [Why a cascade](#why-a-cascade)
+  - [Why additional-glyphs instead of multiple classes](#why-additional-glyphs-instead-of-multiple-classes)
+  - [Why verbatim SMuFL glyph names](#why-verbatim-smufl-glyph-names)
 - [Consequences](#consequences)
 - [References](#references)
+  - [Related ADRs](#related-adrs)
+  - [External References](#external-references)
 
 ---
 

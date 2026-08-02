@@ -4,6 +4,33 @@
 
 Implemented
 
+## Table of Contents
+
+- [Context](#context)
+- [Decision](#decision)
+- [Detailed Design](#detailed-design)
+  - [1. Basic Structure](#1-basic-structure)
+  - [2. Key Properties](#2-key-properties)
+  - [3. Piece Components](#3-piece-components)
+- [Visual Representation](#visual-representation)
+  - [4. Musical Items](#4-musical-items)
+  - [5. Vector Path Descriptors (VPDs)](#5-vector-path-descriptors-vpds)
+  - [6. Integer ID References](#6-integer-id-references)
+  - [7. ID Generation and Management](#7-id-generation-and-management)
+  - [8. Attachments and References](#8-attachments-and-references)
+  - [9. Serialization and Deserialization](#9-serialization-and-deserialization)
+  - [10. Measure Copying and Deletion](#10-measure-copying-and-deletion)
+  - [11. Efficient Processing and Rendering](#11-efficient-processing-and-rendering)
+  - [12. Extensibility](#12-extensibility)
+- [Consequences](#consequences)
+  - [Positive](#positive)
+  - [Negative](#negative)
+  - [Neutral](#neutral)
+- [Implementation Notes](#implementation-notes)
+- [Future Considerations](#future-considerations)
+- [Note on Structure Terminology](#note-on-structure-terminology)
+- [Related Decisions](#related-decisions)
+
 ## Context
 
 Ooloi is a complex music notation software that needs to represent and manipulate intricate musical structures. The system must efficiently handle large musical scores while supporting various musical elements and their relationships.
