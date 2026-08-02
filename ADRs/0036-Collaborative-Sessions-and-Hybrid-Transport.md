@@ -17,6 +17,7 @@ Under implementation
   - [Frontend Context Switching](#frontend-context-switching)
   - [Frontend Reconnection: switch-to!](#frontend-reconnection-switch-to)
   - [Connection Failure and Fallback](#connection-failure-and-fallback)
+  - [Terminal Event Identity](#terminal-event-identity)
   - [Connect / Disconnect Event Sequence](#connect--disconnect-event-sequence)
   - [Collaboration Menu Enablement](#collaboration-menu-enablement)
   - [Notification Model](#notification-model)
@@ -233,7 +234,7 @@ Context switching is **asymmetric** by design.
 
 **Involuntary Reversion** (remote → in-process, ADR-0040):
 1. Remote connection is lost. gRPC delivers exactly one terminal event on the client's response observer, never both: a graceful server close (`ig/halt-key!`, an orderly shutdown) delivers `onCompleted`, while an abrupt loss — network partition, TLS failure, server death — delivers `onError`. **Both arms revert.** Neither may leave the client configured for a transport that is gone.
-2. **A terminal event acts only when its own channel is still the live one.** Both arms compare the channel they were opened against with the channel held by the component's current event-client, and do nothing when they differ. Two ordinary situations produce a terminal event on a channel that is no longer current, and neither is a connection loss: a stream closed by `switch-to!` during its own teardown fires a terminal event afterwards, and a target registration that never succeeded fires one while the component still holds the previous (or no) client. Without the identity comparison, the first wipes a freshly registered client's connection and the second reverts a connection the user never had — racing `switch-to!`'s own fallback. The comparison is what distinguishes *this connection died* from *some earlier connection ended*, and it belongs on both arms, not only the graceful one.
+2. The terminal event acts only if the channel it was opened against is still the live one — see §Terminal Event Identity. A terminal event on a superseded channel is not a connection loss and must not revert.
 3. The observer's `revert-fn` posts a persistent red "host disconnected" notification, then invokes `switch-to! :in-process` automatically. No intent confirmation; no gate.
 4. The recursive `switch-to!` clears `subscription-state` and publishes the same three switch events as a voluntary Disconnect (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection), so the collaboration menu reverts to `:local` enablement and the Tier 1 backend cache clears.
 5. UI returns to standalone mode; the red notification persists until the user dismisses it.
@@ -325,6 +326,17 @@ The fallback has two shapes, distinguished by where the frontend was when the at
 Notifications follow §Notification Model. The connect failure itself is surfaced by the connect dialog as a red ephemeral notification naming the target, and the dialog stays open so the user can correct the host or port and retry. A failed *host switch* additionally surfaces the ordinary info "Disconnected from <host>" for the remote left behind: departing A was deliberate and only the arrival at B failed, so the persistent red tier — reserved for an unchosen loss of work-context — does not apply.
 
 If a remote connection is lost mid-session rather than failing to establish, that is involuntary reversion, not fallback: the `grpc-clients` component invokes `switch-to! :in-process` automatically per ADR-0040's single-authority reversion model (§Involuntary Reversion).
+
+### Terminal Event Identity
+
+**A terminal event acts only when the channel it was opened against is still the live one.** gRPC delivers exactly one terminal event per stream — `onCompleted` for a graceful close, `onError` for an abrupt loss — and both arms compare the channel they captured at registration with the channel held by the component's current event-client, doing nothing when the two differ. This comparison belongs on **both** arms, not only the graceful one.
+
+The reason is that a terminal event is not, by itself, evidence that the current connection died. Two ordinary situations deliver one on a channel that has already been superseded, and neither is a connection loss:
+
+- **A stream `switch-to!` closed during its own teardown.** `switch-to!` closes the outgoing event-stream before registering against the target, and that close fires a terminal event afterwards — by which time a new client may already be registered. Acting on it wipes the connection of a freshly registered event-client.
+- **A target registration that never succeeded.** The component holds the previous client, or none, while the failed attempt's terminal event arrives. Acting on it reverts a connection the user never had, and races `switch-to!`'s own fallback to local (§Connection Failure and Fallback) over the same two atoms.
+
+The comparison is what distinguishes *this connection died* from *some earlier connection ended*. Without it, the involuntary-reversion path cannot be told apart from ordinary transport churn, and reversion fires on stale and never-established streams alike.
 
 ### Connect / Disconnect Event Sequence
 
