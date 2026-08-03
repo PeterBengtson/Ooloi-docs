@@ -317,12 +317,25 @@ The settings registry provides everything needed to generate a Settings window:
   - `:validator` + no `:control` → text field (default)
 
   **What makes a field numeric is the default's type, not `:control`.** The Settings window
-  coerces a committed string by looking at the setting's declared default: an integer default
-  means the text is parsed as a `Long`, and anything else is passed through unchanged. So a
-  setting whose default is a number behaves numerically whether or not it declares
-  `:control :number`, and `:number` renders no differently from a plain text field today — the
-  declaration states intent and reserves the hook, and nothing more. A parse failure yields
-  `nil`, which the validator then rejects.
+  reads the setting's declared default and treats a `number?` default as numeric throughout —
+  in how the committed string is coerced, in how the row is laid out, and in which control it
+  holds. Coercion looks at the same fact: an integer default means the text is parsed as a
+  `Long`, and anything else is passed through unchanged. So a setting whose default is a number
+  behaves numerically whether or not it declares `:control :number`, and `:number` renders no
+  differently from a plain text field — the declaration states intent and reserves the hook, and
+  nothing more. A parse failure yields `nil`, which the validator then rejects.
+
+- **Row shape and control follow that same fact.** A **numeric** default gets the choice-row
+  shape: the description on the left, capped at `:max-width 480.0`, and the control in the
+  right-hand column that cap creates — level with every ComboBox in the window. Its control is
+  `ooloi-dense-numeric-field`, six columns wide, carrying `:min-width :use-pref-size` so that an
+  enclosing HBox cannot compress it below the width that shows its value. That floor is not
+  decoration: a preferred width is only a hint, and without it a narrow window shrinks the field
+  to its own padding — measured at 24 pixels — leaving a control that is present and focusable
+  and displays no digit at all. Any **other** default gets the description on its own line with a
+  full-width `ooloi-dense-text-field` beneath it, since a hostname or an email address needs the
+  room. Because layout, control and coercion all read the same declared default, they cannot
+  drift apart; adding a setting whose default is a number requires no layout decision at all.
 - **Labels**: setting name via `(tr :setting.ui.theme)`, description via `(tr :setting.ui.theme.desc)`. Description Labels render with `:wrap-text true` and `:max-width 480.0` so long descriptions (a sentence or two) break to multiple lines instead of stretching the row beyond the scroll-pane viewport. New settings must keep this — a setting whose description Label omits `:wrap-text` widens the row to its single-line preferred width and defeats the scroll-pane's `:fit-to-width true` constraint.
 - **Choice labels**: `(tr :setting.ui.theme.nord-dark)` → "Dark"
 - **Validation feedback**: immediate validation on input change via the uniform closure interface (see [Validation Feedback Architecture](#validation-feedback-architecture)). Invalid fields receive `:error? true` styling; error messages display as persistent notifications.

@@ -443,12 +443,13 @@ cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to 
 
 **One-method principle:** Application code never uses raw `:fx/type :combo-box`, `:text-field`, or bare `:button` directly. Every control type has a corresponding formatter. This means the `:style-class` setAll() complexity (see below) is contained in exactly one place — the formatter function — and call sites cannot accidentally strip a base class.
 
-Three formatters exist specifically for dense form controls:
+These formatters exist specifically for dense form controls:
 
 | Formatter | Encapsulates |
 |-----------|--------------|
 | `ooloi-dense-combo-box` | `["combo-box" "combo-box-base" Styles/DENSE]` style-class set; with `:choices`, handles keyword↔label translation (see below) |
 | `ooloi-dense-text-field` | `["text-input" "text-field" Styles/DENSE]` style-class set |
+| `ooloi-dense-numeric-field` | `ooloi-dense-text-field` narrowed to six columns and given `:min-width :use-pref-size`, so a compressed row cannot shrink the field below the width that shows its value. The one way to describe a numeric input; also the home for locale-dependent number formatting should it ever be wanted (the value is invariant today) |
 | `ooloi-search-field` | `ext-instance-factory` wrapping AtlantaFX `CustomTextField` + `["text-input" "text-field" "custom-text-field" Styles/DENSE]`; muted magnifying glass icon visible only when empty |
 | `ooloi-icon-button` | `ext-instance-factory` wrapping `FontIcon` + `["button" Styles/FLAT]` |
 
