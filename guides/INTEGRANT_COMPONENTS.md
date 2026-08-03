@@ -961,6 +961,42 @@ Both helpers:
 
 This pattern replaces `CountDownLatch` (Java-style coordination forbidden anywhere in Ooloi, tests or production, per [§11](#11-deprecated-patterns)) and ad-hoc `(loop [tries] ... Thread/sleep ... recur)` polling loops.
 
+### Proving a string is translated, not concatenated
+
+`lein i18n` cannot see a user-facing string that never became a key — there is no key to extract, so nothing is missing and the build stays green. Concatenation and inline literals are therefore invisible to it, and two of ADR-0039's invariants rest on test instead of on the build task. [ADR-0039 §What Verification Cannot See](../ADRs/0039-Localisation-Architecture.md#what-verification-cannot-see) states why; this is how.
+
+**Produce the same output under two locales and compare.** A `tr` call consults a catalogue and yields different text; a hardcoded prefix yields identical text both times. A single-locale assertion cannot tell them apart.
+
+```clojure
+(uco/with-saved-atom tr/current-locale
+  (tr/set-locale! :en-GB) => :en-GB
+  (let [en (produce-the-thing)]
+    ;; Assert the switch. set-locale! falls back to :en-GB for an unavailable
+    ;; locale and returns what it actually selected; an unasserted fallback
+    ;; compares English against English and fails for an unrelated reason.
+    (tr/set-locale! :sv-SE) => :sv-SE
+    (let [sv (produce-the-thing)]
+      ;; The runtime value survives translation …
+      (re-find #"the-parameter" en) => some?
+      (re-find #"the-parameter" sv) => some?
+      ;; … and the surround does not, because it came from a catalogue.
+      en =not=> sv)))
+```
+
+Keep the *input* identical across both halves. Any difference between the two outputs is then the translated surround and nothing else — which is the whole assertion.
+
+**Restore the locale.** `tr/current-locale` is a process-global atom; `uco/with-saved-atom` restores it. Frontend tests get this from `with-frontend-test-config`, which also restores `tr/catalogs` — restoring only the selector leaves a test free to empty the catalogues for every namespace loaded after it.
+
+**A failure means one of two things, and both are real.** Either the production code never called `tr`, or the key was never translated into the second locale — a key missing from a catalogue returns the UK English text (ADR-0039 §Forward Compatibility), so an untranslated key is indistinguishable from a hardcoded one. The second is why this assertion cannot pass until the 22-locale sweep has landed; that ordering is a property of the test, not an obstacle to it.
+
+Worked examples at three altitudes:
+
+| Where | What it compares |
+|---|---|
+| `frontend/…/instrument_library/staff_editor_test.clj` | cljfx description maps — label text and a combo-box `:button-cell` describe fn, rendered under `:en-GB` then `:de-DE` |
+| `shared/test/clojure/ooloi/shared/i18n/tr_test.clj` | `tr` itself, and the `set-locale!` return-value guard |
+| `shared/test/app/clojure/ooloi/shared/system_test.clj` | a notification raised through the running application, read back from the UI manager's registry |
+
 ---
 
 ## 10. Invariants and Pitfalls

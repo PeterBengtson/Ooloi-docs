@@ -28,6 +28,7 @@ Implemented
   - [Canonical Completeness (Hard Gate)](#canonical-completeness-hard-gate)
   - [Plural Integrity (Hard Gate, Both Modes)](#plural-integrity-hard-gate-both-modes)
   - [Non-English Coverage (Soft)](#non-english-coverage-soft)
+  - [What Verification Cannot See](#what-verification-cannot-see)
   - [Orphaned Keys](#orphaned-keys)
 - [Forward Compatibility](#forward-compatibility)
 - [Implementation Strategy](#implementation-strategy)
@@ -531,6 +532,31 @@ Non-English catalogues are gated on **structure but not on completeness**:
 
 This preserves forward compatibility: an old `sv.po` continues to work when new UI strings are added in a release. Partial translations degrade gracefully rather than failing. A partial translation is a legitimate state; a structurally broken one is not.
 
+### What Verification Cannot See
+
+Verification works by extracting `tr` keys from source and comparing them against the catalogues. Everything it can check follows from a key existing. **A string that never became a key is therefore invisible to it**, and that is precisely the shape of the worst violation of this architecture:
+
+```clojure
+;; Passes every build check. There is no key, so there is nothing to check.
+(show-error-notification! mgr (str "An unexpected error occurred: " detail))
+```
+
+No key is extracted, no catalogue entry is missing, no plural rule is broken. The build is green and the string is untranslatable in all twenty-two locales. The same hole covers an inline literal and a sentence assembled from fragments — Invariants 2 and 5 — which is why those invariants cannot be enforced by the build task and must be enforced by a test.
+
+**The enforcing observation is that a translated string changes when the locale changes.** Produce the same output twice, under two different locales, and compare:
+
+- concatenation and inline literals produce **identical** text both times, because no catalogue was consulted
+- a genuine `tr` call produces **different** text, because it was
+
+A single-locale assertion cannot distinguish the two: a hardcoded English prefix satisfies it exactly as well as a correct implementation does.
+
+Two consequences worth stating, because both are easy to mistake for test defects:
+
+- **The comparison also fails when the catalogue sweep was skipped.** Under Forward Compatibility below, a key missing from a locale returns the UK English text — so an untranslated key produces identical output in both locales and is indistinguishable from concatenation. This is correct behaviour: the test asserts that the string is *translated*, and a key present in one catalogue only is not.
+- **The second locale must be asserted, not assumed.** `set-locale!` falls back to `:en-GB` when the requested locale is unavailable, and returns the locale actually selected. An unasserted fallback silently compares English against English and fails for a reason unrelated to the subject.
+
+`guides/INTEGRANT_COMPONENTS.md` §Proving a string is translated, not concatenated carries the test pattern and its worked examples.
+
 ### Orphaned Keys
 
 Keys in catalog but not in source are reported as warnings, never errors. Rationale:
@@ -725,6 +751,8 @@ Backend outputs are protocol artifacts: stable English for logs, exceptions, and
 ### 2. Frontend contains zero inline user-facing strings
 
 Every user-visible string passes through `tr`. No string literal reaches a label, a menu item, a window title, or a notification without a translation key behind it.
+
+Neither this invariant nor Invariant 5 is reachable by the build task — a literal produces no key to extract, so nothing is missing and nothing fails. Both are held by test instead; see [What Verification Cannot See](#what-verification-cannot-see).
 
 ### 3. All localisation through a single API
 
