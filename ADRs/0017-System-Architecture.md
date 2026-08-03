@@ -77,16 +77,49 @@ a different hazard applies: a failure on a thread nobody is waiting on disappear
 dereferenced, and the UI paths never dereference; a `Platform.runLater` runnable has no caller at
 all. Neither produces a crash or a freeze — merely an application that silently fails to do what
 was asked. Because the failure is *unexpected* by definition, no call site can be relied upon to
-catch it, so the coverage lives at the two boundaries where work is dispatched rather than at the
+catch it, so the coverage lives at the boundaries where work is dispatched rather than at the
 call sites that dispatch it.
+
+**Every feed arrives at one named function**, which is what makes the routing below a single
+auditable decision rather than a rule each dispatch site must remember. It exists only where a UI
+Manager does, so the standalone backend is gated out by construction.
 
 - **Off-thread work** — the shared thread pool is a `ScheduledThreadPoolExecutor` that recovers the
   throwable of any completed task in `afterExecute`, taking it from the executor's own argument or,
   where a thrown `cp/future` body deposits it, from the task's future. It hands the throwable to a
   per-pool handler, replaceable via `install-ooloi-error-handler!`.
-- **The JavaFX Application Thread** — every renderer is created with an explicit `:error-handler`.
-  The cljfx default prints to stderr and re-throws `Error`s, which is not sufficient: a render
-  failure would reach no user, and a re-thrown `Error` escapes onto a thread with nothing above it.
+- **The JavaFX Application Thread needs two mechanisms, not one**, because each covers precisely
+  what the other cannot:
+  - **Every renderer is created with an explicit `:error-handler`.** cljfx catches `Throwable`
+    around the render and hands it to that handler, so a render failure never escapes to anything
+    else — this handler is the only thing that can see one. The cljfx default prints to stderr and
+    re-throws `Error`s, which is not sufficient: a render failure would reach no user, and a
+    re-thrown `Error` escapes onto a thread with nothing above it.
+  - **An uncaught-exception handler is attached to the thread itself.** Nothing else on that
+    thread passes through a renderer — a `Platform.runLater` body, an event handler, an animation
+    callback — so the renderer's handler sees none of it. Each of those leaves its runnable and
+    arrives at the thread's uncaught-exception handler, which is nowhere unless one is installed.
+    It is attached to the JavaFX thread specifically rather than installed process-wide: that is
+    the thread this covers, and other threads have nets of their own. It is released when the UI
+    Manager halts, so a stopped component leaves nothing behind on a thread that outlives it.
+
+**The surfacing path must be total.** Nothing on it may raise on the thread that called it.
+A boundary that throws destroys the report it was carrying — on the JavaFX thread the toolkit
+swallows the failure *and* the original diagnostic with it; on a pool thread it leaves
+`afterExecute`, terminating the worker and losing the throwable. Displaying a failure is also the
+one thing that cannot be reported by displaying a failure: a throw while showing a notification
+would be surfaced as a notification, which would be shown, which would throw. Every step therefore
+degrades to stderr rather than raising, and degrades by *reporting* rather than by swallowing — a
+silent catch inside the mechanism that exists to end silent failures would be self-defeating.
+
+**What reaches the screen is bounded; what reaches the record is not.** A failure already showing
+is not reported again, neither to the user nor to stderr: it is the same fact, and the first report
+already carried the full trace. A *distinct* failure beyond the on-screen limit is suppressed only
+on screen — a different failure is a different fact, and losing its record is worse than a verbose
+log. The limit counts only notifications that wait to be dismissed; those that fade on their own
+are neither counted nor capped. Bounding matters because the notification overlay grows from a
+screen corner: past its capacity the newest are pushed out of view, where they cannot be dismissed
+until those below them have been, so an unbounded stack shows *less*, not more.
 
 **Routing follows the deployment, not the call site.** Where a UI Manager exists — the combined
 desktop application — the failure becomes an error notification in the persistent, user-dismissed

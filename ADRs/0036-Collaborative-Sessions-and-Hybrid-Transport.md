@@ -435,10 +435,13 @@ Connect and disconnect events are surfaced to the user primarily through notific
 | Connected to remote | Guest | success (green) | ephemeral | `switch-to!` success branch when target is a remote map |
 | Voluntary disconnect | Guest | info | ephemeral | "Disconnect" action handler after the intent confirmation completes the switch |
 | Involuntary disconnect | Guest | error (red) | persistent until the user dismisses it | `switch-to!` revert-fn (response-observer `onCompleted` or `onError` from the remote server) |
+| Unexpected runtime failure | Either | error (red) | persistent until the user dismisses it | the surfacing boundary — [ADR-0017](0017-System-Architecture.md) §Surfacing Unexpected Runtime Failures |
 
 All notification text uses `tr` for i18n. Host-side joined/left notifications include the guest's display name (when supplied via the Connect dialog) or the remote IP/port as the fallback identifier. Connect/disconnect notifications on the guest side include the host:port the guest was connected to.
 
-The persistent severity tier (host-server-started, guest-involuntary-disconnect) is reserved for states the user must acknowledge: a host running a network server is exposing local state, and an involuntary disconnect is a loss of work-context. Ephemeral notifications cover routine transitions where dismissal-by-time is acceptable.
+The persistent severity tier (host-server-started, guest-involuntary-disconnect, unexpected runtime failure) is reserved for states the user must acknowledge: a host running a network server is exposing local state, an involuntary disconnect is a loss of work-context, and an unexpected failure means the application has silently not done what was asked. Ephemeral notifications cover routine transitions where dismissal-by-time is acceptable.
+
+**The persistent tier is bounded, the ephemeral one is not.** Only notifications that wait to be dismissed count against the on-screen limit, and only they are subject to it; those that fade on their own are neither counted nor capped. The bound exists because the overlay grows from a screen corner, so past its capacity the newest are pushed out of view where they cannot be dismissed until those below them have been. Exempting the ephemeral tier is what stops a burst of routine transitions consuming the allowance and suppressing something that needed acknowledging.
 
 **Connection-attempt failure (guest).** The table above covers completed transitions; a guest's *failed* attempt — `switch-to!` never reaches a remote backend — is a separate surface. The Connect dialog stays open and a red ephemeral notification names the likely cause, classified from the gRPC connection error (`ooloi.shared.grpc.errors`; see ADR-0020 §Client-Side TLS). The classification keyword is a dispatch value, and the dialog owns the wording via `tr`:
 
