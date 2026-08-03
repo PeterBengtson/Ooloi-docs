@@ -312,9 +312,17 @@ The settings registry provides everything needed to generate a Settings window:
   - `:choices` → dropdown (always)
   - `:validator` + `:control :text` → text field
   - `:validator` + `:control :checkbox` → checkbox
-  - `:validator` + `:control :number` → numeric stepper
+  - `:validator` + `:control :number` → text field, with the typed string coerced (see below)
   - `:validator` + `:control :path` → path picker
   - `:validator` + no `:control` → text field (default)
+
+  **What makes a field numeric is the default's type, not `:control`.** The Settings window
+  coerces a committed string by looking at the setting's declared default: an integer default
+  means the text is parsed as a `Long`, and anything else is passed through unchanged. So a
+  setting whose default is a number behaves numerically whether or not it declares
+  `:control :number`, and `:number` renders no differently from a plain text field today — the
+  declaration states intent and reserves the hook, and nothing more. A parse failure yields
+  `nil`, which the validator then rejects.
 - **Labels**: setting name via `(tr :setting.ui.theme)`, description via `(tr :setting.ui.theme.desc)`. Description Labels render with `:wrap-text true` and `:max-width 480.0` so long descriptions (a sentence or two) break to multiple lines instead of stretching the row beyond the scroll-pane viewport. New settings must keep this — a setting whose description Label omits `:wrap-text` widens the row to its single-line preferred width and defeats the scroll-pane's `:fit-to-width true` constraint.
 - **Choice labels**: `(tr :setting.ui.theme.nord-dark)` → "Dark"
 - **Validation feedback**: immediate validation on input change via the uniform closure interface (see [Validation Feedback Architecture](#validation-feedback-architecture)). Invalid fields receive `:error? true` styling; error messages display as persistent notifications.
@@ -355,7 +363,9 @@ The frontend settings system is implemented in `frontend/src/main/clojure/ooloi/
 - `get-app-setting` — reads from settings atom; lazy-loads on first call
 - `set-app-setting!` — validates, updates atom, writes to disk, publishes `:setting-changed` event
 
-Default values are declared in `def-app-setting` and extracted into `shared/resources/app-settings/settings.edn` by the `lein frontend-settings` build task. User settings are stored in the platform-specific directory via `platform/get-platform-directory "Ooloi" "app-settings"`.
+Default values are declared in `def-app-setting` and extracted into `shared/resources/app-settings/defaults.edn` by the `lein frontend-settings` build task. User settings are stored separately, in `settings.edn` under the platform-specific directory via `platform/get-platform-directory "Ooloi" "app-settings"`. The two files are distinct: `defaults.edn` is generated and lives on the classpath, `settings.edn` is the user's and lives on disk.
+
+**The extraction is not optional.** `get-app-setting` reads the merge of those two files, not the registry, so a setting declared in `def-app-setting` without regenerating `defaults.edn` reads as `nil` at runtime — a failure that surfaces far from its cause, in whatever code consumes the setting. Run `lein frontend-settings` in the same change that adds the declaration.
 
 The Settings window (`app_settings_window.clj`) consumes the registry to generate UI controls automatically, following the content builder pattern (ADR-0042). `system.clj` maps the `:ui/show-app-settings` action handler to a one-line delegation to `show-app-settings!`.
 
