@@ -144,6 +144,39 @@ namespace that follows. The general form of the requirement, applying to any dyn
 component, is in [INTEGRANT_COMPONENTS](../guides/INTEGRANT_COMPONENTS.md)
 §Dynamic (On-Demand) Components.
 
+#### Shutdown and the quitting application's own client
+
+Halting a gRPC server completes its clients' observers, and the quitting application is itself one of
+those clients. Its frontend therefore sees a terminal event during its own shutdown — and a terminal
+event is what triggers involuntary reversion. **A deliberate halt must never be read as a lost
+connection.** Reverting during shutdown would mean re-registering against a backend being dismantled,
+publishing switch events to subscribers that are going away, and surfacing a "host disconnected"
+notification to a user who asked to quit.
+
+Nothing new guards this; two existing mechanisms compose to give it.
+
+- **Order.** The frontend's `grpc-clients` declares an `ig/ref` on the in-process `grpc-server`, so
+  Integrant halts the client before the server it depends on. The client is gone before that server
+  completes anything.
+- **Identity.** `halt-key!` on `grpc-clients` clears the event-client and connection-pool atoms
+  *before* closing the streaming call, so any terminal event that does arrive fails the comparison in
+  §Terminal Event Identity and is declined.
+
+A **guest** quitting while connected to a remote host is covered by the same pair. The remote server
+is in another process and is not halted by the guest at all, so the only terminal event in play comes
+from the guest closing its own channel — by which time its atoms are already cleared.
+
+The consequence worth stating, because it is what makes the boundary in
+[ADR-0017 §Surfacing Unexpected Runtime Failures](0017-System-Architecture.md) trustworthy: **quitting
+produces no failure record, in any deployment shape.** A diagnostic appearing at shutdown means
+something genuinely went wrong, not that shutdown is noisy.
+
+One arrangement escapes both mechanisms: a frontend connected as a guest to its **own** network
+server, where nothing orders that server against the client. It does not arise — §Collaboration Menu
+Enablement records that a host's frontend always talks to its own in-process backend — but it is
+reachable in a single-process test, which is the only way to exercise transport switching without a
+second JVM. A test in that arrangement is not evidence about shutdown.
+
 **Lifecycle state diagram:**
 
 ```mermaid

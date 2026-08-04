@@ -374,7 +374,7 @@ A focused component has:
 1. **Dual-server impossibility.** Adding a second gRPC server (Phase 1 network server) made every drilled field ambiguous: which server's health-manager? which startup time? Their values are now contested between two consumers.
 2. **Coupling that wasn't in the config.** `http-server` declared a single `(ig/ref :grpc-server)` dependency, but actually consumed four pieces of state from inside it. The config understated the coupling by a factor of four.
 
-The fix (Phase 0 of #211):
+The fix:
 
 - Extract `connection-registry`, `server-statistics`, and `health-manager` into their own tiny Integrant components.
 - `grpc-server` consumes them via `ig/ref` instead of constructing them internally.
@@ -731,7 +731,7 @@ The symptom of getting this wrong is identity-dependent server responses (`:own?
     ...))
 ```
 
-This is a workaround for the current production-side coupling between `http-server` and `grpc-server` (see §6 worked example). **It is scheduled for removal once #211 Phase 0 lands the http-server decoupling.** After that:
+This is a workaround for the current production-side coupling between `http-server` and `grpc-server` (see §6 worked example). **It is scheduled for removal once the http-server decoupling lands.** After that:
 
 - `http-server` no longer holds a ref to any specific `grpc-server`; it depends on the shared `connection-registry`, `server-statistics`, and `health-manager` components directly
 - Tests can instantiate any number of gRPC servers with at most one shared `http-server` (or none) without port collision
@@ -960,6 +960,27 @@ Both helpers:
 - Always remove the watcher before returning, regardless of timeout or success
 
 This pattern replaces `CountDownLatch` (Java-style coordination forbidden anywhere in Ooloi, tests or production, per [§11](#11-deprecated-patterns)) and ad-hoc `(loop [tries] ... Thread/sleep ... recur)` polling loops.
+
+### Teardown that provokes production behaviour must wait for it to finish
+
+A teardown step is not always inert. Halting a component can set real production work in motion, and if the test returns before that work completes, the rest of the teardown dismantles the system underneath it.
+
+The clearest case is the collaboration server. Halting a gRPC server completes its clients' observers, so the frontend sees a terminal event and begins an involuntary reversion to the local backend ([ADR-0036 §Involuntary Reversion](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md)). That reversion is asynchronous — it runs on the gRPC executor, not on the test thread — and it re-registers against the in-process backend. A test that returns the instant the server is halted abandons it mid-flight, and the enclosing `with-combined-system`'s `ig/halt!` then takes away the very backend it is re-registering against. The reversion fails; and since the frontend now records such failures rather than discarding them ([ADR-0017 §Surfacing Unexpected Runtime Failures](../ADRs/0017-System-Architecture.md)), the result is a stack trace printed inside a green run.
+
+The running application never shows this, because nothing there cuts the reversion short. The defect is in the test, not in the code beneath it.
+
+**Wait on the post-condition the behaviour establishes, not on a signal that merely correlates with it.** The reversion's post-condition is the API connection pool back on `:in-process`:
+
+```clojure
+(ig/halt-key! :ooloi.backend.components/network-grpc-server net)
+(wait-for-state (:api-connection-pool grpc-clients)
+                #(= :in-process (:transport (:config %)))
+                5000)
+```
+
+Waiting instead for the "host disconnected" notification looks equivalent and is not: the reversion posts that notification *before* it switches transports, so the wait returns while the switch is still in flight. The distinction is not cosmetic — with everything else identical, it was the difference between a namespace that printed stack traces and one that did not.
+
+The general shape: ask what a teardown step **causes**, not merely what it **stops**. Where it causes asynchronous work, wait for that work's own post-condition before letting the rest of the teardown proceed. The same reasoning applies to any halt that triggers a reaction — a component whose shutdown publishes an event, or whose closure prompts a reconnect elsewhere.
 
 ### Proving a string is translated, not concatenated
 
