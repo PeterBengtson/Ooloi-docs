@@ -168,6 +168,77 @@ unreadable file, a rejected write — belongs caught at its source and surfaced 
 application presents deliberately, well before it could arrive here as a raw exception
 ([ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md)).
 
+#### What a Deliberate `catch` May Do
+
+The net above is the backstop. A `catch` written deliberately is the foreground, and it carries an
+obligation the backstop cannot discharge on its behalf: the net never sees what a `catch` has
+already swallowed.
+
+**A caught throwable has three ordinary destinations. It is rethrown, it becomes a value the caller
+acts on, or it is recorded through `log-error`.** Discarding it is a fourth, it is legitimate, and it
+is the minority — see *Deliberate suppression* below. What is never legitimate is arriving at the
+fourth by default: binding a throwable to `_` and returning is not a decision about the exception,
+it is the absence of one, and it reads on review as though a decision had been made. `log-error` is
+the single write site for the record — public in `ooloi.shared.components.thread-pool`, and
+therefore on every classpath, reachable from backend and frontend alike.
+
+Where a catch already returns typed data the application presents, that value satisfies the second
+destination — but only in the arms that name a specific cause. A **catch-all arm names none**, so it
+takes the third as well: the type tells the user which category of thing failed, and only the record
+can say why. The same applies to a catch that prints the message and drops the throwable. A message
+is not a record; it carries neither the trace, nor the cause chain, nor the class, and it bypasses
+the single write site any future sink attaches to.
+
+**A catch clause must be no wider than the condition it names.** This is the rule that matters most
+in practice, because the failure it prevents is invisible on review. `catch Exception` beneath a
+comment reading *"channels may already be closed"* destroys every failure that is not a closed
+channel — and the comment is precisely what makes the loss look considered, because one case was
+thought about and the form therefore reads as though all of them were. Where the narrow type is
+genuinely unknown, the catch stays wide **and records**; it does not stay wide and discard.
+
+**Deliberate suppression.** Discarding a throwable is sometimes right, and the rule above is not a
+prohibition on it — it is a prohibition on reaching it without deciding. Two shapes qualify. The
+first is a catch whose thrown case *is* the expected outcome: a toolkit already initialised, a
+filesystem already open, an interrupt that ends a loop. There the throw is control flow rather than
+failure and there is nothing to report. The second is a throwable that carries nothing the record
+will not already have — the same failure a caller immediately above is about to report with more
+context. That second shape is a judgement, and judgements are allowed; what is not allowed is making
+one silently.
+
+**Volume is not a reason, because volume is the boundary's problem and not the call site's.** The
+dedupe above already suppresses a failure that is the same fact as one still showing. A catch site
+that discards to avoid noise is solving a centrally-solved problem locally, and pays for it by losing
+the first occurrence along with the repeats.
+
+**"It is going away anyway" is not a reason either, and it is the tempting one.** A throw while
+closing a channel, halting a component or tearing down a pool feels safe to discard: the thing is
+being destroyed, so what is there to act on? But a shutdown step that throws is evidence that the
+shutdown is not ordered correctly, and the throwable is the only notice of it. Discarding buys
+silence at the price of the diagnosis, and the defect stays — leaking a thread, a registry entry or
+a port, invisibly, because an exiting JVM has the operating system reclaim what the code failed to
+release.
+
+**The correct answer is a shutdown that does not throw, and it is reachable.** The composed
+guarantee in [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Network Server
+Lifecycle is the worked example: a quitting application sees a terminal event from its own halt, and
+rather than suppressing it, halt *order* and *identity* compose so the event is declined. Measured
+across every deployment shape, quitting produces no failure record at all — which is what makes the
+converse trustworthy, that a diagnostic at shutdown means something genuinely went wrong. Suppression
+would have bought the same quiet log while destroying that guarantee.
+
+**Tests inherit this, and get it wrong in a way production does not.** A teardown that halts a
+component provokes real production behaviour, and a test returning before that behaviour completes
+dismantles the system underneath it — producing exactly the shutdown-path exception that then invites
+suppression. The fix is the teardown, never the catch. See
+[INTEGRANT_COMPONENTS](../guides/INTEGRANT_COMPONENTS.md) §*Teardown that provokes production
+behaviour must wait for it to finish*.
+
+**Both are recognised by the same two marks, because nothing else distinguishes deliberate
+suppression from an oversight.** The catch names the specific throwable class it expects rather than
+reaching for `Exception`, and the body says why the throwable is discarded. An unexplained `_` is
+indistinguishable in the source from a case nobody thought about — which is exactly why the burden
+of saying so falls on the deliberate case rather than on the reader.
+
 ## Rationale
 
 ### Why Integrant Over Alternatives
