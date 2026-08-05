@@ -102,6 +102,27 @@ Manager does, so the standalone backend is gated out by construction.
     It is attached to the JavaFX thread specifically rather than installed process-wide: that is
     the thread this covers, and other threads have nets of their own. It is released when the UI
     Manager halts, so a stopped component leaves nothing behind on a thread that outlives it.
+- **A Clojure agent is a third such thread, and its net is its own `:error-handler`.** An action
+  that throws on an agent reaches neither mechanism above: it is not a pool task, and it is not a
+  JavaFX runnable. What happens instead is decided by the agent's `:error-mode`, and **both
+  defaults lose the throwable**:
+  - `:fail`, the default when no handler is supplied, stores the exception and blocks the agent.
+    Nothing reads what it stored, and every later `send` throws `Agent is failed, needs restart` at
+    its caller — a message naming nothing about what actually broke. Where an agent is sent to on
+    every mutation, one failed action is fatal to the session rather than to itself.
+  - `:continue` **without** an `:error-handler` discards the exception outright. It is not stored,
+    `agent-error` returns `nil`, and nothing is retrievable anywhere.
+
+  Every agent therefore carries `:error-mode :continue` together with a handler that records. Not
+  propagating is frequently correct — a best-effort write must not fail the operation it rode in on
+  — but *not propagating* is not the same as *not recording*, and the two are easy to conflate when
+  the code reads `:continue` and the reader stops there.
+
+**Enumerating `catch` forms does not find these.** A `catch` is only one of the ways a throwable is
+dropped. An agent's error mode, a `future` whose result is never dereferenced, a `submit` whose
+`Future` is discarded, an absent uncaught-exception handler — each loses one without a `catch`
+appearing anywhere. An audit that greps for `catch` is blind to them by construction, and will
+report a clean sweep while they remain.
 
 **The surfacing path must be total.** Nothing on it may raise on the thread that called it.
 A boundary that throws destroys the report it was carrying — on the JavaFX thread the toolkit

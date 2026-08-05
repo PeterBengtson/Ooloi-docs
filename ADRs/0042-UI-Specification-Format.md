@@ -1815,6 +1815,28 @@ So, for any test that drives `refresh-menu-text!` or otherwise reaches the app m
   thing under test.
 - Never take a populated `:macos-menu-items` as licence to touch the native menu.
 
+**Production verifies the layout before indexing it, so this is no longer only a test hazard.** The
+guidance above is about not *provoking* the abort from a test; it left the same abort reachable in a
+running application, since the two sites that index the app submenu — the Show All patch and the
+application-modal menu gate — did so on the strength of an expected layout. They now read
+`.numberOfItems` first and raise an ordinary `ex-info` when the submenu is shorter than the index
+they need, which the surrounding catch records. An unexpected menu therefore degrades to a recorded
+failure rather than killing the process.
+
+This matters beyond tidiness: an aborted process is the one failure mode no boundary can report.
+The catches at these sites exist to keep failures visible, and an Objective-C exception walks past
+every one of them — so the only defence is not to make the call that raises it. The measured case:
+in a JVM that has not run `setup-macos-app-menu!`, the main menu holds a single item titled "java"
+whose submenu holds **zero**, so indexing it at 0 was already out of range.
+
+**Catch `LinkageError` beside `Exception` at every native site.** `UnsatisfiedLinkError`,
+`NoClassDefFoundError` and `ExceptionInInitializerError` — the three ways a native library fails to
+load, and the ones these sites will meet on a platform without Cocoa — are all `LinkageError`
+subclasses, and nothing else is. `catch Exception` alone misses them; `catch Throwable` catches them
+but also swallows `StackOverflowError`, which ADR-0017 warns can destroy the very diagnostic it was
+carrying. Naming `LinkageError` matches the clause to the condition, which is what ADR-0017's rule
+on deliberate catches requires.
+
 ## Benefits
 
 ✅ **Matches event pattern** - Events already use pure maps with namespace-qualified keys  
