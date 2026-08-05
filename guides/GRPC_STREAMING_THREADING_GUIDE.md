@@ -92,7 +92,15 @@ The fix is to ensure `.onNext` runs inside the right gRPC context, while still l
                                                   (not (.isShutdown raw-exec)))
                                          (if-some [ev (.poll event-queue)]
                                            (do
-                                             (.onNext server-obs ev)
+                                             ;; A throw here would otherwise escape the drain
+                                             ;; thread to the JVM's default handler, killing the
+                                             ;; thread and abandoning everything still queued
+                                             ;; behind this event. Record it and carry on with
+                                             ;; the next: one event is lost, not the feed.
+                                             (try
+                                               (.onNext server-obs ev)
+                                               (catch Exception e
+                                                 (tp/log-error e)))
                                              (recur))
                                            ;; queue empty while ready
                                            nil)))
@@ -124,6 +132,14 @@ The fix is to ensure `.onNext` runs inside the right gRPC context, while still l
     ;; return drain function for immediate use
     drain!))
 ```
+
+### Why `.onNext` carries its own catch
+
+Nothing sits above the drain thread. The `Runnable` is handed to a bare `Executors/newSingleThreadExecutor` via `.execute`, so a throw escaping it goes to the JVM's default uncaught-exception handler: a trace on stderr that no part of Ooloi ever sees, and a dead drain thread. Everything still queued behind the failed event is abandoned. The `finally` does release the mutex, so the feed itself resumes on the next `send-*-event` or `onReady` kick — the loss is the backlog, not the connection, and it is silent.
+
+Recording the throwable through `tp/log-error` puts it on the one boundary that exists ([ADR-0017 §Surfacing Unexpected Runtime Failures](../ADRs/0017-System-Architecture.md)), and the `recur` keeps the queue moving past it. One event is lost; the feed is not. This is the *record* arm of ADR-0017 §What a Deliberate `catch` May Do — stepping aside is not available here, because stepping aside means letting the throwable reach a boundary that watches this thread, and no such boundary exists above a bare single-thread executor.
+
+Note what is deliberately *absent*: no eviction of the failing event, no retry, no termination of the stream. Terminating would mean a server-initiated `.onCompleted`, which races the client's own close — the self-closing race documented under Graceful Disconnect below. And there is nothing to reconcile afterwards: [ADR-0031 §Connection Management](../ADRs/0031-Frontend-Event-Driven-Architecture.md) rules out queue replay and reconciliation outright, on the grounds that "clients never need to 'catch up' on missed events — a new connection fetches current state when it needs it". A dropped event is therefore a recorded fact, not a repair job.
 
 The `setOnCancelHandler` delegates to a named, identity-aware function. Extracting this body matters: gRPC fires the cancel handler asynchronously when it observes the stream's cancellation, and there is no guarantee that the entry in the registry at fire time is still *this* stream's entry. A graceful Disconnect + re-register cycle (the canonical `switch-to!` flow) can install a fresh entry under the same client-id between the cancellation and the handler running; a non-identity-aware dissoc-by-client-id would wipe that fresh entry.
 
@@ -403,6 +419,7 @@ Sending events just means enqueueing them and nudging the drainer:
 4. Use bounded queues and drop-oldest to prevent memory issues.
 5. Keep registry updates consistent with STM.
 6. Clean up executors and registry entries on cancel.
+7. Wrap `.onNext` in its own `catch` — nothing watches the drain thread, so an escaping throw kills it and silently abandons the backlog.
 
 ---
 
