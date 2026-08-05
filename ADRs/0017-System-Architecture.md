@@ -239,6 +239,15 @@ reaching for `Exception`, and the body says why the throwable is discarded. An u
 indistinguishable in the source from a case nobody thought about — which is exactly why the burden
 of saying so falls on the deliberate case rather than on the reader.
 
+**Naming the class is not the same as matching the condition, and sometimes cannot be.** A throwable
+class can be broader than the condition it names, because two quite different causes may share one:
+a `FileNotFoundException` may mean *this optional resource is legitimately absent* or *this required
+resource is misnamed*, and the class cannot tell them apart. Where that happens, narrowing the clause
+is not sufficient and is actively misleading — the catch reads as disciplined while still swallowing
+the case that mattered. The discrimination then belongs in the body. If it cannot be made there
+either, that is a finding to record and raise, not a corner to round off: a suppression that cannot
+be justified precisely is one that has not been justified.
+
 ## Rationale
 
 ### Why Integrant Over Alternatives
