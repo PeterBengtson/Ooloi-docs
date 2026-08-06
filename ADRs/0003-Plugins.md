@@ -111,6 +111,17 @@ We will implement a robust plugin system as a central architectural component of
 5. Create a standardized way for plugins to integrate with the UI, add menu items, and extend existing functionality.
 6. Implement version checking to ensure compatibility between plugins and the core application.
 
+**Plugins are not all of one kind, and the difference is architectural.** Most of the examples
+above extend the *score*, and reach it through the polymorphic API — an import format builds and
+traverses piece structure with the same operations any other caller uses
+([ADR-0030](0030-MusicXML.md)). Others extend the *application* rather than the score: pure Clojure
+loaded into the backend process, reached by direct call, using no API and carrying nothing across a
+wire. A destination for the failure record
+([ADR-0017](0017-System-Architecture.md) §Surfacing Unexpected Runtime Failures) would be of that
+second kind — it would attach to one existing function and touch no piece data at all. Which kind a
+plugin is determines what governs it: the first is bound by the API and by the piece it operates
+on, the second only by the process it is loaded into.
+
 ### Hot Plugin Installation Architecture (Enabled by Unified gRPC)
 
 **Zero-Downtime Plugin System**: Ooloi's unified Clojure-aware gRPC architecture enables hot plugin installation capabilities:

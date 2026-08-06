@@ -88,6 +88,15 @@ Manager does, so the standalone backend is gated out by construction.
   throwable of any completed task in `afterExecute`, taking it from the executor's own argument or,
   where a thrown `cp/future` body deposits it, from the task's future. It hands the throwable to a
   per-pool handler, replaceable via `install-ooloi-error-handler!`.
+- **A scheduled executor is a thread of the same kind, and takes the same net.** Its tasks are
+  worse off than a pool's rather than better: a one-shot `schedule` deposits its throwable in the
+  task's future, which nothing dereferences, so it reaches not even the stderr that an escaping
+  runnable would produce. The UI Manager's scheduler — the notification auto-dismiss timers and the
+  debounced window-geometry writes — is therefore built by the same constructor as the shared pool
+  and handed the same handler. **A *periodic* task must additionally catch inside its own body**:
+  `scheduleAtFixedRate` permanently suppresses every later execution of a task that throws, so the
+  net alone would report the failure faithfully and leave the schedule dead. Where the net is
+  sufficient the task carries no `catch` of its own, and where it is not the `catch` is the point.
 - **The JavaFX Application Thread needs two mechanisms, not one**, because each covers precisely
   what the other cannot:
   - **Every renderer is created with an explicit `:error-handler`.** cljfx catches `Throwable`
@@ -102,9 +111,9 @@ Manager does, so the standalone backend is gated out by construction.
     It is attached to the JavaFX thread specifically rather than installed process-wide: that is
     the thread this covers, and other threads have nets of their own. It is released when the UI
     Manager halts, so a stopped component leaves nothing behind on a thread that outlives it.
-- **A Clojure agent is a third such thread, and its net is its own `:error-handler`.** An action
-  that throws on an agent reaches neither mechanism above: it is not a pool task, and it is not a
-  JavaFX runnable. What happens instead is decided by the agent's `:error-mode`, and **both
+- **A Clojure agent is a further such thread, and its net is its own `:error-handler`.** An action
+  that throws on an agent reaches none of the mechanisms above: it is not a pool task, not a
+  scheduled task, and not a JavaFX runnable. What happens instead is decided by the agent's `:error-mode`, and **both
   defaults lose the throwable**:
   - `:fail`, the default when no handler is supplied, stores the exception and blocks the agent.
     Nothing reads what it stored, and every later `send` throws `Agent is failed, needs restart` at
@@ -145,8 +154,10 @@ until those below them have been, so an unbounded stack shows *less*, not more.
 **Routing follows the deployment, not the call site.** Where a UI Manager exists — the combined
 desktop application — the failure becomes an error notification in the persistent, user-dismissed
 tier ([ADR-0043](0043-Frontend-Settings.md) §Error Display). Where none exists — the standalone
-backend server — it goes to stderr; a log file is a natural future refinement, and the routing is
-therefore a decision the boundary makes rather than a hardcoded call. This gating is the general
+backend server — it goes to stderr; a log file is a natural future refinement, and one that may
+well arrive as a plugin rather than as built-in machinery — conceivably more than one, for
+destinations other than a local file — which is a further reason the routing is a decision the
+boundary makes rather than a hardcoded call. This gating is the general
 rule for all notifications, stated in [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md)
 §Notification Model.
 
