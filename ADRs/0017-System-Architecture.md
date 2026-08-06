@@ -86,14 +86,14 @@ Manager does, so the standalone backend is gated out by construction.
 
 Four kinds of thread carry such a net, each covering what the others cannot.
 
-#### Off-thread work: the shared thread pool
+##### Off-thread work: the shared thread pool
 
 The shared thread pool is a `ScheduledThreadPoolExecutor` that recovers the throwable of any
 completed task in `afterExecute`, taking it from the executor's own argument or, where a thrown
 `cp/future` body deposits it, from the task's future. It hands the throwable to a per-pool handler,
 replaceable via `install-ooloi-error-handler!`.
 
-#### Scheduled executors: one-shot tasks take the net, periodic tasks also catch
+##### Scheduled executors: one-shot tasks take the net, periodic tasks also catch
 
 A scheduled executor is a thread of the same kind, and takes the same net. Its tasks are worse off
 than a pool's rather than better: a one-shot `schedule` deposits its throwable in the task's future,
@@ -108,7 +108,7 @@ faithfully and leave the schedule dead — the diagnostic arrives and the work n
 Recovering the throwable afterwards cannot undo that; only a `catch` inside the task can. Where the
 net suffices the task carries no `catch` of its own, and where it does not the `catch` is the point.
 
-#### The JavaFX Application Thread needs two mechanisms, not one
+##### The JavaFX Application Thread needs two mechanisms, not one
 
 Each covers precisely what the other cannot.
 
@@ -125,7 +125,7 @@ Each covers precisely what the other cannot.
   the thread this covers, and other threads have nets of their own. It is released when the UI
   Manager halts, so a stopped component leaves nothing behind on a thread that outlives it.
 
-#### Clojure agents: both `:error-mode` defaults lose the throwable
+##### Clojure agents: both `:error-mode` defaults lose the throwable
 
 An agent is a further such thread, and its net is its own `:error-handler`. An action that throws on
 an agent reaches none of the mechanisms above: it is not a pool task, not a scheduled task, and not
