@@ -84,48 +84,65 @@ call sites that dispatch it.
 auditable decision rather than a rule each dispatch site must remember. It exists only where a UI
 Manager does, so the standalone backend is gated out by construction.
 
-- **Off-thread work** — the shared thread pool is a `ScheduledThreadPoolExecutor` that recovers the
-  throwable of any completed task in `afterExecute`, taking it from the executor's own argument or,
-  where a thrown `cp/future` body deposits it, from the task's future. It hands the throwable to a
-  per-pool handler, replaceable via `install-ooloi-error-handler!`.
-- **A scheduled executor is a thread of the same kind, and takes the same net.** Its tasks are
-  worse off than a pool's rather than better: a one-shot `schedule` deposits its throwable in the
-  task's future, which nothing dereferences, so it reaches not even the stderr that an escaping
-  runnable would produce. The UI Manager's scheduler — the notification auto-dismiss timers and the
-  debounced window-geometry writes — is therefore built by the same constructor as the shared pool
-  and handed the same handler. **A *periodic* task must additionally catch inside its own body**:
-  `scheduleAtFixedRate` permanently suppresses every later execution of a task that throws, so the
-  net alone would report the failure faithfully and leave the schedule dead. Where the net is
-  sufficient the task carries no `catch` of its own, and where it is not the `catch` is the point.
-- **The JavaFX Application Thread needs two mechanisms, not one**, because each covers precisely
-  what the other cannot:
-  - **Every renderer is created with an explicit `:error-handler`.** cljfx catches `Throwable`
-    around the render and hands it to that handler, so a render failure never escapes to anything
-    else — this handler is the only thing that can see one. The cljfx default prints to stderr and
-    re-throws `Error`s, which is not sufficient: a render failure would reach no user, and a
-    re-thrown `Error` escapes onto a thread with nothing above it.
-  - **An uncaught-exception handler is attached to the thread itself.** Nothing else on that
-    thread passes through a renderer — a `Platform.runLater` body, an event handler, an animation
-    callback — so the renderer's handler sees none of it. Each of those leaves its runnable and
-    arrives at the thread's uncaught-exception handler, which is nowhere unless one is installed.
-    It is attached to the JavaFX thread specifically rather than installed process-wide: that is
-    the thread this covers, and other threads have nets of their own. It is released when the UI
-    Manager halts, so a stopped component leaves nothing behind on a thread that outlives it.
-- **A Clojure agent is a further such thread, and its net is its own `:error-handler`.** An action
-  that throws on an agent reaches none of the mechanisms above: it is not a pool task, not a
-  scheduled task, and not a JavaFX runnable. What happens instead is decided by the agent's `:error-mode`, and **both
-  defaults lose the throwable**:
-  - `:fail`, the default when no handler is supplied, stores the exception and blocks the agent.
-    Nothing reads what it stored, and every later `send` throws `Agent is failed, needs restart` at
-    its caller — a message naming nothing about what actually broke. Where an agent is sent to on
-    every mutation, one failed action is fatal to the session rather than to itself.
-  - `:continue` **without** an `:error-handler` discards the exception outright. It is not stored,
-    `agent-error` returns `nil`, and nothing is retrievable anywhere.
+Four kinds of thread carry such a net, each covering what the others cannot.
 
-  Every agent therefore carries `:error-mode :continue` together with a handler that records. Not
-  propagating is frequently correct — a best-effort write must not fail the operation it rode in on
-  — but *not propagating* is not the same as *not recording*, and the two are easy to conflate when
-  the code reads `:continue` and the reader stops there.
+##### Off-thread work: the shared thread pool
+
+The shared thread pool is a `ScheduledThreadPoolExecutor` that recovers the throwable of any
+completed task in `afterExecute`, taking it from the executor's own argument or, where a thrown
+`cp/future` body deposits it, from the task's future. It hands the throwable to a per-pool handler,
+replaceable via `install-ooloi-error-handler!`.
+
+##### Scheduled executors: one-shot tasks take the net, periodic tasks also catch
+
+A scheduled executor is a thread of the same kind, and takes the same net. Its tasks are worse off
+than a pool's rather than better: a one-shot `schedule` deposits its throwable in the task's future,
+which nothing dereferences, so it reaches not even the stderr that an escaping runnable would
+produce. The UI Manager's scheduler — the notification auto-dismiss timers and the debounced
+window-geometry writes — is therefore built by the same constructor as the shared pool and handed
+the same handler.
+
+**A *periodic* task must additionally catch inside its own body.** `scheduleAtFixedRate` permanently
+suppresses every later execution of a task that throws, so the net alone would report the failure
+faithfully and leave the schedule dead — the diagnostic arrives and the work never runs again.
+Recovering the throwable afterwards cannot undo that; only a `catch` inside the task can. Where the
+net suffices the task carries no `catch` of its own, and where it does not the `catch` is the point.
+
+##### The JavaFX Application Thread needs two mechanisms, not one
+
+Each covers precisely what the other cannot.
+
+- **Every renderer is created with an explicit `:error-handler`.** cljfx catches `Throwable`
+  around the render and hands it to that handler, so a render failure never escapes to anything
+  else — this handler is the only thing that can see one. The cljfx default prints to stderr and
+  re-throws `Error`s, which is not sufficient: a render failure would reach no user, and a
+  re-thrown `Error` escapes onto a thread with nothing above it.
+- **An uncaught-exception handler is attached to the thread itself.** Nothing else on that
+  thread passes through a renderer — a `Platform.runLater` body, an event handler, an animation
+  callback — so the renderer's handler sees none of it. Each of those leaves its runnable and
+  arrives at the thread's uncaught-exception handler, which is nowhere unless one is installed.
+  It is attached to the JavaFX thread specifically rather than installed process-wide: that is
+  the thread this covers, and other threads have nets of their own. It is released when the UI
+  Manager halts, so a stopped component leaves nothing behind on a thread that outlives it.
+
+##### Clojure agents: both `:error-mode` defaults lose the throwable
+
+An agent is a further such thread, and its net is its own `:error-handler`. An action that throws on
+an agent reaches none of the mechanisms above: it is not a pool task, not a scheduled task, and not
+a JavaFX runnable. What happens instead is decided by the agent's `:error-mode`, and **both defaults
+lose the throwable**:
+
+- `:fail`, the default when no handler is supplied, stores the exception and blocks the agent.
+  Nothing reads what it stored, and every later `send` throws `Agent is failed, needs restart` at
+  its caller — a message naming nothing about what actually broke. Where an agent is sent to on
+  every mutation, one failed action is fatal to the session rather than to itself.
+- `:continue` **without** an `:error-handler` discards the exception outright. It is not stored,
+  `agent-error` returns `nil`, and nothing is retrievable anywhere.
+
+Every agent therefore carries `:error-mode :continue` together with a handler that records. Not
+propagating is frequently correct — a best-effort write must not fail the operation it rode in on
+— but *not propagating* is not the same as *not recording*, and the two are easy to conflate when
+the code reads `:continue` and the reader stops there.
 
 **Enumerating `catch` forms does not find these.** A `catch` is only one of the ways a throwable is
 dropped. An agent's error mode, a `future` whose result is never dereferenced, a `submit` whose
