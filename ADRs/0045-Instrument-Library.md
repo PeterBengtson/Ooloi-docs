@@ -435,6 +435,8 @@ either has processed the other's event. Nonetheless, the protocol is correct reg
 
 ### Frontend Caching Model
 
+This is [ADR-0022 §The Invalidation Invariant](0022-Lazy-Frontend-Backend-Architecture.md#the-invalidation-invariant) applied to the Instrument Library, and it was the specimen the invariant was first validated against. What follows adds only what is specific to this cache — the marker it uses and the calls it makes. The rule itself is not restated here, and nothing below may be read as overriding it.
+
 The frontend maintains a single atom `*instrument-library`. Its value is one of:
 
 - `{:version n :instruments [...]}` — data is fresh and ready to use

@@ -14,6 +14,7 @@ Implemented
 - [Core Architecture](#core-architecture)
   - [Communication Patterns](#communication-patterns)
   - [Foundational Principles](#foundational-principles)
+  - [The Invalidation Invariant](#the-invalidation-invariant)
   - [Performance Architecture](#performance-architecture)
 - [User Interaction Architecture](#user-interaction-architecture)
   - [VPD-Based Frontend Object Hierarchy](#vpd-based-frontend-object-hierarchy)
@@ -136,6 +137,20 @@ Ooloi operates through two complementary communication mechanisms:
 - **Cache Disposability**: All cached visual representations can be safely discarded - always re-downloadable
 - **Traversal Laziness**: Timewalk transducers with boundary-vpd pruning for O(log n) efficiency
 - **Rendering Laziness**: Frontend only processes visible viewport content and only requests needed data
+
+### The Invalidation Invariant
+
+An invalidation names what has gone stale. It carries no data, and it obliges no work.
+
+**A cache marks itself stale and does nothing else.** Receiving an invalidation is never a reason to fetch. The fetch belongs to whoever needs the data, at the moment they need it.
+
+**No consumer, no fetch.** A view that is closed needs nothing, so a change to the data it would have shown costs its client nothing: no call, no traffic, no work. A client that never opens a view pays nothing at all, however often that data changes on the backend.
+
+**The consumer fetches when it opens over a stale cache**, and renders straight from a valid one. Opening is not itself a reason to fetch — staleness is, and only a backend invalidation declares it. Closing declares nothing.
+
+**A cache that fetches on notification is a violation, not an optimisation.** It turns one backend change into as many network calls as there are clients, whether or not anything is displaying the result, and it does so invisibly: the data arrives correct, nothing fails, and no test notices. That invisibility is why the rule is stated here as a prohibition rather than left to be inferred from the behaviour of any one cache.
+
+This governs every backend-connected frontend cache without exception. Where a cache needs its data present rather than merely fetchable — because something other than its own view reads it — that is a property of the cache and is stated where the cache is specified; it is not a licence to fetch on notification.
 
 ### Performance Architecture
 

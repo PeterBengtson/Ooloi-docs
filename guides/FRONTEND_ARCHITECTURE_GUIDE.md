@@ -918,7 +918,7 @@ answer arriving by a different road.
 
 ### 5.2 Invalidation-Based Synchronisation
 
-A key principle is that events signal *staleness*, not structure.
+A key principle is that events signal *staleness*, not structure. It is stated once, as an invariant, in [ADR-0022 §The Invalidation Invariant](../ADRs/0022-Lazy-Frontend-Backend-Architecture.md#the-invalidation-invariant) — including the prohibition that follows from it, which this section describes but does not itself impose: a cache may not fetch in response to an invalidation when nothing is displaying its data.
 
 When something changes — a pitch is altered, a measure is inserted, layout recomputed — the backend does not send a pre-rendered UI delta. It emits an event that tells the frontend which VPD region (Vector Path Descriptor hierarchy) is now invalid.
 
