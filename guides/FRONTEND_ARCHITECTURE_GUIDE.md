@@ -1087,7 +1087,22 @@ returns immediately rather than after the workers finish. A test asserting on st
 mutate must wait for `awaitTermination` before reading. `with-thread-pool` does this for you — it
 awaits termination on exit and **throws** if the pool will not quiesce, since work outliving the body
 means the assertions ran against an unfinished gesture. A test that halts a combined system directly
-must apply the same wait to the pool itself.
+must apply the same wait to the pool itself; `util.client/halt-app!` is that wait, and every such
+test goes through it rather than hand-rolling the sequence.
+
+**The application does not have the same problem, and must not acquire the same solution.** It is
+tempting to read the paragraph above as an obligation production is shirking, and to answer it with
+a pool-wide drain before `ig/halt!`. That is wrong twice over. A test halts *abruptly*, from
+outside, at whatever instant its body ends — startup work may still be in flight, which is exactly
+what `halt-app!`'s wait is for. A quit does not: it runs the save pass first, and each subsystem
+that starts asynchronous work owns waiting for it. A piece window's close waits for that window's
+own refetches before closing, because the close is what invalidates them. Nothing else at quit is
+left holding work that no owner is waiting for.
+
+The distinction matters because a global drain looks like the tidy answer and is not one. It waits
+on a pool while knowing nothing about what the work needs, cannot see work a timer will submit
+later, and — being a wait on a *shared* resource — invites every subsystem to stop owning its own.
+Where in-flight work must survive teardown, the wait belongs with whoever started it.
 
 **Consequently, install mocks OUTSIDE `with-thread-pool`, not inside it:**
 
