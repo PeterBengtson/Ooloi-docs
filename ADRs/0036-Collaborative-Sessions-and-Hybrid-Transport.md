@@ -324,7 +324,7 @@ This diagram shows the *states* and the user actions that move between them; the
 
 Transport switching from the frontend is mediated by a single named operation on the `grpc-clients` component: `switch-to!`. The operation atomically replaces the client's transport — closing the existing API pool and event-stream, opening new ones against the target, re-registering with the target backend, and clearing the Event Router's `subscription-state` (piece-ids are server-local and do not carry across backends). On every completed switch it publishes **three events** on the frontend event bus (ADR-0031 §Frontend Event Categories):
 
-- `:instrument-library-changed` (category `:instrument-library`) — the IL handler refetches state from the new backend.
+- `:instrument-library-changed` (category `:instrument-library`) — invalidates the Instrument Library cache, whose contents belong to the backend just left. Whether that is answered by a fetch now or by one when the window next opens is [ADR-0022 §The Invalidation Invariant](0022-Lazy-Frontend-Backend-Architecture.md#the-invalidation-invariant)'s to decide, not this operation's.
 - `:collaboration-state-changed` (category `:collaboration`) — the menu-enablement seam re-evaluates (see §Collaboration Menu Enablement).
 - `:backend-changed` (category `:backend`) — backend-scoped frontend caches invalidate; `undo-redo` subscribes to clear its Tier 1 backend undo cache, whose timestamps and descriptions belonged to the previous backend (ADR-0015 §Tier 1).
 

@@ -899,6 +899,10 @@ the entire instrument; individual staves do not carry separate ranges.
 
 ### Single Client: User Modifies Library
 
+The window is open throughout — the user is editing in it — which is why the invalidation is
+answered by a fetch here. With the window closed the same event marks the cache stale and makes
+no call. The fetch below is a consequence of the window being open, never of the event arriving.
+
 ```mermaid
 sequenceDiagram
     participant UI as Library Window
@@ -927,16 +931,18 @@ sequenceDiagram
 
 ### Multiple Clients: Concurrent Window Refresh
 
-Both Client A and Client B have the Instrument Library window open. Client A modifies the library;
-both windows update without any special coordination.
+Clients A and B have the Instrument Library window open; Client C does not. Client A modifies the
+library. The two open windows update without any special coordination, and Client C makes no call
+at all — the invalidation reaches it and stops there.
 
 ```mermaid
 sequenceDiagram
     participant WA as Window (Client A)
-    participant FA as Frontend A<br/>(*library)
+    participant FA as Frontend A<br/>(*library, window open)
     participant BE as Backend
-    participant FB as Frontend B<br/>(*library)
+    participant FB as Frontend B<br/>(*library, window open)
     participant WB as Window (Client B)
+    participant FC as Frontend C<br/>(*library, window closed)
 
     WA->>FA: user saves change
     FA->>BE: set-instrument-library(42, [...+new])
@@ -944,6 +950,7 @@ sequenceDiagram
     BE->>FA: {:ok true :version 43}
     BE->>FA: :instrument-library-changed
     BE->>FB: :instrument-library-changed
+    BE->>FC: :instrument-library-changed
 
     par Client A refreshes
         FA->>BE: get-instrument-library
@@ -955,6 +962,9 @@ sequenceDiagram
         BE->>FB: {:version 43 :instruments [...+new]}
         FB->>FB: reset! *library
         FB->>WB: cljfx re-renders
+    and Client C marks stale
+        FC->>FC: reset! *library to nil
+        Note over BE,FC: no call is made — nothing is displaying the library.<br/>Version 43 is fetched if and when the window is opened
     end
 ```
 

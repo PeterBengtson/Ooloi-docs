@@ -263,7 +263,7 @@ Category-based pub/sub for category-routed frontend event delivery, backed by a 
 | `:app-lifecycle` | `:app-ready`, `:app-shutting-down` | `start-app!`, shutdown handler |
 | `:window-lifecycle` | `:window-opened`, `:window-closed`, `:window-hidden`, `:window-state-persisted` | `show-window!`, `close-window!`, `persist-stage-geometry!` |
 | `:app-settings` | `:setting-changed` | `set-app-setting!` (ADR-0043) |
-| `:instrument-library` | `:instrument-library-changed` | Event Router (routed from backend; ADR-0045); also `switch-to!` on a backend switch, so the IL handler refetches from the new backend (ADR-0036) |
+| `:instrument-library` | `:instrument-library-changed` | Event Router (routed from backend; ADR-0045); also `switch-to!` on a backend switch, invalidating the cache so the previous backend's library is never carried across (ADR-0036). What follows the invalidation is the invariant's, not the switch's: fetched now if the window is open, on next open if it is not |
 | `:undo` | `:undo-state-changed` | Event Router (routed from backend; ADR-0015) |
 | `:collaboration` | `:collaboration-state-changed` | `switch-to!` (transport changes), host-session / terminate handlers (network-server presence) — see [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Collaboration Menu Enablement |
 | `:backend` | `:backend-changed` | `switch-to!` on a completed transport switch (ADR-0036 §Frontend Reconnection) — signals that backend-scoped frontend caches are now invalid |
