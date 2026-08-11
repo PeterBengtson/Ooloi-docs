@@ -26,6 +26,7 @@
    - [4.8 Nested TitledPane Event Handling](#48-nested-titledpane-event-handling)
 5. [Event Architecture](#5-event-architecture)
 6. [The JAT Boundary](#6-the-jat-boundary)
+   - [6.6 Teardown: Why the Application Does Not Drain the Pool](#66-teardown-why-the-application-does-not-drain-the-pool)
 7. [Rendering Pipeline](#7-rendering-pipeline)
 8. [Fetch Coordination and Viewport Logic](#8-fetch-coordination-and-viewport-logic)
 9. [Localisation Architecture](#9-localisation-architecture)
@@ -1090,19 +1091,8 @@ means the assertions ran against an unfinished gesture. A test that halts a comb
 must apply the same wait to the pool itself; `util.client/halt-app!` is that wait, and every such
 test goes through it rather than hand-rolling the sequence.
 
-**The application does not have the same problem, and must not acquire the same solution.** It is
-tempting to read the paragraph above as an obligation production is shirking, and to answer it with
-a pool-wide drain before `ig/halt!`. That is wrong twice over. A test halts *abruptly*, from
-outside, at whatever instant its body ends — startup work may still be in flight, which is exactly
-what `halt-app!`'s wait is for. A quit does not: it runs the save pass first, and each subsystem
-that starts asynchronous work owns waiting for it. A piece window's close waits for that window's
-own refetches before closing, because the close is what invalidates them. Nothing else at quit is
-left holding work that no owner is waiting for.
-
-The distinction matters because a global drain looks like the tidy answer and is not one. It waits
-on a pool while knowing nothing about what the work needs, cannot see work a timer will submit
-later, and — being a wait on a *shared* resource — invites every subsystem to stop owning its own.
-Where in-flight work must survive teardown, the wait belongs with whoever started it.
+Whether the *application* owes the same wait at quit is a separate question, and the answer is no —
+see [6.6](#66-teardown-why-the-application-does-not-drain-the-pool).
 
 **Consequently, install mocks OUTSIDE `with-thread-pool`, not inside it:**
 
@@ -1122,6 +1112,31 @@ is the test's subject: the event-bus latency facts saturate every thread with sl
 assert that `publish!` returns anyway, so draining would make each test wait out the very sleep it
 exists to prove nobody waits for. Everywhere else, a pool that will not quiesce is a leak, not a
 slow test.
+
+### 6.6 Teardown: Why the Application Does Not Drain the Pool
+
+The wait §6.5 demands of tests looks, at first reading, like an obligation production is shirking —
+and the obvious remedy is a pool-wide drain in front of `ig/halt!` when the application quits. That
+remedy is wrong twice over, and it has been tried.
+
+**A test and a quit end differently.** A test halts *abruptly*, from outside, at whatever instant its
+body happens to finish: startup work may still be in flight, and nothing has been given the chance
+to conclude. That is precisely what `util.client/halt-app!`'s wait is for. A quit does not end that
+way. It runs the save pass first, resolving and closing each piece window in turn, and every
+subsystem that starts asynchronous work is responsible for waiting on its own. A piece window's
+close waits for that window's own refetches before closing, because the close — which unsubscribes,
+and so releases the piece — is what invalidates them.
+
+**A shared-resource wait is worse than the per-owner waits it would replace.** It waits on a pool
+while knowing nothing about what the work needs or which component's teardown would invalidate it.
+It cannot see work a *timer* will submit later, since a pending animation is not queued work and no
+amount of quiescence detects it. And being a wait on something shared, it quietly invites every
+subsystem to stop owning its own, which is the condition that produced the problem in the first
+place.
+
+**Where in-flight work must survive teardown, the wait belongs with whoever started it.** That is
+the rule. A cross-cutting drain is not a stricter version of it; it is a different and weaker thing
+wearing the same clothes.
 
 ---
 
