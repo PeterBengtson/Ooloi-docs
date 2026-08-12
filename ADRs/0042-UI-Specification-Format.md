@@ -594,6 +594,8 @@ This keeps each window module a **self-contained dispatch world**: internal even
 
 #### Declared atom watches: `:window/watches`
 
+**The symptom this section explains: a window that opens empty, and is correct only after being closed and reopened.** Its panes show nothing on first open — no instruments, no rows, no data — while closing the window and opening it again shows everything. The data was fetched, the atom was populated, and yet the view never saw it. That combination has one usual cause: the watch feeding the view was installed *after* the value it needed had already arrived, and `add-watch` fires only on subsequent changes, so a watcher registered late never sees the update it missed.
+
 A window whose view derives from a ref outside its own state atom declares that dependency rather than wiring it by hand. Each entry is `{:ref <ref> :key <key> :fn <watch-fn>}`, and the UI Manager installs it while registering the window:
 
 ```clojure
