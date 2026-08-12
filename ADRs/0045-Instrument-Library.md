@@ -457,8 +457,19 @@ instrument vector and updates only changed items.
 `nil`. No network call is made. The data will be fetched when the window opens.
 
 **When the window opens**: check `(nil? @*instrument-library)`. If nil, `cp/future` calls
-`SRV/get-instrument-library`, `reset!`s the atom when the response arrives, then renders.
-If not nil, render immediately from the cached value.
+`SRV/get-instrument-library` and `reset!`s the atom when the response arrives. If not nil,
+the window renders from the cached value.
+
+Both outcomes reach the view by the same route, and the window writes neither by hand. It
+declares a `:window/watches` entry on `*instrument-library`, and the UI Manager delivers the
+ref's current value when it installs that watch, then every change after it ([ADR-0042
+§Declared atom watches](0042-UI-Specification-Format.md#declared-atom-watches-windowwatches)).
+This matters because the open request is dispatched asynchronously while the fetch answering
+that same open is not: with in-process transport the response routinely arrives before the
+window has mounted, so a watch that only saw subsequent changes would miss it entirely and the
+window would open on an empty library. The window must not seed its own view state from the
+atom at request time — that is the same write from the same ref, taken earlier and therefore
+staler.
 
 **When the user saves edits**: `cp/future` calls `SRV/set-instrument-library` with the
 expected version and new instruments vector. The response (success, conflict, or duplicate-IDs)

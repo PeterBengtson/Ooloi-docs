@@ -23,6 +23,7 @@ Implemented
     - [Map events and dispatch](#map-events-and-dispatch)
     - [Boundary invariants](#boundary-invariants)
     - [When to use a renderer](#when-to-use-a-renderer)
+    - [Declared atom watches: :window/watches](#declared-atom-watches-windowwatches)
     - [Event Dispatch Pipeline](#event-dispatch-pipeline)
   - [Architectural Invariants](#architectural-invariants)
   - [Theme-Independent Styling](#theme-independent-styling)
@@ -590,6 +591,24 @@ This keeps each window module a **self-contained dispatch world**: internal even
 **Locale reactivity pattern.** The declarative pipeline automatically registers each window's renderer with the UI Manager via `register-renderer!` during `show-window!`. When the UI Manager receives a `:setting-changed` event for `:ui/locale`, it calls `tr/set-locale!` synchronously on the event bus thread, then posts `(fx/run-later! ...)` to the JAT to call `(swap! *state identity)` on every registered renderer atom. The renderer re-evaluates the spec after the locale is already updated. Windows do not subscribe to `:app-settings` for locale — the UI Manager mediates locale reactivity through the renderer registry. On close, `close-window!` automatically unmounts the renderer, unsubscribes all declared event bus subscriptions, and removes all declared atom watches.
 
 **Renderer spec is the locale-reactivity boundary.** Only content inside the renderer spec updates when the locale changes. One-time materialisation (`cljfx/create-component` + `cljfx/instance` without `cljfx/mount-renderer`) produces content constructed once and never re-evaluated again. For a window to be locale-reactive, all its visible content — button labels, headings, field prompts — must be returned by the spec function that the renderer's `:middleware` evaluates on each render cycle. Content built outside the renderer spec silently retains the locale active at window-open time.
+
+#### Declared atom watches: `:window/watches`
+
+A window whose view derives from a ref outside its own state atom declares that dependency rather than wiring it by hand. Each entry is `{:ref <ref> :key <key> :fn <watch-fn>}`, and the UI Manager installs it while registering the window:
+
+```clojure
+:window/watches
+[{:ref *instrument-library :key ::view-state
+  :fn  (fn [_ _ _ new-lib] (swap! *vs assoc :library new-lib))}]
+```
+
+**Installing a watch delivers the ref's current value.** `add-watch` on its own fires only on *subsequent* changes, and that is not sufficient here. A window's open request is published to `:window-requests` and dispatched on the shared pool, so anything written to the ref between the request and the mount falls into the gap: the watch does not yet exist when the write happens, and it never fires for a value it did not witness change. The window then renders whatever its state atom happened to hold — for a cache answering that same open, nothing — and stays wrong until it is closed and reopened. The pipeline therefore calls the watch fn once at installation, with `nil` as the old value and the ref's current value as the new one. The old value is `nil` rather than the current value deliberately: a watch fn guarding on `old != new` would otherwise skip the very delivery this exists to make.
+
+This is the guard the async test helpers already apply — `wait-for-state` and `wait-for-event` both test their predicate against the current value before relying on the watcher, because a watcher registered after the fact has already missed what it was waiting for. The window pipeline owes its consumers the same guarantee, and owes it centrally: a per-window opt-in would make the gap the default for every window that forgets it.
+
+**The consequence for callers is that they must not seed the view themselves.** A caller that also writes the ref's value into its state atom at request time performs the same write from the same ref, earlier and therefore staler, duplicating what the contract already guarantees. The Instrument Library did precisely this, and that seeding is what made the defect look impossible: the value was demonstrably being written, just never the one that mattered.
+
+On close, `close-window!` removes every declared watch, so the pair is symmetric — installation delivers, removal detaches.
 
 #### Event Dispatch Pipeline
 
