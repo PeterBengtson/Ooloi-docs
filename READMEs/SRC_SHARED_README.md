@@ -466,6 +466,13 @@ coordination.
 The test helpers live on the test classpath and nowhere else. A test helper may never be placed
 in a production (`src/`) file — see [shared/test/util/README.md](../../../../../test/util/README.md).
 
+That rule runs one way. A helper wanted by **both** sides is a different thing: there is one
+implementation and it lives in production, because tests can require production code and production
+cannot require tests. `ooloi.shared.async` holds the waiting helpers `wait-for-state` and
+`wait-for-event` for exactly that reason, and `util.common` re-exports the two names so existing
+test call sites keep them. The test is who uses it — both sides means production, tests alone means
+the `util.*` namespaces.
+
 ### `util.frontend` — JavaFX test helpers
 
 Used in `frontend/test/` and `shared/test/app/` (system integration tests).

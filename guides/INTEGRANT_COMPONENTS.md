@@ -403,7 +403,7 @@ For `grpc-server` specifically:
 
 The same shape applies whenever multiple lifecycle-independent components write to a single shared atom: a per-writer identifier in each entry, filtered cleanup. The alternative — every consumer trying to remember which entries it owns in its own separate side-list — duplicates state and goes out of sync. The stamp lives with the entry; the entry knows who owns it.
 
-(#211 Tests 22a (halt) and 22b (start) verify the lifecycle-independence property for the dual-server case.)
+(The lifecycle-independence property is asserted for the dual-server case in both directions — halting one server, and starting one alongside another.)
 
 ### Self-stopping on a dedicated thread: reap it with `.shutdown`, not `.shutdownNow`
 
@@ -544,6 +544,36 @@ Production code is what ships. A test-only function sitting in it is dead weight
 **When a helper needs something private from a production namespace, make it public.** Widening a namespace's own surface costs far less than housing test code in it, and nothing is hard to relocate in Clojure. Do not duplicate the private helper, and do not invent a third namespace to share it — both are heavier than dropping a hyphen. `util.filesystem/make-alias!` writes a macOS Finder alias for the `[:alias t]` fixture entry; the CFURL primitives it needs (`cf-fn`, `cfurl-from-path`, `release!`) are public in `ooloi.shared.platform.macos-alias`, which itself keeps only the alias *resolution* production actually calls.
 
 The helper's own tests move with it: `make-alias!` is tested in `util.filesystem-test`, beside the helper, while `macos-alias-test` asserts only on production's `resolve-alias-target` and creates its alias as fixture setup.
+
+#### A helper wanted by *both* sides lives in production
+
+The rule above runs one way only, and its converse is not "so keep everything test-shaped in the test namespaces". **Where the same helper is wanted on both sides of the `src/`–`test/` line, there is one implementation and it lives in production.** Tests can require production code; production cannot require tests. Anything else means two implementations of one idea, and two implementations drift.
+
+They drift silently, because both work. `wait-for-state` and `wait-for-event` were test-only in `util.common` while the combined application hand-rolled the same `add-watch`/promise pattern separately, in the wait a piece window's close performs for its own in-flight refetches. Neither was wrong. But only the test copy had the pre-watch race written into it — that a watcher installed after its value has already arrived never fires for it, so the current value must be tested *after* installation — and a second production consumer was about to make it three copies.
+
+The implementation now lives in `ooloi.shared.async`, which every project can reach: `shared/src/main/clojure` is on both the backend's and the frontend's `:source-paths`, so `ooloi.shared.*` is available to all three projects and all their tests. `util.common` **re-exports** the two names rather than defining them, so several hundred existing call sites keep the name they know. A re-export is one implementation, not a duplicate.
+
+**The test is who uses it, and it is worth applying deliberately rather than by feel:**
+
+| Used by | Lives in |
+|---|---|
+| Production and tests, identically — or near-identically with a parameter | Production (`ooloi.shared.*`), re-exported under the test-facing name if one already exists |
+| Tests only | The `util.*` namespaces above, and never `src/` |
+
+Getting this backwards in either direction is a mistake, and they are different mistakes: a test helper in `src/` gets reached for by production that should not have it, while a shared idea kept test-side grows a private production twin that nobody maintains.
+
+#### One idiom per lifecycle
+
+**Where a macro exists for a lifecycle, tests use it.** When a test needs something the macro does not offer, the macro grows the option — it is not bypassed.
+
+The reason is not tidiness. A hand-rolled copy of a lifecycle cannot be corrected centrally, so when a new subsystem arrives, every copy silently becomes wrong at once — and "silently" is exact, because teardown that abandons work in flight produces no failure, only work that fails later against components already dismantled around it.
+
+Two functions in particular get hand-rolled and should not be:
+
+- **`util.client/halt-app!`** is the teardown for any test that starts an application. It waits for the shared pool to fall idle and then halts, with the halt in a `finally` so that a drain which times out still tears the system down rather than leaking it. A test that halts a started application itself goes through this rather than writing its own flush-and-halt sequence.
+- **`util.client/create-client-preserving-root`** is for a client created *beside a running application*. `grpc-clients`' `init-key` unconditionally claims the `*srv-client*` root binding — correct and wanted when no application is running, and wrong when one is, because it points the application's own pool-dispatched startup work at the new client. That work then fails against a client that has not registered (a nil connection pool), has been disconnected (dead channels), or is unknown to the server — on a pool thread, with no assertion involved, while the suite reports green. The 26 app-less creations correctly keep the plain `create-client-component`.
+
+**Awkwardness is evidence, not an obstacle.** Where replacing an older form with the macro makes the resulting code *worse*, that is information about the macro rather than about the site: the older form is fulfilling a purpose the macro does not cover. It stays, and the reason is recorded. It may instead mean the macro should grow an option, or that two macros should merge — and **dropping a macro outright is a legitimate outcome**, not a failure. What is not legitimate is bending a test out of shape to satisfy a tidiness rule. The point of one idiom per lifecycle is that cognitive load drops; a contorted call site raises it.
 
 Standard imports per project:
 
