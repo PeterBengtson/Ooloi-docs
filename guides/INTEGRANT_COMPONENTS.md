@@ -982,6 +982,49 @@ Waiting instead for the "host disconnected" notification looks equivalent and is
 
 The general shape: ask what a teardown step **causes**, not merely what it **stops**. Where it causes asynchronous work, wait for that work's own post-condition before letting the rest of the teardown proceed. The same reasoning applies to any halt that triggers a reaction — a component whose shutdown publishes an event, or whose closure prompts a reconnect elsewhere.
 
+### Stack traces in a green run — stub `log-error` at the fact that provokes it
+
+A suite log is expected to contain **zero stack traces**. A run that is green but prints one is not a clean run, and the trace is a defect to be fixed rather than an artefact to be explained.
+
+The distinction that matters is between a message and a trace. A production error handler that prints *"Instrument library persistence error: Simulated disk error"*, driven by a fact that redefs `spit` to throw, is expected furniture: the fact provokes the handler on purpose and the handler's entire job is to say so. A block of `at …` frames is never furniture. It means a throwable reached the single write site and nothing in the run absorbed it.
+
+**Every such trace arrives through one function.** `ooloi.shared.components.thread-pool/log-error` is the one place a failure becomes a written record ([ADR-0017 §What a Deliberate `catch` May Do](../ADRs/0017-System-Architecture.md)). It is public, on every classpath, and reachable from all three projects. Whether the throwable came from the pool's `afterExecute` net, a deliberate `catch`, or a JavaFX callback, the writing happens there — so that is where a test intercepts it.
+
+**Stub it at the fact that provokes it, in one of two forms.** Where the fact merely provokes the boundary and asserts something else:
+
+```clojure
+;; log-error stubbed to keep the run's log clean: this fact provokes the catch-all
+;; on purpose, and the record it writes is correct behaviour rather than a defect.
+(with-redefs [tp/log-error (fn [_])]
+  ...)
+```
+
+Where the fact asserts that the record was made:
+
+```clojure
+(fact "an unforeseen save failure records its throwable through log-error"
+  (let [recorded (atom [])]
+    (with-redefs [tp/log-error (fn [e] (swap! recorded conj e))]
+      ...
+      (count @recorded) => 1)))
+```
+
+Always carry a comment naming what the stub absorbs and why. A bare `(fn [_])` with no comment is indistinguishable from silencing a trace nobody understood.
+
+**Never quiet a trace by changing production.** The trace means the error boundary did precisely what ADR-0017 requires of it. Widening a `catch`, dropping a `throw`, or adding a guard so the failure cannot arise all remove real coverage in order to tidy a log. The write is correct; only the writing *during a test that provoked it deliberately* is noise.
+
+**A trace that appears intermittently still has to go.** Some are race-dependent — a registry entry removed asynchronously between a snapshot and its use, for instance — so the same fact prints on one run and not the next. Stubbing at the seam is deterministic either way, which is why it is preferred over capturing the stream: nothing reaches stderr whether the race fires or not, and there is no intermittent assertion to flake.
+
+**Capturing `System/err` is for a different question.** Redirecting the stream (`System/setErr` over a `ByteArrayOutputStream`, restored in a `finally`) asserts on the *route* — that the default handler is still `log-error`, or that the text genuinely reaches stderr in a deployment with no UI Manager. Use it when the stderr route itself is the subject. When the subject is anything else and the trace is merely incidental, stub `log-error`.
+
+Worked examples:
+
+| Where | Form |
+|---|---|
+| `shared/…/ops/persistence_test.clj` | both — `(fn [_])` for the facts that only provoke the catch, `(swap! recorded conj e)` for the two that assert the record |
+| `backend/…/components/http_server_test.clj` | `(swap! recorded conj e)` across the stats-handler failure paths |
+| `shared/…/grpc/event_streaming_test.clj` | `(fn [_])` for a race-dependent registry throw, and a `System/setErr` capture where the route is the subject |
+
 ### Proving a string is translated, not concatenated
 
 `lein i18n` cannot see a user-facing string that never became a key — there is no key to extract, so nothing is missing and the build stays green. Concatenation and inline literals are therefore invisible to it, and two of ADR-0039's invariants rest on test instead of on the build task. [ADR-0039 §What Verification Cannot See](../ADRs/0039-Localisation-Architecture.md#what-verification-cannot-see) states why; this is how.
