@@ -991,6 +991,30 @@ Both helpers:
 
 This pattern replaces `CountDownLatch` (Java-style coordination forbidden anywhere in Ooloi, tests or production, per [§11](#11-deprecated-patterns)) and ad-hoc `(loop [tries] ... Thread/sleep ... recur)` polling loops.
 
+#### `wait-until` — polled predicate, for conditions with nothing to watch
+
+The last resort, and genuinely last. `wait-for-state` and `wait-for-event` are *woken* by the change; `wait-until` samples for it. Reach for it only where the condition is not an atom reaching a state, so there is nothing to hang a watcher on.
+
+```clojure
+(require '[util.common :refer [wait-until]])
+
+;; a JavaFX property — not an atom, so no watcher is possible
+(wait-until #(= "Öppna…" (.getText menu-item)) 5000) => truthy
+
+;; a LongAdder statistic (ADR-0025) mutates in place inside a map whose identity never changes
+(wait-until #(= 1 (stats/get-server-stat server :clients-disconnected-total)) 5000)
+
+;; it returns what pred returned, so it also serves find-and-return
+(let [cell (wait-until #(list-cell-for stage token) 5000)]
+  (robot/robot-click! robot (centre-of cell)))
+```
+
+**Returns pred's own value on success, nil on timeout.** That costs nothing over returning `true` and covers the find-and-return case, which is otherwise the one shape that still needs a hand-rolled loop — a `VirtualFlow` cell that only exists after a layout pulse, a live dialog button that has to be located among `Window/getWindows`.
+
+**It is still better than a sleep, for the reason that governs this whole class:** it returns the moment the condition holds instead of always paying the full delay, and it fails at a deadline instead of proceeding silently to an assertion that was never going to hold.
+
+**Do not reach for it when an atom does express the condition.** Three separate suites had written *"the target is a JavaFX property, not a Clojure atom, so `wait-for-state` can't watch it"* — correct, and the wrong conclusion, because polling was available all along. The opposite error is commoner: polling a view when the model behind it is an atom, which samples a consequence instead of watching the cause.
+
 ### Teardown that provokes production behaviour must wait for it to finish
 
 A teardown step is not always inert. Halting a component can set real production work in motion, and if the test returns before that work completes, the rest of the teardown dismantles the system underneath it.
@@ -1154,14 +1178,29 @@ The `start-server` / `stop-server` / `register-client` / `disconnect-client` fun
 - For "wait until callback fires" (1 expected delivery): `(promise)` + `(deref p timeout-ms nil)`. The callback delivers the promise.
 - For "wait until N callbacks fire": an `atom` counting remaining deliveries plus a single `promise` delivered when the atom reaches zero.
 - For "wait until an atom satisfies a predicate" (events arriving, registry counts changing, flag flipping): `wait-for-event` (per-element pred) or `wait-for-state` (whole-value pred) from `util.common`. See [§9 Async helpers](#async-helpers-from-utilcommon).
+- For "wait until a condition holds that is **not** an atom" (a JavaFX property, a `LongAdder` statistic, a node that only exists after a layout pulse): `wait-until` from `util.common`, which polls and returns what its predicate found.
 
 Why deprecated: `CountDownLatch` requires the caller to know the exact count in advance, doesn't compose with predicates, and conflates "thing happened" with "Java synchroniser tripped" — making test failures harder to diagnose. The promise-based replacements are idiomatic Clojure, compose with any condition, and produce clearer failure messages.
 
 ### `Thread/sleep N` for async synchronisation
 
-`(Thread/sleep N)` is appropriate when *modelling* delay (a deliberately slow client, a known fixed-duration external event). It is **not** appropriate when used to "give the async thing time to happen" before an assertion — too short and the test flakes, too long and the suite is slow.
+`(Thread/sleep N)` is **not** appropriate when used to "give the async thing time to happen" before an assertion — too short and the test flakes, too long and the suite is slow, and either way the test asserts against a clock rather than against the code. Use `wait-for-event` / `wait-for-state` when an atom expresses the condition, and `wait-until` when nothing does (see §9). **Do not hand-roll a polling loop**: `wait-until` is that loop, extracted, and a new copy of it is a regression rather than a leftover.
 
-Use `wait-for-event` / `wait-for-state` for the latter pattern (see §9). If neither fits, write a small inline polling loop with a deadline and a `Thread/sleep 10` between iterations — but in practice the helpers cover the vast majority of cases.
+But a sleep is not always a stand-in for a wait, and converting one that isn't silently deletes what the test was testing. Every sleep is read and decided; the four categories below are what the decision comes down to, and a sleep that stays says at its own site which one it is.
+
+| Category | Verdict | Example |
+|---|---|---|
+| Stands in for a condition the assertion already names | **Convert** | a sleep before `(some #(= (:message %) "first") @events)` → `wait-for-event` on that same predicate |
+| Waits for something already guaranteed | **Delete** | a sleep after `ig/init-key` on a gRPC or HTTP server — `Server.start()` and `HttpServer/create` both bind before returning |
+| Establishes that something did **not** happen | **Keep** | after unsubscribing, publish again and assert the handler did not fire. **You cannot wake on the absence of an event**: a test proving nothing happened by T must let T pass |
+| The delay **is** the requirement | **Keep** | see the two kinds below |
+
+The last category splits in two, and both are easy to mistake for laziness on a later sweep:
+
+- **The delay is the code under test.** A stubbed server stalling past a client's deadline, so there is a timeout to observe at all. A slow subscriber whose latency is asserted. Ten health checks spaced across two seconds *as* the sustained load. Work submitted to a pool precisely so a drain has something to drain. Half an animation's duration, to sample it mid-flight — waiting would move the sample past the thing being sampled.
+- **No JVM-observable signal exists.** `javafx.scene.robot.Robot` injects genuine OS input, which returns through the *native* event queue rather than the JAT's `runLater` queue, so a `run-on-fx-thread-sync!` barrier straight after an injection proves nothing about delivery. A shown `Stage` must be *mapped* by the window system before `requestFocus` takes effect. A `Popup` and its owner tearing down. `System/gc` is a request the JVM answers whenever it likes and never reports.
+
+**One further trap, which is not a category but a hazard.** Waiting for a condition and then asserting that same condition is one claim made twice, and the assertion is then vacuous. Where that happens the wait *becomes* the assertion — `(wait-for-event received #(= :window-focused (:type %)) 5000) => truthy` in place of a sleep followed by `(some …) => truthy`. Where the fact makes a second, different claim, keep both: wait for the batch a drop composed and assert *what* it composed; wait for a selection to appear and assert *which* ids it holds.
 
 ### `requiring-resolve` (or runtime `resolve`) to break a dependency cycle
 
