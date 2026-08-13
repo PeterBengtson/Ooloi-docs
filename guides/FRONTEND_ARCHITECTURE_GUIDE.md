@@ -1827,7 +1827,7 @@ When structure is clear, testing becomes calmer. You test pure functions where p
 
 ### 12.5 Test Isolation Infrastructure
 
-Frontend tests that touch app settings, the platform directory, locale, or JavaFX stages share a common isolation namespace: `frontend/test/clojure/util/frontend.clj` (namespace `util.frontend`). Requiring it initialises JavaFX automatically — no explicit init call needed.
+Frontend tests that touch app settings, the platform directory, locale, or JavaFX stages share a common isolation namespace: `shared/test/util/frontend/util/frontend.clj` (namespace `util.frontend`), which the frontend and shared projects both have on their test classpath. Requiring it initialises JavaFX automatically — no explicit init call needed.
 
 Three categories of process-global state make this mandatory rather than merely tidy. The **platform
 directory**: settings and persistence read and write `~/.ooloi`, so an unredirected test contaminates
