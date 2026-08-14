@@ -1117,6 +1117,15 @@ failure this prevents is silent rather than loud — a gesture submits its batch
 resolves on that batch, the body exits and restores the real collaborator, and the pool thread then
 calls it for real, throwing on a thread nothing asserts on while the suite reports green.
 
+**One redef goes the other way, and knowing which is the point.** `with-thread-pool` also carries the
+failure guard: it captures `log-error` around the whole expansion — body *and* drain — and fails the
+test if anything was recorded. A fact that provokes a record on purpose declares it by rebinding
+`log-error`, and that rebinding belongs **inside** the macro, where it nests within the guard's
+capture and absorbs. Outside, the guard's capture would be innermost, would take the record the fact
+means to observe, and would fire. The two rules do not conflict: a collaborator mock must outlive the
+drain because nothing else watches it, whereas the guard *is* what watches the drain. See
+[INTEGRANT_COMPONENTS §9 "The failure guard"](INTEGRANT_COMPONENTS.md).
+
 **`{:drain? false}` is the escape hatch, and it is rarely right.** Use it only where a *working* pool
 is the test's subject: the event-bus latency facts saturate every thread with sleeping handlers and
 assert that `publish!` returns anyway, so draining would make each test wait out the very sleep it

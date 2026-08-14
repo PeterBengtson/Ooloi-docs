@@ -1079,6 +1079,37 @@ Worked examples:
 | `backend/…/components/http_server_test.clj` | `(swap! recorded conj e)` across the stats-handler failure paths |
 | `shared/…/grpc/event_streaming_test.clj` | `(fn [_])` for a race-dependent registry throw, and a `System/setErr` capture where the route is the subject |
 
+### The failure guard — a body that records a failure fails
+
+The convention above is enforced rather than remembered. Every test macro that owns a pool or an application — `with-thread-pool`, and through it `with-ui-manager` and `with-event-bus`; `with-started-app`; `with-combined-system` — captures `log-error` for the duration of its body and **fails the test if anything was recorded**. A deliberately-provoked record has to be declared; everything else surfaces.
+
+There is nothing new to learn to satisfy it. The two forms above *are* the declaration, because the guard hooks the same seam they do, which is what lets the two compose at all.
+
+**A `System/err` capture is not a declaration.** `(System/setErr …)` changes where `log-error` writes, never whether it writes: the call still happens, the record still reaches the write site, and only the bytes land in a buffer instead of the console. A capture therefore removes the evidence and keeps the cause — which is why a suite log can be clean while facts in it have been recording failures all along, and why the guard fires on a fact whose output is silent.
+
+That decides which of the two tools a fact wants, and it is not a matter of taste:
+
+- **The trace is incidental** — the fact provokes the boundary and asserts on a notification, a return value, an atom. Declare through `log-error`.
+- **The write is the subject** — the fact asserts that the full report reaches stderr, carrying the `ex-data` and the frames the notification deliberately omits. Capture, and put the fact where nothing has replaced `log-error`. Inside a guarded scope the stream belongs to the guard, so a capture there observes test infrastructure rather than production.
+
+**Where the subject is the record rather than the stream, assert the record.** A fact wanting the *rendered* report can take the captured throwable and render it with production's own `throwable->text`. What it gives up is the last inch only — that those bytes reach the stream — and that is `log-error`'s one-line body, covered by the thread pool's own tests against an unguarded pool.
+
+**The declaration goes INSIDE the macro's body.** This is the opposite of where a mocked *collaborator* goes:
+
+```clojure
+(with-thread-pool [pool]                  ; correct — the declaration nests inside
+  (with-redefs [tp/log-error (fn [_])]    ; the guard's capture, and absorbs
+    …))
+```
+
+Placed outside, the guard's capture becomes the innermost binding: it takes the record the fact is trying to observe, the fact's atom stays empty, and the guard fires. The collaborator rule in [FRONTEND_ARCHITECTURE_GUIDE §6.5](FRONTEND_ARCHITECTURE_GUIDE.md) points the other way for a different reason — there the drain must run while the mock is still in place — and the two do not conflict, because the guard is itself the outer net. A record written during the drain reaches it, which is exactly what should happen to work that outlived the body.
+
+**A declaration covers its own extent, not the whole fact.** One `(fn [_])` somewhere does not switch the guard off for the rest of the body; a record written after that form returns is undeclared and fails. And since the rebinding is a var root rather than a thread-local, a declaration absorbs records from *any* thread while it is in force — so keep it tight around the provocation.
+
+**Not everything that prints is a record.** A throwable that never reaches `log-error` is invisible to the guard, and correctly so: a JavaFX runnable that throws after the toolkit's uncaught-exception handler has been detached goes to the toolkit's own reporting rather than to the write site. Such a fact keeps its `System/err` capture, because there is no record for it to declare.
+
+**When the guard fires it takes the namespace with it.** Midje evaluates facts at load time, so a throw out of a top-level `fact` aborts the load: the run reports `LOAD FAILURE` carrying *"Failures were recorded during this body"*, and every fact after it in that file is skipped. **That is a RED, not a harness error** — the fix is at the fact, and rerunning changes nothing.
+
 ### Proving a string is translated, not concatenated
 
 `lein i18n` cannot see a user-facing string that never became a key — there is no key to extract, so nothing is missing and the build stays green. Concatenation and inline literals are therefore invisible to it, and two of ADR-0039's invariants rest on test instead of on the build task. [ADR-0039 §What Verification Cannot See](../ADRs/0039-Localisation-Architecture.md#what-verification-cannot-see) states why; this is how.
