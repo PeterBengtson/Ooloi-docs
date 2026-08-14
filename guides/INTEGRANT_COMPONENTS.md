@@ -647,14 +647,17 @@ To reach the tree through the opaque SRV token API, redef the platform roots at 
 
 ### Choosing the Right Test Macro — Decision Table
 
-Ooloi provides four primary test macros covering distinct test scopes. Pick the lightest one that exercises the production code path your test is verifying. The heavier macros initialise more components and pay correspondingly higher setup/teardown cost, but they're the only way to exercise certain integration paths (frontend → backend event pipeline, JAT-scheduled callbacks, splash lifecycle).
+Ooloi provides five primary test macros covering distinct test scopes. Pick the lightest one that exercises the production code path your test is verifying. The heavier macros initialise more components and pay correspondingly higher setup/teardown cost, but they're the only way to exercise certain integration paths (frontend → backend event pipeline, JAT-scheduled callbacks, splash lifecycle).
 
 | What you're testing | Macro to use | Scope started |
 |---|---|---|
 | gRPC client-server API calls — wire protocol, headers, interceptors, event streaming, security | `with-server` + `with-clients` + `with-srv-client` | `grpc-server` + `http-server` + `piece-manager` (store via the ops namespace handle); `instrument-library` / `undo-manager` passed as `nil` |
 | Full backend Integrant system — multi-client integration with real piece/IL/undo state | `with-system` | All backend components (piece-manager, instrument-library, undo-manager, grpc-server, http-server, cache-daemon) |
+| The running **application** — startup sequence, menu bar, windows, anything reached through a real launch | `with-started-app` | Everything `start-app!` starts, plus the startup window-set; headless unless `{:graphical? true}` |
 | Full combined application — frontend → backend pipeline, JAT callbacks, UI manager state | `with-combined-system` | All 15 baseline components (every backend + every frontend), headless UI by default |
 | Frontend UI manager and individual frontend components | `with-ui-manager` | Just thread-pool, event-bus, ui-manager |
+
+`with-started-app` and `with-combined-system` both give a whole application, and the difference is what starts it: `with-combined-system` initialises the component graph directly, while `with-started-app` goes through `start-app!` — the production launch, splash and all — so it is the one to use when the *startup* is part of what the test is about. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model).
 
 The §Component init scope below has the detail on which components each macro actually starts, the consequence for tests that reach into nil dependencies, and the macro signatures and options.
 
@@ -977,13 +980,11 @@ It subscribes to `:window-lifecycle` **before** running `trigger-fn` (avoiding t
 
 ### `force-headless`
 
-A one-line config transform for combined-system `start-app!` tests. `(th/force-headless config)` returns `config` with `[:ooloi.frontend.components/ui-manager :ui-mode] :headless`. Wrap it around the config at every `start-app!` call site in the shared application test suites:
+A one-line config transform: `(th/force-headless config)` returns `config` with `[:ooloi.frontend.components/ui-manager :ui-mode] :headless`.
 
-```clojure
-(system/start-app! (th/force-headless (system/combined-config)))
-```
+**Tests do not call it.** `with-started-app` applies it, and `with-ui-manager` and `with-combined-system` already default to headless; the transform is named here because it is what those macros do, not because a test should reach for it. A test needing real shown windows — modal-gating, where the modal takes its owner from a shown Stage, or Robot input — asks for them with `(with-started-app [sys-atom {:graphical? true}] …)` rather than by omitting the transform.
 
-`with-ui-manager` and `with-combined-system` already default to headless, but a direct `start-app!` on `combined-config` does not — it inherits production's `:graphical` default — so its tests must opt in explicitly or they flash a real splash and piece window on screen and steal keyboard focus during runs. Headless suppresses only `window/show!`; registration, scene assembly, menu wiring, and lifecycle events are unchanged. Tests that genuinely need a shown window (modal-gating, where the modal's owner is the piece-window Stage; robot input) stay graphical. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model) for the full `start-app!` test rules.
+Headless suppresses only `window/show!`; registration, scene assembly, menu wiring, and lifecycle events are unchanged. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model) for what `with-started-app` guarantees and the two shapes it cannot express.
 
 ### Async helpers from `util.common`
 

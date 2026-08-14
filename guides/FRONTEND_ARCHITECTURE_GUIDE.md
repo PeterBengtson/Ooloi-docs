@@ -1950,65 +1950,73 @@ There are three distinct shapes, and choosing the wrong one is a common source o
 
 **Suite-vs-isolation caveat.** Some window and menu tests behave differently run alone versus in the full suite, because the global macOS system menu bar (NSMenuFX) and JavaFX `Popup` overlays are process-global, order-dependent state. A locale-switching menu test can pass in the suite but crash in isolation (the menu host is established by an earlier test); a `Popup` timing test can pass in isolation but flake in the suite. When a single namespace fails where the suite passes (or the reverse), suspect this before suspecting the change under test.
 
-#### Combined System Tests (`start-app!`)
+#### Combined System Tests (`with-started-app`)
 
-Tests in `shared/test/app/clojure/ooloi/shared/system_test.clj` exercise the full combined application lifecycle via `start-app!`. These differ from `with-ui-manager` and `with-combined-system` tests in one critical way: **`start-app!` returns before the piece window is registered**. The startup sequence — splash display, startup work, splash fade-out, piece window open — is fully asynchronous. Halting the system before the piece window is registered causes `register-window!` to run against an already-terminated pool, wiring focus-change `ChangeListener`s that throw `RejectedExecutionException` into every subsequent test.
+Tests that exercise the full combined application lifecycle differ from `with-ui-manager` and `with-combined-system` tests in one critical way: **`start-app!` returns before the piece window is registered**. The startup sequence — splash display, startup work, splash fade-out, piece window open — is fully asynchronous. Halting the system before the piece window is registered causes `register-window!` to run against an already-terminated pool, wiring focus-change `ChangeListener`s that throw `RejectedExecutionException` into every subsequent test.
 
-**Six rules for all `start-app!` tests:**
-
-1. **Always wrap with `with-frontend-test-config {}`** — prevents platform directory contamination and settings atom bleed between tests.
-
-2. **Always wrap with `with-zero-animation-times`** — splash fade-out is ~2 seconds by default. Without this, any test that halts before the animation completes leaves the piece window unregistered at halt time.
-
-3. **Wait for startup readiness before halting** — call `th/await-app-ready`. It blocks until `:app-ready`, which `start-app!` publishes only after the whole startup window-set has opened and registered ([ADR-0031](../ADRs/0031-Frontend-Event-Driven-Architecture.md)), so no pending listener registration exists when `ig/halt!` runs. The startup window is keyed by its **piece UUID**, not a fixed id — reach it through `th/startup-piece-window` (which looks it up by kind), never `(get @(:window-registry mgr) :untitled-piece)`:
-
-   ```clojure
-   (let [mgr (:ooloi.frontend.components/ui-manager sys)]
-     (th/await-app-ready mgr)                          ; blocks until :app-ready (race-safe)
-     (let [entry        (th/startup-piece-window mgr)  ; the startup window's registry entry, by kind
-           *piece-state (:*state entry)]
-       ...))
-   ```
-
-4. **Double flush before `ig/halt!`** — two sequential `(th/run-on-fx-thread-sync! (fn []))` calls. When a window is explicitly closed before system halt, one flush drains the close callbacks; a second flush drains any callbacks those callbacks enqueued.
-
-5. **Platform guard for macOS-specific features** — tests that read `@(:macos-menu-items mgr)` must be wrapped in `(when (platform/macos?) (fact ...))`. This atom is populated by NSMenuFX and is only available on actual macOS. Mocking `platform/macos?` with `with-redefs` makes the system *behave* as if on macOS but does not populate the NSMenuFX atoms. Tests for Linux and Windows embedded menu bars do not need a guard — they access standard JavaFX structures and run correctly on any platform.
-
-6. **Force `:ui-mode :headless`** — wrap the config in `th/force-headless`: `(system/start-app! (th/force-headless (system/combined-config)))`. Unlike `with-ui-manager` and `with-combined-system`, which default to headless, a direct `start-app!` on `combined-config` inherits production's `:graphical` default — so without this, every test shows a real splash and piece window on screen, flashing windows and stealing keyboard focus during runs. `th/force-headless` sets `[:ooloi.frontend.components/ui-manager :ui-mode] :headless`, which suppresses only `window/show!`; registration, scene assembly, menu wiring, and lifecycle events are unchanged. **Exception — tests that genuinely require a real, shown window stay graphical:** modal-gating tests (the application-modal dialog's owner is the piece-window Stage, which must be shown for the gate to engage) and robot tests (`javafx.scene.robot.Robot` needs real on-screen input). On-screen visibility verification belongs in the `OOLOI_UI_VISUAL` path, not the default suite. Note that `th/force-headless` does **not** suppress notification toasts — the notification overlay is a `Popup`, not `:ui-mode`-gated.
-
-A complete `start-app!` test skeleton:
+**Start the application with `with-started-app`, not with `start-app!` directly.** The macro folds in the wrapping every such test otherwise repeats, and there is no discretion about it: a test that omits any of it is not lighter, it is wrong in a way that surfaces somewhere else in the suite.
 
 ```clojure
-(th/with-zero-animation-times
-  (th/with-frontend-test-config {}
-    (with-redefs [platform/macos?   (constantly true)
-                  platform/windows? (constantly false)
-                  platform/linux?   (constantly false)]
-      (let [sys (system/start-app! (th/force-headless (system/combined-config)))
-            mgr (:ooloi.frontend.components/ui-manager sys)]
-        (try
-          ;; Block until the startup window-set is open and registered, before assertions or halt
-          (th/await-app-ready mgr)
-          ;; Reach the startup window by kind, not a fixed id: (th/startup-piece-window mgr)
-          ;; ... assertions ...
-          (finally
-            (th/run-on-fx-thread-sync! (fn []))   ; first flush
-            (th/run-on-fx-thread-sync! (fn []))   ; second flush
-            (ig/halt! sys)))))))
+(with-started-app [sys-atom]
+  (let [mgr (:ooloi.frontend.components/ui-manager @sys-atom)]
+    (th/await-app-ready mgr)
+    (let [stage (:stage (th/startup-piece-window mgr))]
+      ...)))
 ```
+
+`sys-atom` is bound to the system **atom**, not the map — the application swaps components into it at runtime, so `@sys-atom` is the only way to see a collaboration server started mid-test.
+
+**What the macro guarantees, so no test has to remember it:**
+
+- **Test-config isolation** — `with-frontend-test-config`, which prevents platform-directory contamination and settings-atom bleed between tests.
+- **Zero animation times** — the splash fade-out is ~2 seconds by default, and a test that halts before it completes leaves the piece window unregistered at halt time.
+- **Headless UI** — `force-headless`. Unlike `with-ui-manager` and `with-combined-system`, a direct `start-app!` on `combined-config` inherits production's `:graphical` default, so without this every test flashes a real splash and piece window on screen and steals keyboard focus. Headless suppresses only `window/show!`; registration, scene assembly, menu wiring and lifecycle events are unchanged. It does **not** suppress notification toasts — the overlay is a `Popup`, not `:ui-mode`-gated.
+- **Ordered teardown** — the double JavaFX-thread flush (one drains close callbacks, the second drains whatever those enqueued), the pool drain, and `ig/halt!`, in that order.
+- **The failure guard** — a body that leaves an uncaught pool exception behind fails, rather than passing quietly ([Integrant Components Guide §9](INTEGRANT_COMPONENTS.md)).
+
+**Two options are the macro's own** and are stripped before the rest of the map is forwarded to `start-app!`:
+
+- `{:graphical? true}` runs the application with real, shown windows. Required where the behaviour under test needs one: modal-gating tests (the application-modal dialog takes its owner from a shown Stage, so the gate does not engage headless) and Robot tests (`javafx.scene.robot.Robot` needs real on-screen input). On-screen *visibility* verification belongs in the `OOLOI_UI_VISUAL` path, not the default suite.
+- `{:test-config {...}}` supplies settings overrides to `with-frontend-test-config`, for a test whose subject depends on a non-default setting — a dialog that must prove it wrote *typed* values rather than the seeds it was given, say. Omitted, it is `{}`: every registry default.
+
+Every **other** key in that map goes to `start-app!` — `:peer-port`, `:auto-halt-seconds`, `:min-splash-ms`, `:on-shutdown`, `:cert-path`, `:key-path`. Given none, `start-app!`'s own defaults apply (peer-port 10702, auto-halt-seconds -1, min-splash-ms 0), which is what almost every test wants: the network server is not bound at boot, so the port is rarely worth overriding.
+
+**Two things remain the body's own responsibility**, because the macro cannot do them:
+
+1. **Wait for startup readiness.** `start-app!` returns *before* the piece window is registered, so the macro cannot know when the body may safely traverse the scene graph. Call `th/await-app-ready`, which blocks until `:app-ready` — published only after the whole startup window-set has opened and registered ([ADR-0031](../ADRs/0031-Frontend-Event-Driven-Architecture.md)). Reach the startup window through `th/startup-piece-window`, which looks it up by kind: it is keyed by its **piece UUID**, never a fixed id, so `(get @(:window-registry mgr) :untitled-piece)` finds nothing.
+
+2. **Guard macOS-specific features.** A test reading `@(:macos-menu-items mgr)` needs `(when (platform/macos?) (fact ...))`. That atom is populated by NSMenuFX and exists only on real macOS; mocking `platform/macos?` makes the system *behave* as if on macOS without populating it. Linux and Windows embedded menu bars need no guard — they are standard JavaFX structures.
+
+**Where a test may still call `start-app!` directly.** Two shapes the macro genuinely cannot express, and both are rare enough that extending it would cost more than it saves:
+
+- The test needs `with-frontend-test-config` **outside** another platform-directory wrapper — typically because it boots a second, independent backend with `with-system`. Both redirect `~/.ooloi` and the innermost wins, so folding the config wrapper inwards would leave the application resolving to a different temp directory than the backend it talks to. That is a change in what the test isolates, not in how it is written.
+- The test **transforms the config** before starting — switching both transports to `:network`, for instance. The macro builds `combined-config` itself and offers no hook to alter it.
+
+A site kept on the older form for either reason carries a comment saying so, at the site. Anything else is a conversion that has not happened yet.
 
 **The startup untitled window counts as an open piece.** Startup always opens the untitled New window ([ADR-0042](../ADRs/0042-UI-Specification-Format.md) untitled fallback), and opening a piece window subscribes its piece — so `subscription-state` is non-empty from launch. A `start-app!` test that exercises the collaboration **connect / switch-to-remote** path therefore trips the outbound open-pieces gate ([ADR-0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md): `switch-to!` refuses with `{:refused :open-pieces}` while any local piece is subscribed) unless it first clears that window. `th/close-startup-piece-window! mgr` does so: it waits for the window's initial `get-piece-structure` read to land (closing the window removes the piece via close-on-last-release, and an in-flight fetch would otherwise fail "not found" and fire a spurious error notification), then closes it on the JAT; the test then waits for `subscription-state` to empty before connecting. It is a test-only stand-in for the user-facing close-without-save (discard) gesture, which now exists (`close-piece!`): a clean startup piece closes silently either way, so the helper remains a convenient direct close for the test's teardown.
 
-If a test explicitly closes a window before halt, close it on the JAT first, then apply both flushes:
+A test that explicitly closes a window closes it on the JavaFX thread, and nothing more — the flushes and the halt that used to follow are the macro's:
 
 ```clojure
-(finally
-  (let [mgr (:ooloi.frontend.components/ui-manager sys)]
-    (th/run-on-fx-thread-sync! #(um/close-window! mgr :app-settings)))
-  (th/run-on-fx-thread-sync! (fn []))
-  (th/run-on-fx-thread-sync! (fn []))
-  (ig/halt! sys))
+(with-started-app [sys-atom]
+  (let [mgr (:ooloi.frontend.components/ui-manager @sys-atom)]
+    ...
+    (th/run-on-fx-thread-sync! #(um/close-window! mgr :app-settings))))
 ```
+
+Where a body owns teardown the macro knows nothing about — a collaboration server it started, a socket it opened — keep the `try`/`finally` for that alone, **nested inside** the macro so it still runs ahead of the halt:
+
+```clojure
+(with-started-app [sys-atom]
+  (try
+    ...
+    (finally
+      (when (:ooloi.backend.components/network-grpc-server @sys-atom)
+        (swap! sys-atom bsys/stop-collaboration-server!)))))
+```
+
+A mocked collaborator goes the other way — **outside** the macro, so the drain runs while the mock still stands.
 
 #### Mocking `tr` in Tests: Multi-Arity Recursion Trap
 
