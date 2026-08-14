@@ -153,7 +153,8 @@ connection.** Reverting during shutdown would mean re-registering against a back
 publishing switch events to subscribers that are going away, and surfacing a "host disconnected"
 notification to a user who asked to quit.
 
-Nothing new guards this; two existing mechanisms compose to give it.
+Three mechanisms compose to give it. The first two are ordinary consequences of how the system is
+wired; the third is an explicit guard, because the first two leave a window open.
 
 - **Order.** The frontend's `grpc-clients` declares an `ig/ref` on the in-process `grpc-server`, so
   Integrant halts the client before the server it depends on. The client is gone before that server
@@ -161,21 +162,30 @@ Nothing new guards this; two existing mechanisms compose to give it.
 - **Identity.** `halt-key!` on `grpc-clients` clears the event-client and connection-pool atoms
   *before* closing the streaming call, so any terminal event that does arrive fails the comparison in
   §Terminal Event Identity and is declined.
+- **Lifecycle.** A halted `grpc-clients` refuses to register or to switch. `halt-key!` sets a marker
+  on the component before it clears anything, and both `register-with-server` and `switch-to!`
+  consult it before doing any work. Order and Identity together decline a terminal event arriving
+  *before* the clear; neither reaches a **registration that completes after it**, which would write a
+  live channel and a live connection pool back into a component whose closer has already run, with
+  nothing left alive to close them. The marker is what makes *a halted component stays halted* an
+  enforced invariant rather than a property emerging from halt ordering.
 
-A **guest** quitting while connected to a remote host is covered by the same pair. The remote server
-is in another process and is not halted by the guest at all, so the only terminal event in play comes
-from the guest closing its own channel — by which time its atoms are already cleared.
+A **guest** quitting while connected to a remote host is covered by the same mechanisms. The remote
+server is in another process and is not halted by the guest at all, so the only terminal event in
+play comes from the guest closing its own channel — by which time its atoms are already cleared.
 
 The consequence worth stating, because it is what makes the boundary in
 [ADR-0017 §Surfacing Unexpected Runtime Failures](0017-System-Architecture.md) trustworthy: **quitting
 produces no failure record, in any deployment shape.** A diagnostic appearing at shutdown means
 something genuinely went wrong, not that shutdown is noisy.
 
-One arrangement escapes both mechanisms: a frontend connected as a guest to its **own** network
-server, where nothing orders that server against the client. It does not arise — §Collaboration Menu
-Enablement records that a host's frontend always talks to its own in-process backend — but it is
-reachable in a single-process test, which is the only way to exercise transport switching without a
-second JVM. A test in that arrangement is not evidence about shutdown.
+One arrangement escapes all three: a frontend connected as a guest to its **own** network server,
+where nothing orders that server against the client. Lifecycle does not help there either — the
+client has not been halted, so its marker is false and the reversion is correct as far as the client
+can tell; what is wrong is the arrangement, not the response to it. It does not arise —
+§Collaboration Menu Enablement records that a host's frontend always talks to its own in-process
+backend — but it is reachable in a single-process test, which is the only way to exercise transport
+switching without a second JVM. A test in that arrangement is not evidence about shutdown.
 
 **Lifecycle state diagram:**
 
@@ -327,6 +337,8 @@ Transport switching from the frontend is mediated by a single named operation on
 - `:instrument-library-changed` (category `:instrument-library`) — invalidates the Instrument Library cache, whose contents belong to the backend just left. Whether that is answered by a fetch now or by one when the window next opens is [ADR-0022 §The Invalidation Invariant](0022-Lazy-Frontend-Backend-Architecture.md#the-invalidation-invariant)'s to decide, not this operation's.
 - `:collaboration-state-changed` (category `:collaboration`) — the menu-enablement seam re-evaluates (see §Collaboration Menu Enablement).
 - `:backend-changed` (category `:backend`) — backend-scoped frontend caches invalidate; `undo-redo` subscribes to clear its Tier 1 backend undo cache, whose timestamps and descriptions belonged to the previous backend (ADR-0015 §Tier 1).
+
+**A refused switch publishes none of the three, and clears nothing.** "Completed" is doing real work in the sentence above: a refusal is not a switch that failed, it is a switch that never began, so none of the three invalidations it would announce is true. The distinction matters most for `:instrument-library-changed`, which would send an open Instrument Library window to refetch through a client that is not connected — and it is easy to lose, because a refusal returns a value like any other and a caller that does not recognise it will carry on into the completion path. `switch-to!` therefore refuses **before** any teardown, alongside the outbound precondition below, rather than discovering the refusal in the registration's return value.
 
 These are frontend-internal event-bus publishes that fire *after* the gRPC re-registration completes; they are distinct from the gRPC wire events of the connection handshake itself (ADR-0024 §Connection Lifecycle). The end-to-end client/server sequence for a guest connect and disconnect — wire handshake plus these frontend publishes plus the user notification — is shown in §Connect / Disconnect Event Sequence below.
 

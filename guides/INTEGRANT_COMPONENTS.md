@@ -405,6 +405,46 @@ The same shape applies whenever multiple lifecycle-independent components write 
 
 (The lifecycle-independence property is asserted for the dual-server case in both directions — halting one server, and starting one alongside another.)
 
+### A halted component stays halted: `halt-key!`'s return value cannot tell anyone
+
+`halt-key!` conventionally returns the component with its status flipped:
+
+```clojure
+(assoc component :status :stopped)
+```
+
+**Integrant stores that map, and nothing else ever sees it.** Every closure created while the
+component was running — a gRPC response observer, a callback, a `revert-fn` — captured the map
+`init-key` returned, and that map is immutable. Its `:status` says `:running`, and always will.
+The two are separate values from the moment `halt-key!` returns.
+
+The consequence is easy to miss because it is invisible in the common case: a component whose only
+callers are Integrant itself is unaffected. It bites where **something outside the lifecycle holds
+the component and can act on it later**. Ooloi's case is `grpc-clients`: `halt-key!` clears the
+event-client and connection-pool atoms and tears down what they held, but a registration completing
+afterwards wrote a live channel and a live connection pool straight back into them, leaving a halted
+component holding network resources that nothing would ever close — because the thing responsible
+for closing them had already run.
+
+**Neither `:status` nor the component's existing state can carry the answer.** `:status` is a plain
+value on a map the caller no longer shares. The atoms cannot serve either, because `nil` already
+means *not yet connected* and so cannot also mean *halted*. Promoting `:status` itself to an atom
+looks like the economical fix and is not: the three system-health functions read `(:status v)` as a
+plain value while walking every component uniformly, and `get-combined-system-health` permits no
+per-component workarounds — so one component's problem would be paid for by all of them.
+
+**The remedy is one mutable marker on the component, set by `halt-key!` before it does anything
+else, and consulted by every entry point that would resurrect it.** Set it first, so a call racing
+the teardown is refused rather than half-served. Consult it *early* — above any resource
+acquisition — so a refusal costs nothing and reaches no collaborator. And have the refusal be
+**data the caller can recognise** (`{:refused :client-halted}`), not `nil` or `false`: a caller
+testing for failure with `(false? result)` treats `nil` as success, and one testing for a specific
+sentinel treats a general one as the wrong cause.
+
+The general rule: **if a component can be reached by anything that outlives its halt, "halted" must
+be expressed in something mutable that those holders share.** Otherwise a halted component stays
+halted only by luck of ordering — which is a property of the current wiring, not a guarantee.
+
 ### Self-stopping on a dedicated thread: reap it with `.shutdown`, not `.shutdownNow`
 
 A component that schedules its own halt on a dedicated executor must reap that executor with `.shutdown` (graceful), never `.shutdownNow` (forceful) — whenever the scheduled task routes back through the component's own `halt-key!`.
@@ -1169,6 +1209,9 @@ All servers use default ports (gRPC: 10700, HTTP: 10701). There is no need for r
 Client registration with `register-client` is synchronous. gRPC event delivery is asynchronous. After dispatching an event, wait for it to arrive at the destination — but `Thread/sleep N` is brittle (too short and the test flakes, too long and the suite slows down). The canonical replacement is `(wait-for-event events-atom pred timeout-ms)` for "did the matching event arrive in this atom?", or `(wait-for-state state-atom pred timeout-ms)` for whole-collection conditions like count or absence. Both helpers in `util.common` return as soon as the condition is met, with a hard upper-bound timeout. See [§9 Async helpers](#async-helpers-from-utilcommon).
 
 `Thread/sleep` is still appropriate when *modelling* delay (simulating a slow client's processing time, waiting for a known fixed-duration external event) — i.e. when the sleep IS the test's behaviour, not a workaround for asynchrony. In all other cases, prefer the helpers.
+
+**A halted component that outside callers still hold needs a mutable marker, not `:status`.**
+`halt-key!` returns a new map; every closure created while the component ran still holds the original, whose `:status` says `:running` for ever. Where something outside the lifecycle can act on the component after its halt, express "halted" in something mutable both maps share, set it before the teardown, and consult it above any resource acquisition. See [§6 A halted component stays halted](#a-halted-component-stays-halted-halt-keys-return-value-cannot-tell-anyone).
 
 **Component keys in `combined-config` are namespaced keywords matching their `init-key` dispatch.**
 The frontend event-router and fetch-coordinator use fully-qualified namespace keys:
