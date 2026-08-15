@@ -232,6 +232,13 @@ above; the code shows one realisation of those requirements.
 (def ^:private redo-stack (atom []))
 (def ^:private on-change-callback (atom nil))
 
+(defn notify-change!
+  "Run the shared on-change callback, if one is installed. Public rather than
+   private because the Edit menu calls it when it opens — the callback is what
+   dispatches the lazy description fetch (§Description Localisation)."
+  []
+  (when-let [cb @on-change-callback] (cb)))
+
 (defn can-undo? [] (boolean (seq @undo-stack)))
 (defn can-redo? [] (boolean (seq @redo-stack)))
 (defn top-undo-key [] (:key (peek @undo-stack)))
@@ -240,21 +247,21 @@ above; the code shows one realisation of those requirements.
 (defn record-setting-change! [{:keys [key old-value new-value timestamp]}]
   (swap! undo-stack #(vec (take-last max-stack-depth (conj % {:key key :old-value old-value :new-value new-value :timestamp timestamp}))))
   (reset! redo-stack [])
-  (when-let [cb @on-change-callback] (cb)))
+  (notify-change!))
 
 (defn undo! []
   (when-let [entry (peek @undo-stack)]
     (swap! undo-stack pop)
     (swap! redo-stack conj entry)
     (settings/set-app-setting! (:key entry) (:old-value entry) {:sender :undo-redo})
-    (when-let [cb @on-change-callback] (cb))))
+    (notify-change!)))
 
 (defn redo! []
   (when-let [entry (peek @redo-stack)]
     (swap! redo-stack pop)
     (swap! undo-stack conj entry)
     (settings/set-app-setting! (:key entry) (:new-value entry) {:sender :undo-redo})
-    (when-let [cb @on-change-callback] (cb))))
+    (notify-change!)))
 
 (defn wire-undo-redo!
   ([event-bus] (wire-undo-redo! event-bus nil))
@@ -1086,8 +1093,8 @@ code shows one realisation of those requirements.
 ;; ooloi.frontend.undo_redo — routing layer (extends the Tier 2 reference impl)
 ;;
 ;; The Tier 2 atoms (undo-stack, redo-stack, on-change-callback), max-stack-depth,
-;; record-setting-change!, undo!, redo!, top-undo-key, and top-redo-key are defined in
-;; the Tier 2 reference implementation and are not repeated here.
+;; notify-change!, record-setting-change!, undo!, redo!, top-undo-key, and top-redo-key
+;; are defined in the Tier 2 reference implementation and are not repeated here.
 
 (require '[com.climate.claypoole :as cp]
          '[ooloi.frontend.api.remote-api :as SRV]
@@ -1210,7 +1217,7 @@ code shows one realisation of those requirements.
                                               (select-keys r [:description-key :description-params]))
                           :redo-own?        (get-in response [:redo :own?])
                           :stale            false)))
-          (when-let [cb @on-change-callback] (cb)))))))
+          (notify-change!))))))
 
 ;; wire-undo-redo! adds the :undo subscription alongside the :app-settings one.
 ;; The on-change callback is set once and shared by both tiers — Frontend Wiring
@@ -1231,7 +1238,7 @@ code shows one realisation of those requirements.
        (doseq [event events]
          (when (= (:type event) :undo-state-changed)
            (record-backend-state! event)
-           (when-let [cb @on-change-callback] (cb))))))))
+           (notify-change!)))))))
 ```
 
 The pool argument to `dispatch-undo!`, `dispatch-redo!`, and `ensure-fresh-description!`
