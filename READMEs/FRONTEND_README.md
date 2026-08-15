@@ -35,13 +35,14 @@ The frontend project retains `lein run` for development and testing purposes, al
 
 ## System Architecture
 
-The frontend uses **Integrant dependency injection** for component lifecycle management. It defines five Integrant components:
+The frontend uses **Integrant dependency injection** for component lifecycle management. It defines six Integrant components:
 
 - **event-bus**: Pure pub/sub message bus for internal frontend events
 - **ui-manager**: User interface lifecycle — windows, dialogs, notifications, splash, theme
 - **grpc-clients**: Connection to backend server (in-process transport in combined app)
 - **event-router**: Routes backend events to the frontend event bus
 - **fetch-coordinator**: Coordinates data fetches from the backend
+- **frontend-undo-manager**: Owns the frontend's undo/redo state — the local settings stacks, the cache of backend undo descriptions, and the menu-refresh callback
 
 The frontend project's own standalone configuration wires three of these (thread-pool, grpc-clients, ui-manager) with no declared dependencies between them — this is the test harness configuration. The full dependency graph, including event-bus, event-router, and fetch-coordinator, is assembled by the combined application in [shared/](../shared/).
 
@@ -117,6 +118,7 @@ The Ooloi Frontend uses Integrant dependency injection for component lifecycle m
 - **grpc-clients**: Connection to backend server (in-process transport in combined app)
 - **event-router**: Routes backend events to the frontend event bus
 - **fetch-coordinator**: Coordinates data fetches from the backend
+- **frontend-undo-manager**: Owns the frontend's undo/redo state — the local settings stacks, the cache of backend undo descriptions, and the menu-refresh callback
 
 For component design principles (the "god component" drift heuristic, when to extract a component, dependency-graph visibility), see [INTEGRANT_COMPONENTS §2a — Component Design Principles](../guides/INTEGRANT_COMPONENTS.md#2a-component-design-principles). For the full test infrastructure model (`with-server` / `with-system` / `with-combined-system` / `with-ui-manager`, async helpers, the `util.common` / `util.server` / `util.client` / `util.frontend` split), see [§8 Testing Components](../guides/INTEGRANT_COMPONENTS.md#8-testing-components).
 

@@ -257,7 +257,7 @@ Stage 5 in practice. Point collection via timewalking; shape determination via h
 
 **31. [FRONTEND_README.md](../READMEs/FRONTEND_README.md)**
 
-The component overview: event-bus, ui-manager, grpc-clients, event-router, fetch-coordinator. Short; establishes vocabulary before the architecture guide.
+The component overview: event-bus, ui-manager, grpc-clients, event-router, fetch-coordinator, frontend-undo-manager. Short; establishes vocabulary before the architecture guide.
 
 **32. [ADR-0031: Frontend Event-Driven Architecture](../ADRs/0031-Frontend-Event-Driven-Architecture.md)**
 

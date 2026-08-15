@@ -883,6 +883,38 @@ GET /health/clients/{id}       # Individual client detailed metrics
 
 **Content Differentiation**: JSON may include **ratios and totals derived from counters** (e.g., success rates, `bytes_sent = bytes_api_responses + bytes_events`, `clients_connected_current = clients_connected_total - clients_disconnected_total`); Prometheus exposes **raw counters only** for time-series analysis. If a denominator is 0, JSON ratios are `null`.
 
+##### What a derived value reports when it cannot report anything true
+
+The rule above covers one case of a general one, and the general one is the rule:
+**a derived value reports `null` when it cannot report anything true.** Three
+situations reach it, and they take the same answer:
+
+1. **A ratio over an empty population** — no calls yet, no events sent, nobody
+   disconnected. `0.0` is not a neutral placeholder for these quantities; for most
+   it is the worst available reading, produced exactly when nothing is wrong. A
+   success rate of zero on a server that has not failed at anything is alarming and
+   false, and it appears during the one period an operator is most likely to look.
+2. **A read that failed.** The endpoint must keep answering rather than throw, but
+   answering `0` reports a specific, wrong fact — indistinguishable on a dashboard
+   from a genuinely idle server. The cause is still recorded through ADR-0017's
+   single write site; only the invented value is withdrawn.
+3. **A composite with an unknown factor**, such as a client health score computed
+   from a success rate that has no calls to average. The product of an unknown and
+   two knowns is unknown, not the product of the two knowns.
+
+**What this rule is not.** It does not license absorbing an impossible value.
+`clients_connected_current` is a subtraction of two counters, and it reports a
+negative difference as it falls rather than clamping it to zero: a negative client
+count cannot happen, and if it ever does, the number is the evidence. A clamp there
+converts an unmissable signal into a plausible one — which is precisely how a
+counter mismatch once survived to be noticed on a dashboard rather than by a test.
+`null` is for *unknown*; a wrong number that is nonetheless known is reported.
+
+**Consequence for the Prometheus view.** A null ratio is **omitted** rather than
+emitted as zero. An absent series says "no observation"; a zero series says
+"observed, and it was nought", and the latter would write the same false reading
+into the time series that it used to put on a dashboard, where it would persist.
+
 **Process Lifetime**: All counters are process-lifetime unless exported to an external TSDB; values reset on process restart. Prometheus/TSDBs preserve time series across restarts; in-process counters reset.
 
 #### JSON Response Format (Default)

@@ -20,9 +20,9 @@ Implemented
   - [Frontend-Backend Boundary Alignment](#frontend-backend-boundary-alignment)
 - [Implementation Approach](#implementation-approach)
   - [Tier 2: Frontend Implementation](#tier-2-frontend-implementation)
-  - [Tier 1: Backend Implementation — The Undo Manager](#tier-1-backend-implementation--the-undo-manager)
+  - [Tier 1: Backend Implementation — The Backend Undo Manager](#tier-1-backend-implementation--the-backend-undo-manager)
     - [Design Principle: Closures Over Immutable State](#design-principle-closures-over-immutable-state)
-    - [The Undo Manager API](#the-undo-manager-api)
+    - [The Backend Undo Manager API](#the-backend-undo-manager-api)
     - [Stack Semantics](#stack-semantics)
     - [Mutation Sites — How Resources Register Undo Steps](#mutation-sites--how-resources-register-undo-steps)
     - [IL Description Inference](#il-description-inference)
@@ -62,7 +62,7 @@ Implemented
   - [Related ADRs](#related-adrs)
 - [Notes](#notes)
   - [Why This Model Works](#why-this-model-works)
-  - [Resource Types Under the Undo Manager](#resource-types-under-the-undo-manager)
+  - [Resource Types Under the Backend Undo Manager](#resource-types-under-the-backend-undo-manager)
 
 ---
 
@@ -107,9 +107,9 @@ We will implement a **three-tier undo/redo architecture** that separates concern
 
 ### Tier 1: Backend Undo/Redo (Coordinated)
 - **Scope**: All backend-managed resources — pieces (musical content), Instrument Library, future catalogues
-- **Implementation**: Resource-agnostic Undo Manager component; closures over immutable state
+- **Implementation**: Resource-agnostic Backend Undo Manager component; closures over immutable state
 - **Coordination**: One undo/redo stack per resource (per piece, one for IL), shared across all clients subscribed to that resource
-- **Storage**: Backend server maintains per-resource undo/redo history in the Undo Manager component
+- **Storage**: Backend server maintains per-resource undo/redo history in the Backend Undo Manager component
 - **Distribution**: Lightweight `:undo-state-changed` notifications (timestamps only) over gRPC streaming, **delivered by audience** — a piece's notifications reach only the clients subscribed to that piece, the Instrument Library's reach every connected client (see *Push-Based State Notification*); descriptions fetched lazily on demand
 
 ### Tier 2: Frontend UI Undo/Redo (Local)
@@ -165,8 +165,13 @@ The three-tier approach aligns perfectly with existing architectural boundaries:
 
 ### Tier 2: Frontend Implementation
 
-The Tier 2 undo/redo module (`ooloi.frontend.undo_redo`) owns two module-level atoms — an
-undo stack and a redo stack — each holding a vector of stack entries. Stack entries mirror
+The Tier 2 undo/redo module (`ooloi.frontend.undo_redo`) holds two module-level atoms — an
+undo stack and a redo stack — each holding a vector of stack entries. Their *lifetime*
+belongs to the **Frontend Undo Manager** component
+(§[Frontend Undo State — Separate Stacks](#frontend-undo-state--separate-stacks)), which
+wires them when the application starts and releases them when it halts; the atoms stay at
+module level so a menu predicate can reach them with nothing in hand, which is the same
+namespace-handle arrangement the piece-manager uses for its store. Stack entries mirror
 the `:setting-changed` event payload: `{:key, :old-value, :new-value, :timestamp}`. The stack is
 capped at 50 entries; oldest entries are dropped when the cap is reached.
 
@@ -269,11 +274,14 @@ extends the same module with a backend timestamp cache, routing-aware versions o
 Per §[Frontend Wiring Invariants](#frontend-wiring-invariants) the on-change callback is
 single and shared. The combined reference implementation appears at the end of that section.
 
-### Tier 1: Backend Implementation — The Undo Manager
+These stacks and this cache are one holding with one owner — see
+§[Frontend Undo State — Separate Stacks](#frontend-undo-state--separate-stacks).
+
+### Tier 1: Backend Implementation — The Backend Undo Manager
 
 Tier 1 covers all backend-managed resources: pieces (STM-based), the Instrument Library
 (atom-based), and any future singleton catalogues. A single backend Integrant component —
-the **Undo Manager** — provides undo/redo for all of them through a uniform, resource-agnostic
+the **Backend Undo Manager** — provides undo/redo for all of them through a uniform, resource-agnostic
 API.
 
 #### Design Principle: Closures Over Immutable State
@@ -328,7 +336,7 @@ not an implicit `set-piece`. The undo manager is a backend component operating w
 single-authority boundary — the backend remains the sole authority over resource state.
 No client can supply a snapshot or trigger a restoration outside the undo manager's API.
 
-#### The Undo Manager API
+#### The Backend Undo Manager API
 
 The functions below are **component methods on the undo manager** — plain Clojure
 functions on the Integrant component. They are **not** declared `^{:api true}` in
@@ -337,7 +345,7 @@ only from backend code: mutation sites, the Piece Manager, and the gRPC handlers
 the public operations described in [gRPC Extensions](#grpc-extensions) below.
 
 ```clojure
-;; backend/components/undo_manager.clj — Integrant component
+;; backend/components/backend_undo_manager.clj — Integrant component
 ;;
 ;; Internal state: atom holding
 ;;   {resource-key → {:undo-stack [entry ...] :redo-stack [entry ...]}}
@@ -658,7 +666,7 @@ knowing it was caused by an undo.
                          │
                          ▼
   ┌──────────────────────────────────────────────────────┐
-  │  Undo Manager                                         │
+  │  Backend Undo Manager                                 │
   │  1. Push entry to undo stack                          │
   │  2. Clear redo stack for this resource                │
   │  3. Emit :undo-state-changed to the resource's        │
@@ -682,7 +690,7 @@ knowing it was caused by an undo.
 sequenceDiagram
     participant C as Client (any)
     participant G as gRPC Transport
-    participant UM as Undo Manager
+    participant UM as Backend Undo Manager
     participant R as Resource (IL/Piece)
     participant E as Event Stream
 
@@ -710,7 +718,7 @@ shared undo stack models a single shared editing context, not per-user history.
 sequenceDiagram
     participant A as Client A
     participant B as Client B
-    participant UM as Undo Manager
+    participant UM as Backend Undo Manager
     participant IL as Instrument Library
     participant E as Event Stream
 
@@ -744,7 +752,7 @@ therefore exported through the `api` namespace and callable by clients as
 `SRV/undo-resource`, `SRV/redo-resource`, and `SRV/get-undo-description`. These are
 the **only** undo-related entry points exposed to the frontend. Their handlers
 delegate to the undo manager's component methods described in
-[The Undo Manager API](#the-undo-manager-api) above.
+[The Backend Undo Manager API](#the-backend-undo-manager-api) above.
 
 ```clojure
 (undo-resource resource-type resource-id)
@@ -800,7 +808,18 @@ actually do at the moment it is pressed.
 
 #### Frontend Undo State — Separate Stacks
 
-The frontend maintains three data structures:
+The frontend maintains three data structures, and the **Frontend Undo Manager** component
+of the combined desktop application owns all three, together with the shared on-change
+callback. Its `init-key` releases whatever a previous application left behind and performs
+the wiring; its `halt-key!` releases the state again, which is what gives this state a
+lifetime bounded by the application's rather than by the process's. The structures stay at
+module level in `ooloi.frontend.undo_redo` rather than on the component value, so a menu
+predicate can reach them with nothing in hand — `(fn [_] (undo-redo/can-undo?))` — and the
+component is a leaf that nothing refs, which is what keeps the configuration acyclic. It
+is distinct from the **Backend Undo Manager** of §Tier 1, which holds the authoritative
+history and performs the undos; this one owns only what the frontend keeps about it.
+
+The three structures:
 
 - **Local undo stack** — Tier 2 entries only (UI settings changes). Identical to the
   existing implementation: `{:key, :old-value, :new-value, :timestamp}`.
@@ -962,7 +981,7 @@ sequenceDiagram
     participant LC as Local Stacks
     participant BC as Backend Cache
     participant G as gRPC Transport
-    participant UM as Undo Manager
+    participant UM as Backend Undo Manager
 
     Note over FE,BC: Notification arrives (from any client's mutation)
     UM-->>BC: :undo-state-changed {undo-timestamp, redo-timestamp}
@@ -1216,13 +1235,16 @@ code shows one realisation of those requirements.
 ```
 
 The pool argument to `dispatch-undo!`, `dispatch-redo!`, and `ensure-fresh-description!`
-is the shared `:thread-pool` Integrant component. The wiring lives in
-`shared/src/app/clojure/ooloi/shared/system.clj`: the `:ui/undo` action handler
-calls `(undo-redo/dispatch-undo! pool)`, the `:ui/redo` handler calls
-`(undo-redo/dispatch-redo! pool)`, and the `on-change` callback passed to
-`wire-undo-redo!` is `(fn [] (fx/run-later! #(um/refresh-menu-text! mgr)) (undo-redo/ensure-fresh-description! pool))`
-— so every stack mutation (Tier 2) and every cache update (Tier 1) triggers both a menu
-refresh on the JAT and a lazy description fetch on the pool when needed.
+is the shared `:thread-pool` Integrant component. The `:ui/undo` action handler calls
+`(undo-redo/dispatch-undo! pool)` and the `:ui/redo` handler calls
+`(undo-redo/dispatch-redo! pool)`.
+
+The `on-change` callback passed to `wire-undo-redo!` is installed by the **Frontend Undo
+Manager** component, which owns this state for the application's lifetime. It queues
+`refresh-menu-text!` on the JAT, and dispatches `ensure-fresh-description!` on the pool
+only while an Edit menu is showing (§Description Localisation). So every stack mutation
+(Tier 2) and every cache update (Tier 1) refreshes the menu, while a description is
+fetched only for a menu somebody has open.
 
 #### Description Localisation
 
@@ -1231,6 +1253,14 @@ closures. The push notification does not carry them — descriptions are fetched
 `SRV/get-undo-description` when the menu needs to display a backend entry. The
 `:description-params` map allows interpolation via the `%{param}` convention established
 in ADR-0039.
+
+**When the fetch happens.** This is [ADR-0022 §The Invalidation Invariant](0022-Lazy-Frontend-Backend-Architecture.md#the-invalidation-invariant) applied to the description cache, and the consumer that decides it is the Edit menu — the description is that menu's item text and is legible nowhere else. Three clauses, in the shape ADR-0045 gives the Instrument Library:
+
+- **A notification arrives while an Edit menu is showing** → record the timestamps and fetch now. Something is displaying it.
+- **A notification arrives with no Edit menu showing** → record the timestamps, mark the description stale, and stop. No network call. The timestamps are what `can-undo?` and `can-redo?` read, so enablement stays correct with no fetch at all.
+- **An Edit menu opens over a stale entry** → fetch. Over a fresh one it renders from cache, since opening is not itself a reason to fetch.
+
+Each Edit menu records itself while it is pulled down, so the notification path can ask the question without touching JavaFX state off the JavaFX thread. The marker is a *set* rather than a flag: macOS has one global menu bar, while Windows and Linux carry one per piece window ([ADR-0042](0042-UI-Specification-Format.md) §Platform-split menus), so more than one Edit menu can be open.
 
 **Menu text during fetch.** While the description fetch is in flight, the menu shows
 the generic `:menu.edit.undo` / `:menu.edit.redo` key (e.g. "Undo" / "Redo" without a
@@ -1582,7 +1612,7 @@ The elegance of this distributed undo model rests on three properties of Clojure
 The result is a distributed, collaborative, multi-resource undo/redo system implemented as
 a single small component with a four-function API.
 
-### Resource Types Under the Undo Manager
+### Resource Types Under the Backend Undo Manager
 
 The undo manager is resource-agnostic — it stores closures and metadata without knowing what
 kind of resource it manages. The distinction between atom-based and STM-based resources is

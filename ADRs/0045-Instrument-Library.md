@@ -127,7 +127,7 @@ purpose is to guarantee that the three side effects of a state change stay coupl
 disk persistence cannot drift apart from in-memory state, and broadcasts cannot drift
 apart from either. The undo/redo closures captured at `push-undo!` time call
 `apply-state!` with the old or new snapshot they captured (see
-[ADR-0015 §The Undo Manager API](0015-Undo-and-Redo.md#the-undo-manager-api)), so an undo
+[ADR-0015 §The Backend Undo Manager API](0015-Undo-and-Redo.md#the-backend-undo-manager-api)), so an undo
 operation persists to disk and broadcasts to clients exactly as a forward mutation
 would. Bypassing the helper — for example, in a closure that calls only `reset!` — is an
 anti-pattern that produces in-session correctness with cross-restart silent data loss.
@@ -416,7 +416,7 @@ once per call. Undo and redo are no exception to the monotonicity, even though c
 they look like time travel: restoring earlier instruments does not restore the earlier
 version. The instruments revert; the counter still ticks forward. A client holding an older
 version conflicts on its next write whether the intervening transitions were mutations or
-undo/redo operations. See [ADR-0015 §The Undo Manager API](0015-Undo-and-Redo.md#the-undo-manager-api)
+undo/redo operations. See [ADR-0015 §The Backend Undo Manager API](0015-Undo-and-Redo.md#the-backend-undo-manager-api)
 for the closure model that funnels undo/redo through the same `apply-state!` call site.
 
 This guarantees that no instrument can be silently overwritten or lost in a concurrent write
@@ -475,6 +475,8 @@ staler.
 expected version and new instruments vector. The response (success, conflict, or duplicate-IDs)
 is handled on the Claypoole thread; any UI feedback (conflict dialog, error display) is
 delivered to the JAT via `fx/run-later!`.
+
+The undo/redo description cache follows the same three clauses with a menu in place of a window ([ADR-0015](0015-Undo-and-Redo.md) §Description Localisation), which is what the invariant's generality looks like in practice.
 
 This means a client that never opens the Instrument Library window pays no fetch cost at all, even
 if the library is modified repeatedly by other clients during the session. The cost is deferred

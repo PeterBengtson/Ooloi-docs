@@ -253,7 +253,7 @@ sequenceDiagram
     participant PW as Piece Window<br/>(*piece-state)
     participant SRV as SRV / gRPC
     participant BE as Backend<br/>(STM)
-    participant UM as Undo Manager
+    participant UM as Backend Undo Manager
     participant ER as Event Router
 
     U->>PW: drag selected musicians → Layouts pane

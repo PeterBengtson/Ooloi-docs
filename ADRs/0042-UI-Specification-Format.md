@@ -1696,6 +1696,8 @@ Where the bar *lives* is likewise platform-specific:
 
 Because the menu can exist in *many* places on Windows/Linux (one bar per piece window), dynamic menu-text updates — locale changes, enablement-driven labels — go through a **multi-bar `refresh-menu-text!`**: it iterates every open piece window's bar on Windows/Linux, and updates the single global bar on macOS. The command descriptors (the menu *items*) are identical across platforms; only their *placement* and *refresh fan-out* differ.
 
+The same multiplicity governs one further piece of per-menu state. Each **Edit** menu records itself while it is pulled down, through show and hide handlers installed where the bar is built — the one point every bar on every platform passes through. The undo/redo items' text is a backend-supplied description that may be fetched only while something is displaying it ([ADR-0015](0015-Undo-and-Redo.md) §Description Localisation), and "something" here is an open Edit menu, of which there may be several.
+
 The same multi-bar fan-out carries one further piece of dynamic content: the Window menu's live list of the open piece windows, spliced below the static commands on each surface by `refresh-window-menus!` — the sibling of `refresh-menu-text!`, iterating the same per-window bars and macOS host bar. Unlike the command items, these entries are driven by the window registry rather than the command descriptors; see [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §5.
 
 #### macOS native integration

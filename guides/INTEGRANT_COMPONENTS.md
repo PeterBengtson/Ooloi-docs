@@ -132,12 +132,12 @@ The standalone backend runs the same backend components as the combined app — 
 ```
 thread-pool          (no dependencies, lives in shared/)
 instrument-library   (no dependencies)
-undo-manager         (no dependencies)
+backend-undo-manager (no dependencies)
 piece-manager        (no dependencies)
 connection-registry  ← shared state   (no dependencies)
 server-statistics    ← shared state   (no dependencies)
 health-manager       ← shared state   (no dependencies)
-grpc-server          [piece-manager, instrument-library, undo-manager,
+grpc-server          [piece-manager, instrument-library, backend-undo-manager,
                       connection-registry, server-statistics, health-manager]
 http-server          [connection-registry, server-statistics, health-manager]
 cache-daemon         [piece-manager]
@@ -149,7 +149,7 @@ cache-daemon         [piece-manager]
 |---|---|
 | `thread-pool` | Shared Claypoole thread pool (lives in `shared/`). |
 | `instrument-library` | The bundled instrument catalogue (the instrument-library atom; undo-managed). |
-| `undo-manager` | Backend coordinated undo/redo manager (ADR-0015 Tier 1). |
+| `backend-undo-manager` | Backend coordinated undo/redo manager (ADR-0015 Tier 1). |
 | `piece-manager` | Lifecycle management for the piece storage system (STM). |
 | `connection-registry` | Shared client connection registry (O(1) lookup). |
 | `server-statistics` | Shared server-statistics counters (ADR-0025). |
@@ -176,7 +176,7 @@ The three shared-state components — `connection-registry`, `server-statistics`
 
 ## 5. The Combined Application System
 
-The combined app's baseline `combined-config` initialises 15 components, plus an on-demand 16th (the network gRPC server) that the application adds at runtime when the host enables collaboration. The baseline divides into four initialisation groups that must run in order:
+The combined app's baseline `combined-config` initialises 16 components, plus an on-demand 17th (the network gRPC server) that the application adds at runtime when the host enables collaboration. The baseline divides into four initialisation groups that must run in order:
 
 ```
 SHARED FOUNDATION
@@ -189,12 +189,12 @@ FRONTEND EARLY  — splash screen must exist before backend reports progress
 BACKEND
   instrument-library                       [ui-manager]
   piece-manager                            [ui-manager]
-  undo-manager                             [ui-manager]
+  backend-undo-manager                     [ui-manager]
   connection-registry  ← shared state      [ui-manager]
   server-statistics    ← shared state      [ui-manager]
   health-manager       ← shared state      [ui-manager]
   grpc-server         ← in-process only    [piece-manager, instrument-library,
-                                            undo-manager, connection-registry,
+                                            backend-undo-manager, connection-registry,
                                             server-statistics, health-manager]
   http-server                              [connection-registry, server-statistics,
                                             health-manager]
@@ -204,9 +204,10 @@ FRONTEND LATE  — connect to backend after it is running
   grpc-clients                             [ui-manager, grpc-server]
   event-router                             [grpc-clients, event-bus]
   fetch-coordinator                        [thread-pool, grpc-clients]
+  frontend-undo-manager                    [ui-manager, thread-pool, grpc-clients]
 ```
 
-**The 15 baseline components, plus the on-demand network server:**
+**The 16 baseline components, plus the on-demand network server:**
 
 | Component | Layer | Purpose |
 |---|---|---|
@@ -215,7 +216,7 @@ FRONTEND LATE  — connect to backend after it is running
 | `ui-manager` | frontend | Orchestrates all UI infrastructure — windows, dialogs, notifications, splash, theme. |
 | `instrument-library` | backend | The bundled instrument catalogue (the instrument-library atom; undo-managed). |
 | `piece-manager` | backend | Lifecycle management for the piece storage system (STM). |
-| `undo-manager` | backend | Backend coordinated undo/redo manager (ADR-0015 Tier 1). |
+| `backend-undo-manager` | backend | Backend coordinated undo/redo manager (ADR-0015 Tier 1). |
 | `connection-registry` | backend | Shared cross-transport client connection registry (O(1) lookup). |
 | `server-statistics` | backend | Shared cross-transport server-statistics counters (ADR-0025). |
 | `health-manager` | backend | Shared cross-transport gRPC `HealthStatusManager`. |
@@ -225,6 +226,7 @@ FRONTEND LATE  — connect to backend after it is running
 | `grpc-clients` | frontend | The frontend's gRPC client(s) to the backend (in-process transport in the combined app). |
 | `event-router` | frontend | Routes backend events onto the frontend event bus. |
 | `fetch-coordinator` | frontend | Priority-based paintlist fetching via the shared Claypoole pool. |
+| `frontend-undo-manager` | frontend | Owns the frontend's undo/redo state: the Tier 2 local stacks, the Tier 1 cache of backend descriptions, and the menu-refresh callback (ADR-0015 Tier 2). Its `grpc-clients` dependency is for halt order — the callback dispatches through `SRV/`, so it must be torn down before the client it dispatches through. |
 | `network-grpc-server` *(on-demand)* | backend | Second gRPC transport surface, added at runtime when the host enables collaboration (ADR-0036). |
 
 Backend components' dependency on `ui-manager` is the load-bearing design in `combined-config`: it forces them to start *after* the UI manager (and thus after the splash screen is showing and i18n is loaded). Without it, a backend component might init before i18n is ready and crash when it calls `tr`. This dependency exists **only** in `combined-config` — in the standalone backend config (§4), the same components have no frontend dependencies. The shared-state components (`connection-registry`, `server-statistics`, `health-manager`) carry the dependency uniformly with every other backend component even though their `init-key` does no `tr`-touching work; the rule is uniform precisely so the topological invariant is not contingent on what each component happens to do today.
@@ -253,7 +255,7 @@ Backend components' dependency on `ui-manager` is the load-bearing design in `co
    :ooloi.backend.components/piece-manager
    {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
 
-   :ooloi.backend.components/undo-manager
+   :ooloi.backend.components/backend-undo-manager
    {:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}
 
    ;; Shared backend state — see ADR-0036 §Hybrid Transport Architecture.
@@ -271,7 +273,7 @@ Backend components' dependency on `ui-manager` is the load-bearing design in `co
    :ooloi.backend.components/grpc-server
    {:piece-manager                (ig/ref :ooloi.backend.components/piece-manager)
     :instrument-library-component (ig/ref :ooloi.backend.components/instrument-library)
-    :undo-manager-component       (ig/ref :ooloi.backend.components/undo-manager)
+    :undo-manager-component       (ig/ref :ooloi.backend.components/backend-undo-manager)
     :connection-registry          (ig/ref :ooloi.backend.components/connection-registry)
     :server-statistics            (ig/ref :ooloi.backend.components/server-statistics)
     :health-manager               (ig/ref :ooloi.backend.components/health-manager)
@@ -304,7 +306,7 @@ Backend components' dependency on `ui-manager` is the load-bearing design in `co
 
 Some components are not part of `combined-config` and therefore do not start with the application. They are added to the running Integrant system through an application-level API, then removed when no longer needed. The component itself is a full Integrant component — it implements `ig/init-key` and `ig/halt-key!` and complies with the `:status :running` invariant — but its lifecycle is driven by application logic rather than the system bootstrap.
 
-**`:ooloi.backend.components/network-grpc-server`** — second gRPC transport surface, started when the host enables a collaboration session and stopped on manual termination or after a configurable grace period of no connected guests (ADR-0036 §Hybrid Transport Architecture). It declares the same shared-state dependencies as the in-process `grpc-server` — `piece-manager`, `instrument-library`, `undo-manager`, `connection-registry`, `server-statistics`, `health-manager` — and points its config to the **same refs**. The in-process server is unaffected by the network server's lifecycle.
+**`:ooloi.backend.components/network-grpc-server`** — second gRPC transport surface, started when the host enables a collaboration session and stopped on manual termination or after a configurable grace period of no connected guests (ADR-0036 §Hybrid Transport Architecture). It declares the same shared-state dependencies as the in-process `grpc-server` — `piece-manager`, `instrument-library`, `backend-undo-manager`, `connection-registry`, `server-statistics`, `health-manager` — and points its config to the **same refs**. The in-process server is unaffected by the network server's lifecycle.
 
 The pattern for dynamic components:
 
@@ -651,8 +653,8 @@ Ooloi provides five primary test macros covering distinct test scopes. Pick the 
 
 | What you're testing | Macro to use | Scope started |
 |---|---|---|
-| gRPC client-server API calls — wire protocol, headers, interceptors, event streaming, security | `with-server` + `with-clients` + `with-srv-client` | `grpc-server` + `http-server` + `piece-manager` (store via the ops namespace handle); `instrument-library` / `undo-manager` passed as `nil` |
-| Full backend Integrant system — multi-client integration with real piece/IL/undo state | `with-system` | All backend components (piece-manager, instrument-library, undo-manager, grpc-server, http-server, cache-daemon) |
+| gRPC client-server API calls — wire protocol, headers, interceptors, event streaming, security | `with-server` + `with-clients` + `with-srv-client` | `grpc-server` + `http-server` + `piece-manager` (store via the ops namespace handle); `instrument-library` / `backend-undo-manager` passed as `nil` |
+| Full backend Integrant system — multi-client integration with real piece/IL/undo state | `with-system` | All backend components (piece-manager, instrument-library, backend-undo-manager, grpc-server, http-server, cache-daemon) |
 | The running **application** — startup sequence, menu bar, windows, anything reached through a real launch | `with-started-app` | Everything `start-app!` starts, plus the startup window-set; headless unless `{:graphical? true}` |
 | Full combined application — frontend → backend pipeline, JAT callbacks, UI manager state | `with-combined-system` | All 15 baseline components (every backend + every frontend), headless UI by default |
 | Frontend UI manager and individual frontend components | `with-ui-manager` | Just thread-pool, event-bus, ui-manager |
@@ -667,23 +669,23 @@ The three system-level macros differ in *which components actually start*. Pick 
 
 | Macro | Backend components initialised | Frontend components initialised | Use when |
 |---|---|---|---|
-| `with-server` | `grpc-server` + `http-server`, plus a **`piece-manager`** — lightweight (its `init-store!` only creates the store ref on the ops namespace handle), so `with-server` tests get a real piece store, mirroring production where the gRPC server always runs alongside one. `instrument-library` and `undo-manager` are **not** initialised — they're passed to the gRPC server as `nil`. | None | gRPC mechanism tests (TLS handshake, header propagation, event streaming, security interceptors, client registration) and tests that store/read pieces directly. The test must not invoke an SRV call that reaches `instrument-library` or `undo-manager` state. |
-| `with-system` | Full backend: `piece-manager`, `instrument-library`, `undo-manager`, `grpc-server`, `http-server`, `cache-daemon`. | None | Multi-client integration tests that need real backend state (IL, pieces, undo stacks) but no frontend pipeline. SRV calls that touch IL or pieces are safe here. |
+| `with-server` | `grpc-server` + `http-server`, plus a **`piece-manager`** — lightweight (its `init-store!` only creates the store ref on the ops namespace handle), so `with-server` tests get a real piece store, mirroring production where the gRPC server always runs alongside one. `instrument-library` and `backend-undo-manager` are **not** initialised — they're passed to the gRPC server as `nil`. | None | gRPC mechanism tests (TLS handshake, header propagation, event streaming, security interceptors, client registration) and tests that store/read pieces directly. The test must not invoke an SRV call that reaches `instrument-library` or `backend-undo-manager` state. |
+| `with-system` | Full backend: `piece-manager`, `instrument-library`, `backend-undo-manager`, `grpc-server`, `http-server`, `cache-daemon`. | None | Multi-client integration tests that need real backend state (IL, pieces, undo stacks) but no frontend pipeline. SRV calls that touch IL or pieces are safe here. |
 | `with-combined-system` | All backend components (same as `with-system`). | All five frontend components: `event-bus`, `ui-manager`, `grpc-clients`, `event-router`, `fetch-coordinator`. | Tests that need the frontend → backend event pipeline, JAT-scheduled callbacks, or UI manager state. Heaviest macro. |
 
 #### `with-server` with nil backend dependencies: `Future.get` NPE pitfall
 
 **Symptom.** An SRV call inside `with-server` fails with `clojure.lang.ExceptionInfo: SRV/<method> failed: Execution error: Cannot invoke "java.util.concurrent.Future.get()" because "fut" is null`.
 
-**Cause.** `with-server` initialises the gRPC server, the HTTP health server, and a `piece-manager` — but **not** `instrument-library` or `undo-manager`, which are passed to the gRPC server as `nil`. Those two are reached through `*server-component*`: the op impl resolves `(:instrument-library-component server-component)` (or `(:undo-manager-component server-component)`) to `nil`. The subsequent `(deref nil)` falls through Clojure's `deref` into `deref-future`, which calls `.get` on a `Future` that is `nil`. The server's exception handler catches this and returns `{:success false :error "Execution error: Cannot invoke \"java.util.concurrent.Future.get()\" because \"fut\" is null"}`, which the client wrapper surfaces as the ExceptionInfo above.
+**Cause.** `with-server` initialises the gRPC server, the HTTP health server, and a `piece-manager` — but **not** `instrument-library` or `backend-undo-manager`, which are passed to the gRPC server as `nil`. Those two are reached through `*server-component*`: the op impl resolves `(:instrument-library-component server-component)` (or `(:undo-manager-component server-component)`) to `nil`. The subsequent `(deref nil)` falls through Clojure's `deref` into `deref-future`, which calls `.get` on a `Future` that is `nil`. The server's exception handler catches this and returns `{:success false :error "Execution error: Cannot invoke \"java.util.concurrent.Future.get()\" because \"fut\" is null"}`, which the client wrapper surfaces as the ExceptionInfo above.
 
 The error message is misleading — there's nothing wrong with futures, with promises, with the gRPC wire layer, or with the SRV call mechanism. The dependency was simply never initialised, and the resulting `nil` propagated until it hit a `.get` on a nullable Java reference.
 
-**Piece operations are *not* subject to this pitfall.** They reach the store through the ops **namespace handle** (`pm/store-piece`, `resolve-into-piece-ref`), which the `with-server` piece-manager populates — not through `*server-component*`. So storing and reading pieces under `with-server` works; only `instrument-library` and `undo-manager` are the nil-dependency hazards.
+**Piece operations are *not* subject to this pitfall.** They reach the store through the ops **namespace handle** (`pm/store-piece`, `resolve-into-piece-ref`), which the `with-server` piece-manager populates — not through `*server-component*`. So storing and reading pieces under `with-server` works; only `instrument-library` and `backend-undo-manager` are the nil-dependency hazards.
 
-**Fix.** If the test needs `instrument-library` or `undo-manager` state, switch from `with-server` to `with-system` (full backend) or `with-combined-system` (full backend + frontend, if the test also needs the frontend pipeline). Piece state needs no switch — `with-server` already provides it.
+**Fix.** If the test needs `instrument-library` or `backend-undo-manager` state, switch from `with-server` to `with-system` (full backend) or `with-combined-system` (full backend + frontend, if the test also needs the frontend pipeline). Piece state needs no switch — `with-server` already provides it.
 
-> **Why `with-server` starts a piece-manager (and IL/undo don't).** Earlier, the piece store was a JVM-global `defonce` — ambient under any `with-server`, so the piece-manager component didn't need starting here, and this section originally listed the piece-manager among the nil dependencies. Once the store became **component-owned** (created by `init-store!` at the component's `init-key`, released at `halt-key!`), that ambient store was gone, so `with-server` now starts a piece-manager to keep piece operations working — cheap, because it only creates a ref. `instrument-library` (loads its bundle from disk) and `undo-manager` are heavier and reached via `*server-component*`, so they stay opt-in through `with-system`.
+> **Why `with-server` starts a piece-manager (and IL/undo don't).** Earlier, the piece store was a JVM-global `defonce` — ambient under any `with-server`, so the piece-manager component didn't need starting here, and this section originally listed the piece-manager among the nil dependencies. Once the store became **component-owned** (created by `init-store!` at the component's `init-key`, released at `halt-key!`), that ambient store was gone, so `with-server` now starts a piece-manager to keep piece operations working — cheap, because it only creates a ref. `instrument-library` (loads its bundle from disk) and `backend-undo-manager` are heavier and reached via `*server-component*`, so they stay opt-in through `with-system`.
 
 ### `with-server` / `with-clients` / `with-srv-client`
 
@@ -904,6 +906,8 @@ For testing the full combined application — all 15 baseline components, in-pro
 
 **Nor is the client registered with the server.** `with-combined-system` starts the components but does not call `event-client/register-with-server` (also a `start-app!` step). A test that makes a direct `SRV/*` call — or exercises production code that does, such as a piece window's `:window/on-open` hook subscribing to its piece — must call `(event-client/register-with-server grpc-clients grpc-clients)` first (both arguments are the `grpc-clients` component), or the SRV connection pool is unavailable and the call throws *"API connection pool not available - call register-with-server first"*.
 
+**And under `{:transport :network}` it cannot be registered at all without more.** The `:transport` option is applied to the **backend** gRPC server only; the frontend `grpc-clients` keeps the `:transport :in-process` that `combined-config` gives it, and takes its `backend-server-name` from the server component it refs — which, in network mode, has none. Calling `register-with-server` on the application's own client therefore takes the in-process branch with a nil server name and throws `NullPointerException` out of `InProcessChannelBuilder/forName`. A network combined system that needs its app client connected must override the frontend component too, via `:extra-config`. The remedy the paragraph above prescribes is, in other words, unavailable in exactly the configuration where the client is furthest from working.
+
 **Aggregator queue requirement:** every category returned by `derive-category` (in `frontend/event_router/core.clj`) must have a corresponding queue in the aggregator (`frontend/event_router/aggregator.clj`). Missing queues cause events to be silently dropped — `add-event` uses `when-let` on the queue lookup. When adding a new event category, update both files.
 
 **Async synchronisation note:** after `register-with-server`, allow 100ms before reading server registry state — gRPC connections are established asynchronously.
@@ -959,6 +963,20 @@ Binding forms: `[mgr]`, `[mgr opts-map]`, `[mgr pool]`, or `[mgr pool opts-map]`
 ```
 
 Run with: `OOLOI_UI_VISUAL=true lein midje my.namespace`
+
+### Menu bars in tests: the host contract, and driving a menu open
+
+**`:menu-bar-host` holds either `nil` or `{:stage … :menu-bar …}` — never a partial map.** `halt-key!` closes the `:stage` on teardown, so a host installed without one makes that close throw `NullPointerException: Cannot invoke "javafx.stage.Stage.close()"` during halt, which the failure guard reports as a recorded failure rather than as anything resembling its cause. A test that installs a bar so `refresh-menu-text!` can reach it supplies both keys, on the JavaFX thread:
+
+```clojure
+(th/run-on-fx-thread-sync!
+  (fn []
+    (reset! (:menu-bar-host mgr)
+            {:stage    (Stage.)
+             :menu-bar (menus/build-menu-bar! :linux {} {} (atom nil) (atom #{}))})))
+```
+
+**`.show()` on a `Menu` fires `onShowing` even when the bar is attached to no scene**, headless, for every platform structure. A test can therefore drive a real menu-open through the handlers `build-menu-bar!` installs, rather than setting whatever state those handlers write. Since `build-menu-bar!` takes `platform` as a parameter, one test covers macOS, Windows and Linux on any host without a `platform/macos?` conditional — stub `menus/setup-macos-app-menu!` while doing so, per [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §macOS native integration, which reserves `init-menu-bar-host!` for tests whose subject *is* the native menu.
 
 ### `await-window-event`
 

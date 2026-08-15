@@ -964,6 +964,10 @@ That is the whole division. The structural channel answers *what the piece is*; 
 
 A note on vocabulary: "structural" covers more than containment — besides a piece's makeup it covers its configuration. Read it as *everything about a piece that is not the music*.
 
+**A consumer is open for as long as it is on screen, not for as long as it is being drawn.** Ooloi has very few modal dialogs, almost nothing blocks, and the UI never freezes — so a view that is open is a *live* view rather than a snapshot taken when it opened, and an invalidation arriving while it is open is answered then and there. This holds for the smallest consumers as well as the largest: an open Edit menu is displaying its undo description, so a notification that arrives while the user is looking at it refetches under them and the item's text changes in place.
+
+It is natural to read that as a collaboration concern, and the reading is too narrow. Asynchrony is what makes a view live, and collaboration is only the most obvious of its sources: a plugin finishing a large and complex Finale MusicXML import pushes undo entries while the user has the Edit menu open, with no second user anywhere.
+
 ### 5.3 Example Flow
 
 Consider a concrete interaction: the user changes a pitch.

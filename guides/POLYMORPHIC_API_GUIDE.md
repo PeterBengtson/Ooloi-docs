@@ -1014,7 +1014,7 @@ Implement in a `shared/ops/` namespace. Because shared code cannot require backe
   [resource-key]
   (let [server-component @(resolve 'ooloi.backend.grpc.server/*server-component*)
         component         (:undo-manager-component server-component)
-        undo-fn           (resolve 'ooloi.backend.components.undo-manager/undo!)]
+        undo-fn           (resolve 'ooloi.backend.components.backend-undo-manager/undo!)]
     (undo-fn component resource-key)
     ...))
 ```
@@ -1108,7 +1108,7 @@ Tests that mock `grpc-clients/execute-method` with Midje `provided` must return 
 
 ## Backend Component Broadcasting via the gRPC Server
 
-The `resolve` + `^:dynamic var` mechanism described in the previous section also appears in a second role: **backend components that need to call back into the gRPC server to broadcast events**. `backend/components/instrument_library.clj` uses it for `:instrument-library-changed`; `backend/components/undo_manager.clj` uses it for `:undo-state-changed`.
+The `resolve` + `^:dynamic var` mechanism described in the previous section also appears in a second role: **backend components that need to call back into the gRPC server to broadcast events**. `backend/components/instrument_library.clj` uses it for `:instrument-library-changed`; `backend/components/backend_undo_manager.clj` uses it for `:undo-state-changed`.
 
 The mechanism is identical to the shared→backend case — `(some-> (resolve 'ooloi.backend.grpc.server/*server-component*) deref)` followed by an invocation of `send-server-event` resolved the same way. The **reason** for using runtime resolution here is *not* the modularity constraint that motivates the shared→backend case (both files live in `backend/`, so static `:require` would be legal). The reason is **namespace-level decoupling**: the broadcasting component does not statically link the gRPC stack, allowing it to run in isolation (component tests, future deployment modes that omit gRPC) without forcing the gRPC machinery to be loaded.
 

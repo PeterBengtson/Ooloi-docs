@@ -150,7 +150,7 @@ An invalidation names what has gone stale. It carries no data, and it obliges no
 
 **A cache that fetches on notification is a violation, not an optimisation.** It turns one backend change into as many network calls as there are clients, whether or not anything is displaying the result, and it does so invisibly: the data arrives correct, nothing fails, and no test notices. That invisibility is why the rule is stated here as a prohibition rather than left to be inferred from the behaviour of any one cache.
 
-This governs every backend-connected frontend cache without exception. Where a cache needs its data present rather than merely fetchable — because something other than its own view reads it — that is a property of the cache and is stated where the cache is specified; it is not a licence to fetch on notification.
+This governs every backend-connected frontend cache without exception. Three caches answer to it: the Instrument Library's ([ADR-0045](0045-Instrument-Library.md) §Frontend Caching Model), the piece window's structural projection ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6), and the undo/redo descriptions ([ADR-0015](0015-Undo-and-Redo.md) §Description Localisation). Each names the consumer whose being open decides the fetch: a window, a window, a menu. Where a cache needs its data present rather than merely fetchable — because something other than its own view reads it — that is a property of the cache and is stated where the cache is specified; it is not a licence to fetch on notification.
 
 ### Performance Architecture
 
