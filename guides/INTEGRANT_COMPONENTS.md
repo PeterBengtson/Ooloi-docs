@@ -1122,7 +1122,9 @@ Worked examples:
 
 ### The failure guard — a body that records a failure fails
 
-The convention above is enforced rather than remembered. Every test macro that owns a pool or an application — `with-thread-pool`, and through it `with-ui-manager` and `with-event-bus`; `with-started-app`; `with-combined-system` — captures `log-error` for the duration of its body and **fails the test if anything was recorded**. A deliberately-provoked record has to be declared; everything else surfaces.
+The convention above is enforced rather than remembered. Every test macro that owns a pool, a server or an application — `with-thread-pool`, and through it `with-ui-manager` and `with-event-bus`; `with-server`; `with-system`; `with-started-app`; `with-combined-system` — captures `log-error` for the duration of its body and **fails the test if anything was recorded**. A deliberately-provoked record has to be declared; everything else surfaces.
+
+**`with-clients` deliberately does not carry it, and the reason generalises.** Every call site passes a server symbol, so every body it wraps already sits inside `with-server`'s guard: a second guard adds no coverage. It would subtract correctness, because being the *inner* net it captures records a fact declared at the natural place — around the whole scenario, outside the client block — leaving that fact's own atom empty and firing on a test that had done everything right. **The guard belongs on the macro that owns the lifecycle, not on one nested within it.** Where two guards would nest, the outer one is the only one that should exist.
 
 There is nothing new to learn to satisfy it. The two forms above *are* the declaration, because the guard hooks the same seam they do, which is what lets the two compose at all.
 
