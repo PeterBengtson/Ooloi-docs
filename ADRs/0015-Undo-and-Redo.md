@@ -205,10 +205,13 @@ for undo and redo read directly from the atoms — `(fn [_] (undo-redo/can-undo?
 This means the correct enabled state is produced on every refresh regardless of which caller
 triggered it (undo/redo stack change, locale change, theme change).
 
-`wire-undo-redo!` accepts an optional `on-change` callback. In `start-app!` this is wired
-as `(fn [] (fx/run-later! #(um/refresh-menu-text! mgr)))`. After every stack mutation,
-`undo!`, `redo!`, and `record-setting-change!` call this callback, which queues a menu
-refresh on the JavaFX Application Thread.
+`wire-undo-redo!` accepts an optional `on-change` callback, installed by the **Frontend
+Undo Manager** component. After every stack mutation, `undo!`, `redo!` and
+`record-setting-change!` run it through `notify-change!`, which queues a menu refresh on
+the JavaFX Application Thread and, while a menu is displaying a backend entry, dispatches
+the description fetch (§Description Localisation). `notify-change!` is public rather than
+private for that second reason: the Edit menu calls it when it opens, opening over a stale
+entry being one of the moments the description is needed.
 
 Action handlers `:ui/undo` and `:ui/redo` are registered in `system.clj` and delegate to
 `undo-redo/undo!` and `undo-redo/redo!`. The stacks are not persisted — they reset on
