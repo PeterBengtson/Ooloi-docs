@@ -135,6 +135,8 @@ The shared `:ooloi.backend.components/server-statistics` Integrant component own
  :clients-disconnected-error (LongAdder.)      ; Error-based disconnections
  :clients-disconnected-timeout (LongAdder.)    ; Timeout-based disconnections
  :connection-duration-nanos-total (LongAdder.)   ; Aggregate connection time in nanoseconds
+ :client-registrations-rejected (LongAdder.)   ; Registrations refused before connecting
+ :client-auth-failures (LongAdder.)            ; API calls refused by authentication
 
  ;; ==========================================
  ;; API CALL COUNTERS

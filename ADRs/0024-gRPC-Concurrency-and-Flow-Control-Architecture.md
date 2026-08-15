@@ -187,7 +187,7 @@ When validation passes, the interceptor stores the client-id in the gRPC `Contex
 **Error Handling**:
 - **Duplicate client-id**: Returns `ALREADY_EXISTS` gRPC status
 - **Invalid format/length**: Returns `INVALID_ARGUMENT` gRPC status  
-- **Statistics Integration**: Failed validations increment `:clients-disconnected-error`
+- **Statistics Integration**: Failed validations increment `:client-registrations-rejected`. A refused registration is not a disconnection — the client never entered the connection registry — so it is counted separately from `:clients-disconnected-error`, which counts error-terminated disconnections of clients that did connect.
 - **Resource Cleanup**: Failed registrations properly clean up allocated gRPC channels
 
 **Implementation Location**: `ooloi.backend.grpc.server/validate-client-connection` with constants in `ooloi.backend.constants/client-id-pattern`
