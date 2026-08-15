@@ -209,9 +209,8 @@ triggered it (undo/redo stack change, locale change, theme change).
 Undo Manager** component. After every stack mutation, `undo!`, `redo!` and
 `record-setting-change!` run it through `notify-change!`, which queues a menu refresh on
 the JavaFX Application Thread and, while a menu is displaying a backend entry, dispatches
-the description fetch (§Description Localisation). `notify-change!` is public rather than
-private for that second reason: the Edit menu calls it when it opens, opening over a stale
-entry being one of the moments the description is needed.
+the description fetch (§Description Localisation). Why that invocation is a named public
+function is §Frontend Wiring Invariants, rule 1.
 
 Action handlers `:ui/undo` and `:ui/redo` are registered in `system.clj` and delegate to
 `undo-redo/undo!` and `undo-redo/redo!`. The stacks are not persisted — they reset on
@@ -1043,6 +1042,14 @@ lifecycle. They describe the architectural contract, not implementation detail.
    collaboration items — rather than against an empty map. That is what makes one shared
    callback safe across features: the refresh is idempotent regardless of which tier or
    feature triggered it.
+
+   **Invoking it is a named public function, `notify-change!`, not an inline expression.**
+   It is public rather than private because the Edit menu calls it when it opens: opening
+   over a stale entry is one of the moments the description is needed, and this callback is
+   what dispatches the fetch (§Description Localisation). Every other caller — the two Tier
+   2 mutators, the setting recorder, the `:undo` subscriber, and the fetch's own completion
+   — goes through the same function, so there is one place where "the menu may now be out
+   of date" is expressed.
 
 2. **Menu `text-key` and `enabled?` functions consult the routing layer, not Tier 2
    alone.** The undo and redo `MenuItem`s store their `text-key` and `enabled?`
