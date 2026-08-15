@@ -345,7 +345,7 @@ The connection establishment implements comprehensive client-id validation as a 
 **Error Responses**:
 - **`ALREADY_EXISTS`**: Returned for duplicate client-id attempts
 - **`INVALID_ARGUMENT`**: Returned for format/length violations
-- **Statistics Integration**: Failed validations increment `:client-registrations-rejected`. A refused registration is not a disconnection — the client never entered the connection registry — so it is counted separately from `:clients-disconnected-error`, which counts error-terminated disconnections of clients that did connect. Calls refused by the authentication interceptor increment `:client-auth-failures`; those close a single unary call and leave the client's event stream open.
+- **Statistics Integration**: Failed validations increment `:client-registrations-rejected`. A refused registration is not a disconnection — the client never entered the connection registry — so it is counted separately from `:clients-disconnected-involuntary`, which counts disconnections of clients that did connect and then ended without sending a `Disconnect` RPC. Calls refused by the authentication interceptor increment `:client-auth-failures`; those close a single unary call and leave the client's event stream open.
 - **Resource Cleanup**: Failed registrations properly release allocated gRPC channels
 
 ### Lifecycle Management

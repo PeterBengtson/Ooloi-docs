@@ -132,8 +132,8 @@ The shared `:ooloi.backend.components/server-statistics` Integrant component own
  ;; ==========================================
  :clients-connected-total (LongAdder.)         ; Total connections since server start
  :clients-disconnected-total (LongAdder.)      ; Total disconnections
- :clients-disconnected-error (LongAdder.)      ; Error-based disconnections
- :clients-disconnected-timeout (LongAdder.)    ; Timeout-based disconnections
+ :clients-disconnected-involuntary (LongAdder.) ; Disconnections with no Disconnect RPC
+ :clients-disconnected-timeout (LongAdder.)    ; Subset of involuntary: the deadline expired
  :connection-duration-nanos-total (LongAdder.)   ; Aggregate connection time in nanoseconds
  :client-registrations-rejected (LongAdder.)   ; Registrations refused before connecting
  :client-auth-failures (LongAdder.)            ; API calls refused by authentication
@@ -207,6 +207,50 @@ The shared `:ooloi.backend.components/server-statistics` Integrant component own
  :server-restart-count (LongAdder.)           ; Number of restarts
  }
 ```
+
+#### How a disconnection is classified
+
+The server cannot observe a client's intent. A deliberate close and a dropped
+channel are the same event to it: `close-streaming-call` cancels the call
+explicitly, and the server then sees exactly what a lost connection produces.
+There is therefore no observable *error* disconnection to count, and an earlier
+revision of this ADR specified one — `:clients-disconnected-error`, driven by a
+`:disconnect-reason` of `:graceful`/`:error`/`:timeout`. No such classification
+was ever implementable, and none was ever built.
+
+What the server *can* observe is whether a `Disconnect` RPC arrived. It removes
+the connection-registry entry before the stream ends, leaving the
+`setOnCancelHandler` backstop a no-op; so an entry still present when the stream
+terminates means no `Disconnect` was sent. That is precisely what the rest of the
+architecture already calls an **involuntary** disconnect — the word used in
+[ADR-0018](0018-API-gRPC-Interface-and-Events.md),
+[ADR-0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md),
+[ADR-0031](0031-Frontend-Event-Driven-Architecture.md),
+[ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) and the
+gRPC communication guide. This ADR was the only document using a different
+vocabulary, and for a category the system has no way to detect.
+
+The counter is therefore `:clients-disconnected-involuntary`, and the classes
+**nest** rather than exclude:
+
+```
+clients-disconnected-total  ⊇  clients-disconnected-involuntary  ⊇  clients-disconnected-timeout
+```
+
+Every timeout is involuntary — a deadline expiring means no `Disconnect` was
+sent — so it needs no separate arm and no precedence rule. A server-initiated
+halt is outside the involuntary set: the halt removes the registry entry itself,
+so the backstop finds nothing to classify, which is correct because a server
+ending the conversation is not a client vanishing.
+
+Note what this counter does **not** distinguish: a crash from an ordinary quit.
+Ooloi's client sends `Disconnect` only from `switch-to!`; application shutdown
+closes its channels without one, and the guide lists JVM exit among involuntary
+disconnects. Making the counter separate a crash from a normal exit would mean
+having the application announce its departure on shutdown — a change to the
+connection lifecycle, to be argued on its own merits rather than adopted to
+sharpen a metric.
+
 
 ### Per-Client Statistics Structure
 
@@ -424,7 +468,7 @@ Extend existing connection registry with separate top-level `:client-statistics`
     client-id))
 
 ;; On client disconnection  
-(defn handle-client-disconnect [client-id disconnect-reason]
+(defn handle-client-disconnect [client-id involuntary? timeout?]
   (let [disconnect-time-ns (System/nanoTime)
         client-entry (get @connection-registry client-id)
         connect-time-ns (get-in client-entry [:metadata :connected-ns])]
@@ -437,7 +481,8 @@ Extend existing connection registry with separate top-level `:client-statistics`
                               {:event-type :disconnect
                                :connect-time connect-time-ns
                                :disconnect-time disconnect-time-ns
-                               :disconnect-reason disconnect-reason}))
+                               :involuntary? involuntary?
+                               :timeout? timeout?}))
 ```
 
 ### Statistics Collection Implementation
@@ -541,9 +586,9 @@ Statistics collection uses helper functions at integration points for maximum pe
    Args:
      sc: Server component with statistics
      client-id: String identifying the client  
-     options: Map with :event-type (:connect/:disconnect), :disconnect-reason (:graceful/:error/:timeout),
-              :connect-time (nanoseconds), :disconnect-time (nanoseconds)"
-  [sc client-id {:keys [event-type disconnect-reason connect-time disconnect-time]}]
+     options: Map with :event-type (:connect/:disconnect), :involuntary? (boolean),
+              :timeout? (boolean), :connect-time (nanoseconds), :disconnect-time (nanoseconds)"
+  [sc client-id {:keys [event-type involuntary? timeout? connect-time disconnect-time]}]
   (case event-type
     :connect (inc-server-stat! sc :clients-connected-total)
     :disconnect (do
@@ -551,10 +596,9 @@ Statistics collection uses helper functions at integration points for maximum pe
                   (when (and connect-time disconnect-time)
                     (let [duration-nanos (max 0 (- disconnect-time connect-time))]
                       (inc-server-stat! sc :connection-duration-nanos-total duration-nanos)))
-                  (case disconnect-reason
-                    :error (inc-server-stat! sc :clients-disconnected-error)
-                    :timeout (inc-server-stat! sc :clients-disconnected-timeout)
-                    nil))
+                  ;; Nested, not exclusive: every timeout is also involuntary.
+                  (when involuntary? (inc-server-stat! sc :clients-disconnected-involuntary))
+                  (when timeout? (inc-server-stat! sc :clients-disconnected-timeout)))
     nil))
 
 (defn increment-error-stats
