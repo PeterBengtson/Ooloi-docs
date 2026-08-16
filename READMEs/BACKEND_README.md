@@ -102,9 +102,10 @@ The backend is a sophisticated server application using **Integrant dependency i
 - **Hash-consing optimization** for memory efficiency through object canonicalization
 - **Background maintenance** processes stored pieces to canonicalize duplicate musical objects
 - **Reduces memory footprint** by ensuring identical Pitches, Rests, Chords, and Articulations share canonical instances
-- **Configurable interval** with default 60-second maintenance cycles (`:maintenance-interval-ms`)
-- **STM-safe operations** using proper transaction semantics for cache modifications
-- **Automatic operation** requires no manual intervention once started
+- **Configurable interval** with default 60-second maintenance cycles (`:maintenance-interval-ms`), measured from the end of one sweep to the start of the next
+- **Yields to the editor** — each piece is optimised outside any transaction and committed in one of its own, and a piece that changed while its optimisation was being computed keeps the change; the sweep's result is discarded rather than written over it
+- **Transparent** — it substitutes values equal to those they replace, so it emits no events, marks nothing dirty, and changes nothing about what is saved. It alters how much memory a piece occupies and nothing else
+- **Automatic operation** — the component starts its own schedule and stops it on shutdown, waiting briefly for a sweep already in flight
 
 #### Instrument Library Component
 - **Server-side instrument registry** with the complete bundled default library (full orchestral repertoire from Bach to Messiaen)

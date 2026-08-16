@@ -155,10 +155,12 @@ When cached objects are modified (such as adding a staccato to a C4 pitch), the 
 Rather than trying to predict all possible object combinations at creation time, the daemon traverses stored pieces and consolidates duplicate cacheable objects it encounters. The `hash-cons-cacheable?` predicate determines eligibility through simple structural checks, not usage frequency analysis. The LRU cache management handles memory pressure automatically by evicting least-recently-used entries when cache thresholds are exceeded, maintaining bounded memory usage while preserving frequently-accessed shared instances.
 
 **Component Architecture:**
-- **Integrant Component**: `ooloi.backend.components/cache-daemon` with proper init/halt lifecycle
-- **Background Thread Management**: Configurable maintenance intervals with graceful shutdown
-- **STM Integration**: Thread-safe piece modifications using `dosync` coordination
-- **Piece Manager Dependency**: Access to all stored pieces for system-wide optimization
+- **Integrant Component**: `ooloi.backend.components/cache-daemon`. Its `init-key` starts the maintenance schedule and its `halt-key!` stops it — a component that reports itself running while starting nothing is worse than no component at all
+- **Scheduling**: a dedicated single-thread scheduled executor. The shared Claypoole pool offers no periodic scheduling and is sized for short, latency-sensitive work, so it is the wrong home for a multi-second sweep. Scheduled with a fixed *delay* rather than a fixed rate: the interval is measured from the end of one sweep to the start of the next, so a sweep that outgrows its interval is followed by a gap rather than immediately by another. A sweep whose cost grows with the score must never be able to occupy the machine continuously
+- **Thread**: named, and marked daemon. Nothing waits on a sweep — its work is discardable — so there is nothing to hold the JVM open for
+- **Shutdown**: `halt-key!` shuts the executor down and then waits, bounded, for a sweep already running. Without the wait the halt proceeds to the piece manager the sweep is still reading. The bound is a courtesy rather than a requirement: proceeding costs one stderr line where hanging the quit costs more
+- **Failure**: the sweep runs inside a catch, because a scheduled task that lets a throwable escape is never run again by its executor — one bad sweep would otherwise end hash-consing for the session, silently. What is caught goes to a replaceable handler, log-only by default and replaced in the combined application by the surfacing boundary of [ADR-0017](0017-System-Architecture.md)
+- **Piece Manager Dependency**: access to all stored pieces for system-wide optimization
 
 **Optimization Algorithm:**
 - **Single-Pass Traversal**: Zero-allocation `transduce` with push-based transducer composition
@@ -166,12 +168,38 @@ Rather than trying to predict all possible object combinations at creation time,
 - **Identity Restoration**: VPD mutations using value branch for identity-preserving writes
 - **All Object Types**: Support for Pitch, Rest, Chord, and Articulation optimization
 
+**The daemon is transparent, and that is a requirement rather than a nicety.** It substitutes
+values that are `=` to the ones they replace and merely not `identical?` to them: nothing about the
+score has changed, and nothing anywhere may behave as though it had. It emits no events, never
+marks a piece dirty, pushes no undo entry, and changes nothing about what is saved. It alters how
+much memory a piece occupies, and nothing else. An undo that restores a piece to a state the daemon
+had already optimised is therefore harmless — the next sweep does the work again, and serialisation
+deduplicates independently of it.
+
+That transparency holds because the daemon writes **outside** the API and change-detection layer,
+and it must continue to. Routing it through the VPD write funnel would mark every open piece dirty
+on every sweep: dirtiness is set by `(not (identical? before after))` read *above* the structural
+narrowing ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §5), and the funnel's no-op
+gate compares with `identical?` and deliberately never `=`, an `=` deep-compare over an arbitrary
+subtree being O(n) on the write path. The daemon's write is exactly the `=`-but-not-`identical?`
+case that gate cannot see, so the funnel would read it as a genuine edit.
+
 **Technical Implementation:**
+
+Each piece is optimised outside any transaction and committed in one of its own. The computation is
+a full timewalk, and STM settles a conflict in favour of the older transaction — so a sweep holding
+one open across that work would be liable to restart the user's write rather than its own. The
+commit yields: a piece that moved while its optimisation was being computed keeps whoever got there
+first, and the computed result is discarded. That costs nothing, where clobbering an edit would cost
+the edit.
+
 ```clojure
 (defn daemon-maintenance-cycle [_daemon]
-  (dosync
-    (doseq [piece-ref (vals @(var-get #'pm/piece-store))]
-      (alter piece-ref optimize-piece-once))))
+  (doseq [piece-ref (pm/all-piece-refs)]
+    (let [before @piece-ref                      ; a plain ref read — atomic for one ref
+          after  (optimize-piece-once before)]   ; pure, expensive, outside STM
+      (dosync
+        (alter piece-ref #(if (identical? % before) after %))))))
 
 (defn ^:private optimize-piece-once [piece]
   (transduce
@@ -188,12 +216,14 @@ Rather than trying to predict all possible object combinations at creation time,
     [piece]))
 ```
 
-**Verification Results:**
-- **Identity Sharing Achieved**: Test verification shows identical objects become `(identical? obj1 obj2) => true` after daemon processing
-- **All Test Types Pass**: 4 behavioral tests (19 total checks) including component lifecycle, safe access, thread management, and cache optimization
-- **System Integration**: Full backend test suite (610 checks) passes with daemon enabled
+The `dosync` coordinates nothing. It is there because a ref cannot be written outside one, and it
+holds a single identity comparison — required syntax rather than a design element.
 
-**Implementation Complete (September 26, 2025):** The background cache optimization daemon has been fully implemented as an Integrant component with proper lifecycle management, background thread operations, STM transaction coordination, and timewalker integration. The daemon performs single-pass optimization using reduce over timewalk traversal, achieving identity sharing restoration for identical musical objects across pieces.
+**Observability.** A component with no observable effects has no observable failures either, so the
+daemon's counters are the only sanctioned window into it: sweeps completed, objects unified, pieces
+abandoned because they moved underneath a sweep, and the average cost of optimising a piece. They
+reach the server statistics endpoint alongside every other counter
+([ADR-0025](0025-Server-Statistics-Architecture.md)).
 
 ## Measured Performance Results
 

@@ -839,6 +839,10 @@ For testing the full backend Integrant system — component coordination, health
 
 The system map contains all Integrant components as returned by `start-with-config`. `with-system` halts everything in the `finally` block.
 
+**Its config map is not `with-combined-system`'s `:extra-config`, and the difference decides some tests.** What `with-system` receives goes through `merge-env-config`, which writes only the keys `backend-injection-spec` names — ports, timeouts, TLS paths, thread-pool size. It cannot reach an arbitrary component setting, where `:extra-config` overrides any component's config at component granularity.
+
+A test whose subject is a component setting the injection spec does not carry therefore stays on manual lifecycle: build the config with `get-backend-config`, `assoc-in` the one value, and `ig/init` it — the production config through the production init path, under `with-no-recorded-failures` and `with-test-platform-directory`, which is what the macro would have supplied. The cache daemon's maintenance interval is the case in point: a test that must see more than one sweep cannot wait a minute for the default, and adding an injection key to make a test convenient would be production shaped by test need. As with the `with-server` exceptions above, declare it in a comment at the fact.
+
 ### `with-combined-system`
 
 For testing the full combined application — all 15 baseline components, in-process transport, headless UI by default. This is the heaviest macro and the most faithful to production.
