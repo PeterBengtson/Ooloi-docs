@@ -176,10 +176,10 @@ The clef registry replaces the flat `valid-clefs` vector and `valid-clef-set` in
 
 | Area | Files | Change |
 |---|---|---|
-| Clef definition | `shared/.../models/musical/staff.clj` | `valid-clefs` → clef registry; `create-staff` default clefs unchanged (still `:treble`) |
-| Clef validation | `shared/.../specs/generators.clj` | Validate against registry instead of hardcoded set |
-| UI clef selectors | `frontend/.../ui/core/cljfx.clj` | Combo-box items from registry; display names from i18n |
-| Instrument library | `backend/resources/.../instrument_library_default.edn` | No change --- clef keywords unchanged |
+| Clef definition | `shared/models/musical/staff.clj` | `valid-clefs` → clef registry; `create-staff` default clefs unchanged (still `:treble`) |
+| Clef validation | `shared/specs/generators.clj` | Validate against registry instead of hardcoded set |
+| UI clef selectors | `frontend/ui/core/cljfx.clj` | Combo-box items from registry; display names from i18n |
+| Instrument library | `backend/resources/instrument_library/*.edn` | No change --- clef keywords unchanged |
 | i18n translation keys | `shared/resources/i18n/*.po` | No change initially --- keywords unchanged; new keys added for any new clef entries |
 | Glyph rendering | Rendering pipeline | Resolve keyword → definition → glyph through cascade |
 | Tests | All test files referencing clef keywords | No change to keywords; new tests for registry operations |

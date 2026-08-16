@@ -240,12 +240,15 @@ The server implements a sophisticated event notification system for collaborativ
 - Broadcast to all connected clients
 - Used for system-wide coordination
 
-**Piece Events**: Musical content notifications with hierarchical targeting
-- `piece-layout-invalidated`: Entire score reformatted
-- `piece-page-invalidated`: Page layout changes  
-- `piece-system-invalidated`: Staff grouping changes
-- `piece-staff-invalidated`: Individual staff changes
-- `piece-measures-invalidated`: Note content changes
+**Piece Events**: Musical content notifications, delivered only to the clients subscribed to that piece
+- `:piece-structure-changed`: Structural metadata changed — musicians, instruments, layouts
+- `:piece-dirty-changed`: The piece's unsaved-changes flag flipped
+- `:piece-invalidation`: Visual hierarchy invalidation at any level. There is one event for every
+  level — the depth of the VPD carries the level, so there are no per-level event names
+
+The complete catalogue, with each event's required fields and scope, is in
+[ADR-0018: API, gRPC Interface and Events](../ADRs/0018-API-gRPC-Interface-and-Events.md)
+§Event Type Taxonomy.
 
 ### High-Performance Event Architecture
 
@@ -325,7 +328,7 @@ The shared `:ooloi.backend.components/connection-registry` Integrant component o
            :consumer-thread thread-ref}}
 ```
 
-**Per-server ownership (`:server-id`).** The registry is shared across every gRPC server in the JVM, but each entry belongs to exactly one server — the server through whose interceptor the client registered. When a `grpc-server` component initialises, it generates a fresh `:server-id` (UUID-based) and propagates it through to the interceptor that creates registry entries. The entry is stamped with that id. When the same component's `halt-key!` runs, it filters the shared registry by its own `:server-id`: it closes only its own clients' streaming observers, stops only its own drainer executors, and `dissoc`s only its own keys. Entries owned by other still-running servers stay intact. This is what makes ADR-0036's lifecycle-independence guarantee structural rather than aspirational — verified by #211 Tests 22a (halt) and 22b (start).
+**Per-server ownership (`:server-id`).** The registry is shared across every gRPC server in the JVM, but each entry belongs to exactly one server — the server through whose interceptor the client registered. When a `grpc-server` component initialises, it generates a fresh `:server-id` (UUID-based) and propagates it through to the interceptor that creates registry entries. The entry is stamped with that id. When the same component's `halt-key!` runs, it filters the shared registry by its own `:server-id`: it closes only its own clients' streaming observers, stops only its own drainer executors, and `dissoc`s only its own keys. Entries owned by other still-running servers stay intact. This is what makes ADR-0036's lifecycle-independence guarantee structural rather than aspirational, on both the halt and the start path.
 
 ### Client Validation Security
 

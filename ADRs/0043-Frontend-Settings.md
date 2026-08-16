@@ -513,10 +513,10 @@ Require `load-app-settings!` call in system.clj startup sequence.
 
 ## Code References
 
-- `frontend/src/main/clojure/ooloi/frontend/app_settings.clj` — Settings system implementation
-- `frontend/src/main/clojure/ooloi/frontend/ui/app/app_settings_window.clj` — Settings window (content builder pattern, ADR-0042)
+- `frontend/app_settings.clj` — Settings system implementation
+- `frontend/ui/app/app_settings_window.clj` — Settings window (content builder pattern, ADR-0042)
 - `shared/resources/app-settings/defaults.edn` — Generated defaults resource (produced by `lein frontend-settings`)
-- `frontend/src/main/clojure/ooloi/frontend/ui/theme.clj` — Theme module consuming settings
-- `shared/src/main/clojure/ooloi/shared/platform.clj` — Platform-specific directory paths
-- `frontend/src/main/clojure/ooloi/frontend/ui/persistence.clj` — Existing EDN persistence pattern
-- `frontend/test/clojure/util/frontend.clj` — Test isolation infrastructure: `with-frontend-test-config`, `default-settings`, `with-event-bus`
+- `frontend/ui/core/theme.clj` — Theme module consuming settings
+- `shared/platform.clj` — Platform-specific directory paths
+- `frontend/ui/core/persistence.clj` — Existing EDN persistence pattern
+- `shared/test/util/frontend/util/frontend.clj` — Test isolation infrastructure: `with-frontend-test-config`, `default-settings`, `with-event-bus`

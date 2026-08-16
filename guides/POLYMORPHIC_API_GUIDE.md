@@ -529,7 +529,7 @@ Ooloi organizes musical elements using **traits** - capabilities that determine 
 |-------|---------|-------------------|
 | **Musical** | Basic musical element | All core musical operations |
 | **RhythmicItem** | Has duration | `get-duration`, `set-duration` |
-| **Transposable** | Can change pitch | `transpose-element` |
+| **Transposable** | Can change pitch | `transpose-chromatic`, `transpose-diatonic`, `transpose-by-interval` |
 | **TakesAttachment** | Can have attachments | `add-attachment` (slurs, dynamics) |
 | **HasItems** | Contains other elements | `add-item`, `get-items` |
 
@@ -696,7 +696,7 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 ;; Same function name → different implementations based on first argument type
 ```
 
-**Location**: VPD operations generated automatically by macro system. Interfaces defined in `shared/interfaces.clj`, backend implementations in `backend/models/core.clj`
+**Location**: VPD operations generated automatically by macro system. Interfaces defined in `shared/interfaces.clj`, implementations in the model namespaces under `shared/models/`, interned through `shared/models/core.clj`
 
 ### Why This Pattern is Important
 

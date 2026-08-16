@@ -49,10 +49,10 @@ Implemented
 The TLS infrastructure is implemented as a unified module in the shared project with comprehensive test coverage:
 
 **Architecture:**
-- **Core Module**: `shared/src/main/clojure/ooloi/shared/grpc/tls.clj` - Unified TLS utilities for both server and client
-- **Platform Support**: `shared/src/main/clojure/ooloi/shared/platform.clj` - Cross-platform directory management
+- **Core Module**: `shared/grpc/tls.clj` - Unified TLS utilities for both server and client
+- **Platform Support**: `shared/platform.clj` - Cross-platform directory management
 - **Test Coverage**: `shared/test/clojure/ooloi/shared/grpc/tls_test.clj` - Comprehensive unit tests covering all TLS functionality
-- **Integration Tests**: `shared/test/clojure/ooloi/shared/grpc/tls_integration_test.clj` - End-to-end component lifecycle testing
+- **Integration Tests**: `shared/test/clojure/ooloi/shared/tls_integration_test.clj` - End-to-end component lifecycle testing
 
 **Server-Side Implementation:**
 - `ensure-certificates` - Complete certificate lifecycle management with automatic generation

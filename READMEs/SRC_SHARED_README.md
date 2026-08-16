@@ -54,20 +54,33 @@ entry). When tracing production code paths for windows, menus, and startup, alwa
 
 ```
 shared/src/main/clojure/ooloi/shared/
-├── api.clj                   ; Public API namespace (external consumers)
-├── build.clj                 ; Build utilities and packaging
-├── core.clj                  ; Complete system namespace (internal usage)
+├── api.clj                   ; Unified API entry point for all shared contracts and operations
+├── async.clj                 ; Waiting for a condition an atom is about to satisfy
+├── build.clj                 ; Build and packaging utility
+├── collaboration.clj         ; Read helpers over the combined-app system map for collaboration
+├── config.clj                ; Data-driven CLI argument, environment and default resolution
 ├── hierarchy.clj             ; Shared type hierarchy and dispatch values
 ├── interfaces.clj            ; Shared multimethod interface contracts
-├── platform.clj              ; Platform-specific utilities (JVM, native, etc.)
+├── platform.clj              ; Cross-platform directory and path management
 ├── predicates.clj            ; Shared predicate functions (musical?, visual?, etc.)
-├── srv_client.clj            ; gRPC server/client utilities for combined system testing
+├── srv_client.clj            ; Dynamic var holding the current gRPC client for SRV/* calls
+├── components/               ; Integrant components owned by shared
+│   └── thread_pool.clj       ; The application-wide Claypoole pool
+├── fmt/                      ; Notation formatting
+│   └── remembered_alterations.clj ; Determines when accidentals should be printed
 ├── grpc/                     ; gRPC infrastructure
-│   ├── conversion.clj        ; Clojure ↔ Protocol Buffer conversion
-│   └── ...                   ; gRPC client/server components
+│   ├── clojure_conversion.clj ; Context-free Clojure ↔ internal map conversion
+│   ├── protobuf_bridge.clj   ; Internal map ↔ Java protobuf objects
+│   ├── service_builder.clj   ; ServerServiceDefinition builder for Clojure-native handlers
+│   ├── transport.clj         ; Marshallers for in-process and network communication
+│   ├── tls.clj               ; TLS certificate management for client and server
+│   ├── headers.clj           ; gRPC metadata constants and context management
+│   └── errors.clj            ; Connection-error classification for the client
+├── i18n/                     ; Localisation
+│   ├── tr.clj                ; Localisation infrastructure
+│   └── verify.clj            ; Build-time completeness and plural integrity verification
 ├── models/                   ; **Complete Data Model**
 │   ├── core.clj              ; Model core and macro system
-│   ├── changes.clj           ; ChangeSet data structure for time sigs, key sigs, tempos
 │   ├── musical/              ; Musical data models
 │   │   ├── piece.clj         ; Piece - root musical container
 │   │   ├── musician.clj      ; Musician - performer representation
@@ -79,8 +92,10 @@ shared/src/main/clojure/ooloi/shared/
 │   │   ├── chord.clj         ; Chord - multiple simultaneous pitches
 │   │   ├── rest.clj          ; Rest - musical rest
 │   │   ├── tuplet.clj        ; Tuplet - rhythmic grouping
-│   │   ├── tremolando.clj    ; Tremolando - rapid repetition
+│   │   ├── tremolando.clj    ; Tremolando - rapid alternation
 │   │   ├── grace.clj         ; Grace - ornamental notes
+│   │   ├── key_signature.clj ; KeySignature - key signature representation
+│   │   ├── time_signature.clj ; TimeSignature - time signature representation
 │   │   └── attachments/      ; Musical attachments
 │   │       ├── articulation.clj ; Articulation markings
 │   │       ├── dynamic.clj   ; Dynamic markings (forte, piano, etc.)
@@ -94,24 +109,41 @@ shared/src/main/clojure/ooloi/shared/
 │       ├── page_view.clj     ; Page layout view
 │       ├── system_view.clj   ; System layout view
 │       ├── staff_view.clj    ; Staff layout view
-│       └── measure_view.clj  ; Measure layout view
+│       ├── measure_view.clj  ; Measure layout view
+│       └── measure_stack_formatter.clj ; Spacing and discomfort for measure stacks
 ├── ops/                      ; **Complete Operations**
-│   ├── access.clj            ; Vector/attribute operations
-│   ├── attachment_resolver.clj ; Attachment resolution operations
-│   ├── changes.clj           ; Change-based operations
-│   ├── persistence.clj       ; Persistence operations
-│   ├── piece_ref.clj         ; Piece reference operations
-│   ├── pitches.clj           ; Pitch normalization and conversion utilities
+│   ├── access.clj            ; Structure access using VPD addressing
+│   ├── accidental_maps.clj   ; Letter-aware accidental maps
+│   ├── accidentals.clj       ; Accidental vocabulary, keyword and cent representations
+│   ├── attachment_resolver.clj ; Attachment resolution via data-only registry
+│   ├── change_detection.clj  ; Change detection at the single VPD write funnel
+│   ├── changes.clj           ; ChangeSet management for time sigs, key sigs, tempos
+│   ├── clone.clj             ; Generic depth-bounded cloning for structural entities
+│   ├── event_subscription.clj ; Subscriptions for real-time collaborative notifications
+│   ├── filesystem.clj        ; Backend filesystem-operations contract
+│   ├── has_music.clj         ; VPD-scoped has-music? implementation
+│   ├── instrument_library.clj ; Instrument library interface implementations
+│   ├── numbering.clj         ; Automatic semantic numbering
+│   ├── persistence.clj       ; Nippy-based persistence for musical structures
+│   ├── piece_ref.clj         ; Piece reference resolution for shared contexts
+│   ├── pitches.clj           ; Pitch string parsing and normalization
 │   ├── rhythm.clj            ; Duration and rhythm processing utilities
 │   ├── text.clj              ; Text processing (pluralization, singularization)
-│   ├── timewalk.clj          ; Musical structure traversal and analysis operations
+│   ├── time.clj              ; Epoch-relative timestamp utilities
+│   ├── timewalk.clj          ; Push-based transducer traversal of piece structure
+│   ├── undo.clj              ; Undo/redo interface implementations
 │   └── vpd.clj               ; VPD operations and addressing utilities
+├── platform/                 ; Confined native interop
+│   └── macos_alias.clj       ; Resolves a Finder alias file to its target
+├── smufl/                    ; SMuFL font support
+│   └── metadata/             ; Glyph names, ranges and classes (JSON)
 ├── specs/                    ; Test data generation
 │   └── generators.clj        ; Test data generators for all models
 └── traits/                   ; **All Behavioral Traits**
     ├── attachment.clj        ; Attachment behavior trait
     ├── has_items.clj         ; Collection behavior trait
     ├── rhythmic_item.clj     ; Rhythmic behavior trait
+    ├── structural.clj        ; Structural trait backing the Piece Window
     ├── takes_attachment.clj  ; Attachment acceptance trait
     └── transposable.clj      ; Transposition behavior trait
 ```
@@ -122,14 +154,15 @@ this unified data model and API — no separate representations exist.
 ### Key Directories
 
 **Core System Files:**
-- `core.clj` - Complete system namespace; assembles and re-exports the whole system
+- `api.clj` - Public API surface; re-exports everything interned by `models/core.clj`
 - `hierarchy.clj` - Shared type hierarchy and dispatch values
 - `interfaces.clj` - Complete multimethod interface definitions
 - `predicates.clj` - All type checking functions
 
 **Complete Data Model:**
 - `models/` - All Ooloi data structures (musical and visual)
-  - `core.clj` - Model core system and macro generation
+  - `core.clj` - Model core and macro generation; also the system assembly layer, interning every
+    `interfaces` var tagged `:api`/`:vpd-category`. This is the namespace imported with `:refer :all`
   - `musical/` - Complete musical data model (piece, musician, instrument, etc.)
   - `visual/` - Complete visual layout model (layout, views, etc.)
 
@@ -140,7 +173,7 @@ this unified data model and API — no separate representations exist.
   - All other operations used by both frontend and backend
 
 **System Infrastructure:**
-- `grpc/conversion.clj` - gRPC conversion utilities
+- `grpc/clojure_conversion.clj`, `grpc/protobuf_bridge.clj` - gRPC conversion layers
 - `specs/generators.clj` - Test data generation for all models
 - `traits/` - All behavioral mixins used across the system
 
@@ -179,7 +212,7 @@ traversal) are placed in the `ops/` directory.
 The shared system files have a strict dependency ordering that must never be violated:
 
 ```
-predicates.clj → interfaces.clj → models/*.clj → core.clj → api.clj
+predicates.clj → interfaces.clj → models/musical|visual/*.clj → models/core.clj → api.clj
 ```
 
 Each layer may only depend on layers to its left:
@@ -187,7 +220,7 @@ Each layer may only depend on layers to its left:
 - `predicates.clj` — pure predicate functions, no model dependencies
 - `interfaces.clj` — multimethod declarations using predicates for dispatch; no model implementations
 - `models/*.clj` — data structures and model-specific implementations; may use interfaces and predicates
-- `core.clj` — assembles the complete system; imports and re-exports everything
+- `models/core.clj` — assembles the complete system; imports and re-exports everything
 - `api.clj` — public API surface for external consumers
 
 **The key constraint**: Files that import `interfaces` or `predicates` directly cannot also import

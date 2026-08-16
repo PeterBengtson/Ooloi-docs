@@ -293,12 +293,24 @@ Backend components' dependency on `ui-manager` is the load-bearing design in `co
     :grpc-server (ig/ref :ooloi.backend.components/grpc-server)
     :ui-manager  (ig/ref :ooloi.frontend.components/ui-manager)}
 
-   :ooloi.frontend.components.event-router/event-router
+   :ooloi.frontend.components/event-router
    {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients)
     :event-bus    (ig/ref :ooloi.frontend.components/event-bus)}
 
-   :ooloi.frontend.components.fetch-coordinator/fetch-coordinator
+   :ooloi.frontend.components/fetch-coordinator
    {:thread-pool  (ig/ref :ooloi.shared.components/thread-pool)
+    :grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients)}
+
+   ;; Frontend Undo Manager — owns the frontend's undo/redo state for the lifetime
+   ;; of the application. A leaf: nothing refs it, because callers reach the state
+   ;; through the namespace rather than the component value, which keeps the config
+   ;; acyclic.
+   :ooloi.frontend.components/frontend-undo-manager
+   {:ui-manager   (ig/ref :ooloi.frontend.components/ui-manager)
+    :thread-pool  (ig/ref :ooloi.shared.components/thread-pool)
+    ;; Not used by init-key — declared for halt ORDER. The on-change callback
+    ;; dispatches the lazy description fetch through SRV, so it must be torn down
+    ;; before the client it dispatches through.
     :grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients)}})
 ```
 
@@ -783,7 +795,7 @@ The frontend `grpc-clients` component's `init-key` unconditionally `alter-var-ro
 **The combined-system + `with-clients` case is different.** When the test has already started a combined-system frontend via `start-app!`, the root was set to that frontend's grpc-clients (call it B). A subsequent `with-clients` for an additional bare client A clobbers root to A. Whether you want root = A or root = B inside the body is a per-test decision, not something the macros can resolve:
 
 - If the body's pool dispatches must run through the registered bare client (the typical case — e.g. `instrument_library_test`'s DELETE round-trip needs the registered `client` to receive backend events), leave root = A. Default behaviour, no action needed.
-- If the body's pool dispatches must run through the combined-system frontend (e.g. Test 43 in `undo_redo_test`, where B is the focus and A is a foreign mutator), restore root explicitly:
+- If the body's pool dispatches must run through the combined-system frontend (e.g. in `undo_redo_test`, where B is the focus and A is a foreign mutator), restore root explicitly:
 
 ```clojure
 (with-clients server [[client-a "foreign-mutator"]]
@@ -797,24 +809,9 @@ The symptom of getting this wrong is identity-dependent server responses (`:own?
 
 **`register-client-with-server` forwards the full component.** When a test uses `:non-registered` in `with-clients` and then registers later, the function call is `(uc/register-client-with-server client server)`. The helper passes the entire client component as the config argument to `event-client/register-with-server` — it does not `select-keys` a curated subset. The receiving side's destructure picks the keys it needs (`:client-id`, `:transport`, `:tls`, `:cert-path`, `:insecure-dev-mode`, `:deadline-ms`, etc.) and ignores everything else. This is deliberate: a `select-keys` form had to be patched once when TLS keys were added and would have needed another patch for `:deadline-ms`. Passing the whole component is harmless and future-proof.
 
-**`:http false` opt-out — TEMPORARY WORKAROUND** — when `with-server`'s default behaviour (start an HTTP statistics server on port 10701 alongside the gRPC server) collides with a test that needs multiple gRPC servers running concurrently, pass `:http false` in the config to skip the HTTP server:
+**Several gRPC servers in one test.** `http-server` holds no ref to any `grpc-server`; it depends on the shared `connection-registry`, `server-statistics` and `health-manager` components directly (§6 worked example). Each `with-server` invocation owns the full set of components it creates, so nesting two of them would start a second `http-server` on the same port. A test that needs several gRPC servers therefore drives `ig/init` / `ig/halt!` on a config of its own — one set of shared components, at most one `http-server`, and as many gRPC servers as the test requires. The shared components must outlive any single `grpc-server` (ADR-0036 §Hybrid Transport Architecture).
 
-```clojure
-(with-server [s-net {:transport :network :port net-port :http false}]
-  (with-server [s-ip {:transport :in-process :http false}]
-    ;; Two grpc-servers, zero http-servers — no port collision
-    ...))
-```
-
-This is a workaround for the current production-side coupling between `http-server` and `grpc-server` (see §6 worked example). **It is scheduled for removal once the http-server decoupling lands.** After that:
-
-- `http-server` no longer holds a ref to any specific `grpc-server`; it depends on the shared `connection-registry`, `server-statistics`, and `health-manager` components directly
-- Tests can instantiate any number of gRPC servers with at most one shared `http-server` (or none) without port collision
-- The `:http false` flag will be deleted from `start-server`, and the few tests that use it will be updated to instantiate `http-server` separately (or not at all)
-
-If you find yourself reaching for `:http false` in a new test today, leave a comment indicating it's a temporary workaround so the migration sweep finds it.
-
-**Manual-lifecycle exceptions.** `with-server` is the canonical entry point, but some test patterns can't fit it and retain inline `ig/init-key` calls. These get the shared-component refs (`connection-registry`, `server-statistics`, and after Phase 0 expansion: `health-manager`) threaded through their hand-rolled configs via a file-local helper pair (`init-server-refs` / `halt-server-refs`):
+**Manual-lifecycle exceptions.** `with-server` is the canonical entry point, but some test patterns can't fit it and retain inline `ig/init-key` calls. These thread the shared-component refs — `connection-registry`, `server-statistics` and `health-manager` — through their hand-rolled configs:
 
 | Pattern | Why `with-server` doesn't fit |
 |---|---|
