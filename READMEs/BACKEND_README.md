@@ -374,7 +374,7 @@ When TLS is enabled without explicit cert paths, Ooloi auto-generates self-signe
   - Unix/macOS: `~/.ooloi/certs/server.{crt,key}`
   - Windows: `%APPDATA%\Ooloi\certs\server.{crt,key}`
 - **Properties**: RSA 2048-bit, 20-year validity, covers `localhost`, `127.0.0.1`, `::1`
-- **Reuse**: Once generated, certificates persist across restarts
+- **Reuse**: Once generated, certificates persist across restarts. Generation happens only when the pair is absent, so the certificate and key are written **as one unit and atomically** — both are staged in sibling temp files and moved into place together. A generation that fails leaves neither behind, and the next start generates again; it can never leave a truncated certificate that later starts would treat as usable and reuse for ever
 - **Purpose**: Development and testing only (not for production)
 
 **Important Security Notes**:

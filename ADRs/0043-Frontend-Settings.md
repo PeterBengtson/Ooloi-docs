@@ -251,7 +251,7 @@ All keys must appear as literals in `tr-declare` — no computed keys ([ADR-0039
 
 **Forward compatibility:** Unknown keys in the user file are preserved unconditionally. Validation applies only to `set-app-setting!` calls, never on load. The load path does not reject or drop any keys, ensuring that a newer version's settings file remains readable by an older version.
 
-**Write-through:** Every `set-app-setting!` call writes the full settings map to disk immediately via atomic write (write to temp file, then rename). Settings change rarely (user toggles a preference); the I/O cost is negligible. The atomic rename guarantees that a crash mid-write cannot corrupt the settings file — the previous version remains intact until the rename completes.
+**Write-through:** Every `set-app-setting!` call writes the full settings map to disk immediately, atomically. Settings change rarely (user toggles a preference); the I/O cost is negligible. The write goes through `ooloi.shared.ops.atomic-io`, which stages the new content in a sibling temp file and moves it over the target, so a crash mid-write cannot corrupt the settings file — the previous version remains intact until the move completes. That writer is not specific to settings: **every file Ooloi writes into the platform directory goes through it**, whatever its format. The criterion is not the serialisation but the value of what is already there — a file whose previous contents are irreplaceable and whose truncation harms the next read earns staging, which is why it covers the window registry, the session list, the tile states, the piece catalogue, the instrument library, the TLS certificate and key, and the bundled locale files as well as this one.
 
 ### API
 

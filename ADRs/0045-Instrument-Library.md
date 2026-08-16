@@ -749,6 +749,8 @@ window and is saved permanently to the user's library file.
 
 Both the bundled EDN and the user file store instruments as **plain maps**, not as defrecord tagged literals. `load-bundle` and `load-user-library` construct real Instrument/Staff records from plain maps on load. `persist!` converts records back to plain maps before writing. This keeps EDN files human-readable, avoids coupling the serialization format to Clojure class names, and requires no custom EDN readers for round-trip.
 
+The write is **atomic**, through the shared writer every file under the platform directory uses: the new content is staged in a sibling temp file and moved over the target, so a write that fails part-way leaves the previous library intact. The whole file is rewritten on every mutation, and it is the only record of every instrument the user has added, renamed or deleted across all sessions — so an in-place write that failed would lose all of them at once, and lose them quietly, since the failure does not propagate (below) and merge-on-load reads the file back at initialisation.
+
 `:excluded` is a set of **bundle** instrument `:id`s that the user has deleted. It exists to
 make deletion permanent across application updates: bundle entries in `:excluded` are not
 re-inserted by merge-on-load. Only bundle-format IDs (`:instrument-key-language`) are added

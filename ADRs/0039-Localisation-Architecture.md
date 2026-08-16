@@ -220,7 +220,7 @@ All Ooloi-provided locales ship in the JAR. At application startup (`init-locale
 
 1. Discover all `.po` files in the bundled `resources/i18n/` classpath directory via NIO scan
 2. Load each bundled locale into `catalogs`
-3. Sync: for each bundled file, copy it to the platform directory if the file is absent — never overwrite an existing file (presence alone protects user modifications)
+3. Sync: for each bundled file, copy it to the platform directory if the file is absent — never overwrite an existing file (presence alone protects user modifications). The copy is **atomic**, staged in a sibling temp file and moved into place, which matters more here than for a file that is overwritten: because presence alone decides whether to copy, a partial file would satisfy that test on every subsequent start and never be copied again, leaving the locale truncated with nothing able to repair it. Staged, the destination is complete or absent, and absent is the state the check knows how to act on
 4. Scan the platform-specific directory for external `.po` files
 5. Load each external locale (platform overrides bundled for the same key):
    - If parsing succeeds: add to `catalogs` (overwriting any bundled entry for that key)
