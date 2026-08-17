@@ -20,6 +20,7 @@ Implemented
   - [Cache Key Strategy](#cache-key-strategy)
   - [Serialization Integration with Nippy](#serialization-integration-with-nippy)
   - [Background Cache Optimization Daemon](#background-cache-optimization-daemon)
+    - [The Counters Are a Required Dependency](#the-counters-are-a-required-dependency)
 - [Measured Performance Results](#measured-performance-results)
   - [Registry-Based File Size Optimization](#registry-based-file-size-optimization)
   - [Serialization Performance Gains](#serialization-performance-gains)
@@ -225,13 +226,19 @@ processed, pieces abandoned because they moved underneath a sweep, and the avera
 a piece. They reach the server statistics endpoint alongside every other counter
 ([ADR-0025](0025-Server-Statistics-Architecture.md)).
 
-The counters are a **required dependency rather than an optional extra**, and `init-key` refuses a
-configuration that does not supply them. A daemon without them is not a degraded daemon but an
-unobservable one, which is the single state this component must never occupy: it would report itself
-running, sweep on schedule, and offer no evidence of doing either. Refusing at initialisation reports
-the fault at the configuration that caused it — the alternative surfaces on the daemon's own thread
-an interval later, with nothing left to connect it to the mistake. The refusal names the missing
-dependency, so a misconfigured startup exits with the dependency code rather than a generic one
+#### The Counters Are a Required Dependency
+
+The server-statistics counters are a required dependency of the cache daemon rather than an optional
+extra, and `init-key` **refuses a configuration that does not supply them**. A daemon without
+counters is not a degraded daemon but an unobservable one, which is the single state this component
+must never occupy: it would report itself running, sweep on schedule, and offer no evidence of doing
+either.
+
+Refusing at initialisation reports the fault at the configuration that caused it. The alternative
+surfaces as a failure on the daemon's own thread an interval later, with nothing left to connect it
+to the mistake — a `NullPointerException` incrementing a counter that is not there, on a thread
+nothing is waiting on. The refusal names the missing dependency, so a misconfigured startup exits
+with the dependency code rather than a generic one
 ([ADR-0017](0017-System-Architecture.md) §Error Classification).
 
 ## Measured Performance Results
