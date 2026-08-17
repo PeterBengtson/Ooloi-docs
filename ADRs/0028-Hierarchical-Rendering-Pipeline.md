@@ -470,6 +470,22 @@ specifies the state that decides it: **which derived artefacts no longer reflect
 computed from**. A stale mark is that record, and nothing else — it names work owed, at a place, of a
 kind.
 
+#### The measure is the finest unit of staleness
+
+Nothing below a measure is ever marked. A voice, an item, a single notehead — an edit to any of them
+marks the measure that contains it, and the mark says nothing about which of its contents moved.
+
+This is a floor on precision, chosen rather than conceded. Marks exist to be **consolidated**: a set
+of them collapses into the container that covers it, and that collapsing is a prefix operation on
+compact VPD keys (see below). A key space whose leaves are measures makes every mark a candidate for
+that collapsing on the same terms. Admitting finer keys would buy precision the formatter cannot use —
+recomputation happens per measure, since a measure's spacing and beaming are settled as a whole — while
+making consolidation start from a level it must first climb out of.
+
+The consequence worth stating for anyone recording marks: **a musical VPD must be truncated to its
+measure before it can mark anything.** `[:m 0 1 0 47 2]`, a voice, marks measure 47 of that staff and
+carries no more.
+
 #### Staleness lives in the piece
 
 Marks are held in a **single top-level slot on the Piece**, not beside it and not on the individual

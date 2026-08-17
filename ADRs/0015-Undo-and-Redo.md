@@ -367,12 +367,32 @@ the public operations described in [gRPC Extensions](#grpc-extensions) below.
 ;;    :timestamp       1711023456789012               ;; epoch microseconds
 ;;    :originator-id   "client-42"                    ;; gRPC client-id at push time, or nil
 ;;    :undo-fn         (fn [] ...)                    ;; restores previous state
-;;    :redo-fn         (fn [] ...)}                   ;; re-applies mutation
+;;    :redo-fn         (fn [] ...)                    ;; re-applies mutation
+;;    ...plus whatever the caller's trailing map carried (see below)}
 
 (push-undo! undo-mgr resource-key description-key description-params undo-fn redo-fn)
+(push-undo! undo-mgr resource-key description-key description-params undo-fn redo-fn extra)
 ;; Pushes an undo entry. Clears the redo stack for this resource (standard undo semantics:
 ;; a new forward mutation invalidates any redo history). Emits :undo-state-changed to the
 ;; resource's audience (see Push-Based State Notification).
+;;
+;; The optional trailing map is merged into the entry. It exists for facts about the
+;; mutation that are settled while its transaction runs and are unrecoverable afterwards,
+;; the only route back being the diff ADR-0052 §1 prohibits. Piece capture records two:
+;;
+;;   :structural?  the gesture changed something the structural projection carries; this
+;;                 decides whether the restore announces (see A restore announces below)
+;;   :content?     the gesture changed content as well
+;;
+;; Across a composed batch both are OR-ed: each derives from a transaction ref set once and
+;; never cleared, so a batch of a thousand calls answers as cheaply as one, and a batch that
+;; mixed a title change with a hundred note edits records both as true.
+;;
+;; :content? has no consumer today. It is recorded because the formatting machinery will
+;; need to know that a restore reversed content and therefore owes recomputation, and
+;; because by then the fact would be gone. This is the one shape in which building ahead is
+;; warranted: not to save future effort, but because the information cannot be obtained
+;; later at all.
 
 (undo! undo-mgr resource-key)
 ;; Pops the top undo entry, calls its undo-fn, pushes the entry to the redo stack.
@@ -730,11 +750,23 @@ notify nothing.
   capture complete by construction. The direct write is the only available shape, not a
   shortcut around a better one.
 
-- **`:piece-structure-changed` is emitted unconditionally, and is deliberately coarse.**
-  A restore knows it changed the piece; it does not know what it changed, and must not find
-  out. The frontend's response — refetch the structural projection — is idempotent, so
-  over-announcing costs one refetch and under-announcing costs a stale window. Narrowing the
-  emission by comparing projections is a later optimisation and needs a test of its own.
+- **`:piece-structure-changed` is emitted when, and only when, the gesture being reversed
+  was structural.** Everything the structural projection carries is there for a reason, so
+  any change to it must be announced; a change the projection does not carry must not be, or
+  every subscribed window refetches to find nothing different. This matches the forward path
+  exactly, where a write to a non-structural slot marks the piece dirty and emits nothing
+  structural ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3b).
+
+  A restore cannot make that distinction itself, and does not try: it knows it changed the
+  piece and not what it changed, and finding out would mean diffing before against after,
+  which ADR-0052 §1 prohibits. **The distinction is made at capture.** The coalescing gate
+  is set exactly when a structural emission was scheduled, so the boundary that records the
+  entry already holds the answer and stores it as one boolean. A fact about the gesture is
+  not a record of which VPDs it touched; the prohibition below stands.
+
+  The boolean is stored because it is otherwise unrecoverable. It is settled while the
+  transaction runs and gone once it has committed, the only route back being the diff that
+  is forbidden.
 
 - **The snapshot carries its own staleness, so the restore marks nothing.** Formatting
   staleness is recorded in the piece itself, in a top-level slot
