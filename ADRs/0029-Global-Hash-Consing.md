@@ -221,9 +221,18 @@ holds a single identity comparison — required syntax rather than a design elem
 
 **Observability.** A component with no observable effects has no observable failures either, so the
 daemon's counters are the only sanctioned window into it: sweeps completed, objects unified, pieces
-abandoned because they moved underneath a sweep, and the average cost of optimising a piece. They
-reach the server statistics endpoint alongside every other counter
+processed, pieces abandoned because they moved underneath a sweep, and the average cost of optimising
+a piece. They reach the server statistics endpoint alongside every other counter
 ([ADR-0025](0025-Server-Statistics-Architecture.md)).
+
+The counters are a **required dependency rather than an optional extra**, and `init-key` refuses a
+configuration that does not supply them. A daemon without them is not a degraded daemon but an
+unobservable one, which is the single state this component must never occupy: it would report itself
+running, sweep on schedule, and offer no evidence of doing either. Refusing at initialisation reports
+the fault at the configuration that caused it — the alternative surfaces on the daemon's own thread
+an interval later, with nothing left to connect it to the mistake. The refusal names the missing
+dependency, so a misconfigured startup exits with the dependency code rather than a generic one
+([ADR-0017](0017-System-Architecture.md) §Error Classification).
 
 ## Measured Performance Results
 
