@@ -20,6 +20,7 @@ Implemented
   - [API Request Processing: No Flow Control](#api-request-processing-no-flow-control)
   - [Event Streaming: Sophisticated Flow Control](#event-streaming-sophisticated-flow-control)
   - [Transport Configuration: Message and Frame Limits](#transport-configuration-message-and-frame-limits)
+  - [Server Shutdown: Graceful Only, Never Forced](#server-shutdown-graceful-only-never-forced)
 - [Consequences](#consequences)
   - [Pros:](#pros)
   - [Cons:](#cons)
@@ -296,6 +297,17 @@ The inbound limit is enforced on the **receiving** side, so both directions requ
 **Large multistep atomic batches are the deliberate exception.** A batch that creates or manipulates a large piece as many operations in one transaction can exceed any single-message ceiling. Such a batch is not bounded by the 64 MB limit: its operation vector is chunked and streamed, removing the single-message ceiling entirely — the batch is then bounded only by the server memory its resulting transaction needs. Raising a single-message limit and streaming a batch address different ends of the spectrum.
 
 These limits apply to **network transport only**. In-process transport does no marshalling and imposes no message- or frame-size limit at all (see [ADR-0019](0019-In-Process-gRPC-Transport-Optimization.md)).
+
+### **Server Shutdown: Graceful Only, Never Forced**
+
+A gRPC server's shutdown is graceful in every deployment, and its four steps run in one order for two independent reasons.
+
+`halt-key!` refuses new calls first (`.shutdown`, letting in-flight calls finish), then completes its own clients' streaming observers and stops their per-stream drainer executors, then removes its own entries from the shared connection registry, and **waits for termination last**.
+
+- **The wait is last because closing the observers is the only thing that can end a server-streaming RPC.** Such an RPC never completes on its own, so a wait placed ahead of the observer cleanup waits for something nothing has caused. It expires in full every time a stream is open, and because its result is not inspected, a halt that timed out is indistinguishable from one that completed. Placed after the cleanup, the same window simply stops being reached.
+- **Registry removal stays after observer completion** so the identity-aware cancel-handler backstop (Phase 7 above) can still witness its own entry and account for the disconnect exactly once. Removing the entry first leaves that handler's `identical?` comparison with nothing to match, and the disconnect goes uncounted.
+
+**Termination is never forced, and for in-process transport that is a hard constraint rather than a preference.** `.shutdownNow` on a server cancels its streams outright. Applied to in-process servers during a combined-system teardown it cascades into the frontend client sharing the JVM and the process hangs with the shutdown half-complete: in-process transport delivers stream events through a direct executor — on the closing thread rather than afterwards — so a cancellation issued during teardown arrives inside it. A graceful-then-forceful fallback is therefore not available as a safety net, and is not needed as one: once the observers are closed the server terminates promptly, so the fallback's only reachable effect is to turn a slow halt into a hung one. The single `.shutdownNow` in this path targets a per-stream drainer executor, whose lifecycle is per-stream by design.
 
 ## Consequences
 

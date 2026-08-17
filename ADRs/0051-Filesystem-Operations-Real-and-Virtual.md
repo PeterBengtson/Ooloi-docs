@@ -86,8 +86,8 @@ Filenames are different from tokens, and the asymmetry is deliberate: a leaf fil
 | `open-piece` | file-token | piece-id, or a typed open-failure (§7) | read | Resolve → load → deserialise, register, collision-check per ADR-0012 |
 | `open-by-uuid` | piece UUID | piece-id, or a typed open-failure (§7) | read | The identity inverse of `open-piece`: resolve the UUID to a location through the persistent catalogue → `open-piece`'s load tail → verify the embedded UUID matches. For persistent references (session restore) that hold a UUID, not a token |
 | `piece-location` | piece-id | `{:dir-token :file-token}`, or `nil` | read | The piece's recorded location as opaque tokens — `nil` when it was never saved. No path crosses the boundary (§1); tokens are minted-once-and-reused (§6). The Save action branches on it |
-| `save-piece` | piece-id, dir-token, filename | ack, or a typed save-failure (§7) | save | Validate filename (leaf-only) → enforce a known extension (append `.ooloi` unless already `.ool`/`.ooloi`) → resolve → write (Nippy, ADR-0007); record location. A plain `save-piece` (piece-id alone) re-writes to the recorded location |
-| `clone-piece` | piece-id, dir-token, filename | ack, or a typed save-failure (§7) | save | Save As: clone the piece (regenerate structural ids only, share all content by reference), then write the clone value (Nippy); the clone is not registered |
+| `save-piece` | piece-id, dir-token, filename | a handle delivering an ack or a typed save-failure (§7) | save | Validate filename (leaf-only) → enforce a known extension (append `.ooloi` unless already `.ool`/`.ooloi`) → resolve → write (Nippy, ADR-0007); record location. A plain `save-piece` (piece-id alone) re-writes to the recorded location |
+| `clone-piece` | piece-id, dir-token, filename | a handle delivering an ack or a typed save-failure (§7) | save | Save As: clone the piece (regenerate structural ids only, share all content by reference), then write the clone value (Nippy); the clone is not registered |
 | `delete-piece` | file-token | ack, or a typed delete-failure (§7) | delete | Internal; no File-menu item initially |
 | `move-piece` | file-token, dest-dir-token | ack | administrative | See [Future Considerations](#future-considerations); defined, deferred |
 
@@ -211,9 +211,24 @@ The taxonomy is narrower than `open-piece`'s, and deliberately so: the only clie
 | `:invalid-destination` | the dir-token does not resolve, or resolves to a file rather than a directory |
 | `:file-access-denied` | the write is refused — a permission or I/O denial |
 | `:insufficient-space` | the write fails for lack of free space at the destination |
+| `:insufficient-memory` | serialising exhausts the available heap — a very large score; the mirror of `open-piece`'s `:insufficient-memory`, since freezing a score can exhaust a heap as thawing one can. An `OutOfMemoryError` is an `Error`, so a plain `Exception` catch misses it and the catch here spans it deliberately |
 | `:save-failed` | any other, unforeseen failure of the write — the catch-all, so no known-path failure reaches the backstop |
 
 `:insufficient-space` is **best-effort**: the JVM raises no distinct exception for a full disk — it is an `IOException` whose text varies by operating system and locale — so it is recognised by inspecting the I/O error, and an unrecognised write `IOException` falls through to `:save-failed` rather than being mislabelled. `save-piece` and `clone-piece` share this taxonomy because they share the destination-validation and write path; `clone-piece` adds no new save-failure types, only the clone step before the write.
+
+#### The write is deferred, and its outcome arrives on a handle
+
+A save splits in two. Resolving the piece to a **snapshot** and working out the destination happen on the calling thread, immediately; the **write** is submitted to the save queue and happens later. `save-piece` and `clone-piece` therefore return a **handle** rather than the outcome itself, and a caller derefs it to obtain the ack or the typed failure. The taxonomy above is unchanged — where it is delivered has changed, not what it says.
+
+Three things follow from that, and each is a requirement rather than an observation.
+
+**The snapshot must be immediate**, so the file records the score as it was when the user asked rather than when the disk got round to it. A save queued behind a large one must not silently pick up later edits.
+
+**Destination resolution stays on the calling thread**, and not merely by preference: resolving a dir-token reads the client-id from the gRPC context, and that context does not survive a hop to another thread. Which is also where the two validation failures belong — `:invalid-filename` and `:invalid-destination` are known before any I/O is attempted. They are nevertheless delivered **through the handle**, already resolved, so a caller discriminates one shape rather than two.
+
+**Writes are serialised**, one at a time in submission order, and **parallel saves are not desirable** rather than merely unnecessary. Not for safety — a staged write leaves a file complete or unchanged, never partial (§5). For three reasons that all point the same way: nobody waits on a write, so parallelism reduces no latency anyone perceives; two writes to one path would resolve arbitrarily instead of in the order asked; and competing large writes divide disk throughput so both take longer than either alone. Reads are deliberately the opposite — parallel, and bounded by the shared pool — because a read has someone waiting and two reads of a file cannot interfere.
+
+Nothing that reports a save may run before the write lands: the recorded location, the dirty flag and `:piece-structure-changed` all follow completion. And the dirty flag additionally clears only if the piece is unchanged since its snapshot — see [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §5, which states why that comparison is `=` and what it costs.
 
 **The surfacing mirrors `open-piece-token!` exactly.** A save reaches the filesystem through **one** frontend entry point — it calls `save-piece` (or `clone-piece`) off the JavaFX thread, and on a `{:save-failure <type>}` result raises the persistent error notification, translating the type through a single pure mapping (`:save-failure` type → `tr` key), while on the ack it invokes a success continuation. Save, Save As, and the Save chosen when closing an unnamed piece all go through it, so no caller can reach a write and skip the surfacing, and the type→message mapping lives in exactly one auditable place — the same make-the-boundary-unbypassable discipline the read side uses.
 

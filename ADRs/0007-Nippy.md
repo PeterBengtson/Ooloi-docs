@@ -22,7 +22,8 @@ Use Nippy for file persistence in Ooloi, leveraging its built-in features and im
 - Ooloi deals with complex musical structures that form pure trees with integer ID references for cross-tree relationships.
 - The system needs to efficiently serialize and deserialize large musical scores.
 - The persistence mechanism should support handling large files efficiently.
-- Concurrent serialization of multiple pieces is desirable for performance.
+- Concurrent **deserialisation** of multiple pieces is desirable for performance — several scores can be opened at once, and the concurrency scales with the hardware the deployment chose.
+- **Concurrent serialisation is not desirable, and writes are serialised deliberately.** Parallel saves buy nothing: nobody is waiting on a write, so there is no latency to reduce. What they cost is real. Two writes to one path resolve in arbitrary order rather than the order they were asked for. Competing large writes divide disk throughput, so both take longer than either would alone. And a single queue is what lets an autosave notice that a write is already in flight for a piece and decline to add a second. One writer, in submission order, is the shape the problem wants ([ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md) §7).
 - The system should be able to handle future extensions and modifications to data structures.
 
 ## Rationale
@@ -72,7 +73,7 @@ While Fressian was initially considered due to its language-agnostic nature and 
 ## Implementation Approach
 1. Utilize Nippy's core functions for basic serialization and deserialization.
 2. Create a system to handle shared structure using Vector Path Descriptors (VPDs).
-3. Implement asynchronous serialization using Clojure futures for concurrent operations.
+3. Defer serialisation rather than performing it inline: a save takes its snapshot immediately and submits the write to a single-threaded queue, returning a handle that delivers the outcome. Reads run on the shared thread pool, bounded so the interface always has a core. Neither uses `clojure.core/future`, whose exceptions vanish unobserved ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md), [ADR-0017](0017-System-Architecture.md)).
 4. Integrate with the Piece Manager for efficient piece storage and retrieval.
 5. Implement chunked serialization and deserialization for handling very large musical scores.
 6. **Registry-Based File Size Optimization**: Leverage custom Nippy transforms to replace cached objects with shared references during serialization, achieving 69% file size reduction and 4x performance improvement for repetitive musical structures (see [ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md)).

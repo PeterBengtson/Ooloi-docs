@@ -210,6 +210,8 @@ Three details matter:
 
 Beyond the threading concerns above, both this handler and the cancel-handler backstop **release the departing client's pieces** — unsubscribing it from every piece it held and closing any thereby left with no subscribers, the deterministic close-on-last-release of [ADR-0022 §Piece Lifetime](../ADRs/0022-Lazy-Frontend-Backend-Architecture.md). That piece-lifecycle step is elided from the snippets above, which show the threading-critical registry mutation and drainer teardown.
 
+A **server shutdown** interacts with all of this and is specified rather than left to the reader: the order its four steps run in, why the wait for termination comes last, why registry removal must not precede observer completion if the cancel handler is to account for the disconnect exactly once, and why termination is never forced — a `.shutdownNow` reaching in-process streams hangs the process. See [ADR-0024 §Server Shutdown: Graceful Only, Never Forced](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md#server-shutdown-graceful-only-never-forced).
+
 ---
 
 ## Queue Handling
