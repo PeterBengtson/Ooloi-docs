@@ -25,6 +25,7 @@ Implemented
     - [The Backend Undo Manager API](#the-backend-undo-manager-api)
     - [Stack Semantics](#stack-semantics)
     - [Mutation Sites — How Resources Register Undo Steps](#mutation-sites--how-resources-register-undo-steps)
+    - [Automatic Capture and Deliberate Registration](#automatic-capture-and-deliberate-registration)
     - [IL Description Inference](#il-description-inference)
     - [Push-Based State Notification](#push-based-state-notification)
     - [Undo Operation — Sequence Diagram](#undo-operation--sequence-diagram)
@@ -405,7 +406,10 @@ mutation sites do not pass the originator explicitly.
 
 For mutations not initiated by a client call (server-side housekeeping, scheduled
 tasks), `get-client-id-from-context` returns `nil` and the entry's `:originator-id` is
-`nil`.
+`nil`. This is a totality property of `push-undo!` — the function is safe to call with no
+request around it — and not a licence for housekeeping to register undo steps. Which code
+registers a step, and how, is
+[Automatic Capture and Deliberate Registration](#automatic-capture-and-deliberate-registration).
 
 The `resource-key` is `:instrument-library` for the IL, a piece UUID for pieces, and
 any future keyword or UUID for other resources. The undo manager imposes no constraints
@@ -477,9 +481,11 @@ resource's mutation surface:
 ;; transaction: execute-atomic-operations for an SRV/atomic batch, and the single-method
 ;; handler (wrapped as a batch of one) for a lone call. This is the same outermost-transaction
 ;; boundary ADR-0052 §4 coalesces to a single :piece-structure-changed event, so one gesture
-;; is one transaction, one event, and one undo step. Undo is registered only on the
-;; client-facing SRV/ surface: a mutation issued backend-internally through api/ creates no
-;; undo step, because undo tracks user interaction, not every state change.
+;; is one transaction, one event, and one undo step. This automatic capture is taken only on
+;; the client-facing SRV/ surface: a mutation issued backend-internally through api/ records no
+;; step automatically, because undo tracks user interaction, not every state change. Backend
+;; code that wants a step registers one deliberately — see "Automatic Capture and Deliberate
+;; Registration" below.
 (let [[before after]
       (with-coalesced-structural-change             ; the outermost-transaction boundary
         (let [before @piece-ref]                    ; captured at the transaction's start
@@ -547,6 +553,51 @@ In both cases, `before` and `after` are immutable Clojure values captured by the
 They share structure via persistent data structures. The undo manager never inspects them,
 never serialises them, never knows what they contain. It calls the closure; the closure
 restores the state.
+
+#### Automatic Capture and Deliberate Registration
+
+An undo step comes into being in one of two ways. The distinction matters because the
+`SRV/`-only rule above governs the first alone, and reads as a prohibition if the second is
+not stated beside it.
+
+**Automatic capture** is what the gRPC boundary performs. Every VPD mutation arriving on the
+client-facing `SRV/` surface — alone, or composed inside `atomic` — records a step, with no
+per-operation wiring and no mutation site needing to know undo exists. It is deliberately
+confined to that surface, and a mutation issued backend-internally through `api/` records
+nothing automatically. That confinement is load-bearing rather than incidental: a formatting
+pass writes to the piece through the same funnel
+([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md) §The pipeline's write dirties the piece),
+so a rule that captured every `api/` mutation would put an incremental reformat on the undo
+stack and make Cmd+Z undo a reflow.
+
+This is the one place where the dirty flag and the undo stack part company, and the reason is
+what each is a fact *about*. Dirtiness is a fact about the piece — it has changed since it was
+last saved, whoever changed it — so it is set by the funnel and applies to a formatting pass as
+readily as to a user's edit ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §5). An
+undo entry is a fact about authorship: some *client* did this, and may take it back. That client
+is not necessarily a person at a keyboard — a frontend plugin issuing operations on a user's
+machine is one too — but it is always a client, and only a client call carries the identity the
+entry records in `:originator-id`. That is why capture keys on the surface that carries one.
+
+**Deliberate registration** is `push-undo!` called directly. It is a component function on the
+Backend Undo Manager, callable by any backend code, and it is how a composed server-side
+operation becomes one undoable step. The Instrument Library is the standing example: its entry
+is pushed from inside `set-instrument-library` — backend component code, supplying its own
+before/after snapshots and its own description key — and no boundary captures it.
+
+**A score-extending plugin uses the second.** Such a plugin reaches the score through the
+polymorphic API ([ADR-0003](0003-Plugins.md)), so its edits are `api/` mutations sitting below
+the boundary and nothing captures them on its behalf. A plugin that edits an *open* piece —
+importing a movement into it, realising a figured bass across it, applying an analysis — snapshots
+the piece, performs its work, and calls `push-undo!` with a key of its own, exactly as the
+Instrument Library does. Ownership costs it nothing: the operation was invoked by a client, so it
+runs inside that request and `get-client-id-from-context` yields the real originator, giving the
+entry the same `:own?`, foreign-undo and redo-fragility properties as any other.
+
+Import that *creates* a piece needs no step at all, and the distinction is worth drawing because
+import is the obvious case to reach for. A newly imported piece is a document arriving, not an
+edit — the counterpart of New and Open, disposed of by closing it rather than by Cmd+Z. Only
+import into an already-open piece is an edit.
 
 #### IL Description Inference
 

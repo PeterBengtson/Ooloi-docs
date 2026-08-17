@@ -14,6 +14,7 @@ Accepted
   - [Negative](#negative)
 - [Implementation Approach](#implementation-approach)
   - [Core Plugin Architecture](#core-plugin-architecture)
+  - [Undo: Frontend Plugins Get It Free, Backend Plugins Register It](#undo-frontend-plugins-get-it-free-backend-plugins-register-it)
   - [Hot Plugin Installation Architecture (Enabled by Unified gRPC)](#hot-plugin-installation-architecture-enabled-by-unified-grpc)
   - [Standard Plugin Development Infrastructure](#standard-plugin-development-infrastructure)
 - [Plugin System Architecture](#plugin-system-architecture)
@@ -121,6 +122,41 @@ wire. A destination for the failure record
 second kind — it would attach to one existing function and touch no piece data at all. Which kind a
 plugin is determines what governs it: the first is bound by the API and by the piece it operates
 on, the second only by the process it is loaded into.
+
+### Undo: Frontend Plugins Get It Free, Backend Plugins Register It
+
+**A plugin runs on one side of the frontend/backend boundary or the other, and the two are
+different things** — a distinction this ADR already draws for configuration, where a backend
+plugin stores its settings as piece settings and a frontend plugin keeps a local settings file
+(§[Plugin Configuration Architecture](#plugin-configuration-architecture)). Undo is the second
+place the distinction bites, and there the two sides are opposite.
+
+**A frontend plugin gets undo for free.** The frontend is terminal: a piece exists only on the
+backend ([ADR-0040](0040-Single-Authority-State-Model.md)), so a frontend plugin can reach it
+only by sending an operation to the backend. Every such operation crosses the gRPC boundary,
+which is exactly where Ooloi captures undo automatically
+([ADR-0015](0015-Undo-and-Redo.md)) — so the plugin's edits become undoable steps with no work
+on its part and no awareness that undo exists. This is the same path a user's own gesture takes,
+which is why the two are indistinguishable once they arrive.
+
+**A backend plugin must register its own.** It runs inside the backend process and reaches the
+score through the polymorphic API directly, which puts its mutations *below* that boundary, so
+nothing captures them on its behalf. The confinement is deliberate rather than an oversight: the
+formatting pipeline also writes to a piece through the API, and a boundary that captured every
+such write would put an incremental reflow on the undo stack.
+
+Registration is one call. The plugin takes the piece value before its work and after it, and
+calls `push-undo!` on the Backend Undo Manager with a description key of its own and closures
+over those two snapshots — the shape the Instrument Library uses for its own edits. Persistent
+data structures make holding both snapshots cheap. Because the plugin operation was invoked by a
+client, it runs inside that request and the entry acquires the caller's identity automatically,
+so it behaves like every other entry in a collaborative session: another client can undo it, and
+the Edit menu labels it with the plugin's own description.
+
+Two cases need nothing on either side. A plugin that only reads a piece — analysis, export,
+playback — records no step; and one that *creates* a piece rather than editing an open one
+records none either, an imported score being a document arriving, closed rather than undone,
+exactly as with New and Open.
 
 ### Hot Plugin Installation Architecture (Enabled by Unified gRPC)
 
