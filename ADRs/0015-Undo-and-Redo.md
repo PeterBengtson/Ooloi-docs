@@ -364,7 +364,7 @@ the public operations described in [gRPC Extensions](#grpc-extensions) below.
 ;; Each entry:
 ;;   {:id              (UUID)
 ;;    :description-key :il.undo.delete-instruments   ;; translation key
-;;    :description-params {:names "Flute, Oboe"}     ;; interpolation params
+;;    :description-params {:names ["Flute" "Oboe"]}  ;; interpolation params
 ;;    :timestamp       1711023456789012               ;; epoch microseconds
 ;;    :originator-id   "client-42"                    ;; gRPC client-id at push time, or nil
 ;;    :undo-fn         (fn [] ...)                    ;; restores previous state
@@ -638,18 +638,25 @@ also trivially detectable from the diff because the set difference or order perm
 expresses them naturally.
 
 The diff helper `describe-diff` (colocated in `instrument_library.clj`) returns a
-`[description-key description-params]` tuple covering the cases below. Each key is
+`[description-key description-params]` tuple covering the cases below. **`:names` is a
+vector of names, never a joined string.** Choosing a separator is a presentation
+decision, and the backend has no locale with which to make one — a comma suits English
+and not Japanese, which joins with an ideographic comma, and every language wants its
+own conjunction. Joining on the backend would also be a locale-bearing choice made
+where ADR-0039 forbids one. The client joins the vector when it renders the label,
+using the reader's own list form; a piece's undo stack is shared across its subscribers,
+so the reader is frequently not the client that made the change. Each key is
 plural-form-aware: PO files carry `msgid_plural` so the `tr` machinery picks the
 correct grammatical form per locale based on the `:n` parameter (see the existing
 `instrument-library.confirm-delete` entry as the precedent pattern).
 
 | Diff signature | description-key | description-params |
 |---|---|---|
-| `(new-ids \ old-ids)` non-empty, no other change | `:il.undo.add-instruments` | `{:n N :names "A, B, C"}` |
-| `(old-ids \ new-ids)` non-empty, no other change | `:il.undo.delete-instruments` | `{:n N :names "A, B"}` |
+| `(new-ids \ old-ids)` non-empty, no other change | `:il.undo.add-instruments` | `{:n N :names ["A" "B" "C"]}` |
+| `(old-ids \ new-ids)` non-empty, no other change | `:il.undo.delete-instruments` | `{:n N :names ["A" "B"]}` |
 | Same id-set, common instruments unchanged, positions differ | `:il.undo.reorder-instruments` | `{}` |
-| Same set + order, every differing instrument has only `:name` changed | `:il.undo.rename-instruments` | `{:n N :names "A, B"}` |
-| Same set + order, some differing instrument has non-`:name` top-level field changes | `:il.undo.edit-instruments` | `{:n N :names "A, B"}` |
+| Same set + order, every differing instrument has only `:name` changed | `:il.undo.rename-instruments` | `{:n N :names ["A" "B"]}` |
+| Same set + order, some differing instrument has non-`:name` top-level field changes | `:il.undo.edit-instruments` | `{:n N :names ["A" "B"]}` |
 | Same set + order, exactly one instrument differs only in `:staves`, new staff-ids ⊃ old | `:il.undo.add-staves` | `{:n N :instrument "Flute"}` |
 | Same set + order, exactly one instrument differs only in `:staves`, new staff-ids ⊂ old | `:il.undo.delete-staves` | `{:n N :instrument "Flute"}` |
 | Same set + order, exactly one instrument differs only in `:staves`, staff-ids match but positions differ | `:il.undo.reorder-staves` | `{:instrument "Flute"}` |
@@ -919,7 +926,7 @@ sequenceDiagram
 
     Note over A,E: Client B opens Edit menu → needs description
     B->>UM: SRV/get-undo-description(:instrument-library, nil)
-    UM-->>B: {:undo {:description-key :il.undo.delete-instruments, :description-params {:names "Flute"}}}
+    UM-->>B: {:undo {:description-key :il.undo.delete-instruments, :description-params {:names ["Flute"]}}}
     Note over B: Menu shows "Undo: Delete Instruments (Flute)"
 
     Note over A,E: Client B undoes Client A's deletion
@@ -1475,12 +1482,13 @@ or network calls on the JAT.
 ;; Client fetches description for the winning backend resource:
 (SRV/get-undo-description :instrument-library nil)
 ;; → {:undo {:description-key    :il.undo.delete-instruments
-;;           :description-params {:names "Flute, Oboe"}}
+;;           :description-params {:names ["Flute" "Oboe"]}}
 ;;    :redo nil}
 
-;; Client resolves via tr:
-(tr :il.undo.delete-instruments {:names "Flute, Oboe"})
-;; → "Delete Instruments"  (or locale-specific equivalent)
+;; Client renders it, joining the list in the READER's locale:
+(undo-redo/describe {:description-key    :il.undo.delete-instruments
+                     :description-params {:names ["Flute" "Oboe"]}})
+;; → "Delete Flute and Oboe"   (en-GB; "Flute、Oboe" joined ideographically in ja-JP)
 
 ;; Menu item displays:
 "Undo: Delete Instruments"
