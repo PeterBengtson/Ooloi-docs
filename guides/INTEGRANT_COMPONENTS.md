@@ -668,7 +668,7 @@ Ooloi provides five primary test macros covering distinct test scopes. Pick the 
 | gRPC client-server API calls — wire protocol, headers, interceptors, event streaming, security | `with-server` + `with-clients` + `with-srv-client` | `grpc-server` + `http-server` + `piece-manager` (store via the ops namespace handle); `instrument-library` / `backend-undo-manager` passed as `nil` |
 | Full backend Integrant system — multi-client integration with real piece/IL/undo state | `with-system` | All backend components (piece-manager, instrument-library, backend-undo-manager, grpc-server, http-server, cache-daemon) |
 | The running **application** — startup sequence, menu bar, windows, anything reached through a real launch | `with-started-app` | Everything `start-app!` starts, plus the startup window-set; headless unless `{:graphical? true}` |
-| Full combined application — frontend → backend pipeline, JAT callbacks, UI manager state | `with-combined-system` | All 15 baseline components (every backend + every frontend), headless UI by default |
+| Full combined application — frontend → backend pipeline, JAT callbacks, UI manager state | `with-combined-system` | All 16 baseline components (every backend + every frontend), headless UI by default |
 | Frontend UI manager and individual frontend components | `with-ui-manager` | Just thread-pool, event-bus, ui-manager |
 
 `with-started-app` and `with-combined-system` both give a whole application, and the difference is what starts it: `with-combined-system` initialises the component graph directly, while `with-started-app` goes through `start-app!` — the production launch, splash and all — so it is the one to use when the *startup* is part of what the test is about. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model).
@@ -839,19 +839,21 @@ For testing the full backend Integrant system — component coordination, health
 
 The system map contains all Integrant components as returned by `start-with-config`. `with-system` halts everything in the `finally` block.
 
-**Its config map is not `with-combined-system`'s `:extra-config`, and the difference decides some tests.** What `with-system` receives goes through `merge-env-config`, which writes only the keys `backend-injection-spec` names — ports, timeouts, TLS paths, thread-pool size. It cannot reach an arbitrary component setting, where `:extra-config` overrides any component's config at component granularity.
+**Its config map is not `with-combined-system`'s `:extra-config`, and the difference decides some tests.** What `with-system` receives goes through `merge-env-config`, which writes only the keys `backend-injection-spec` names — ports, timeouts, TLS paths, thread-pool size, the cache daemon's sweep interval. It cannot reach an arbitrary component setting, where `:extra-config` overrides any component's config at component granularity.
 
-A test whose subject is a component setting the injection spec does not carry therefore stays on manual lifecycle: build the config with `get-backend-config`, `assoc-in` the one value, and `ig/init` it — the production config through the production init path, under `with-no-recorded-failures` and `with-test-platform-directory`, which is what the macro would have supplied. The cache daemon's maintenance interval is the case in point: a test that must see more than one sweep cannot wait a minute for the default, and adding an injection key to make a test convenient would be production shaped by test need. As with the `with-server` exceptions above, declare it in a comment at the fact.
+So the question for any test that needs a component configured a particular way is whether `backend-injection-spec` names the key. If it does — ports, timeouts, TLS paths, thread-pool size, the cache daemon's sweep interval — pass it in the config map and `with-system` reaches it. If it does not, the test stays on manual lifecycle: build the config with `get-backend-config`, `assoc-in` the one value, and `ig/init` it — the production config through the production init path, under `with-no-recorded-failures` and `with-test-platform-directory`, which is what the macro would have supplied. As with the `with-server` exceptions above, declare that in a comment at the fact.
+
+The distinction is about what an *operator* can set, not about test convenience. A key belongs in the injection spec because a deployment needs to vary it; that it then becomes reachable from a test is a consequence, never the reason. Adding one to make a test shorter is production shaped by test need.
 
 ### `with-combined-system`
 
-For testing the full combined application — all 15 baseline components, in-process transport, headless UI by default. This is the heaviest macro and the most faithful to production.
+For testing the full combined application — all 16 baseline components, in-process transport, headless UI by default. This is the heaviest macro and the most faithful to production.
 
 **Macro signature**: `[[system-symbol opts] & body]`. The `opts` map is optional and accepts the following keys: `:transport` (`:in-process` default, or `:network` for real gRPC channels with header propagation), `:extra-config` (a map merged into the Integrant config at component granularity to override any component's settings — port, `:ui-mode`, TLS, etc.), `:on-progress` (called before each component inits), and `:on-ready` (called after each component inits). See §Options below for the full table.
 
 ```clojure
 (with-combined-system [sys]
-  ;; All 15 baseline components are running
+  ;; All 16 baseline components are running
   (get-in sys [:ooloi.backend.components/grpc-server :status]) => :running
   (get-in sys [:ooloi.frontend.components/ui-manager :status]) => :running
 

@@ -394,6 +394,7 @@ The combined application accepts the **union** of all backend and frontend CLI a
 | `--key-path PATH` | file path | platform default | Collaboration-host server's private key |
 | `--health-port PORT` | 1-65535 | 10701 | HTTP health endpoint port |
 | `--thread-pool-size N` | integer | -1 (cores−1) | Shared thread pool size |
+| `--cache-daemon-interval-seconds N` | integer > 0 | 60 | Interval between hash-consing sweeps over every stored piece (ADR-0029). Must be greater than zero; a sweep's cost grows with the score, so a server holding several large scores wants a longer one than a desktop holding one |
 
 **Frontend Component Configuration:**
 
@@ -424,6 +425,7 @@ The combined application accepts the **union** of all backend and frontend envir
 | `OOLOI_KEY_PATH` | --key-path | platform default | Collaboration-host server's private key |
 | `OOLOI_HEALTH_PORT` | --health-port | 10701 | HTTP health endpoint port |
 | `OOLOI_THREAD_POOL_SIZE` | --thread-pool-size | -1 (cores−1) | Shared thread pool size |
+| `OOLOI_CACHE_DAEMON_INTERVAL_SECONDS` | --cache-daemon-interval-seconds | 60 | Interval between hash-consing sweeps over every stored piece (ADR-0029). Must be greater than zero; a sweep's cost grows with the score, so a server holding several large scores wants a longer one than a desktop holding one |
 
 **Frontend Component Environment Variables:**
 

@@ -157,6 +157,12 @@ Rather than trying to predict all possible object combinations at creation time,
 
 **Component Architecture:**
 - **Integrant Component**: `ooloi.backend.components/cache-daemon`. Its `init-key` starts the maintenance schedule and its `halt-key!` stops it — a component that reports itself running while starting nothing is worse than no component at all
+- **Interval**: deployment configuration rather than a constant of the domain. A server holding
+  several large scores and a desktop application holding one want different answers, and a sweep's
+  cost grows with the score. It is set with `--cache-daemon-interval-seconds` or
+  `OOLOI_CACHE_DAEMON_INTERVAL_SECONDS`, in seconds, refused at startup if not greater than zero,
+  and defaults to `maintenance-interval-seconds` when unset. Seconds outside the component,
+  milliseconds on its config key, converted once in the injection spec
 - **Scheduling**: a dedicated single-thread scheduled executor. The shared Claypoole pool offers no periodic scheduling and is sized for short, latency-sensitive work, so it is the wrong home for a multi-second sweep. Scheduled with a fixed *delay* rather than a fixed rate: the interval is measured from the end of one sweep to the start of the next, so a sweep that outgrows its interval is followed by a gap rather than immediately by another. A sweep whose cost grows with the score must never be able to occupy the machine continuously
 - **Thread**: named, and marked daemon. Nothing waits on a sweep — its work is discardable — so there is nothing to hold the JVM open for
 - **Shutdown**: `halt-key!` shuts the executor down and then waits, bounded, for a sweep already running. Without the wait the halt proceeds to the piece manager the sweep is still reading. The bound is a courtesy rather than a requirement: proceeding costs one stderr line where hanging the quit costs more
@@ -225,6 +231,12 @@ daemon's counters are the only sanctioned window into it: sweeps completed, obje
 processed, pieces abandoned because they moved underneath a sweep, and the average cost of optimising
 a piece. They reach the server statistics endpoint alongside every other counter
 ([ADR-0025](0025-Server-Statistics-Architecture.md)).
+
+The figure reported is the interval the running daemon **scheduled**, not the compiled-in default.
+The component records it from the same binding it hands its executor, so the reported and the actual
+cannot diverge — which matters because they would otherwise part company the moment an operator set
+the switch, and the field exists precisely to make a sweep count interpretable. It is `null` where no
+daemon exists.
 
 #### The Counters Are a Required Dependency
 

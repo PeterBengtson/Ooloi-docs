@@ -259,6 +259,8 @@ lein run -- --port 8080 --timeout-ms 3000 --health-port 10701 --tls true
 export OOLOI_PORT=8080
 export OOLOI_TIMEOUT_MS=3000
 export OOLOI_HEALTH_PORT=10701
+# Hash-consing sweep interval (seconds); default 60
+export OOLOI_CACHE_DAEMON_INTERVAL_SECONDS=300
 # TLS configuration
 export OOLOI_TLS=true
 export OOLOI_CERT_PATH=/etc/ssl/ooloi.crt
@@ -277,6 +279,7 @@ lein run
 | **TLS Private Key** | `--key-path PATH` | `OOLOI_KEY_PATH` | platform default | Path to TLS private key file (created if missing) |
 | **Health Port** | `--health-port 10701` | `OOLOI_HEALTH_PORT` | 10701 | HTTP health endpoint port for monitoring |
 | **Thread Pool Size** | `--thread-pool-size 4` | `OOLOI_THREAD_POOL_SIZE` | -1 (cores−1) | Shared thread pool size |
+| **Cache Daemon Interval** | `--cache-daemon-interval-seconds 300` | `OOLOI_CACHE_DAEMON_INTERVAL_SECONDS` | 60 | Interval between hash-consing sweeps over every stored piece (ADR-0029). Must be greater than zero; a sweep's cost grows with the score, so a server holding several large scores wants a longer one than a desktop holding one |
 | **Auto-Halt Seconds** | `--auto-halt-seconds 60` | `OOLOI_AUTO_HALT_SECONDS` | -1 (disabled) | Grace period before the on-demand network gRPC server halts after the last collaboration guest disconnects (per ADR-0036). Negative value = never auto-halt. Read at launch; not dynamic |
 
 **Health Monitoring**:
