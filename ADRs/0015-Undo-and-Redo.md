@@ -663,6 +663,61 @@ The pairing means the undo operation is transparent to all existing event handle
 A client that refetches on `:instrument-library-changed` will see the restored state without
 knowing it was caused by an undo.
 
+##### A restore announces; it does not detect
+
+A restore replaces a whole piece from a snapshot, and four properties follow from that
+alone. They are stated here because the restore is the one write in the system that cannot
+travel the ordinary path, and an implementation that assumes it can will look correct and
+notify nothing.
+
+- **The restore writes the piece ref directly.** It cannot pass through `vpd-transact`,
+  [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §1's single detection point:
+  that funnel is parameterised on *which slot was written* — a VPD and an attribute name —
+  and a whole-piece replacement has neither. Nor can it be expressed as a VPD mutation,
+  because `set-piece` deliberately does not exist
+  ([ADR-0040](0040-Single-Authority-State-Model.md)) — the same absence that makes undo
+  capture complete by construction. The direct write is the only available shape, not a
+  shortcut around a better one.
+
+- **`:piece-structure-changed` is emitted unconditionally, and is deliberately coarse.**
+  A restore knows it changed the piece; it does not know what it changed, and must not find
+  out. The frontend's response — refetch the structural projection — is idempotent, so
+  over-announcing costs one refetch and under-announcing costs a stale window. Narrowing the
+  emission by comparing projections is a later optimisation and needs a test of its own.
+
+- **The snapshot carries its own staleness, so the restore marks nothing.** Formatting
+  staleness is recorded in the piece itself, in a top-level slot
+  ([ADR-0028 §Staleness](0028-Hierarchical-Rendering-Pipeline.md#staleness-the-state-that-drives-incremental-formatting)),
+  which means every snapshot is self-describing. The *before* value holds pre-edit semantics,
+  pre-edit paintlists and no mark for that edit; the *after* value holds post-edit semantics,
+  paintlists not yet recomputed, and the mark recording exactly that recomputation is owed.
+  Restoring either therefore restores a state consistent with its own outstanding work. A
+  restore consequently does **not** mark anything stale, does **not** need the undo entry to
+  record which VPDs the gesture touched, and above all does **not** diff before against
+  after — ADR-0052 §1 prohibits any downstream layer from re-deriving what changed by
+  diffing state, and this regime needs no exception to it.
+
+- **The snapshot must carry the layout hierarchy, because that hierarchy holds user work.**
+  Paintlists are the pipeline's output *as adjusted by the human* — a nudged accidental, a
+  reshaped slur, a glyph converted to editable paths — stored as user data and folded in when
+  the paintlist is recomputed ([ADR-0031](0031-Frontend-Event-Driven-Architecture.md)). They
+  are not regenerable from semantics alone, so omitting them from a snapshot as "derived
+  state" would make an undo of a content edit destroy the engraving around it, and a manual
+  adjustment not undoable at all. Capturing the whole piece value is therefore required, not
+  merely convenient.
+
+Two of these four are one distinction seen twice. `:piece-structure-changed` is announced
+coarsely and synchronously because what *contains* the music is the projection's business;
+the music itself is the pipeline's, reached through staleness rather than through an event
+this restore emits. That is the division of
+[ADR-0052 §6](0052-Change-Detection-and-Event-Generation.md), not an inconsistency.
+
+A last consequence worth stating, because a test depends on it: the dirty flag is restored
+rather than set (§5 of ADR-0052), so a redo back onto a saved state returns clean — and stays
+clean, because that state's marks are restored with it, leaving the pipeline nothing to do
+and therefore nothing to dirty. Had marks lived anywhere but the piece, the same redo would
+have gone clean and then dirty again a formatting interval later.
+
 ```
   Mutation (any client)
     │

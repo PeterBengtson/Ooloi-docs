@@ -25,6 +25,7 @@ Under implementation
   - [Shared Threadpool](#shared-threadpool)
   - [Cancellation Contract](#cancellation-contract)
 - [Caching and Incremental Processing](#caching-and-incremental-processing)
+  - [Staleness: The State That Drives Incremental Formatting](#staleness-the-state-that-drives-incremental-formatting)
   - [Client-Server Event Coordination](#client-server-event-coordination)
 - [Rationale](#rationale)
   - [Positive Aspects](#positive-aspects)
@@ -461,6 +462,194 @@ flowchart TD
 **Conditional Processing**: Later pipeline stages process only measures that underwent earlier stage recalculation. Unchanged measures retain their cached results unless positioning changes affect their coordinates.
 
 **Cache Granularity**: Invalidation operates at measure-level precision, ensuring that unrelated changes don't trigger unnecessary recalculations across the composition.
+
+### Staleness: The State That Drives Incremental Formatting
+
+Everything above describes what the pipeline recomputes and what it tells clients. This section
+specifies the state that decides it: **which derived artefacts no longer reflect the inputs they were
+computed from**. A stale mark is that record, and nothing else — it names work owed, at a place, of a
+kind.
+
+#### Staleness lives in the piece
+
+Marks are held in a **single top-level slot on the Piece**, not beside it and not on the individual
+visual records.
+
+**In the piece rather than beside it**, which is the opposite of where the dirty flag lives
+([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §5), and the difference is principled
+rather than incidental. The dirty flag describes the piece's relationship to a **file** — it is
+session state, it must not survive a reload, and a save clears it. A stale mark describes the piece's
+own derived content relative to its own semantics; it **must** survive a save and reload, because the
+layout hierarchy does, and reopening a score with three measures outstanding must resume that work
+rather than reformat the opera. Persistence is the discriminator: the flag must not persist, the
+marks must.
+
+The same difference makes marks correct to capture in undo snapshots, where the dirty flag is
+deliberately excluded. See §Undo and redo below.
+
+**In one slot rather than on each record.** The first reason is the one the regime is built on:
+
+1. **It is what makes hierarchical consolidation practical.** The invalidation rule above collapses a
+   set of marks into the container that covers them — all measures in a system become one system
+   invalidation, all systems in a page become one page invalidation. Over a sparse map of compact VPDs
+   that collapsing is a **prefix operation on the keys**, because a compact VPD's prefix *is* its
+   container: `[:l 0 2 1 0 47]` is a measure-view whose staff-view is `[:l 0 2 1 0]`, whose system is
+   `[:l 0 2 1]`, whose page is `[:l 0 2]`, whose layout is `[:l 0]`. Grouping the marks by prefix
+   yields the candidate containers directly, and comparing a group's size against that container's own
+   child count decides whether to collapse. No traversal of the hierarchy is involved at any point.
+   With per-record slots the same question can only be answered by walking the tree and inspecting
+   every child, stale or not.
+2. **The visual records are the download payload.** `MeasureView`, `StaffView`, `SystemView` and
+   `PageView` are what a client fetches ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md));
+   staleness is backend bookkeeping and is meaningless to a client, which keeps its own cache state.
+   A slot on the record would put it on the wire.
+3. **Write cost.** Marking a `MeasureView` rebuilds the path root → layout → page-view → system-view
+   → staff-view → measure-view. Five hundred stale measures is five hundred path rebuilds; one
+   top-level slot is one, however many marks it carries.
+
+The map is therefore not an optimisation of per-record slots but a different structure chosen for what
+it makes cheap: **the consolidation is the point, and the keys are indexed the way the consolidation
+asks its question.**
+
+#### The structure
+
+A **sparse map from compact VPD to kind**. Absent means clean — there are no tombstones, and a clean
+score carries an empty map.
+
+The key is the **compact VPD form** ([ADR-0008](0008-VPDs.md)), which is Ooloi's default and its wire
+form: `[:m 0 1 0 3]`, `[:l 0 2 1]` — never the navigator form. Two properties of that choice are
+load-bearing rather than cosmetic:
+
+- **The level is implicit in the key's length**, so the structure needs no level field and none can
+  disagree with its own path. `[:l 0]` is a layout, `[:l 0 2]` a page, `[:l 0 2 1]` a system,
+  `[:l 0 2 1 0]` a staff-view, `[:l 0 2 1 0 47]` a measure-view — exactly the five levels ADR-0022
+  enumerates, at lengths one to five. Musically, `[:m 0 1 0]` is a staff and `[:m 0 1 0 3]` a measure.
+- **The head carries the coordinate system.** `:m` marks a musical origin, `:l` a visual one, and both
+  occur: a content edit arises musically, a page-height change visually. One map holds both with no
+  wrapper and no tagging scheme.
+
+**The two coordinate systems meet at consolidation, and only there.** Collapsing is a visual-hierarchy
+operation — the levels a client is invalidated at are layout, page, system, staff and measure
+([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)) — so a `:l` mark consolidates by prefix
+directly, while a `:m` mark is first resolved to the visual elements it affects and consolidated
+after. That resolution is the pipeline's ordinary musical-to-visual mapping and costs it nothing extra.
+
+Marking musically where the change is musical is deliberate, for two reasons. One measure edited is
+stale **in every layout that presents that musician**, and a single `:m` mark covers all of them, where
+`:l` marks would need one per layout kept in step. And a musical address is stable under exactly the
+changes that are frequent: a system redistribution or a page rebreak renumbers no measure, whereas
+every `:l` key downstream of a break shifts. Neither form is immune to insertion — a compact VPD is
+positional in both spaces — but the musical space moves far less often.
+
+**The kind is required, and a bare set of locations would defeat this pipeline's central efficiency
+property.** The change table under §Atom-Relative Geometry Invariant distinguishes changes that need
+Stage 1 — the expensive one — from changes for which Stage 1's results remain valid and only
+repositioning is owed. A mark that records *where* but not *why* cannot express that difference, so
+the pipeline would have to re-run Stage 1 conservatively on every mark, and the atom-relative geometry
+invariant would buy nothing. The kinds therefore partition that table's rows: a content edit, a
+system-width change, a page-height change, a style or spacing change, an instrument added or removed.
+The exact vocabulary is settled when the engine is built and can be driven by tests; that it must
+exist is settled here.
+
+**Marking joins; it never overwrites.** A measure marked for a style change and then edited must end
+up needing Stage 1, not repositioning. The kinds are ordered by how much of the pipeline they require,
+and `mark-stale!` takes the join of the incoming kind with any kind already present. A set of VPDs
+cannot express this; a map can, in one line.
+
+The structure is a map rather than a set for that reason and one more: should a mark need to carry
+anything further, it has somewhere to go without a change of shape.
+
+#### Marks are set at the origin; the pipeline derives the rest
+
+A change marks **only where it occurred**. The upward propagation described above — a measure
+triggering its system, a system triggering its page — is the pipeline's own knowledge of which stages
+depend on which, and is derived at formatting time rather than written into the structure by whoever
+made the change. A gesture that edits one measure of a twenty-instrument stack writes one mark; the
+consequences, which may run to hundreds of altered elements across several pages, are computed and
+never recorded.
+
+This is what keeps the marking side trivial and the knowledge in one place. It also means the
+structure stays small in exactly the case where the fan-out is largest.
+
+#### Formatting is a fixpoint
+
+**A pass over a stale element must leave neither it nor anything else stale.**
+
+This is an invariant, not an aspiration, and the reason is a loop. A pipeline write dirties the piece
+(below), autosave clears the flag, and the pipeline runs again on whatever remains stale. The cycle
+terminates only because a pass converges: edit → dirty → autosave → clean → format → dirty → autosave
+→ clean → nothing left stale → quiet. If any pass ever left a mark behind as a side effect of
+formatting, autosave and the pipeline would drive each other indefinitely, each performing legitimate
+work, with no error anywhere to show why.
+
+#### A stale mark names work; it never licenses discarding an adjustment
+
+Paintlists are the pipeline's output **as adjusted by the human**. A user may nudge an accidental,
+reshape a slur, or convert a glyph to editable bezier paths and distort it; those edits are stored as
+user data and the paintlist is recomputed to include them
+([ADR-0031](0031-Frontend-Event-Driven-Architecture.md) §Key Architectural Properties). A paintlist is
+therefore derived from **three** inputs — musical semantics, layout parameters, and stored user
+adjustment — and only the first two are recomputable from the piece's music.
+
+So recomputing a stale element **consumes the stored adjustments as inputs**. A stale mark says *this
+must be recomputed*; it must never be read as *this may be regenerated from scratch*. Reformatting a
+stale measure from semantics alone would silently erase an engraver's afternoon, and it is the single
+most costly mistake available in this area — costly because nothing fails, no test notices, and the
+work is simply gone.
+
+Users spend hours on these adjustments. That, and not merely the cost of reformatting Götterdämmerung,
+is why the layout hierarchy is persisted rather than recomputed on open.
+
+#### The pipeline's write dirties the piece
+
+A formatting pass mutates the piece, so by [ADR-0052](0052-Change-Detection-and-Event-Generation.md)
+§5's rule as written — any change whose resulting value is not identical to the prior one — it marks
+the piece dirty. This is the rule applying, not an addition to it: §5 says *change*, never *user
+change*.
+
+The one existing exemption does not extend here. The hash-consing daemon
+([ADR-0029](0029-Global-Hash-Consing.md)) writes without dirtying because its substitutions are `=` to
+the values they replace, so nothing about the saved file changes. A formatting pass writes materially
+new content that belongs on disk. It earns no exemption, and arranging it to write outside the funnel
+in order to avoid the flag would be evading the rule rather than following it.
+
+Two consequences follow, both correct:
+
+- **A piece saved with outstanding marks becomes dirty again after formatting**, without the user
+  touching anything. That is honest: the file's layout is genuinely out of date with respect to memory,
+  and the freshly computed layout is worth saving.
+- **A piece opened with outstanding marks formats itself, dirties itself, and invalidates its
+  clients** — automatically, with no gesture involved. Finding and clearing outstanding staleness is
+  the pipeline's own job.
+
+#### Undo and redo
+
+Because marks live in the piece, **every undo snapshot carries its own staleness state**, and a
+restore is therefore self-consistent with no further action:
+
+- the *before* value holds pre-edit semantics, pre-edit paintlists and no mark for that edit;
+- the *after* value holds post-edit semantics, not-yet-recomputed paintlists, and the mark recording
+  precisely that recomputation is owed.
+
+Restoring either one restores a state that describes its own outstanding work. A restore therefore
+does **not** mark anything stale, does not record which VPDs a gesture touched, and above all does not
+diff before against after — [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §1 prohibits any
+downstream layer from re-deriving what changed by diffing state, and this regime needs no exception to
+it. See [ADR-0015](0015-Undo-and-Redo.md) §"A restore announces; it does not detect".
+
+#### What staleness is not
+
+Three conditions in Ooloi describe something being out of date, and only one of them is this:
+
+| Condition | Subject | Where it lives | Survives a reload |
+|---|---|---|---|
+| **Stale** (this section) | a derived artefact vs the inputs it was computed from | in the piece | yes |
+| **Dirty** ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §5) | the piece vs the file it was last saved to | the Piece Manager, never the piece | no |
+| **A frontend cache entry** ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)) | a client's copy vs the backend's | that client | no |
+
+The third is the same condition as the first seen from the other side of the wire, and is also called
+stale; but it is the client's own bookkeeping, arrived at from an invalidation event. Marks are never
+sent to a client, and are not part of a paintlist payload.
 
 ### Client-Server Event Coordination
 
