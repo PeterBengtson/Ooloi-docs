@@ -28,7 +28,8 @@ Implemented
     - [Automatic Capture and Deliberate Registration](#automatic-capture-and-deliberate-registration)
     - [IL Description Inference](#il-description-inference)
     - [Push-Based State Notification](#push-based-state-notification)
-    - [Undo Operation — Sequence Diagram](#undo-operation--sequence-diagram)
+    - [Undo Operation — Sequence Diagram (Instrument Library)](#undo-operation--sequence-diagram-instrument-library)
+    - [Undo Operation — Sequence Diagram (Piece)](#undo-operation--sequence-diagram-piece)
     - [Collaborative Undo — Multi-Client Sequence](#collaborative-undo--multi-client-sequence)
   - [gRPC Extensions](#grpc-extensions)
   - [Unified Frontend Routing — Tier 1 and Tier 2 Merge](#unified-frontend-routing--tier-1-and-tier-2-merge)
@@ -831,29 +832,69 @@ have gone clean and then dirty again a formatting interval later.
   └─────────────┘  └─────────────┘  └─────────────┘
 ```
 
-#### Undo Operation — Sequence Diagram
+#### Undo Operation — Sequence Diagram (Instrument Library)
+
+The singleton case. The Library is global and has no subscription to scope it, so both
+events reach every connected client.
 
 ```mermaid
 sequenceDiagram
     participant C as Client (any)
     participant G as gRPC Transport
     participant UM as Backend Undo Manager
-    participant R as Resource (IL/Piece)
+    participant IL as Instrument Library
     participant E as Event Stream
 
-    C->>G: SRV/undo-resource(:instrument-library, nil)
+    C->>G: SRV/undo-resource(:instrument-library)
     G->>UM: undo!(:instrument-library)
     UM->>UM: Pop top undo entry
-    UM->>R: Call entry's undo-fn
-    R->>R: Restore previous state (atom reset!/STM ref-set)
+    UM->>IL: Call entry's undo-fn
+    IL->>IL: apply-state! — reset! the atom, persist, broadcast
     UM->>UM: Push entry to redo stack
     UM-->>G: Response {undo-ts, redo-ts}
     G-->>C: Update timestamp cache immediately
-    UM->>E: :undo-state-changed {undo-ts, redo-ts} → resource's audience
-    UM->>E: :instrument-library-changed → all clients (global resource)
-    E->>C: :undo-state-changed (other clients update cache)
-    E->>C: :instrument-library-changed (all clients refetch)
+    UM->>E: :undo-state-changed {undo-ts, redo-ts} to every client
+    UM->>E: :instrument-library-changed to every client
+    E->>C: other clients update their cache and refetch
 ```
+
+#### Undo Operation — Sequence Diagram (Piece)
+
+The per-instance case, and it differs from the Library's in every respect that matters:
+who hears about it, what is announced, and where the dirty flag's new value comes from.
+
+```mermaid
+sequenceDiagram
+    participant C as Subscribing client
+    participant G as gRPC Transport
+    participant UM as Backend Undo Manager
+    participant P as Piece ref
+    participant PM as Piece Manager
+    participant E as Event Stream
+
+    C->>G: SRV/undo-resource(piece-id)
+    G->>UM: undo!(piece-id)
+    UM->>UM: Pop top undo entry
+    UM->>P: Call entry's undo-fn — ref-set the captured value
+    Note over P: one dosync — the write, the flag and<br/>the announcements commit together
+    P->>PM: reconcile dirty against the baseline
+    PM-->>P: flipped, or not
+    Note over P: announce structurally only if the gesture<br/>being reversed was structural
+    Note over P: announce the flip if the flag moved
+    UM->>UM: Push entry to redo stack
+    UM-->>G: Response {undo-ts, redo-ts}
+    G-->>C: Update timestamp cache immediately
+    UM->>E: :undo-state-changed to this piece's subscribers only
+    P->>E: :piece-structure-changed and/or :piece-dirty-changed
+    E->>C: subscribers refetch the structural projection
+```
+
+Three things in that diagram are the piece's alone. Delivery is to subscribers rather than
+to everyone, because a piece is held by the clients that asked for it. The announcements
+are conditional, because a restore that changed nothing the projection carries has nothing
+to tell a window. And the dirty flag is asked of the Piece Manager rather than carried on
+the entry, because it describes a relation to a file that may have moved since the entry
+was made.
 
 #### Collaborative Undo — Multi-Client Sequence
 

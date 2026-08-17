@@ -302,6 +302,8 @@ sequenceDiagram
     SRV->>BE: ExecuteMethod
     Note over BE: append .ooloi unless .ool/.ooloi,<br/>write the file
     BE->>PM: record-piece-provenance {:path :modified}
+    BE->>PM: record-piece-baseline — what was written is what the piece is now clean against
+    Note over PM: the baseline is established when the piece enters<br/>the manager and replaced by every successful save,<br/>so a restore can always ask what a save would reproduce
     BE->>ER: :piece-structure-changed {:piece-id} (direct emit)
     BE-->>SRV: true
     SRV-->>FE: true
