@@ -765,25 +765,38 @@ TLS configuration is **not** reported through `/health` — it is launch-time co
 
 **Design Principle**: Derive operational insights from existing LongAdder counters without additional overhead
 
+**Derived values appear in the JSON arm only.** They are computed at query time from the counters
+and never stored, and the Prometheus arm declines them deliberately — see
+[Content Negotiation Contract](#content-negotiation-contract) for why a rate computed by the
+time-series database over a window is the stronger quantity.
+
 **Current Client Connections**:
 - **Source**: LongAdder counters `:clients-connected-total` and `:clients-disconnected-total`
-- **Computation**: `current-clients = max(0, connected-total - disconnected-total)`
+- **Computation**: `connected-total - disconnected-total`, reported **as it falls, including a
+  negative**. The subtraction was once wrapped in `max(0, …)`, and the clamp existed because the
+  difference could go negative — which is to say because the two counters did not describe the same
+  population. A negative client count is unmissable; the clamp turned it into a believable zero, and
+  that is how such a mismatch survived to be noticed on a dashboard rather than by a failing test
 - **JSON Field**: `clients_connected_current`
-- **Prometheus Metric**: `ooloi_server_clients_connected`
 - **Type**: Gauge (current state, can go up or down)
+- **When unreadable**: `null` — a counter that cannot be read has no true number to report
 
 **Average API Call Duration**:
 - **Source**: LongAdder counters `:api-calls-success-duration-nanos-total` and `:api-calls-success`
-- **Computation**: `avg-duration = success > 0 ? total-duration-nanos / success : 0.0`
+- **Computation**: `total-duration-nanos / success` where `success > 0`
 - **JSON Field**: `api_success_duration_avg_nanos`
-- **Prometheus Metric**: `ooloi_server_api_success_duration_avg_nanos`
 - **Type**: Gauge (computed average performance metric)
+- **When the population is empty**: `null`, never `0.0`. Zero is the worst available reading here,
+  produced exactly when nothing is wrong — an average of zero on a server that has served nothing
 
 **Benefits**:
 - **Zero additional cost**: Uses existing counters, no new tracking required
 - **Real-time accuracy**: Computed fresh on each request
-- **Monitoring friendly**: Direct gauge metric for alerting and dashboards
-- **Consistent calculation**: Same computation logic for both JSON and Prometheus formats
+- **Monitoring friendly**: Direct gauge field for dashboards, with `null` rendering as a panel's
+  no-value marker rather than as a believable figure
+- **One implementation**: the derivations live in a single function, which the JSON builder calls and
+  the Prometheus builder deliberately does not — so there is one place where a ratio's behaviour on
+  an empty population is decided
 
 #### Field Naming Convention
 
