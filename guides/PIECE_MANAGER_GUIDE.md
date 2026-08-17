@@ -53,7 +53,8 @@ The piece manager maintains a **dual-ref system**, and the store is **owned by t
 (def ^:private piece-store (ref nil))
 
 ;; The store ref it holds maps piece-id -> a registry entry of the form
-;; {:ref piece-ref :provenance {:path :modified}}; each piece is its own ref.
+;; {:ref piece-ref :provenance {:path :modified} :baseline piece :dirty true};
+;; each piece is its own ref.
 (def piece-id "my-symphony")
 (def piece-ref (ref (create-piece ...)))
 
@@ -64,7 +65,20 @@ The piece manager maintains a **dual-ref system**, and the store is **owned by t
 
 **Why a ref handle rather than an atom?** Every store mutation already happens inside `dosync` (`store-piece` / `remove-piece` `alter` the store ref). Making the handle a **ref** too keeps the whole access path under a single STM discipline: the handle read inside a transaction is transactionally consistent by construction, and there is no second reference type to reason about. The handle is populated by the component, so pure-model code — `resolve-into-piece-ref`, `get-piece-ref` — reaches the store through it with no server in scope. The store is created by `init-store!` (called from the component's `init-key`) and released by `release-store!` (from `halt-key!`); there is no JVM-global remnant.
 
-**The registry entry.** Each value in the store is a map — `{:ref piece-ref :provenance {:path :modified}}` — not a bare ref. The `:ref` is the piece's STM ref (the dual-ref system above). The `:provenance` — the file path and modification time the piece was opened from — is present only for pieces opened through `open-piece` (ADR-0051), and is how the Piece Manager distinguishes an idempotent reopen of the same file (same embedded UUID, same provenance) from a variant collision (same UUID, different provenance) — see [ADR-0012](../ADRs/0012-Persisting-Pieces.md). Provenance shares the ref's identity and lifetime — dropped with it on `remove-piece` — rather than living in a parallel structure to keep in sync. Distinct from this per-open provenance, the **persistent catalogue** — a second, durable store the same component owns, mapping every piece's UUID to its storage location whether or not it is currently open — is described in [The Persistent Catalogue](#the-persistent-catalogue) below.
+**The registry entry.** Each value in the store is a map — not a bare ref — and what it holds has grown as the Piece Manager has taken on more of what a session knows about a piece:
+
+| Key | What it is |
+|---|---|
+| `:ref` | the piece's STM ref (the dual-ref system above) |
+| `:provenance` | where this piece was opened from, and when |
+| `:baseline` | the value this piece is currently clean with respect to |
+| `:dirty` | present iff the piece has unsaved changes |
+
+The `:provenance` — the file path and modification time the piece was opened from — is present only for pieces opened through `open-piece` (ADR-0051), and is how the Piece Manager distinguishes an idempotent reopen of the same file (same embedded UUID, same provenance) from a variant collision (same UUID, different provenance) — see [ADR-0012](../ADRs/0012-Persisting-Pieces.md).
+
+The `:baseline` and `:dirty` pair answers "does this piece have unsaved changes", and they answer it in two different ways because the question arrives in two different shapes. Editing forward, the flag is *accumulated*: the write funnel sets it on any change and a save clears it, with no comparison anywhere ([ADR-0052](../ADRs/0052-Change-Detection-and-Event-Generation.md) §5). But a piece can also arrive at a state without editing into it — an undo or redo replaces the whole value — and then the flag has to be *derived*, by comparing that value with `:baseline`. The baseline is set when the piece enters the manager (the loaded value on open, the fresh value on new) and replaced by every successful save, so it is always the value a save would have to reproduce.
+
+Everything here shares the ref's identity and lifetime — dropped with it on `remove-piece` — rather than living in parallel structures to keep in sync. That is the reason the entry accretes keys rather than the Piece Manager growing side tables: session facts about a piece belong where the piece does, and expire when it does. Distinct from all of it, the **persistent catalogue** — a second, durable store the same component owns, mapping every piece's UUID to its storage location whether or not it is currently open — is described in [The Persistent Catalogue](#the-persistent-catalogue) below.
 
 ### Why This Architecture?
 
