@@ -19,7 +19,7 @@ Implemented
 - [User Interaction Architecture](#user-interaction-architecture)
   - [VPD-Based Frontend Object Hierarchy](#vpd-based-frontend-object-hierarchy)
   - [Hit-Testing and Click Resolution](#hit-testing-and-click-resolution)
-  - [Clean/Dirty State Integration](#cleandirty-state-integration)
+  - [Clean/Stale State Integration](#cleanstale-state-integration)
 - [Windowing System Integration](#windowing-system-integration)
   - [Viewport Management](#viewport-management)
   - [Event Processing Pipeline](#event-processing-pipeline)
@@ -101,7 +101,7 @@ Ooloi operates through two complementary communication mechanisms:
 
 **gRPC API Operations (Network Requests)**
 - Client mutations: `(add-articulation measure-vpd piece-id :staccato)` via ExecuteMethod
-- Fresh data requests: Request updated shared models when local cache is dirty
+- Fresh data requests: Request updated shared models when local cache is stale
 - All network operations use ExecuteMethod via gRPC for consistent interface
 
 **Event Notifications (Asynchronous)**
@@ -111,9 +111,9 @@ Ooloi operates through two complementary communication mechanisms:
   - System invalidated: `"system 2 on page 3 has changed"`
   - Staff invalidated: `"staff 1 in system 2 has changed"`
   - Measures invalidated: `"measures 125-127 in staff 1 have changed"`
-- Events **mark local cache dirty** - clients know their local data is stale
+- Events **mark local cache entries stale** - a client learns its own copy is out of date
 - Events contain **only identifiers** of changed objects - no details about what aspect changed  
-- Clients request fresh data via gRPC when they need to render dirty objects
+- Clients request fresh data via gRPC when they need to render stale objects
 - Triggered by any client's musical mutations that affect visual hierarchy
 
 **Key Insight**: Events tell clients *which local objects are now stale*, gRPC requests provide *fresh data to update local cache*, local API provides *fast access to current cache*.
@@ -156,7 +156,7 @@ This governs every backend-connected frontend cache without exception. Three cac
 
 **Two-Tier Performance System**:
 - **Path A - Clean Data (95% of requests)**: 0.1ms response time for cached drawing instructions
-- **Path B - Dirty Data (5% of requests)**: Raster interval delay plus computation time for uncached layout data
+- **Path B - Stale Data (5% of requests)**: Raster interval delay plus computation time for uncached layout data
 
 **Raster Deduplication**:
 Backend uses configurable raster (e.g., 100ms) for computation-heavy operations while keeping normal API requests immediate. Multiple clients requesting identical data receive single computation distributed to all requesters.
@@ -184,7 +184,7 @@ Backend uses configurable raster (e.g., 100ms) for computation-heavy operations 
 
 **Frontend UI State Requirements**:
 - **VPD linking**: Each displayed object must maintain VPD identification for backend operations
-- **Cache state tracking**: Objects must track whether their visual data is clean, dirty, or being requested
+- **Cache state tracking**: Objects must track whether their visual data is clean, stale, or being requested
 - **Partial hierarchy navigation**: Handle cases where parent/child visual objects may not be loaded
 - **Geometric bounds**: Hit-testing requires geometric information for user interaction
 - **Backend authority**: Frontend never modifies musical model objects directly
@@ -220,40 +220,48 @@ Backend uses configurable raster (e.g., 100ms) for computation-heavy operations 
 - **Staleness affects hit-testing, not authority**: an element whose paintlist is stale cannot be hit-tested, because there is nothing current to test against. This is not a version check on the operation
 - **Clean cache requirement**: Hit-testing only functions with current visual data
 
-### Clean/Dirty State Integration
+### Clean/Stale State Integration
+
+**"Stale" here is a client's cache entry, and Ooloi uses the word for one relationship at two hops
+of the same chain.** A backend visual element is stale when it no longer reflects the inputs it was
+computed from ([ADR-0028 §Staleness](0028-Hierarchical-Rendering-Pipeline.md#staleness-the-state-that-drives-incremental-formatting)),
+and a client's cached copy is stale when it no longer matches the backend's value; the subject
+disambiguates them, so one word serves both. Neither is the piece's **dirty** flag, which is a
+different relationship entirely — the piece against the file it was last saved to — and lives outside
+the piece in the Piece Manager ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §5).
 
 **Cache State Architecture**:
 Frontend maintains cache state for all visual elements to coordinate rendering and user interaction with the lazy data model.
 
 **State Management Approaches**:
 - **Present and clean**: Visual data exists locally and is current
-- **Missing or invalidated**: Visual element set to nil, :dirty, or removed entirely
+- **Missing or invalidated**: Visual element set to nil, :stale, or removed entirely
 - **Requesting**: Fresh data requested from backend, loading indicators active
 
 **Implementation Flexibility**:
-- **Dirty marking**: Can be implemented as boolean flags, nil values, or special :dirty markers
+- **Stale marking**: Can be implemented as boolean flags, nil values, or special :stale markers
 - **Cache removal**: Invalid visual representations can be discarded rather than marked
 - **Lazy population**: Visual hierarchy elements loaded and cached on-demand
 
 **Rendering Coordination**:
 - **Clean state rendering**: Use local shared API calls for immediate access to cached visual data
-- **Dirty state handling**: Visual placeholders while requesting fresh data via gRPC
+- **Stale state handling**: Visual placeholders while requesting fresh data via gRPC
 - **Requesting state feedback**: Loading indicators during backend computation and cache updates
-- **State-dependent optimization**: Only request fresh data via gRPC for visible dirty elements
+- **State-dependent optimization**: Only request fresh data via gRPC for visible stale elements
 
 **Local vs Network API Usage**:
 - **Clean cached data**: Use local shared API functions (e.g., `get-measure-view`) for instant access
-- **Dirty cached data**: Request fresh models via gRPC, then update local cache
+- **Stale cached data**: Request fresh models via gRPC, then update local cache
 - **Post-update access**: Return to local shared API functions for subsequent operations
 
 **User Interaction State Integration**:
 - **Interaction availability**: Elements only clickable in clean state
-- **Operation blocking**: User operations disabled during dirty/requesting states
+- **Operation blocking**: User operations disabled during stale/requesting states
 - **Visual feedback**: Clear indicators of element states for user awareness
 - **Graceful degradation**: Appropriate fallbacks when backend operations fail
 
 **Event-Driven Cache Management**:
-- **Invalidation processing**: Backend events invalidate relevant frontend cache elements (mark dirty, set nil, or remove)
+- **Invalidation processing**: Backend events invalidate relevant frontend cache elements (mark stale, set nil, or remove)
 - **Viewport-aware response**: Clients only request fresh data for invalidated elements **currently visible in viewport**
 - **Closed layout handling**: Elements in non-open layouts marked invalid for next time they're opened
 - **Open but non-visible handling**: Elements in open layouts but outside current viewport marked invalid, no immediate data request
@@ -268,7 +276,7 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 
 **Viewport State Requirements**:
 - **Visible element tracking**: Each viewport must know which visual elements are currently displayed
-- **Cache state coordination**: Viewport must track clean/dirty state of visible elements
+- **Cache state coordination**: Viewport must track clean/stale state of visible elements
 - **Pending request management**: Coordination of backend data requests with visibility
 - **Hierarchy navigation**: Efficient determination of viewport contents using VPD addressing
 
@@ -280,7 +288,7 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 
 **Lazy Scrolling Architecture**:
 - **Incremental loading**: Download visual hierarchy elements as they become visible
-- **Selective refresh**: Request fresh data only for dirty elements that become visible
+- **Selective refresh**: Request fresh data only for stale elements that become visible
 - **On-demand expansion**: Fetch additional visual elements when user scrolls into new regions
 - **Performance independence**: Scrolling performance decoupled from total score size
 - **Memory efficiency**: Maintain minimal working set of visible and nearby elements
@@ -351,12 +359,12 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 **Single-Client Operations**:
 1. User clicks note → Frontend resolves VPD → API call `(add-articulation note-vpd piece-id :staccato)`
 2. Backend updates musical data → Backend emits `{:type :piece-invalidation :measures [127]}` to that piece's subscribers
-3. Same client receives event → Marks measure 127 dirty → Requests fresh data when visible
+3. Same client receives event → Marks measure 127 stale → Requests fresh data when visible
 
 **Multi-Client Operations** (identical pattern):
 1. User A clicks note → Frontend resolves VPD → API call `(add-articulation note-vpd piece-id :staccato)`
 2. Backend updates musical data → Backend emits `{:type :piece-invalidation :measures [127]}` to **every client subscribed to that piece** — and to no other
-3. Users A, B, C receive same event → Each marks measure 127 dirty → Each requests fresh data when visible
+3. Users A, B, C receive same event → Each marks measure 127 stale → Each requests fresh data when visible
 
 **Key Insight**: Collaboration requires no special code - it's simply multiple clients receiving the same events and using the same lazy data retrieval patterns.
 
@@ -415,8 +423,8 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 5. **Lazy refresh**: Clients request fresh data only for affected elements that are currently visible
 
 **Viewport-Specific Response Patterns**:
-- **Visible affected elements**: Mark dirty, request fresh data immediately
-- **Non-visible affected elements**: Mark dirty, defer data request until visible
+- **Visible affected elements**: Mark stale, request fresh data immediately
+- **Non-visible affected elements**: Mark stale, defer data request until visible
 - **Non-relevant content**: No action required for elements outside client's layouts
 
 **Conflict Resolution Through Backend Authority**:
@@ -440,9 +448,9 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 **The Ooloi Challenge**: Operating across diverse frontend technologies (JavaFX, web browsers, mobile platforms), Ooloi cannot assume MVC infrastructure exists. Rather than requiring frontends to implement complex MVC patterns, Ooloi **internalizes coordination mechanisms**:
 
 - **Viewport Management**: Backend calculates viewport intersections using VPD-bounded timewalk
-- **Invalidation Logic**: Backend handles cascade analysis and dirty/clean state tracking  
+- **Invalidation Logic**: Backend handles cascade analysis and stale/clean state tracking  
 - **Event Coordination**: Event notification system eliminates complex frontend event management
-- **Cache Management**: Backend provides clean/dirty specifications any frontend can implement
+- **Cache Management**: Backend provides clean/stale specifications any frontend can implement
 
 ### Frontend Technology Flexibility
 
@@ -525,7 +533,7 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 ### Trade-offs and Risks
 
 1. **Two-Tier Complexity**: System has distinct performance modes requiring careful UI state management
-2. **Configurable Latency Floor**: Dirty data requests wait for raster pulse - cannot achieve sub-raster intervals
+2. **Configurable Latency Floor**: Stale data requests wait for raster pulse - cannot achieve sub-raster intervals
 3. **Network Dependency**: Frontend becomes non-functional if invalidation stream fails
 4. **Cache Invalidation Precision**: Must accurately identify all affected measures across layouts
 5. **Cold-Start Performance**: First-time layout opening requires computing everything from scratch
@@ -554,7 +562,7 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 **Progressive Navigation**:
 1. User scrolls to new page: frontend calls `(get-page-view layout 15)` **locally**
 2. If clean and cached: immediate rendering (0.1ms)
-3. If missing or dirty: gRPC fetch from backend, update local cache, then render
+3. If missing or stale: gRPC fetch from backend, update local cache, then render
 4. User continues scrolling: pattern repeats for newly visible elements
 5. Previously visited pages render instantly from local cache
 
@@ -575,7 +583,7 @@ Frontend maintains cache state for all visual elements to coordinate rendering a
 2. Backend modifies musical data, queues layout recalculation for next 100ms raster
 3. On 100ms raster: Backend recalculates affected MeasureView data
 4. Backend emits `{:type :piece-invalidation :piece-id "symphony" :measures [127]}` to that piece's subscribers
-5. All clients invalidate local measure 127 cache (set to nil, :dirty, or remove)
+5. All clients invalidate local measure 127 cache (set to nil, :stale, or remove)
 6. **Viewport-aware client responses**:
    - Client viewing pages 12-13 with measure 127 visible: request fresh data **via gRPC**, update local cache
    - Client with same layout open but viewing page 8: invalidate measure 127 cache, no immediate data request

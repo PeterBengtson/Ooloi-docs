@@ -331,9 +331,9 @@ sequenceDiagram
     B->>C1: Event: measures-invalidated [127]
     B->>C2: Event: measures-invalidated [127]
 
-    F->>F: Mark measure 127 cache dirty
-    C1->>C1: Mark measure 127 cache dirty
-    C2->>C2: Mark measure 127 cache dirty
+    F->>F: Mark measure 127 cache stale
+    C1->>C1: Mark measure 127 cache stale
+    C2->>C2: Mark measure 127 cache stale
 
     Note over U,C2: Phase 5: Lazy Visual Refresh (viewport-aware)
     alt Measure 127 visible in viewport
@@ -343,7 +343,7 @@ sequenceDiagram
         F->>F: Skija rendering: paintlist → pixels
         F->>U: Visual refresh (note appears)
     else Measure 127 not visible
-        F->>F: Keep cache dirty, defer until navigation
+        F->>F: Keep cache stale, defer until navigation
     end
 
     alt Client 1 viewing measure 127
@@ -353,7 +353,7 @@ sequenceDiagram
     end
 
     alt Client 2 not viewing measure 127
-        Note over C2: Cache stays dirty until user navigates there
+        Note over C2: Cache stays stale until user navigates there
     end
 ```
 
@@ -400,8 +400,8 @@ The rendering pipeline uses the shared Claypoole thread pool (see Issue #142), i
 ;; No halt-key! pool shutdown — the shared pool component manages its own lifecycle
 
 ;; Priority through task ordering within each batch
-(let [visible-measures (filter viewport-visible? dirty-measures)
-      background-measures (remove viewport-visible? dirty-measures)]
+(let [visible-measures (filter viewport-visible? stale-measures)
+      background-measures (remove viewport-visible? stale-measures)]
   (cp/pmap shared-pool format-measure
            (concat visible-measures background-measures)))
 ```
