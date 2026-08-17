@@ -881,7 +881,9 @@ GET /health/clients/{id}       # Individual client detailed metrics
 - **Stable URLs**: Endpoints never change, only representations evolve
 - **Backward Compatibility**: Add new metrics, never rename existing ones in Prometheus view
 
-**Content Differentiation**: JSON may include **ratios and totals derived from counters** (e.g., success rates, `bytes_sent = bytes_api_responses + bytes_events`, `clients_connected_current = clients_connected_total - clients_disconnected_total`); Prometheus exposes **raw counters only** for time-series analysis. If a denominator is 0, JSON ratios are `null`.
+**Content Differentiation**: JSON may include **ratios and totals derived from counters** (e.g., success rates, `bytes_sent = bytes_api_responses + bytes_events`, `clients_connected_current = clients_connected_total - clients_disconnected_total`); Prometheus exposes **raw counters and configuration gauges only** for time-series analysis. If a denominator is 0, JSON ratios are `null`.
+
+What Prometheus excludes is specifically the **derived** values, and the reason is that a rate computed by the time-series database over a window is a stronger quantity than an instantaneous, process-lifetime cumulative ratio — every counter such a ratio is derived from is emitted, so nothing is lost by declining to precompute it. A **configuration gauge** is neither derived nor cumulative: it is a policy value an operator set, it can move in either direction between restarts, and a rule that must compare a rate against it has no other way to read it. `ooloi_server_cache_daemon_interval_seconds` is the case in point — the alert worth writing about the hash-consing daemon is that its sweeps have stopped keeping up with their own interval, and a rule hardcoding the default goes silently wrong the moment the interval is configured ([ADR-0029](0029-Global-Hash-Consing.md) §Background Cache Optimization Daemon). Such a gauge has metadata but no `LongAdder` behind it; the completeness check requires metadata for every counter, never the converse.
 
 ##### What a derived value reports when it cannot report anything true
 
