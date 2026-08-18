@@ -532,6 +532,10 @@ Non-English catalogues are gated on **structure but not on completeness**:
 
 This preserves forward compatibility: an old `sv.po` continues to work when new UI strings are added in a release. Partial translations degrade gracefully rather than failing. A partial translation is a legitimate state; a structurally broken one is not.
 
+**No check compares key sets across catalogues, and none should.** [Canonical Completeness](#canonical-completeness-hard-gate) gates `en_GB.po`, the source language; the plural checks scan every catalogue for structure. Between them, a key present in English and absent from the other twenty-one satisfies everything the build has, in both modes. That gap **is** the soft gate rather than a hole in it. A parity check would turn a partial translation into a build failure and remove the forward compatibility above, and asserting the same property in a test rather than in the verification task is no better — it enforces the policy somewhere nobody has written it down. Completeness across the non-English catalogues is process discipline, deliberately not enforcement.
+
+Coverage is a report rather than a gate. `calculate-coverage` computes a locale's percentage against `en_GB.po`. It is a library function and the verification task does not call it: a coverage figure informs a translation effort rather than deciding a build.
+
 ### What Verification Cannot See
 
 Verification works by extracting `tr` keys from source and comparing them against the catalogues. Everything it can check follows from a key existing. **A string that never became a key is therefore invisible to it**, and that is precisely the shape of the worst violation of this architecture:
