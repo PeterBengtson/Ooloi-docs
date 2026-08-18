@@ -1276,6 +1276,26 @@ lifecycle. They describe the architectural contract, not implementation detail.
    success branch publishes; a failed switch stays on the previous backend, whose
    cache is still valid.
 
+5. **A dispatch's response is authoritative; the cache is updated from it, never from
+   the notification that follows.** `SRV/undo-resource` and `SRV/redo-resource` return
+   the resource's new `:undo-timestamp` and `:redo-timestamp`. The dispatcher records
+   them on the cache entry and fires the on-change callback, on the pool thread, as part
+   of the same call. The `:undo-state-changed` notification the same operation provokes
+   is not a substitute for this. It travels a longer path — notifier agent, gRPC stream,
+   event router, event bus — so a client that waited for it would be racing its own
+   gesture for the right to know what that gesture did, and a cold JVM loses that race,
+   showing an unlabelled Redo that appears to do nothing. For a per-subscription
+   resource the notification is not merely late but absent: a piece with no window open
+   has no subscriber, so nothing is delivered at all and the acting client's cache would
+   never learn the outcome. The notification is how *other* clients learn of this
+   gesture, and how this client learns of *theirs*; it is not how a client learns the
+   result of a call it made itself.
+
+   A response reporting nothing to do carries no timestamps, and recording it is right
+   for that case too — it says neither side has anything, which is exactly what a cache
+   that has drifted ahead of the backend needs to hear. So the update is unconditional:
+   no success test stands between the response and the cache.
+
 #### Routing Layer — Reference Implementation
 
 The Tier 2 reference implementation shown earlier captures the local-only path. The
@@ -1374,18 +1394,37 @@ code shows one realisation of those requirements.
 
 (defn dispatch-undo!
   "Route Cmd+Z. Local: call undo! synchronously. Backend: dispatch SRV/undo-resource
-   on the shared Claypoole pool (Frontend Wiring Invariant 3 — no clojure.core/future)."
+   on the shared Claypoole pool (Frontend Wiring Invariant 3 — no clojure.core/future).
+   The response is authoritative and updates the cache immediately (Invariant 5)."
   [pool]
   (let [src (winning-undo-source)]
     (cond
-      (= :local src)                                  (undo!)
-      (and (vector? src) (= :backend (first src)))    (cp/future pool (SRV/undo-resource (second src))))))
+      (= :local src)
+      (undo!)
+
+      (and (vector? src) (= :backend (first src)))
+      (let [rk (second src)]
+        (cp/future pool
+          (let [response (SRV/undo-resource rk)]
+            (record-backend-state! {:resource-key   rk
+                                    :undo-timestamp (:undo-timestamp response)
+                                    :redo-timestamp (:redo-timestamp response)})
+            (notify-change!)))))))
 
 (defn dispatch-redo! [pool]
   (let [src (winning-redo-source)]
     (cond
-      (= :local src)                                  (redo!)
-      (and (vector? src) (= :backend (first src)))    (cp/future pool (SRV/redo-resource (second src))))))
+      (= :local src)
+      (redo!)
+
+      (and (vector? src) (= :backend (first src)))
+      (let [rk (second src)]
+        (cp/future pool
+          (let [response (SRV/redo-resource rk)]
+            (record-backend-state! {:resource-key   rk
+                                    :undo-timestamp (:undo-timestamp response)
+                                    :redo-timestamp (:redo-timestamp response)})
+            (notify-change!)))))))
 
 (defn ensure-fresh-description!
   "For each distinct backend resource-key behind the winning undo AND redo
