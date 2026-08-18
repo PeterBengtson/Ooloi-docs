@@ -570,6 +570,17 @@ diff-derived key (as the IL uses) remains available as an override wherever a ri
 description is wanted. `(tr undo-key undo-params)` produces the user-facing menu string; the
 undo manager stores the key and params alongside the closures but never interprets them.
 
+**A derived key needs a catalogue entry, and the build cannot find it on its own.** The key is
+constructed at the boundary from the method name, so it is a variable at the `tr` call site and
+invisible to the extraction scanner ([ADR-0039](0039-Localisation-Architecture.md) §Two Extraction
+Mechanisms); an operation whose key is missing renders the conspicuous `[MISSING: undo.set-title]`
+placeholder instead of a label. The keys are therefore declared, as one literal `tr-declare` map, in
+`ooloi.shared.models.core` — the namespace where the operation set is itself defined and partitioned
+by `:vpd-category`, which makes it the one place all of them are visible together and the file an
+author of a new mutating multimethod is already editing. A test derives the mutating `^:api`
+operations exactly as the boundary does and asserts that every key resolves, so an operation added
+without a label fails by name rather than reaching a user.
+
 In both cases, `before` and `after` are immutable Clojure values captured by the closure.
 They share structure via persistent data structures. The undo manager never inspects them,
 never serialises them, never knows what they contain. It calls the closure; the closure
