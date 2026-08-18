@@ -158,6 +158,18 @@ playback — records no step; and one that *creates* a piece rather than editing
 records none either, an imported score being a document arriving, closed rather than undone,
 exactly as with New and Open.
 
+**A plugin's entries are labelled without its participation, and a key it invents is its own to
+translate.** The capture boundary derives a label from the operation it invoked — `:undo.<op>`,
+declared and translated for every operation the API exposes — so a frontend plugin's lone call
+reads as a named step in the reader's own language with nothing done on its part, and a batch sent
+without a name takes the generic `:undo.atomic`. A plugin that supplies its own `:undo-key` on an
+`SRV/atomic` batch, which is the right thing to do because a batch is one gesture and deserves one
+name, thereby leaves the set of keys Ooloi declares. Nothing resolves that key on the plugin's
+behalf: `tr` renders the conspicuous `[MISSING: …]` placeholder for a key with no entry
+([ADR-0039](0039-Localisation-Architecture.md) §Forward Compatibility), so the plugin ships the key
+in its own catalogues, in each language it supports, as it would any other user-facing string. The
+same applies to the description key a backend plugin hands to `push-undo!`.
+
 ### Hot Plugin Installation Architecture (Enabled by Unified gRPC)
 
 **Zero-Downtime Plugin System**: Ooloi's unified Clojure-aware gRPC architecture enables hot plugin installation capabilities:
