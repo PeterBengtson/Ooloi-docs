@@ -150,18 +150,23 @@ This is achieved through a **three-project structure**: `backend/`, `frontend/`,
 - **Production Ready**: Exit codes, health monitoring, and graceful shutdown capabilities
 
 ### 3. Build Configuration
+
+Each project declares the same gRPC and Protocol Buffers dependencies and generates its own Java stubs from the shared `.proto` definitions. The versions live in each project's `project.clj` and are kept identical across all three, so that a single wire contract is compiled the same way everywhere. The `protoc` compiler and the `protoc-gen-grpc-java` plugin are pinned to match the runtimes they generate against.
+
 ```clojure
 ;; Each project includes gRPC dependencies:
-[io.grpc/grpc-netty "1.60.0"]
-[io.grpc/grpc-protobuf "1.60.0"] 
-[io.grpc/grpc-stub "1.60.0"]
-[com.google.protobuf/protobuf-java "3.25.1"]
-[integrant "0.13.0"]
+[io.grpc/grpc-netty …]
+[io.grpc/grpc-protobuf …]
+[io.grpc/grpc-stub …]
+[com.google.protobuf/protobuf-java …]
+[integrant …]
 
 ;; Each project generates Java classes from shared .proto files:
-:protoc {:proto-paths ["../shared/src/main/proto"]  ; or ["src/main/proto"] for shared
-         :output-path "target/generated-sources/grpc"
-         :java-options {:language "java"}}
+:proto-source-paths ["../shared/src/main/proto"]  ; or ["src/main/proto"] for shared
+:proto-target-path "target/generated-sources/protobuf"
+:java-source-paths ["target/generated-sources/protobuf"]
+:protoc-grpc {:version …}                         ; matches the io.grpc dependencies
+:protoc-version …                                 ; matches protobuf-java
 ```
 
 ### 4. Deployment Models
