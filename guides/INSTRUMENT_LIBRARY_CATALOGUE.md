@@ -282,7 +282,7 @@ and bass clef therefore yield different transposition intervals for the same ins
 
 | Instrument | Clef(s) | Notes |
 |---|---|---|
-| Timpani | bass | Standard orchestral timpani; single staff |
+| Timpani | bass | Standard orchestral timpani; single stave |
 | Timpano piccolo | bass | Small timpani; higher pitch range |
 
 ### Pitched Percussion
@@ -421,7 +421,7 @@ Instruments outside standard orchestral, chamber music, and marching band practi
 |---|---|---|---|
 | Zither | 2 | — | Austrian/Bavarian; melody + accompaniment staves |
 | Cimbalom | 2 | — | Hungarian hammered dulcimer; concert pitch |
-| Koto | 2 | — | Japanese 13-string zither; grand staff |
+| Koto | 2 | — | Japanese 13-string zither; great stave |
 | Kora | 1 | — | West African 21-string harp-lute |
 | Shamisen | 1 | — | Japanese 3-string lute |
 | Sitar | 1 | — | Indian; with sympathetic strings |
@@ -442,10 +442,10 @@ Instruments outside standard orchestral, chamber music, and marching band practi
 
 ## Electronics
 
-| Instrument | Staff lines | Notes |
+| Instrument | Stave lines | Notes |
 |---|---|---|
-| Electronics | 0 | Electroacoustic; no staff lines |
-| Tape | 0 | Fixed-media playback; no staff lines |
+| Electronics | 0 | Electroacoustic; no stave lines |
+| Tape | 0 | Fixed-media playback; no stave lines |
 
 ---
 
@@ -462,7 +462,7 @@ Instruments outside standard orchestral, chamber music, and marching band practi
 | Celesta | 2 | Two octaves above written | |
 | Harmonium | 1–2 | — | Reed organ |
 | Accordion | 2 | — | |
-| Bandoneon | 2 | — | Bisonoric; Argentine tango; grand staff |
+| Bandoneon | 2 | — | Bisonoric; Argentine tango; great stave |
 | Concertina (English) | 1 | — | Unisonoric; same note in/out |
 | Concertina (Anglo) | 1 | — | Bisonoric; different notes in/out |
 | Melodica | 1 | — | Blow organ / pianica |
@@ -508,12 +508,12 @@ Instruments outside standard orchestral, chamber music, and marching band practi
 
 Each choir below is a single instrument entry comprising multiple staves — a choir is a group
 of singers on a unified set of staves, exactly as a string section is a group of players on a
-single staff.
+single stave.
 
 | Instrument | Staves | Notes |
 |---|---|---|
 | SATB Choir | 4 | Standard mixed chorus |
-| SATB Choir (grand staff) | 2 | SA on treble staff, TB on bass staff |
+| SATB Choir (great stave) | 2 | SA on treble stave, TB on bass stave |
 | SAB Choir | 3 | Three-part mixed chorus |
 | SSAATTBB Choir | 8 | Eight-part single chorus (2S, 2A, 2T, 2B) |
 | SA Choir | 2 | Women's or children's two-part |

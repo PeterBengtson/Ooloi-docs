@@ -384,6 +384,15 @@ becoming cluttered with four copies of every instrument.
 | `:fr` | French | Standard for French repertoire and French publisher editions |
 | `:en` | English | British/American repertoire; increasingly common in contemporary scores |
 
+**`:en` is a single edition, and it is UK English.** There is no `en-GB`/`en-US` split: an
+instrument carries one English copy, and its wording follows Ooloi's canonical source language
+([ADR-0039 §Source Language Scope](0039-Localisation-Architecture.md#source-language-scope-strings-not-identifiers)).
+So a bundled name reads "SATB Choir (Great Stave)", not "(Grand Staff)". These names are **data
+read by users**, which puts them on the string side of that boundary — unlike the `Staff` record
+they instantiate, whose name follows the interoperability vocabulary instead. The distinction is
+worth holding because nothing enforces it: instrument names are plain strings in EDN, so they
+never reach a catalogue and no build check or translation guard sees them.
+
 These four cover the entire range of internationally circulated orchestral scores. Other languages
 (Dutch, Swedish, Czech, Russian, Spanish, etc.) are outside the bundled set. Users may add entries
 in any language by editing their library; the `:language` keyword accepts any keyword value, not

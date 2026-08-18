@@ -10,6 +10,7 @@ Implemented
   - [Current State](#current-state)
 - [Decision](#decision)
   - [Frontend-Only Localisation](#frontend-only-localisation)
+  - [Source Language Scope: Strings, Not Identifiers](#source-language-scope-strings-not-identifiers)
   - [Single Translation API](#single-translation-api)
   - [PO Files as Translator Interface](#po-files-as-translator-interface)
   - [Distribution Model](#distribution-model)
@@ -86,6 +87,40 @@ This preserves:
 - **Protocol stability**: Backend contracts don't change with UI language
 - **Collaboration correctness**: All clients see semantically identical data
 - **Separation of concerns**: Presentation logic stays in the presentation layer
+
+### Source Language Scope: Strings, Not Identifiers
+
+The canonical source language is UK English (see [Distribution Model](#distribution-model)), and
+its authority runs over **resolved strings** — the text a user reads, declared in `tr-declare`
+and carried by the catalogues. It does not extend to source code identifiers: record names, API
+function names, keywords and namespaces follow the vocabulary of the formats and systems Ooloi
+interoperates with.
+
+The two vocabularies may therefore differ on the same object, and where they do the difference is
+deliberate. A stave is the clearest case: every catalogue calls it a *stave*, `en_US` calls it a
+*staff*, and the model record is `Staff` carrying an `add-staff` operation on the API.
+
+**Identifiers are an interface, not prose.** Ooloi resolves API methods by name at runtime rather
+than generating a schema ([ADR-0018](0018-API-gRPC-Interface-and-Events.md)), so a function name
+is a literal that a caller in any JVM language writes out, and plugins register into that same
+namespace ([ADR-0003](0003-Plugins.md)). Those callers arrive from a field whose terminology is
+predominantly American: MusicXML's element is `<staff>`, SMuFL's glyphs are `staff5Lines` and
+`staffLineThickness`, and both are vocabularies Ooloi already consumes verbatim. An identifier
+anglicised against them would oblige every plugin author and every format bridge to translate it
+back, permanently.
+
+Nothing is lost at the user's end, because the localisation layer is the mechanism for choosing
+the word. *Stave* and *staff* are one concept in two dialects, and the dialect is resolved per
+locale exactly as every other word's is. Renaming the identifier would move that choice out of
+the layer built to make it.
+
+The same boundary governs spelling. Code keeps the spelling of what it calls —
+`-fx-background-color`, `-color-fg-default`, `javafx.scene.control.Dialog` — rather than being
+anglicised into names that no longer match their targets.
+
+**Data is not an identifier.** English text stored as data rather than as a name — the bundled
+instrument names of [ADR-0045 §Instrument Names and Language](0045-Instrument-Library.md#instrument-names-and-language)
+— is read by users, so it follows the source language.
 
 ### Single Translation API
 
@@ -842,6 +877,9 @@ This ADR addresses **string translation only**. Related concerns handled separat
 ## Related ADRs
 
 - [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - Uses translation keys for all UI strings as specified in this ADR
+- [ADR-0018: API, gRPC Interface and Events](0018-API-gRPC-Interface-and-Events.md) - Runtime name resolution makes API function names an interoperability surface, which is why [Source Language Scope](#source-language-scope-strings-not-identifiers) stops at the string layer
+- [ADR-0003: Plugins](0003-Plugins.md) - Plugins in any JVM language address the API by name
+- [ADR-0045: Instrument Library](0045-Instrument-Library.md) - Bundled instrument names are data read by users, so they follow the source language
 
 ## References
 

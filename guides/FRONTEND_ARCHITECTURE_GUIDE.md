@@ -1473,6 +1473,8 @@ This keeps the model conceptually clean:
 
 Because the canonical wording lives alongside the code (via `tr-declare`), the source language remains visible during development rather than being buried in translation files.
 
+That authority stops at the strings. Record names, API function names and keywords follow the vocabulary of the formats Ooloi interoperates with, which is why the catalogues say *stave* while the model record is `Staff`. [ADR-0039 §Source Language Scope](../ADRs/0039-Localisation-Architecture.md#source-language-scope-strings-not-identifiers) carries the boundary and the reasoning.
+
 ### 9.7 Practical Guidance
 
 A few habits make localisation frictionless:
