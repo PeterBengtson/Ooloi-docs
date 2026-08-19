@@ -287,18 +287,20 @@ Locale loading and selection are separate:
 (set-locale! (platform/get-os-locale)) ; Auto-select based on OS
 ```
 
-**Locale switching:** Switching locales is instant (all catalogs pre-loaded). UI updates are driven by the UI Manager: on a locale change it calls `tr/set-locale!` synchronously (switching the active catalog), then posts `(fx/run-later! ...)` to the JavaFX Application Thread to call `(swap! *state identity)` on every registered renderer atom. The renderer re-evaluates its spec function — which calls `tr` for every visible string — producing updated labels in the new locale. Windows register their private state atoms via `ui-manager/register-renderer!` in their `:window-opened` lifecycle handler and do not subscribe to locale changes directly.
+**Locale switching:** Switching locales is instant (all catalogs pre-loaded). UI updates are driven by the UI Manager. Windows register their private state atoms via `ui-manager/register-renderer!` in their `:window-opened` lifecycle handler and do not subscribe to locale changes directly — a window declares what it is, and the UI Manager iterates the registry generically.
 
-**Locale change cascade (in sequence):**
+**Locale change cascade.** The UI Manager's `:app-settings` subscription receives `:setting-changed {:key :ui/locale}`, calls `tr/set-locale!` synchronously on the event-bus thread — switching the active catalog, so that all subsequent `tr` calls return new-locale text — and then posts a single `fx/run-later!` to the JavaFX Application Thread. That one runnable does two things, in order:
 
-1. User changes locale via the Settings window.
-2. UI Manager receives `:setting-changed {:key :ui/locale}`.
-3. `tr/set-locale!` is called — the active catalog is switched. All subsequent `tr` calls return new-locale text.
-4. Menu bar item texts are refreshed via `refresh-dynamic-items!`, using `::menu-name-key` and `::static-text-key` properties stored on JavaFX menu nodes at construction time.
-5. macOS application menu items (About, Preferences, Quit) are refreshed if running on macOS.
-6. `(fx/run-later! (fn [] (swap! *state identity)))` is posted for every registered renderer atom.
-7. Each renderer re-evaluates its spec function, calling `tr` per visible string. cljfx diffs and patches only changed nodes.
-8. Stage titles stored as `:window/title-key` in the window registry are refreshed via `(tr title-key)`.
+1. **Menu text.** `refresh-dynamic-items!` re-resolves every menu bar from the `::menu-name-key` and `::static-text-key` properties stored on the JavaFX menu nodes at construction time — the macOS global bar, and on Windows and Linux each piece window's own bar. The macOS application menu's About, Settings and Quit items are re-resolved alongside them.
+
+2. **One pass over the window registry.** For each registered window, in order:
+   - **Title** — when the registry entry holds a `:title-key`, the Stage title is recomposed through `tr`, with any title decorators re-prepended. An entry whose `:title-key` has been cleared — a window titled from data, such as a piece window showing a piece's name — is deliberately left alone.
+   - **Content** — `(swap! *state identity)` causes the window's cljfx renderer to re-evaluate its spec function. The `swap!` changes nothing in the atom; the re-evaluation is the point. Every `tr` call inside the spec runs again, and cljfx diffs the result against the current scene graph and patches only the nodes that changed.
+   - **Re-fit** — a non-resizable window is sized to its content, so it is then `sizeToScene`d. Translated strings differ in length, and a stage still sized for the previous locale would clip the taller or wider content and ellipsise its labels. The re-fit is deferred a pulse so the re-render lands first; a resizable window keeps whatever size the user chose.
+
+Title, content and re-fit are one pass rather than three, so a surface added to the cascade is added in one place.
+
+Content nested inside custom component functions requires an additional mechanism — cljfx skips re-invoking a component whose props are unchanged, and a `:text-key` keyword does not change with the locale. See the `:locale` cache-buster in [ADR-0042](0042-UI-Specification-Format.md) and its usage guidance in the Frontend Architecture Guide.
 
 **Renderer spec is the locale-reactivity boundary.** Only content the renderer re-evaluates on `swap!` gets updated. Content built by one-time `cljfx/create-component` + `cljfx/instance` at window creation time without a mounted renderer is constructed once and never revisited. See [ADR-0042](0042-UI-Specification-Format.md) for the invariant.
 

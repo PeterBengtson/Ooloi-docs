@@ -30,6 +30,7 @@
 7. [Rendering Pipeline](#7-rendering-pipeline)
 8. [Fetch Coordination and Viewport Logic](#8-fetch-coordination-and-viewport-logic)
 9. [Localisation Architecture](#9-localisation-architecture)
+   - [9.8 Locale Reactivity and the Renderer Boundary](#98-locale-reactivity-and-the-renderer-boundary)
 10. [Settings System](#10-settings-system)
 11. [Collaboration and Transport Switching](#11-collaboration-and-transport-switching)
 12. [Testing Model](#12-testing-model)
@@ -1487,20 +1488,19 @@ Once you work this way for a little while, it becomes natural. The benefit is th
 
 ### 9.8 Locale Reactivity and the Renderer Boundary
 
-When the locale changes, `tr` immediately returns strings from the new catalog. The UI does not update itself automatically — something must cause each renderer to re-evaluate its spec function.
+When the locale changes, `tr` immediately returns strings from the new catalog. The UI does not update itself automatically — something must drive every surface already on screen to re-resolve its strings.
 
-The UI Manager is that something. When it receives a `:setting-changed` event for `:ui/locale`, it calls `tr/set-locale!` synchronously on the event bus thread, then posts `(fx/run-later! ...)` to the JavaFX Application Thread to call `(swap! *state identity)` on every renderer atom held in the window registry. The `swap! identity` changes nothing in the atom — it triggers the renderer to re-evaluate the spec function with the same state. The spec function calls `tr` for every visible string; those calls now return the new locale's text. cljfx diffs the new spec against the current scene graph and patches only what changed.
+The UI Manager is that something. Its `:app-settings` subscription switches the active catalog, then refreshes the menus and makes a single pass over the window registry, re-resolving each window's title, re-rendering its content, and re-fitting it when its size is content-driven. [ADR-0039 §Runtime Loading and Caching](../ADRs/0039-Localisation-Architecture.md) specifies that cascade in full; what follows is what it means for the code you write.
 
-**The locale change cascade in sequence:**
+The mechanism that carries it is the renderer. `(swap! *state identity)` changes nothing in the atom — it makes the renderer re-evaluate the spec function with the same state. The spec calls `tr` for every visible string; those calls now return the new locale's text, and cljfx patches only what changed. Everything below follows from that one fact.
 
-1. User changes locale in the Settings window.
-2. UI Manager receives `:setting-changed {:key :ui/locale}`.
-3. `tr/set-locale!` is called — the active catalog is switched.
-4. Menu bar item texts are refreshed via `refresh-dynamic-items!`, using `::menu-name-key` and `::static-text-key` properties stored on JavaFX menu nodes.
-5. macOS application menu items are refreshed if running on macOS.
-6. `(fx/run-later! (fn [] (swap! *state identity)))` is posted for every registered renderer atom.
-7. Each renderer re-evaluates, calling `tr` per visible string. cljfx patches only changed labels.
-8. Stage titles are refreshed from `:window/title-key` stored in the window registry.
+**What a locale change deliberately leaves alone.** Each of these looks like an omission and is not:
+
+- **A window titled from data** — a piece window showing a piece's name. The name is user data, set verbatim, and the registry entry's `:title-key` is cleared, so the title step skips it: "Sonata" stays "Sonata" in every locale. Only the "Untitled" fallback is a UI string, and that one is re-resolved.
+- **A window built by one-time materialisation** — the confirmation dialog and the splash screen, per the boundary rule below. Neither has a renderer to re-evaluate, and neither wants one.
+- **A window with no translated text at all** — the collaboration palette is a chrome-less indicator carrying no `tr` call.
+- **Notifications** — the text is computed at the moment of the event, so no key survives to re-resolve, and a notification is transient.
+- **The macOS application menu's own name** — the product name, which is not translated.
 
 **The renderer spec is the locale-reactivity boundary.** Only content the renderer re-evaluates on `swap!` gets updated. Content built by one-time `cljfx/create-component` + `cljfx/instance` at window creation time — without `cljfx/mount-renderer` watching it — is constructed once and never revisited. This is the correct choice for truly static content (confirmation dialogs, the splash screen). For any window with locale-sensitive strings, all visible content must be returned by the spec function that the renderer's `:middleware` evaluates. Button labels, section headings, and field prompts built outside the renderer spec will silently display the locale active at window-open time and will not respond to locale changes.
 
@@ -1508,7 +1508,9 @@ The UI Manager is that something. When it receives a `:setting-changed` event fo
 
 The solution is to pass `@tr/current-locale` as a `:locale` prop through the formatter chain. When the locale changes, cljfx sees a different `:locale` value, re-invokes the component function, and the `tr` calls inside produce updated strings. Each component `dissoc`s `:locale` from its output and passes it to child custom components that also call `tr`. See the component table in Section 4.4 for which components accept `:locale`.
 
-**Choosing `:text-key` + `:locale` vs `:raw-text` — a three-way decision driven by what the string *is*:** (1) **Static keyed label** → pass `:text-key`, resolved internally, with `:locale @tr/current-locale` as the cache-buster — the standard for both leaf atomics (`ooloi-checkbox`) and composites; #195 migrates the rest onto it. (2) **Static keyed label, legacy leaf** (`ooloi-button`, `ooloi-label`) → still accept `:raw-text (tr :key)`; coexists pending #195. (3) **Dynamic / parameterised / runtime string** — `(tr :k {:n n})`, a `host:port`, a piece name, a notification/confirmation message → **must** use `:raw-text`; `:locale` only re-resolves a *static* keyword key and cannot carry a computed string, so `:raw-text` is **not vestigial** (notifications, confirmation dialogs, tests, one-shot materialisation). In short: `:locale` for keyed labels, `:raw-text` for strings that aren't keys.
+**Choosing `:text-key` + `:locale` vs `:raw-text` — a three-way decision driven by what the string *is*:** (1) **Static keyed label** → pass `:text-key`, resolved inside the formatter, with `:locale @tr/current-locale` as the cache-buster. This is the standard, for leaf atomics (`ooloi-checkbox`) and composites alike. (2) **Static keyed label, legacy leaf** (`ooloi-button`, `ooloi-label`) → accepts `:raw-text (tr :key)`, resolved by the caller. This coexists with the standard and is being migrated onto it. (3) **Dynamic, parameterised or runtime string** — `(tr :k {:n n})`, a `host:port`, a piece name, a notification or confirmation message → **must** use `:raw-text`. `:locale` re-resolves a *static keyword key* and cannot carry a computed string, so `:raw-text` is **structurally required, not vestigial**. In short: `:locale` for keyed labels, `:raw-text` for strings that are not keys.
+
+**A caller-resolved string is reactive; a formatter-resolved one needs the cache-buster.** The distinction that decides which arm applies is *where `tr` runs*. A spec function that writes `:raw-text (tr :some.key)` resolves the string itself, so a re-render produces a different string, cljfx sees a changed prop, and the label updates — arm 2 is reactive without `:locale`. A spec function that writes `:text-key :some.key` hands an unchanged keyword to a formatter that resolves it internally; if the formatter's other props are unchanged too, cljfx skips re-invoking it and the label keeps the previous locale's text. That is precisely what `:locale` exists to prevent, and it is why the arm a call site sits in is a property of the call site rather than of the formatter alone.
 
 ---
 
@@ -1924,7 +1926,7 @@ The `with-ui-manager` macro wires the event bus (required for `set-app-setting!`
 
 **`Node.focusedProperty` is drivable in tests only under Robot.** In test processes initialised via `Platform/startup`, the OS grants focus to no Stage by default — so `requestFocus()` has no effect, `focusedProperty` never changes, and its ChangeListeners never fire. That is because focus is never *granted*, not because the listeners are inert: a `javafx.scene.robot.Robot` click on a **shown** Stage grants real OS focus, and the listeners fire normally (this is how `:active-window-id` and `active-piece-id` are tested). The `ooloi-dense-text-field` `:on-commit` callback fires on both Enter and focus loss; to verify a focus-loss commit *without* Robot, call the listener's target function directly rather than expecting `requestFocus()` to simulate focus transfer.
 
-**The one exception is `javafx.scene.robot.Robot`.** A Robot click on a *shown* Stage generates real toolkit input and grants genuine OS focus — the only mechanism that does. Focus-driven behaviour is therefore tested with Robot, not `requestFocus`. The canonical case is `active-piece-id` (in `ui.core.active-window`), which resolves the piece the foremost window belongs to (a piece window's `:window/id` is its piece-id; a layout window's `:window/piece-id` names its parent piece, #241), returning `nil` when no piece-derivable window is foremost — the query the File-menu piece actions (Save / Save As / Close) and Close enablement target. It reads the `:active-window-id` atom, which the per-Stage `focused-listener` updates on real focus; `active_window_test` shows a real piece window and a real non-piece window, `robot-click!`s each with the shared `util.robot` helpers, and asserts `active-piece-id` follows focus.
+**The one exception is `javafx.scene.robot.Robot`.** A Robot click on a *shown* Stage generates real toolkit input and grants genuine OS focus — the only mechanism that does. Focus-driven behaviour is therefore tested with Robot, not `requestFocus`. The canonical case is `active-piece-id` (in `ui.core.active-window`), which resolves the piece the foremost window belongs to (a piece window's `:window/id` is its piece-id; a layout window's `:window/piece-id` names its parent piece), returning `nil` when no piece-derivable window is foremost — the query the File-menu piece actions (Save / Save As / Close) and Close enablement target. It reads the `:active-window-id` atom, which the per-Stage `focused-listener` updates on real focus; `active_window_test` shows a real piece window and a real non-piece window, `robot-click!`s each with the shared `util.robot` helpers, and asserts `active-piece-id` follows focus.
 
 **Shutdown race — JAT flush before pool halt.** `run-later!` callbacks queued during `show-window!` or `attach-notification-widget!` may still be pending on the JAT when the pool is halted, causing `RejectedExecutionException`. Drain the JAT queue with a no-op `run-on-fx-thread-sync!` before halting the pool. `with-ui-manager` performs this automatically. Never write manual pool/bus/manager boilerplate in tests.
 
