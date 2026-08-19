@@ -565,38 +565,39 @@ The answer is a library of **custom cljfx component functions** in `ooloi.fronte
 cljfx supports functions as `:fx/type` values. Each Ooloi custom component function receives an enriched props map containing Ooloi-specific keys such as `:text-key` that are not part of cljfx's standard vocabulary. It strips those keys, resolves them to standard cljfx values — calling `tr` for text keys — passes all other props through unchanged, and returns a standard cljfx description map.
 
 ```clojure
-;; The function is a pure map → map transformation
-(defn ooloi-button [{:keys [text-key] :as props}]
-  (-> (dissoc props :text-key)
+;; The function is a pure map → map transformation, and the guard is its first act
+(defn ooloi-button [{:keys [text-key raw-text] :as props}]
+  (assert-locale-discipline! "ooloi-button" props)
+  (-> (dissoc props :text-key :raw-text :locale)
       (assoc :fx/type :button
-             :text    (tr text-key)
+             :text    (or raw-text (tr text-key))
              :min-width 90.0)))
 
-;; Non-reactive: :text-key resolved at materialisation (for gRPC plugins, static content)
+;; A keyed label — the standard, and the only way to spell one
 {:fx/type ooloi-button
- :text-key :common.save}
-
-;; Reactive (leaf): :raw-text (tr key) resolved at spec-construction time
-{:fx/type ooloi-button
- :raw-text (tr :piece-window.piece-settings-button)
+ :text-key :common.save
+ :locale   @tr/current-locale
  :on-action {:ooloi/event :ui/show-piece-settings}}
 
-;; Reactive (nested): :locale cache-buster for components that call tr internally
-;; — cljfx skips re-invoking functions with identical keyword props; passing
-;;   @tr/current-locale as :locale forces re-invocation on locale change
+;; A string that is not a key — user data, a runtime value, a composed message.
+;; No locale is passed, because none could re-resolve it.
+{:fx/type ooloi-label
+ :raw-text (str host ":" port)}
+
+;; The locale travels down a composite to the children that resolve keys
 {:fx/type ooloi-transposition-controls
  :tokens  [:up :major :second]
  :locale  @tr/current-locale}
 ```
 
-Resolution happens at render time on the frontend, where the locale is known. The spec author — whether frontend code or a backend plugin — writes `:text-key :some.key`. The infrastructure calls `tr` at materialisation.
+**Write a key and a locale, or a finished string and no locale.** That is the whole of the decision, and the formatter enforces it — see §9.8 for why each half exists, and [ADR-0042](../ADRs/0042-UI-Specification-Format.md) for the specification.
 
-**Why this matters architecturally.** This is the mechanism that makes the plugin claim in Section 1 concrete. A backend plugin can include `{:fx/type 'ooloi.frontend.ui.core.cljfx/ooloi-button :text-key :common.save}` in a cljfx spec sent over gRPC. The symbol resolves on the frontend; `tr` runs on the frontend. The plugin itself never imports JavaFX or i18n infrastructure.
+**Why this matters architecturally.** This is the mechanism that makes the plugin claim in Section 1 concrete. A backend plugin can include `{:fx/type 'ooloi.frontend.ui.core.cljfx/ooloi-button :text-key :common.save}` in a cljfx spec sent over gRPC. The symbol resolves on the frontend; `tr` runs on the frontend. The plugin itself never imports JavaFX or i18n infrastructure — and cannot supply `:locale`, which is frontend state the backend has no access to by construction. The frontend injects it when it materialises a plugin-supplied spec, adding it wherever a `:text-key` appears without a `:raw-text`.
 
 **Custom components are pure and testable.** Because they are ordinary functions from maps to maps, they can be evaluated and inspected without launching JavaFX:
 
 ```clojure
-(ooloi-button {:text-key :button.ok})
+(ooloi-button {:text-key :button.ok :locale :en-GB})
 ;; => {:fx/type :button :text "OK" :min-width 90.0}
 ```
 
@@ -604,11 +605,11 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 
 | Component | Ooloi keys | Output |
 |-----------|-----------|--------|
-| `ooloi-button` | `:text-key` | `:button` with min-width 90px |
-| `ooloi-ok-button` | `:text-key` (default `:button.ok`) | `:button` with `:default-button true` |
-| `ooloi-cancel-button` | `:text-key` (default `:button.cancel`) | `:button` with `:cancel-button true` |
-| `ooloi-label` | `:text-key` | `:label` |
-| `ooloi-checkbox` | `:text-key`, `:locale` (cache-buster) | `:check-box`; the one-method boolean control. Resolves `:text-key` via `tr`; omits `:text` when none given (label via `ooloi-labelled-field`); `:selected`/`:on-selected-changed` pass through |
+| `ooloi-button` | `:text-key` + `:locale`, or `:raw-text` | `:button` with min-width 90px. Guarded: a key without a locale, or a raw string with one, throws |
+| `ooloi-ok-button` | `:locale` (key defaults to `:button.ok`) | `:button` with `:default-button true`. The key default is withheld when the caller passes `:raw-text` |
+| `ooloi-cancel-button` | `:locale` (key defaults to `:button.cancel`) | `:button` with `:cancel-button true`. The key default is withheld when the caller passes `:raw-text` |
+| `ooloi-label` | `:text-key` + `:locale`, or `:raw-text` | `:label`. Guarded, as `ooloi-button` |
+| `ooloi-checkbox` | `:text-key` + `:locale` (guarded) | `:check-box`; the one-method boolean control. Resolves `:text-key` via `tr`; omits `:text` when none given (label via `ooloi-labelled-field`); `:selected`/`:on-selected-changed` pass through |
 | `ooloi-menu-item` | `:text-key` | `:menu-item` |
 | `ooloi-menu` | `:text-key` | `:menu` |
 | `ooloi-command-item` | `:descriptor`, `:state` | `:menu-item` with resolved text and `:disable` |
@@ -619,13 +620,13 @@ Resolution happens at render time on the frontend, where the locale is known. Th
 | `ooloi-dense-spinner` | `:min`, `:max`, `:value` | Dense `:spinner` with integer value factory; non-editable (small numeric ranges) |
 | `ooloi-search-field` | `:text`, `:on-text-changed` | AtlantaFX `CustomTextField` with muted magnifying glass icon (visible only when empty); `ext-instance-factory` with `["text-input" "text-field" "custom-text-field" Styles/DENSE]` |
 | `ooloi-icon-button` | `:icon-literal` | Flat `:button` with `FontIcon` graphic; encapsulates `Styles/FLAT` and `ext-instance-factory` |
-| `ooloi-notification` | `:text-key`, `:raw-text`, `:type`, `:icon`, `:opacity`, `:min-height` | AtlantaFX `Notification` node |
+| `ooloi-notification` | `:text-key` or `:raw-text`, `:type`, `:icon`, `:opacity`, `:min-height` | AtlantaFX `Notification` node. Unguarded and takes no `:locale`: the UI Manager materialises it once, so nothing re-invokes it on a changed prop |
 **Composite components** encode Ooloi's layout conventions, not just atomic elements:
 
 | Component | Encapsulated layout |
 |-----------|---------------------|
 | `ooloi-button-bar` | Right-aligned HBox with a spacer Region; consistent button padding |
-| `ooloi-vscroll-pane` | Optionally titled ScrollPane with a muted border; title style via `TITLE_4` |
+| `ooloi-vscroll-pane` | Optionally titled ScrollPane with a muted border; title style via `TITLE_4`. Guarded when titled: `:text-key` + `:locale`, or `:raw-text` |
 | `ooloi-labelled-field` | HBox label + control; with optional `:description`, label + VBox[control, muted wrapped description] (tri-partite). Control-agnostic; reusable in editors and dialogs |
 | `ooloi-range-field` | HBox with label, low/high sub-labels and text fields |
 | `ooloi-transposition-controls` | HBox with direction/quality/interval combo-boxes and octave spinner; accepts `:locale` cache-buster |
@@ -1508,9 +1509,20 @@ The mechanism that carries it is the renderer. `(swap! *state identity)` changes
 
 The solution is to pass `@tr/current-locale` as a `:locale` prop through the formatter chain. When the locale changes, cljfx sees a different `:locale` value, re-invokes the component function, and the `tr` calls inside produce updated strings. Each component `dissoc`s `:locale` from its output and passes it to child custom components that also call `tr`. See the component table in Section 4.4 for which components accept `:locale`.
 
-**Choosing `:text-key` + `:locale` vs `:raw-text` — a three-way decision driven by what the string *is*:** (1) **Static keyed label** → pass `:text-key`, resolved inside the formatter, with `:locale @tr/current-locale` as the cache-buster. This is the standard, for leaf atomics (`ooloi-checkbox`) and composites alike. (2) **Static keyed label, legacy leaf** (`ooloi-button`, `ooloi-label`) → accepts `:raw-text (tr :key)`, resolved by the caller. This coexists with the standard and is being migrated onto it. (3) **Dynamic, parameterised or runtime string** — `(tr :k {:n n})`, a `host:port`, a piece name, a notification or confirmation message → **must** use `:raw-text`. `:locale` re-resolves a *static keyword key* and cannot carry a computed string, so `:raw-text` is **structurally required, not vestigial**. In short: `:locale` for keyed labels, `:raw-text` for strings that are not keys.
+**Choosing `:text-key` + `:locale` vs `:raw-text` — a two-way decision driven by what the string *is*:** either it is a **static translation key**, passed as `:text-key` and resolved inside the formatter, with `:locale @tr/current-locale` as the cache-buster; or it is **not a key at all** and is passed as `:raw-text` — user data such as a piece name or filename, a runtime value such as a `host:port`, or a message already composed with parameters (`(tr :k {:n n})`, a notification, a confirmation). `:locale` re-resolves a *static keyword key* and can do nothing to an already-composed string, so `:raw-text` is structurally required rather than vestigial.
 
-**A caller-resolved string is reactive; a formatter-resolved one needs the cache-buster.** The distinction that decides which arm applies is *where `tr` runs*. A spec function that writes `:raw-text (tr :some.key)` resolves the string itself, so a re-render produces a different string, cljfx sees a changed prop, and the label updates — arm 2 is reactive without `:locale`. A spec function that writes `:text-key :some.key` hands an unchanged keyword to a formatter that resolves it internally; if the formatter's other props are unchanged too, cljfx skips re-invoking it and the label keeps the previous locale's text. That is precisely what `:locale` exists to prevent, and it is why the arm a call site sits in is a property of the call site rather than of the formatter alone.
+A call site that resolves a static key itself — `:raw-text (tr :some.key)` — does work, because a re-render recomputes the string. But it spells a keyed label in the idiom reserved for non-keys, and Ooloi carries none: prefer the key.
+
+**Why the cache-buster is needed at all, stated once.** A spec function that writes `:text-key :some.key` hands an *unchanged keyword* to a formatter that resolves it internally. If the formatter's other props are unchanged too — and on a pure locale change they are — cljfx skips re-invoking it, and the label keeps the previous language. `:locale` is the prop that differs, and so the thing that makes the re-invocation happen. Whether a given call site is currently affected depends on its *other* props, which is why the rule cannot be "add it where it is needed": a handler written as a map is equal between renders and the label goes stale, while the same handler written as an inline closure is a fresh object each render and the label survives by accident. The rule is therefore unconditional.
+
+**Two guards make it unavoidable.** Every formatter that resolves a caller-supplied `:text-key` through cljfx diffing — `ooloi-button`, `ooloi-label`, `ooloi-checkbox`, `ooloi-vscroll-pane` — asserts both halves:
+
+- **`:text-key` without `:locale` throws.** A stale label waiting for a language change, and invisible to inspection: the formatter yields a finished string either way, so neither a spec nor a rendered node reveals it.
+- **`:raw-text` with `:locale` throws.** A contradiction rather than a redundancy — the string is already resolved, and the call site has misread which arm it is in.
+
+The menu formatters and `ooloi-notification` are outside this: menus are refreshed by `refresh-dynamic-items!`, a notification is materialised once, and nothing re-invokes either on a changed prop.
+
+**What this settles.** Every user-visible string in Ooloi follows a locale change, and the formatters refuse the spelling that would not. A developer adding a surface does not have to reason about whether their labels will keep up — they will, or the code will not run. What remains a matter of judgement is only the two-way decision above: name the key, or hand over a finished string.
 
 ---
 

@@ -402,31 +402,44 @@ cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to 
 5. Returns a standard cljfx description map
 
 ```clojure
-;; Definition — pure function, map → map
-(defn ooloi-button [{:keys [text-key] :as props}]
-  (-> (dissoc props :text-key)
+;; Definition — pure function, map → map. The guard is the first thing it does.
+(defn ooloi-button [{:keys [text-key raw-text] :as props}]
+  (assert-locale-discipline! "ooloi-button" props)
+  (-> (dissoc props :text-key :raw-text :locale)
       (assoc :fx/type :button
-             :text (tr text-key)
+             :text (or raw-text (tr text-key))
              :min-width 90.0)))
 
-;; Non-reactive usage — no tr calls at call site, serialisable over gRPC
+;; A keyed label — the standard. The key names the string; the locale busts the cache.
 {:fx/type ooloi-button
- :text-key :common.save}
+ :text-key :common.save
+ :locale   @tr/current-locale}
 
-;; Reactive renderer usage — tr at call site so cljfx sees changed props on locale change;
-;; identical :text-key props would cause cljfx to skip re-invoking ooloi-button
-{:fx/type ooloi-button
- :raw-text (tr :piece-window.piece-settings-button)}
+;; A string that is not a key — a piece name, a filename, a host:port, a message already
+;; composed with parameters. No locale can re-resolve it, so none is passed.
+{:fx/type ooloi-label
+ :raw-text (str host ":" port)}
 
 ;; Composite component — encapsulates layout convention
 {:fx/type ooloi-button-bar
- :children [{:fx/type ooloi-ok-button}
-            {:fx/type ooloi-cancel-button}]}
+ :children [{:fx/type ooloi-ok-button  :locale @tr/current-locale}
+            {:fx/type ooloi-cancel-button :locale @tr/current-locale}]}
 ```
 
-**Why this matters for the ADR-0042 vision:** The spec format requires that backend plugins describe UI using keyword-based specs over gRPC — no frontend-specific code, no `tr` calls. The custom component functions are the resolution mechanism: plugins write `{:fx/type ooloi-button :text-key :some.key}`, the frontend's cljfx pipeline calls `ooloi-button` during materialisation, and `tr` runs at render time on the frontend where the locale is known.
+**The text mechanism is a two-way decision, driven by what the string *is*.** Either it is a **static translation key** — passed as `:text-key`, resolved inside the formatter, with `:locale @tr/current-locale` as the cache-buster — or it is **not a key at all**, and is passed as `:raw-text`. The second arm covers user data (a piece name, a filename), runtime values (a `host:port`), and messages already composed with parameters (`(tr :k {:n n})`, a notification, a confirmation). `:locale` re-resolves a *static keyword key* and can do nothing to an already-composed string, so `:raw-text` is structurally required rather than vestigial.
 
-**Choosing the text mechanism — a three-way decision driven by what the string *is*:** (1) a **static keyed label** is passed as `:text-key`, resolved by the formatter internally, with `:locale @tr/current-locale` as the cache-buster forcing re-invocation on locale change — the standard for both leaf atomics (e.g. `ooloi-checkbox`) and composites; (2) older leaf atomics still accept `:raw-text (tr :key)` resolved at the call site (coexists, being migrated to `:locale`); (3) a **dynamic / parameterised / runtime string** — `(tr :k {:n n})`, a `host:port`, a notification or confirmation message — **must** use `:raw-text`, because `:locale` can only re-resolve a static keyword key, not an arbitrary computed string. `:raw-text` is therefore not vestigial; it is structurally required for dynamic text and for one-shot/test materialisation.
+There is no third arm. A call site that resolves a static key itself — `:raw-text (tr :some.key)` — works, because a re-render recomputes the string, but it spells a keyed label in the idiom reserved for non-keys. Ooloi carries none.
+
+**Two guards make the decision unavoidable.** Every formatter that resolves a caller-supplied `:text-key` and is re-invoked by cljfx diffing asserts both:
+
+- **`:text-key` without `:locale` throws.** The key is resolved inside the formatter, so it is re-resolved only when cljfx re-invokes it — which happens only on a changed prop. A key with no locale beside it is a stale label waiting for a language change, and nothing can detect it by reading a spec or a rendered node: the formatter yields a finished string either way.
+- **`:raw-text` with `:locale` throws.** A contradiction rather than a redundancy: the string is already resolved, and the call site has misread which arm it is in.
+
+The guarded formatters are `ooloi-button`, `ooloi-label`, `ooloi-checkbox` and `ooloi-vscroll-pane`. The menu formatters (`ooloi-menu-item`, `ooloi-menu`, `ooloi-command-item`) and `ooloi-notification` are outside the mechanism: menus are refreshed by `refresh-dynamic-items!` and a notification is materialised once by the UI Manager, so nothing re-invokes them on a changed prop and a cache-buster there would be a prop that can do nothing.
+
+**Why this matters for the ADR-0042 vision:** The spec format requires that backend plugins describe UI using keyword-based specs over gRPC — no frontend-specific code, no `tr` calls. The custom component functions are the resolution mechanism: a plugin writes `{:fx/type ooloi-button :text-key :some.key}`, and `tr` runs at render time on the frontend where the locale is known.
+
+A plugin cannot supply `:locale`, and must not: the locale is frontend state, and [ADR-0039](0039-Localisation-Architecture.md) makes the backend locale-free by construction. **The frontend therefore injects it at the boundary**, when it materialises a plugin-supplied spec — walking the spec tree and adding `:locale` wherever a `:text-key` appears without a `:raw-text`, which is the guards' rule inverted. Two properties are required of that injection: it happens during **spec evaluation**, so each render carries the locale then current rather than the one the spec arrived with; and it is **recursive**, because a plugin spec is a tree whose nested formatters need it too.
 
 **One boolean control.** Per the one-method principle, application code never uses a raw `:check-box`; the `ooloi-checkbox` formatter is the single boolean control (resolves `:text-key` via `tr`, accepts `:locale`, omits its label when an enclosing `ooloi-labelled-field` supplies one). A checkbox — most compact, pure cljfx spec, consistent with the dense control vocabulary — is the boolean paradigm, not a toggle switch (see [ADR-0043](0043-Frontend-Settings.md)).
 
@@ -434,11 +447,11 @@ cljfx supports **functions as `:fx/type` values**. Ooloi uses this mechanism to 
 
 ```clojure
 (fact "ooloi-button resolves text-key and sets min-width"
-  (ooloi-button {:text-key :button.ok})
+  (ooloi-button {:text-key :button.ok :locale :en-GB})
   => (contains {:fx/type :button :text "OK" :min-width 90.0}))
 
 (fact "ooloi-button passes through arbitrary props"
-  (ooloi-button {:text-key :button.ok :style-class ["accent"] :disable false})
+  (ooloi-button {:text-key :button.ok :locale :en-GB :style-class ["accent"] :disable false})
   => (contains {:style-class ["accent"] :disable false}))
 ```
 

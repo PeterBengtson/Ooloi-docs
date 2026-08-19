@@ -7,7 +7,7 @@ Implemented
 ## Table of Contents
 - [Context](#context)
   - [Architectural Boundary](#architectural-boundary)
-  - [Current State](#current-state)
+  - [Adoption Point](#adoption-point)
 - [Decision](#decision)
   - [Frontend-Only Localisation](#frontend-only-localisation)
   - [Source Language Scope: Strings, Not Identifiers](#source-language-scope-strings-not-identifiers)
@@ -72,9 +72,9 @@ These are protocol artifacts. They may appear in logs, be matched against progra
 
 When the frontend needs to display something to the user in response to a backend state, it interprets that state and emits its own translated message. The backend string is a stable contract; the translation key is frontend-owned.
 
-### Current State
+### Adoption Point
 
-Ooloi currently has zero user-facing strings. This is the ideal adoption point for localisation infrastructure: the non-string policy can be established as an invariant rather than retrofitted onto existing code. Translator ergonomics is a first-class architectural concern from the outset.
+Localisation is established before the user-facing strings exist, rather than retrofitted onto them. That ordering is what allows the non-string policy to be an invariant the backend is built under, instead of a cleanup applied to code that already violates it, and it makes translator ergonomics a first-class concern from the outset rather than a late accommodation.
 
 ## Decision
 
@@ -299,6 +299,10 @@ Locale loading and selection are separate:
    - **Re-fit** — a non-resizable window is sized to its content, so it is then `sizeToScene`d. Translated strings differ in length, and a stage still sized for the previous locale would clip the taller or wider content and ellipsise its labels. The re-fit is deferred a pulse so the re-render lands first; a resizable window keeps whatever size the user chose.
 
 Title, content and re-fit are one pass rather than three, so a surface added to the cascade is added in one place.
+
+**Locale reactivity is total, and enforced rather than remembered.** Every user-visible string in Ooloi follows a locale change: window content through the renderer, window titles through the registry, menu text through the stored menu-node properties, and formatter-resolved labels through the `:locale` cache-buster. The surfaces that do *not* change are the ones that cannot meaningfully do so, each for a stated reason, and they are enumerated in the Frontend Architecture Guide rather than left to be rediscovered.
+
+What makes this durable is that the last mechanism is not a convention. A formatter that resolves a caller-supplied `:text-key` asserts that a `:locale` accompanies it, and asserts that a `:raw-text` does not — see [ADR-0042](0042-UI-Specification-Format.md) §Custom cljfx Component Functions. A call site that would have produced a label frozen in the previous language does not render incorrectly; it does not run. The consequence for anyone building a new surface is that locale reactivity is no longer something to remember to arrange: it is the only thing the formatters permit.
 
 Content nested inside custom component functions requires an additional mechanism — cljfx skips re-invoking a component whose props are unchanged, and a `:text-key` keyword does not change with the locale. See the `:locale` cache-buster in [ADR-0042](0042-UI-Specification-Format.md) and its usage guidance in the Frontend Architecture Guide.
 
@@ -829,7 +833,9 @@ What enforcement cannot reach is agreement within a form: a plural form may carr
 
 ## Documentation
 
-Translator and developer documentation can be written on-demand as actual usage patterns emerge. The PO file format itself is well-documented via GNU gettext manual and standard PO editors provide inline guidance.
+Translators need no Ooloi-specific documentation: they work in PO files, whose format is documented by the GNU gettext manual and understood by every standard PO editor, and each message carries its own context through `msgctxt` and its plural slots through translator comments.
+
+Developer-facing explanation lives in the Frontend Architecture Guide — Section 9 for the translation API, the key conventions and the locale-change cascade, and Section 4.4 for the formatters that resolve keys. This ADR is the specification; the guide teaches its use.
 
 ## Out of Scope
 
@@ -855,7 +861,7 @@ This ADR addresses **string translation only**. Related concerns handled separat
 
 **Positive:**
 
-1. **Clean adoption point** — Zero existing strings means the policy is established, not retrofitted
+1. **Clean adoption point** — the policy was established before the strings existed, so it is an invariant the code was written under rather than a cleanup applied to code that had already broken it
 2. **Translator-native workflow** — PO files and standard tooling, no Ooloi-specific learning curve
 3. **Guaranteed baseline** — Canonical UK English bundled in JAR, no installation failure modes
 4. **Minimal startup overhead** — PO parsing is fast; all catalogs loaded once at startup
