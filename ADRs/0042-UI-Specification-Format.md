@@ -25,6 +25,8 @@ Implemented
     - [When to use a renderer](#when-to-use-a-renderer)
     - [Declared atom watches: :window/watches](#declared-atom-watches-windowwatches)
     - [Event Dispatch Pipeline](#event-dispatch-pipeline)
+  - [JavaFX Event Phases and the Interactive Control Guard](#javafx-event-phases-and-the-interactive-control-guard)
+  - [Nested TitledPanes: Ambiguous Lookup and the Post-Drag Click](#nested-titledpanes-ambiguous-lookup-and-the-post-drag-click)
   - [Architectural Invariants](#architectural-invariants)
   - [Theme-Independent Styling](#theme-independent-styling)
     - [Two Levels of Styling](#two-levels-of-styling)
@@ -756,6 +758,24 @@ The `:window-open-requested` handler supports four materialisation paths:
 4. **Pass-through** — the event already contains a pre-built `:window/content` Node. Used by the splash screen.
 
 Paths 1 and 2 support plugin-contributed windows. Path 4 exists for unusual windows that manage their own content (splash screen). The manual approach of building a renderer in the window module and passing a pre-built Node is no longer used by any production window.
+
+### JavaFX Event Phases and the Interactive Control Guard
+
+A JavaFX mouse click is three events, each with a capturing phase (event *filters*, top-down) followed by a bubbling phase (event *handlers*, bottom-up): **MOUSE_PRESSED**, where control interaction begins — TextFields take focus, ComboBoxes open popups, Spinner buttons fire, CheckBoxes arm; **MOUSE_RELEASED**, where CheckBoxes and ToggleButtons commit; and **MOUSE_CLICKED**, synthesised after a press and release on the same node, where selection logic and focus-reclaim filters typically live.
+
+The consequence is not obvious and has caused real regressions. **A MOUSE_CLICKED filter runs after a control has begun its interaction on MOUSE_PRESSED but before it has completed it.** A filter that calls `.requestFocus`, `.consume`, or triggers a cljfx re-render therefore interrupts controls mid-gesture, and which controls break depends on when each commits: a CheckBox (committed on release) and a Spinner (committed on press) survive, while a ComboBox loses its popup and a TextField its caret. That is why the failure presents so confusingly — checkboxes and spinners keep working while combo-boxes and text fields quietly stop, in the same container, from the same filter.
+
+**Rule: every `addEventFilter` on `MOUSE_CLICKED` in a container with interactive children checks `inside-interactive-control?` on the event target before performing any side effect. No exceptions.** The predicate walks up from the event target checking for `TextInputControl`, `ComboBoxBase`, `CheckBox` and `Spinner`. The guard is equally required for a handler that merely updates an atom: a cljfx re-render during MOUSE_CLICKED can recreate nodes that were mid-interaction from MOUSE_PRESSED, destroying popup state or focus as directly as a `.requestFocus` would.
+
+### Nested TitledPanes: Ambiguous Lookup and the Post-Drag Click
+
+`Node.lookup(selector)` searches depth-first and returns the first match, so on a TitledPane containing nested TitledPanes it may return a *child's* `.title` rather than the pane's own. The symptoms are a title click that toggles the wrong pane, an arrow click that double-toggles and so appears dead, and style mirroring applied to the wrong node.
+
+**Rule: never use `.lookup` on a TitledPane that contains, or may later contain, nested TitledPanes.** Three helpers replace it: `in-own-title?` (walks from a node to its `.title` and verifies the first TitledPane ancestor is this pane), `event-for-this-pane?` (the same check against an event target), and `own-lookup` (`.lookupAll` plus an ancestry filter).
+
+**A drag-and-drop gesture synthesises a trailing MOUSE_CLICKED** when press and release targets overlap, and in a nested structure it bubbles from child to parent, firing the parent's selection handler and destroying the selection the drag handler just set. Selection handlers in drag-and-drop containers therefore gate on `selection-click?`, which combines the interactive-control guard with `(.isStillSincePress event)` — false after a drag. This defect is **invisible to Robot-based tests**, which suppress MOUSE_CLICKED after a drag; it is reachable only by a handler-level test with a synthetic `MouseEvent` whose `stillSincePress` is false.
+
+**Identity-based reconciliation is required where nested panes reorder.** A child spec under drag reordering carries `:fx/key` with a stable identity, because cljfx otherwise matches by vector position: after a reorder, `:on-created` closures that captured item identity for drag-target tracking are stale.
 
 ### Architectural Invariants
 

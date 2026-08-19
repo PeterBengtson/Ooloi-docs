@@ -838,7 +838,7 @@ That ordering has a consequence which is not obvious and has caused real regress
 
 This is why the bug presents so confusingly: checkboxes and spinners keep working while combo-boxes and text fields quietly stop, in the same container, from the same filter.
 
-**The guard.** Any container — ScrollPane, TitledPane, VBox — that installs a MOUSE_CLICKED filter for focus management, selection dispatch, or any other side effect **must** guard against clicks landing on interactive children. `inside-interactive-control?` (`ui/core/cljfx.clj`) walks up from the event target checking for `TextInputControl`, `ComboBoxBase`, `CheckBox` and `Spinner`:
+**The guard.** `inside-interactive-control?` (`ui/core/cljfx.clj`) walks up from the event target checking for `TextInputControl`, `ComboBoxBase`, `CheckBox` and `Spinner`:
 
 ```clojure
 ;; ✅ CORRECT — the guard prevents stealing focus from an interactive control
@@ -858,7 +858,7 @@ This is why the bug presents so confusingly: checkboxes and spinners keep workin
 
 The guard is equally required for a MOUSE_CLICKED handler that merely updates an atom, because a cljfx re-render during MOUSE_CLICKED can recreate nodes that were mid-interaction from MOUSE_PRESSED — destroying popup state or focus just as directly as a `.requestFocus` would.
 
-**Rule:** every `addEventFilter` on `MOUSE_CLICKED` in a container with interactive children checks `inside-interactive-control?` on the event target before performing any side effect. No exceptions.
+The rule this obliges — every `addEventFilter` on `MOUSE_CLICKED` in a container with interactive children guards on the event target, without exception — is specified in [ADR-0042 §JavaFX Event Phases and the Interactive Control Guard](../ADRs/0042-UI-Specification-Format.md).
 
 ### 4.8 Nested TitledPane Event Handling
 
@@ -872,13 +872,11 @@ When TitledPanes are nested (e.g. instrument editors containing staff editors), 
 | `event-for-this-pane?` | N/A | Checks event target's first TitledPane ancestor is `pane` |
 | `own-lookup` | `.lookup` | Uses `.lookupAll` + ancestry filter |
 
-**Rule**: Never use `.lookup` on a TitledPane that contains (or may contain) nested TitledPanes. Use `in-own-title?`, `event-for-this-pane?`, or `own-lookup` instead.
-
-**Post-D&D MOUSE_CLICKED trap**: after a drag-and-drop gesture ends, JavaFX may synthesise a MOUSE_CLICKED event if press and release targets overlap. In nested TitledPane structures, this MOUSE_CLICKED bubbles from a child pane to the parent, triggering the parent's selection handler and destroying the selection set by the drag handler. **Fix**: all MOUSE_CLICKED selection handlers in D&D containers gate on `ofx/selection-click?`, which combines the interactive-control guard with `(.isStillSincePress event)` — `isStillSincePress` returns `false` after a drag gesture. This bug is invisible in Robot-based tests because Robot suppresses MOUSE_CLICKED after D&D; use handler-level tests with synthetic `MouseEvent(stillSincePress=false)` instead.
-
-**`:fx/key` for identity-based reconciliation**: when nested TitledPanes support D&D reordering, child specs must include `:fx/key` with a stable identity (e.g., `:fx/key (:id staff)`). Without it, cljfx matches by vector position after reorder — `:on-created` closures that capture the item identity for DRAG_OVER target tracking become stale.
+**Post-D&D MOUSE_CLICKED trap**: after a drag-and-drop gesture ends, JavaFX may synthesise a MOUSE_CLICKED event if press and release targets overlap. In nested TitledPane structures, this MOUSE_CLICKED bubbles from a child pane to the parent, triggering the parent's selection handler and destroying the selection set by the drag handler. Selection handlers in D&D containers therefore gate on `ofx/selection-click?`, which combines the interactive-control guard with `(.isStillSincePress event)` — `isStillSincePress` returns `false` after a drag gesture. **This bug is invisible in Robot-based tests**, because Robot suppresses MOUSE_CLICKED after D&D; use handler-level tests with a synthetic `MouseEvent(stillSincePress=false)` instead.
 
 **Regression tests**: `cljfx_event_test.clj` — synthetic `Event.fireEvent()` through real filter chains on the core editor components, covering nested-pane event isolation (expand/collapse, selection passthrough, modifier passthrough, drag initiation, selection highlight). `event_wiring_test.clj` — the IL-specific scroll-pane DRAG_OVER/DROPPED dispatch (`:reorder-staves`/`:copy-staff` routing, `:on-staff-drag-detected` wiring, the reorder resolving through the shared drop-target scan, `:target-staff-id`/`:target-id-copy` for COPY, expanded/collapsed acceptance). `selection_test.clj` / `dnd_test.clj` — IL selection and D&D wiring. `robot_drag_test.clj` — Robot-based integration tests verifying the full D&D pipeline with production renderer, plus handler-level `isStillSincePress` tests.
+
+The rules this obliges — never `.lookup` on a pane that may contain nested TitledPanes, gate D&D-container selection handlers on `selection-click?`, and carry `:fx/key` on children that reorder — are specified in [ADR-0042 §Nested TitledPanes](../ADRs/0042-UI-Specification-Format.md).
 
 ---
 
@@ -1140,28 +1138,11 @@ slow test.
 
 ### 6.6 Teardown: Why the Application Does Not Drain the Pool
 
-The wait §6.5 demands of tests looks, at first reading, like an obligation production is shirking —
-and the obvious remedy is a pool-wide drain in front of `ig/halt!` when the application quits. That
-remedy is wrong twice over, and it has been tried.
+The wait §6.5 demands of tests looks, at first reading, like an obligation production is shirking — and the obvious remedy is a pool-wide drain in front of `ig/halt!` when the application quits. That remedy is wrong, and it has been tried.
 
-**A test and a quit end differently.** A test halts *abruptly*, from outside, at whatever instant its
-body happens to finish: startup work may still be in flight, and nothing has been given the chance
-to conclude. That is precisely what `util.client/halt-app!`'s wait is for. A quit does not end that
-way. It runs the save pass first, resolving and closing each piece window in turn, and every
-subsystem that starts asynchronous work is responsible for waiting on its own. A piece window's
-close waits for that window's own refetches before closing, because the close — which unsubscribes,
-and so releases the piece — is what invalidates them.
+**A test and a quit end differently.** A test halts *abruptly*, from outside, at whatever instant its body happens to finish: startup work may still be in flight, and nothing has been given the chance to conclude. That is precisely what `util.client/halt-app!`'s wait is for. A quit does not end that way. It runs the save pass first, resolving and closing each piece window in turn, and every subsystem that starts asynchronous work is responsible for waiting on its own. A piece window's close waits for that window's own refetches before closing, because the close — which unsubscribes, and so releases the piece — is what invalidates them.
 
-**A shared-resource wait is worse than the per-owner waits it would replace.** It waits on a pool
-while knowing nothing about what the work needs or which component's teardown would invalidate it.
-It cannot see work a *timer* will submit later, since a pending animation is not queued work and no
-amount of quiescence detects it. And being a wait on something shared, it quietly invites every
-subsystem to stop owning its own, which is the condition that produced the problem in the first
-place.
-
-**Where in-flight work must survive teardown, the wait belongs with whoever started it.** That is
-the rule. A cross-cutting drain is not a stricter version of it; it is a different and weaker thing
-wearing the same clothes.
+The rule this rests on — that where in-flight work must survive teardown, the wait belongs with whoever started it, and that a cross-cutting drain is a weaker thing wearing the same clothes — is specified in [ADR-0028 §Teardown](../ADRs/0028-Hierarchical-Rendering-Pipeline.md), together with the reasons a shared-resource wait cannot substitute for the per-owner waits it would replace.
 
 ---
 

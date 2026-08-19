@@ -23,6 +23,7 @@ Under implementation
 - [Computational Scaling Characteristics](#computational-scaling-characteristics)
 - [Claypoole Integration Architecture](#claypoole-integration-architecture)
   - [Shared Threadpool](#shared-threadpool)
+  - [Teardown: In-Flight Work Is Waited On by Whoever Started It](#teardown-in-flight-work-is-waited-on-by-whoever-started-it)
   - [Cancellation Contract](#cancellation-contract)
 - [Caching and Incremental Processing](#caching-and-incremental-processing)
   - [Staleness: The State That Drives Incremental Formatting](#staleness-the-state-that-drives-incremental-formatting)
@@ -405,6 +406,16 @@ The rendering pipeline uses the shared Claypoole thread pool (see Issue #142), i
   (cp/pmap shared-pool format-measure
            (concat visible-measures background-measures)))
 ```
+
+### Teardown: In-Flight Work Is Waited On by Whoever Started It
+
+The shared pool's `ig/halt-key!` calls `shutdown()`, which returns immediately rather than after the workers finish. A halted pool is therefore not a quiesced pool, and the question of who waits for outstanding work has one answer.
+
+**Where in-flight work must survive teardown, the wait belongs with whoever started it.** A subsystem that dispatches asynchronous work owns the wait for it: a piece window's close waits for that window's own refetches before closing, because the close — which unsubscribes, and so releases the piece — is what invalidates them.
+
+**The application does not drain the pool before `ig/halt!`, and must not.** That remedy has been tried and is wrong twice over. First, a quit and a test end differently: a test halts abruptly from outside at whatever instant its body finishes, with startup work possibly still in flight and nothing given the chance to conclude, which is why the test harness supplies a pool wait; a quit instead runs its save pass, resolving and closing each piece window in turn, with each subsystem concluding its own work as it goes. Second, a shared-resource wait is weaker than the per-owner waits it would replace: it waits on a pool while knowing nothing about what the work needs or which component's teardown would invalidate it, it cannot see work a *timer* will submit later — a pending animation is not queued work, and no amount of quiescence detects it — and, being a wait on something shared, it invites every subsystem to stop owning its own, which is the condition that produces the problem in the first place.
+
+A cross-cutting drain is not a stricter version of the rule. It is a different and weaker thing wearing the same clothes.
 
 ### Cancellation Contract
 
