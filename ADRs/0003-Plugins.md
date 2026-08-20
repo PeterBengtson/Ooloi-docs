@@ -158,10 +158,10 @@ the backend — the same records, with perfect fidelity — so a plugin may buil
 piece structure there, freely, and compute as heavily as it likes while doing so. What it may not do
 is *decide*: those local mutations are provisional, and only what crosses through `SRV/` becomes
 musical truth ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)).
-The distinction is authority, not capability. That crossing is also where undo is captured, so a
-frontend plugin's edits become undoable
-steps with no work on its part, while a backend plugin reaches the score below the boundary and
-registers its own
+The distinction is authority, not capability. That crossing is also where undo is captured: every
+mutation arriving through `SRV/`, alone or composed in `SRV/atomic`, records a step with no wiring
+whatsoever. Below the boundary, where a backend plugin's own `api/` calls sit, it wraps its work the
+way `SRV/atomic` does and gives the step a name — that is all
 (§[Undo](#undo-frontend-plugins-get-it-free-backend-plugins-register-it)). Being written in Clojure
 buys a frontend plugin nothing with respect to the piece: `SRV/` is VPD-based because the API
 contract is the same wherever the backend runs, so the restriction follows from the contract rather
@@ -211,6 +211,15 @@ Two cases need nothing on either side. A plugin that only reads a piece — anal
 playback — records no step; and one that *creates* a piece rather than editing an open one
 records none either, an imported score being a document arriving, closed rather than undone,
 exactly as with New and Open.
+
+**None of this is writing undo logic**, and a plugin that brings a resource of its own — neither a
+piece nor the Instrument Library — has no more to do. Wrap the work as `SRV/atomic` does, state the
+step's name, and hand it to the Backend Undo Manager under a key of your choosing: the manager
+constrains that key not at all, and returns stacks, redo invalidation, notification to the
+resource's audience, and originator identity. A plugin that *adds* a mutating operation rather than
+calling one needs less still, since the boundary decides what records a step from the
+`:vpd-category` the operation declares anyway — a client's call to it is captured like any other.
+[ADR-0015](0015-Undo-and-Redo.md) specifies both.
 
 **A plugin's entries are labelled without its participation, and a key it invents is its own to
 translate.** The capture boundary derives a label from the operation it invoked — `:undo.<op>`,
