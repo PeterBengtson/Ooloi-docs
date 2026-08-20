@@ -493,13 +493,13 @@ Plugin translation catalogs are namespaced by plugin identifier. No collision wi
 ;; Core translation
 (tr :menu.file.open)
 
-;; Plugin translation (hypothetical API)
+;; Plugin translation — the same function, a namespaced key
 (tr :plugin.my-plugin/palette.title)
-;; or
-(plugin-tr :my-plugin :palette.title)
 ```
 
-The exact API is implementation detail, but the architectural requirement is clear: plugin catalogs are isolated namespaces, not merged into a global soup where naming discipline is the only defence against collision.
+**The same `tr`, never a sibling of it.** A `plugin-tr` or any other locale-aware second entry point is excluded by [Invariant 3](#3-all-localisation-through-a-single-api): one function, one mechanism, no alternatives. A plugin's strings are user-visible text like any other, and there is no second path by which user-visible text is produced.
+
+**Namespacing is the requirement; the namespaced keyword is the authoring surface.** Whether the key is stored namespaced or flattened into a dotted form inside the catalogue is an internal matter that does not reach the plugin author, who writes the namespaced keyword either way. That separation is what lets the catalogues keep the dotted convention core uses while collision isolation remains structural rather than a matter of naming discipline — the requirement being that plugin catalogs are isolated namespaces, not merged into a global soup.
 
 Plugins use the same PO format, same tooling, same workflow. A translator working on a plugin sees exactly the same file structure as core localisation.
 
