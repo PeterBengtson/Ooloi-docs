@@ -147,8 +147,12 @@ the process it is loaded into — not how fast it runs. The Java-facing interfac
 call and every JVM language is compiled and optimised alike, so a plugin written in Kotlin or Scala
 executes at the same speed as one written in Clojure, on either side.
 
-The side axis decides how a plugin talks to the score. On the backend the score is in the same
-process; on the frontend it is not, and `SRV/` is the route to it. That does not make a frontend
+The side axis decides how a plugin talks to the score. A backend plugin is on the authoritative
+side and reaches the score directly; a frontend plugin reaches it through `SRV/`. **That boundary
+is one of authority, and transport has nothing to do with it.** The backend may be in the same JVM
+or across a network, and a running instance moves between the two without restarting
+([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md)). A plugin is written against the
+boundary and never learns which. That does not make a frontend
 plugin the lesser thing. The frontend holds the same data model and the same `api/` operations as
 the backend — the same records, with perfect fidelity — so a plugin may build and transform real
 piece structure there, freely, and compute as heavily as it likes while doing so. What it may not do
@@ -159,8 +163,9 @@ frontend plugin's edits become undoable
 steps with no work on its part, while a backend plugin reaches the score below the boundary and
 registers its own
 (§[Undo](#undo-frontend-plugins-get-it-free-backend-plugins-register-it)). Being written in Clojure
-buys a frontend plugin nothing with respect to the piece — object pointers cannot cross a network,
-so VPD-only is a property of the wire rather than of the language.
+buys a frontend plugin nothing with respect to the piece: `SRV/` is VPD-based because the API
+contract is the same wherever the backend runs, so the restriction follows from the contract rather
+than from the language or from any property of the transport beneath it.
 
 **How a plugin is engaged is a separate question from either axis, and is specified where each
 contract lives.** A plugin taking part in notation formatting declares hooks at the pipeline stages
