@@ -15,7 +15,7 @@ Accepted
 - [Implementation Approach](#implementation-approach)
   - [Core Plugin Architecture](#core-plugin-architecture)
   - [Kinds of Plugin](#kinds-of-plugin)
-  - [Undo: Frontend Plugins Get It Free, Backend Plugins Register It](#undo-frontend-plugins-get-it-free-backend-plugins-register-it)
+  - [Undo: Frontend Plugins Get It Free, Backend Plugins Name the Step](#undo-frontend-plugins-get-it-free-backend-plugins-name-the-step)
   - [Hot Plugin Installation Architecture (Enabled by Unified gRPC)](#hot-plugin-installation-architecture-enabled-by-unified-grpc)
   - [Separation, Security, and Dynamic Loading](#separation-security-and-dynamic-loading)
   - [Standard Plugin Development Infrastructure](#standard-plugin-development-infrastructure)
@@ -162,7 +162,7 @@ The distinction is authority, not capability. That crossing is also where undo i
 mutation arriving through `SRV/`, alone or composed in `SRV/atomic`, records a step with no wiring
 whatsoever. Below the boundary, where a backend plugin's own `api/` calls sit, it wraps its work the
 way `SRV/atomic` does and gives the step a name — that is all
-(§[Undo](#undo-frontend-plugins-get-it-free-backend-plugins-register-it)). Being written in Clojure
+(§[Undo](#undo-frontend-plugins-get-it-free-backend-plugins-name-the-step)). Being written in Clojure
 buys a frontend plugin nothing with respect to the piece: `SRV/` is VPD-based because the API
 contract is the same wherever the backend runs, so the restriction follows from the contract rather
 than from the language or from any property of the transport beneath it.
@@ -177,7 +177,7 @@ commands ([ADR-0042](0042-UI-Specification-Format.md) §Command Descriptors). Pa
 contract rather than a location: either may be written in Clojure or in any other JVM language, on
 either side.
 
-### Undo: Frontend Plugins Get It Free, Backend Plugins Register It
+### Undo: Frontend Plugins Get It Free, Backend Plugins Name the Step
 
 **A plugin runs on one side of the frontend/backend boundary or the other, and the two are
 different things** — a distinction this ADR already draws for configuration, where a backend
@@ -193,18 +193,17 @@ which is exactly where Ooloi captures undo automatically
 on its part and no awareness that undo exists. This is the same path a user's own gesture takes,
 which is why the two are indistinguishable once they arrive.
 
-**A backend plugin must register its own.** It runs inside the backend process and reaches the
-score through the polymorphic API directly, which puts its mutations *below* that boundary, so
-nothing captures them on its behalf. The confinement is deliberate rather than an oversight: the
-formatting pipeline also writes to a piece through the API, and a boundary that captured every
-such write would put an incremental reflow on the undo stack.
+**A backend plugin says when a step begins and what to call it.** It runs inside the backend
+process and reaches the score through the polymorphic API directly, which puts its mutations
+*below* that boundary, so nothing captures them on its behalf. The confinement is deliberate rather
+than an oversight: the formatting pipeline also writes to a piece through the API, and a boundary
+that captured every such write would put an incremental reflow on the undo stack.
 
-Registration is one call. The plugin takes the piece value before its work and after it, and
-calls `push-undo!` on the Backend Undo Manager with a description key of its own and closures
-over those two snapshots — the shape the Instrument Library uses for its own edits. Persistent
-data structures make holding both snapshots cheap. Because the plugin operation was invoked by a
-client, it runs inside that request and the entry acquires the caller's identity automatically,
-so it behaves like every other entry in a collaborative session: another client can undo it, and
+So it wraps its work the way `SRV/atomic` does — the piece before, the work, the piece after — and
+gives the step a name. That is the whole of it. The Backend Undo Manager holds everything else,
+persistent data structures make the two snapshots cheap, and because the plugin's operation was
+invoked by a client it runs inside that request and acquires the caller's identity automatically.
+The entry then behaves like every other in a collaborative session: another client can undo it, and
 the Edit menu labels it with the plugin's own description.
 
 Two cases need nothing on either side. A plugin that only reads a piece — analysis, export,
@@ -212,14 +211,13 @@ playback — records no step; and one that *creates* a piece rather than editing
 records none either, an imported score being a document arriving, closed rather than undone,
 exactly as with New and Open.
 
-**None of this is writing undo logic**, and a plugin that brings a resource of its own — neither a
-piece nor the Instrument Library — has no more to do. Wrap the work as `SRV/atomic` does, state the
-step's name, and hand it to the Backend Undo Manager under a key of your choosing: the manager
-constrains that key not at all, and returns stacks, redo invalidation, notification to the
-resource's audience, and originator identity. A plugin that *adds* a mutating operation rather than
-calling one needs less still, since the boundary decides what records a step from the
-`:vpd-category` the operation declares anyway — a client's call to it is captured like any other.
-[ADR-0015](0015-Undo-and-Redo.md) specifies both.
+**A resource of the plugin's own is no different.** Something that is neither a piece nor the
+Instrument Library takes the same wrap and the same name, handed to the Backend Undo Manager under
+a key of the plugin's choosing — the manager constrains that key not at all, and returns stacks,
+redo invalidation, notification to the resource's audience, and originator identity. A plugin that
+*adds* a mutating operation rather than calling one needs less still, since the boundary decides
+what records a step from the `:vpd-category` the operation declares anyway, so a client's call to it
+is captured like any other. [ADR-0015](0015-Undo-and-Redo.md) specifies both.
 
 **A plugin's entries are labelled without its participation, and a key it invents is its own to
 translate.** The capture boundary derives a label from the operation it invoked — `:undo.<op>`,
