@@ -1358,6 +1358,8 @@ The rule is simple and strict: **no hardcoded user-facing strings**. Every visib
 
 This is not primarily about translating the UI later. It is about keeping the UI describable, verifiable, and composable — especially once plugins and generated UI (such as the Settings window) enter the picture.
 
+This section covers the developer's side: how a string becomes a key and how a key becomes text. The translator's side — the catalogues themselves, where they live on disk, plural forms per language, musical vocabulary, and the conventions governing a translated string interpolated into another — is the [Translator's Guide](TRANSLATORS_GUIDE.md), which assumes no programming and is worth reading before adding a user-facing string, if only to see what a translator will be handed.
+
 ### 9.1 Translation API: `tr` and `tr-declare`
 
 The translation function is `tr`. It takes a keyword and returns the current-locale string.

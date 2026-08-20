@@ -132,7 +132,7 @@ We will implement a **three-tier undo/redo architecture** that separates concern
 - **Single Undo/Redo Interface**: Frontend presents one undo/redo button to users
 - **Timestamp-Based Routing**: Frontend compares local stack timestamps with backend notification timestamps; the most recent action wins
 - **Consistent Menu**: The undo/redo menu item always reflects what Cmd+Z will actually do at the moment it is pressed — the menu and the action use the same cached state, so they always agree
-- **Descriptive Messages**: Undo/redo operations display clear descriptions like "Undo Add Note", "Redo Change Key Signature" rather than generic "Undo"/"Redo"
+- **Descriptive Messages**: Undo/redo operations display clear descriptions like "Undo Add Note", "Redo Set Key Signature" rather than generic "Undo"/"Redo"
 
 ## Rationale
 
@@ -938,7 +938,7 @@ sequenceDiagram
     Note over A,E: Client B opens Edit menu → needs description
     B->>UM: SRV/get-undo-description(:instrument-library, nil)
     UM-->>B: {:undo {:description-key :il.undo.delete-instruments, :description-params {:names ["Flute"]}}}
-    Note over B: Menu shows "Undo: Delete Instruments (Flute)"
+    Note over B: Menu shows "Undo Delete Flute"
 
     Note over A,E: Client B undoes Client A's deletion
     B->>UM: SRV/undo-resource(:instrument-library, nil)
@@ -1519,8 +1519,13 @@ Each Edit menu records itself while it is pulled down, so the notification path 
 the generic `:menu.edit.undo` / `:menu.edit.redo` key (e.g. "Undo" / "Redo" without a
 specific action description). The item remains enabled — the routing knows the backend
 entry wins, even if the description is not yet available. When the fetch completes, the
-menu refreshes to show the specific description (e.g. "Undo: Delete Instruments"). This
+menu refreshes to show the specific description (e.g. "Undo Delete Flute"). This
 brief generic-to-specific transition is the only visible effect of lazy fetching.
+
+The description is attached to the verb grammatically, never with punctuation, and where
+it sits is the reader's language's business rather than English's: `%{name}` follows the
+verb in English and Swedish, precedes it in German, Japanese and Korean, and is wrapped by
+it in Finnish. See [ADR-0039 §Interpolated Names](0039-Localisation-Architecture.md#interpolated-names).
 
 **Threading rule**: The `SRV/get-undo-description` call is a gRPC operation and must not
 run on the JavaFX Application Thread. The menu refresh dispatches the fetch on a pool
@@ -1541,7 +1546,7 @@ or network calls on the JAT.
 ;; → "Delete Flute and Oboe"   (en-GB; "Flute、Oboe" joined ideographically in ja-JP)
 
 ;; Menu item displays:
-"Undo: Delete Instruments"
+"Undo Delete Flute"
 ```
 
 The fetched description is cached in the backend timestamp cache until the next

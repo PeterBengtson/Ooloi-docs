@@ -22,13 +22,14 @@ Implemented
   - [Two Extraction Mechanisms](#two-extraction-mechanisms)
   - [Declaration Use Cases](#declaration-use-cases)
   - [Named Parameters](#named-parameters)
+  - [Interpolated Names](#interpolated-names)
   - [Plural Forms](#plural-forms)
 - [Plugin Localisation](#plugin-localisation)
 - [Build-Time Verification](#build-time-verification)
   - [Two Operational Modes](#two-operational-modes)
   - [Canonical Completeness (Hard Gate)](#canonical-completeness-hard-gate)
   - [Plural Integrity (Hard Gate, Both Modes)](#plural-integrity-hard-gate-both-modes)
-  - [Non-English Coverage (Soft)](#non-english-coverage-soft)
+  - [Non-English Coverage](#non-english-coverage)
   - [What Verification Cannot See](#what-verification-cannot-see)
   - [Orphaned Keys](#orphaned-keys)
 - [Forward Compatibility](#forward-compatibility)
@@ -412,6 +413,20 @@ msgstr "Skrev %{count} filer till %{destination}."
 
 Named parameters allow translators to reorder elements for grammatical correctness without code changes. Swedish might need "Till %{destination} skrevs %{count} filer." Positional formatting (`%1$s`, `%2$d`) makes this fragile and error-prone.
 
+### Interpolated Names
+
+A parameter whose value is **itself a translated string** is a harder case than a filename or a count, because two catalogue entries meet inside one rendered sentence and the grammar of the join belongs to the reader's language. The Edit menu is the standing example: `menu.edit.undo-item` is `"Undo %{name}"`, and `%{name}` arrives already translated, as `"Reorder Instruments"` or `"Hinzufügen des Musikers"`.
+
+**Nothing that belongs to the interpolated string is hardcoded around the placeholder.** A verb glued into the wrapper for one caller's benefit is inherited by every other caller, and reaches the ones that already carry their own.
+
+**`%{name}` sits where the target language's grammar puts it.** Not where English puts it. It follows the verb in English, French, Swedish and Chinese; precedes it in German, Dutch, Hungarian, Japanese and Korean; and is wrapped by it in Finnish, whose particle verb splits around its object — `Tee %{name} uudelleen`. A translator moves the placeholder freely, which is the whole reason named parameters exist.
+
+**The name is attached grammatically, never with punctuation.** No colon, and no quotation marks in English. A language quotes the interpolation where its own grammar requires it: Hungarian's possessive would otherwise compete with the wrapper's — `„%{name}” visszavonása` — and the quotation marks make the inner phrase a citation so the two stop clashing.
+
+**An interpolated string that appears in more than one grammatical slot must work in every one of them, uninflected.** An undo description is read after the verb in the Edit menu and alone as a row in an edit-history window. It is therefore a nominative citation phrase, and is never inflected into the case a wrapping verb governs: doing so would make one slot right and the other wrong, and no single catalogue entry could serve both. Where a language's wrapper is a verb, the description is a noun phrase rather than a bare infinitive, so that the two do not stack — German names the action, `Hinzufügen des Musikers`, rather than repeating a command, `Musiker hinzufügen`.
+
+Case *inside* an interpolated string is a separate matter and unaffected: its own verb governs its own object, so Polish `Dodaj muzyka` keeps its accusative.
+
 ### Plural Forms
 
 Plural handling uses standard gettext conventions. The PO header declares the plural rule:
@@ -562,18 +577,22 @@ The domain runs from n=1 rather than n=0. No rule Ooloi ships gives 0 a form of 
 
 **What this check is not.** The presence of a count placeholder is a lint, not a proof. A form may carry `%{n}` and still be wrong in agreement — Ukrainian once carried the genitive plural, the five-and-above form, in the two-to-four slot, so three staves asked for *'ці 3 нотних станів'*. The placeholder was present throughout. Grammatical correctness within a form remains a human judgement; see [Invariants](#invariants) item 9 for the standard it is held to.
 
-### Non-English Coverage (Soft)
+### Non-English Coverage
 
-Non-English catalogues are gated on **structure but not on completeness**:
+Non-English catalogues are gated on **structure always, and on completeness only where they ship as a set**:
 
-- Missing keys are allowed (fall back to UK English at runtime)
+- An **external** catalogue may omit any key; it falls back to UK English at runtime
 - Coverage percentage can be reported
-- Missing keys do not block build or execution
-- Plural-integrity violations *do* block the build, in both modes — see above
+- Plural-integrity violations block the build, in both modes — see above
+- The **bundled** catalogues must hold the same key set as `en_GB.po` to be packaged
 
-This preserves forward compatibility: an old `sv.po` continues to work when new UI strings are added in a release. Partial translations degrade gracefully rather than failing. A partial translation is a legitimate state; a structurally broken one is not.
+Forward compatibility is what the first rule protects, and it is a **runtime** property of **external** catalogues: an old `sv.po` in the platform directory continues to work when new UI strings are added in a release, and a translator updates at their own pace afterwards. Partial translations degrade gracefully rather than failing. A partial translation is a legitimate state; a structurally broken one is not.
 
-**No check compares key sets across catalogues, and none should.** [Canonical Completeness](#canonical-completeness-hard-gate) gates `en_GB.po`, the source language; the plural checks scan every catalogue for structure. Between them, a key present in English and absent from the other twenty-one satisfies everything the build has, in both modes. That gap **is** the soft gate rather than a hole in it. A parity check would turn a partial translation into a build failure and remove the forward compatibility above, and asserting the same property in a test rather than in the verification task is no better — it enforces the policy somewhere nobody has written it down. Completeness across the non-English catalogues is process discipline, deliberately not enforcement.
+**The bundled catalogues are a different case, because they ship together.** They are not a set of independent translations arriving at their own speed; they are one artefact, built in one pass, and a key added to `en_GB` is translated into the rest before that artefact is made. [Canonical Completeness](#canonical-completeness-hard-gate) gates `en_GB.po` against the source, and `detect-locale-key-gaps` gates the rest against `en_GB.po` — an error under strict mode, which the build runs, and a warning naming the divergent locales in normal mode, so that work in progress is visible without being blocked.
+
+The failure this closes is quiet rather than loud, which is why discipline alone did not hold it. A key that was **never** translated falls back to English and reads as a string nobody has reached yet — the soft gate working as intended. A key that **was** translated and whose name then changed in code and `en_GB` alone falls back the same way, and is indistinguishable from the first: German menus silently render English, with nothing to mark them. No test fails, because every test pins `:en-GB`; no marker appears, because the fallback is by design. The gate is on the bundled set specifically because that is the only place the two cases can be told apart — by construction, they are complete or they are wrong.
+
+This gates packaging and nothing else. It never runs against the platform directory, never sees an external catalogue, and does not touch the runtime fallback chain in [Forward Compatibility](#forward-compatibility).
 
 Coverage is a report rather than a gate. `calculate-coverage` computes a locale's percentage against `en_GB.po`. It is a library function and the verification task does not call it: a coverage figure informs a translation effort rather than deciding a build.
 
@@ -833,9 +852,11 @@ What enforcement cannot reach is agreement within a form: a plural form may carr
 
 ## Documentation
 
-Translators need no Ooloi-specific documentation: they work in PO files, whose format is documented by the GNU gettext manual and understood by every standard PO editor, and each message carries its own context through `msgctxt` and its plural slots through translator comments.
+Translator-facing documentation is the [Translator's Guide](../guides/TRANSLATORS_GUIDE.md). The PO format itself needs no explaining from us — it is documented by the GNU gettext manual and understood by every standard PO editor — but three things are Ooloi's own and a translator cannot deduce them: where the catalogues live and how the startup sync between the bundled set and the user's folder behaves, the musical vocabulary a general translator renders wrongly, and the conventions governing a translated string interpolated into another (§[Interpolated Names](#interpolated-names)). The guide also states plainly that the shipped translations are machine-generated and provisional, which is what invites the correction they need.
 
-Developer-facing explanation lives in the Frontend Architecture Guide — Section 9 for the translation API, the key conventions and the locale-change cascade, and Section 4.4 for the formatters that resolve keys. This ADR is the specification; the guide teaches its use.
+That guide is written for a musician rather than an implementer, and carries its own reasoning rather than delegating it here: a translator who follows a link into this document lands among protocol boundaries and does not come back.
+
+Developer-facing explanation lives in the Frontend Architecture Guide — Section 9 for the translation API, the key conventions and the locale-change cascade, and Section 4.4 for the formatters that resolve keys. This ADR is the specification; the guides teach its use.
 
 ## Out of Scope
 
@@ -846,16 +867,23 @@ This ADR addresses **string translation only**. Related concerns handled separat
 - Separate concern requiring different infrastructure (not gettext-based)
 - Future ADR if needed for user-configurable preferences
 
-**RTL language support (Arabic, Hebrew):**
-- Pure rendering concern, handled by JavaFX automatically
-- Translation infrastructure is direction-agnostic
+**RTL language support (Arabic, Hebrew, Persian, Urdu):**
+- Translation infrastructure is direction-agnostic: a catalogue in an RTL language loads and resolves like any other
 - Strings should not contain directional markup (Unicode bidi control characters)
-- Text rendering engine handles bidi algorithm
+- Text rendering handles the bidi algorithm, so the strings themselves display correctly
+- **Interface mirroring does not follow from that and is not implemented.** Mirroring a JavaFX scene graph requires setting node orientation, which nothing in Ooloi sets, so menus, dialogs and panels stay laid out left-to-right whatever the locale. An RTL catalogue is therefore usable but the result is not yet right, and the gap is a UI concern rather than a localisation one
 
 **Currency/unit conversion:**
 - "5 miles" vs "8 kilometers" requires domain logic, not translation
 - Out of scope for string localisation
 - Application-specific logic if needed
+
+**Merging a newer bundled catalogue into a user's own:**
+- An external catalogue replaces the bundled one for its locale rather than merging with it, so a user's file that predates a version carries none of the keys that version added, and those strings fall back to English until the user takes them in by hand
+- Merging them per key is a candidate change and is deliberately left open here rather than decided
+- The precedent sits in the same product: the Instrument Library merges user data over the bundled set by `:id`, with an explicit `:excluded` set for deliberate removals, so local adjustment survives while the bundle keeps improving underneath it. The same shape applies to a publisher who wants house wording in the interface
+- Two properties would follow directly — keys added by a later version appear, and a string cannot be lost by being absent from the user's file. A third does not: distinguishing a translation the user *edited* from one they merely still hold requires retaining the previous bundled version and comparing three ways, which merge-on-load alone does not provide
+- Until this is settled, the [Translator's Guide](../guides/TRANSLATORS_GUIDE.md) tells translators to compare their catalogue against the shipped one after upgrading
 
 ## Consequences
 

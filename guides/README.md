@@ -1,6 +1,6 @@
 # Ooloi Guides
 
-This directory contains guides for understanding Ooloi's core concepts and APIs. **These guides also serve as practical tutorials for Clojure programming concepts**, using musical examples to teach functional programming patterns, concurrency, and data transformation techniques.
+This directory contains guides for understanding Ooloi's core concepts and APIs. **Most also serve as practical tutorials for Clojure programming concepts**, using musical examples to teach functional programming patterns, concurrency, and data transformation techniques. Two do not: the Instrument Library Catalogue is a reference, and the Translator's Guide is written for musicians who translate rather than for programmers.
 
 ## Start Here
 
@@ -27,6 +27,7 @@ The three gateway guides listed in that document — TIMEWALKING_GUIDE, POLYMORP
 | **🔵 [OOLOI_SERVER_ARCHITECTURAL_GUIDE.md](OOLOI_SERVER_ARCHITECTURAL_GUIDE.md)** | Server architecture, distributed systems, enterprise patterns | STM-gRPC integration, concurrent state management, functional architecture |
 | **🔴 [ADVANCED_CONCURRENCY_PATTERNS.md](ADVANCED_CONCURRENCY_PATTERNS.md)** | Parallel processing, performance optimization | STM coordination, parallel algorithms, performance tuning |
 | **📖 [INSTRUMENT_LIBRARY_CATALOGUE.md](INSTRUMENT_LIBRARY_CATALOGUE.md)** | Bundled instrument library: all instruments, families, clefs, transpositions | — (reference catalogue) |
+| **🌐 [TRANSLATORS_GUIDE.md](TRANSLATORS_GUIDE.md)** | Translating Ooloi's interface: catalogues, plural forms, musical terminology, PO editors | — (no programming required) |
 
 ---
 
@@ -57,6 +58,9 @@ The three gateway guides listed in that document — TIMEWALKING_GUIDE, POLYMORP
 ### Reference Documentation
 - **🟡 [VPDs.md](VPDs.md)** - Vector Path Descriptors reference (core system knowledge)
 - **📖 [INSTRUMENT_LIBRARY_CATALOGUE.md](INSTRUMENT_LIBRARY_CATALOGUE.md)** - Complete catalogue of bundled instruments: woodwinds, brass, strings, percussion, keyboards, plucked instruments, voices, and early instruments
+
+### For Translators
+- **🌐 [TRANSLATORS_GUIDE.md](TRANSLATORS_GUIDE.md)** - Improving Ooloi in your own language: where the catalogues live, how a PO entry works, plural forms per language, musical terminology, and choosing an editor (no programming required)
 
 ---
 

@@ -100,7 +100,7 @@ The user interface source language is UK English, which is the default and the c
 
 Bundled locales: Czech (Čeština), Danish (Dansk), Dutch (Nederlands), English UK (default), English US, Finnish (Suomi), French (Français), German (Deutsch), Greek (Ελληνικά), Hungarian (Magyar), Icelandic (Íslenska), Italian (Italiano), Japanese (日本語), Korean (한국어), Norwegian Bokmål, Polish (Polski), Portuguese — Brazil (Português), Portuguese — Portugal (Português), Simplified Chinese (简体中文), Spanish (Español), Swedish (Svenska), Ukrainian (Українська).
 
-**Translation quality caveat.** All non-English locales are AI-generated translations and require review by native speakers before they should be considered authoritative. Translation quality varies by language. Localisation is a natural community-driven contribution area — corrections to existing locales and submissions of new locales are welcome. See [ADR-0039](../ADRs/0039-Localisation-Architecture.md) for the architectural model and the PO-file workflow.
+**Translation quality caveat.** All non-English locales are AI-generated translations and require review by native speakers before they should be considered authoritative. Translation quality varies by language. Localisation is a natural community-driven contribution area — corrections to existing locales and submissions of new locales are welcome, and a new language needs no new version of Ooloi. If you speak one of these languages and read music, the [Translator's Guide](../guides/TRANSLATORS_GUIDE.md) is written for you: it explains where the catalogues live, how to edit one, and how to send it back. No programming is required. See [ADR-0039](../ADRs/0039-Localisation-Architecture.md) for the architectural model.
 
 ## Code of Conduct
 
