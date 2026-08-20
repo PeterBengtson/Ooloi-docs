@@ -14,8 +14,10 @@ Accepted
   - [Negative](#negative)
 - [Implementation Approach](#implementation-approach)
   - [Core Plugin Architecture](#core-plugin-architecture)
+  - [Kinds of Plugin](#kinds-of-plugin)
   - [Undo: Frontend Plugins Get It Free, Backend Plugins Register It](#undo-frontend-plugins-get-it-free-backend-plugins-register-it)
   - [Hot Plugin Installation Architecture (Enabled by Unified gRPC)](#hot-plugin-installation-architecture-enabled-by-unified-grpc)
+  - [Separation, Security, and Dynamic Loading](#separation-security-and-dynamic-loading)
   - [Standard Plugin Development Infrastructure](#standard-plugin-development-infrastructure)
 - [Plugin System Architecture](#plugin-system-architecture)
 - [Alternatives Considered](#alternatives-considered)
@@ -123,6 +125,53 @@ second kind — it would attach to one existing function and touch no piece data
 plugin is determines what governs it: the first is bound by the API and by the piece it operates
 on, the second only by the process it is loaded into.
 
+### Kinds of Plugin
+
+Two accepted distinctions decide what a plugin can do: **which side it runs on**, and **whether it
+is written in Clojure or reaches Ooloi through the JVM API**.
+
+| | **Clojure** | **Any other JVM language** |
+|---|---|---|
+| **Backend** | Runs in the backend process, with no wire between it and the score, and is free of the restriction to use the API only: it may call the polymorphic API in either form — VPD or object — or any other function or method in the codebase. It is indistinguishable from core code. | Reaches Ooloi through the API, via a Java-facing interface. Being in the same JVM as the score, both signature forms are open to it — the VPD form and the object form. |
+| **Frontend** | Works exactly as its backend counterpart, and is free of the same restriction: it may call any function or method in the frontend codebase and present whatever GUI it likes. `SRV/` is its route to the backend. | Reaches Ooloi through the API. `SRV/` is its only route to the backend. |
+
+**The frontend is not the UI side.** A file converter is naturally a frontend plugin: importing
+MusicXML means reading a file on the user's machine, so the plugin reads it there and then issues
+`SRV/` calls that build the piece on the backend in one transaction. Nothing about it is a matter of
+presenting UI, and either language serves: the Clojure one has the wider freedom, the other is
+restricted to `SRV/` for the crossing, and both do the same job. Which side a plugin belongs on
+follows as much from where the data it needs lives as from what the plugin does.
+
+**The two axes govern different things.** The language axis decides how far a plugin reaches into
+the process it is loaded into — not how fast it runs. The Java-facing interface is an ordinary JVM
+call and every JVM language is compiled and optimised alike, so a plugin written in Kotlin or Scala
+executes at the same speed as one written in Clojure, on either side.
+
+The side axis decides how a plugin talks to the score. On the backend the score is in the same
+process; on the frontend it is not, and `SRV/` is the route to it. That does not make a frontend
+plugin the lesser thing. The frontend holds the same data model and the same `api/` operations as
+the backend — the same records, with perfect fidelity — so a plugin may build and transform real
+piece structure there, freely, and compute as heavily as it likes while doing so. What it may not do
+is *decide*: those local mutations are provisional, and only what crosses through `SRV/` becomes
+musical truth ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)).
+The distinction is authority, not capability. That crossing is also where undo is captured, so a
+frontend plugin's edits become undoable
+steps with no work on its part, while a backend plugin reaches the score below the boundary and
+registers its own
+(§[Undo](#undo-frontend-plugins-get-it-free-backend-plugins-register-it)). Being written in Clojure
+buys a frontend plugin nothing with respect to the piece — object pointers cannot cross a network,
+so VPD-only is a property of the wire rather than of the language.
+
+**How a plugin is engaged is a separate question from either axis, and is specified where each
+contract lives.** A plugin taking part in notation formatting declares hooks at the pipeline stages
+it participates in, and is registered against the musical elements it formats
+([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)), which admits no architectural distinction
+between core and extended notation, chords and beams being plugins themselves. A plugin reached by
+menu item, click or keyboard shortcut contributes command descriptors and is rendered alongside core
+commands ([ADR-0042](0042-UI-Specification-Format.md) §Command Descriptors). Participation is a
+contract rather than a location: either may be written in Clojure or in any other JVM language, on
+either side.
+
 ### Undo: Frontend Plugins Get It Free, Backend Plugins Register It
 
 **A plugin runs on one side of the frontend/backend boundary or the other, and the two are
@@ -227,6 +276,40 @@ facility; the rest of the plugin interface remains language-agnostic as describe
 - **Custom Notation**: Microtonal systems, extended techniques, cultural notation
 - **Domain Extensions**: Analysis tools, educational features, composition AI
 - **Drawing Operations**: Custom curves, graphics, dynamic visual elements
+
+### Separation, Security, and Dynamic Loading
+
+Ooloi loads plugin code into a running process. That is what makes hot installation possible, and it
+is also the whole of the security problem.
+
+**What the JVM offers for loading.** Code enters a running JVM through a ClassLoader, which delegates
+to its parent for classes it does not itself define, so loaded code can be scoped rather than merged
+into one flat namespace — two plugins may carry different versions of the same library without
+either seeing the other's. There is no explicit unload: code goes away when its ClassLoader becomes
+unreachable and is collected. Discovery has a standard mechanism in `ServiceLoader`, which finds
+implementations of an interface written in any JVM language without the host knowing their names in
+advance. Clojure adds runtime namespace loading and by-name var resolution on top. Which of these
+Ooloi uses, and how, belongs with the plugin design work rather than here; what is settled is that
+the wire imposes no obstacle — a unified `OoloiValue` message and by-name method dispatch mean a
+plugin needs no schema regeneration and no restart ([ADR-0002](0002-gRPC.md), and
+§[Hot Plugin Installation Architecture](#hot-plugin-installation-architecture-enabled-by-unified-grpc)
+above).
+
+**What the JVM no longer offers for isolation.** A separate ClassLoader separates *names* and
+*lifetimes*; it grants no permissions and withholds none. The facility that once withheld them is
+gone — the SecurityManager was deprecated by JEP 411 and permanently disabled by JEP 486, so on a
+current JVM it cannot be installed at all, and with it went every in-process policy over filesystem,
+network and reflection. Two further capabilities are absent for related reasons: a thread cannot be
+forcibly stopped, so a plugin that will not return cannot be made to; and the heap is accounted
+process-wide with no per-ClassLoader quota, so a plugin's memory use can be neither attributed nor
+capped. What the JVM does still enforce is strong encapsulation of its own internals — reflective
+access into the JDK is denied by default, and Ooloi opens nothing.
+
+**What remains is the process.** Real confinement of untrusted code is a process-level matter, and
+therefore the operating system's rather than the JVM's. Ooloi's frontend/backend separation is a
+process boundary, but it is drawn for authority over musical truth rather than for containment: it
+governs what a plugin can do to a score, not what it can do to the machine it runs on. How plugins
+are to be confined is forthcoming.
 
 ### Standard Plugin Development Infrastructure
 
