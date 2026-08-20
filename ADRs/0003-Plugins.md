@@ -117,11 +117,12 @@ We will implement a robust plugin system as a central architectural component of
 **Plugins are not all of one kind, and the difference is architectural.** Most of the examples
 above extend the *score*, and reach it through the polymorphic API — an import format builds and
 traverses piece structure with the same operations any other caller uses
-([ADR-0030](0030-MusicXML.md)). Others extend the *application* rather than the score: pure Clojure
-loaded into the backend process, reached by direct call, using no API and carrying nothing across a
-wire. A destination for the failure record
+([ADR-0030](0030-MusicXML.md)). Others extend the *application* rather than the score: reached by
+direct call inside whichever process they are loaded into, using no API and carrying nothing across
+a wire. A destination for the failure record
 ([ADR-0017](0017-System-Architecture.md) §Surfacing Unexpected Runtime Failures) would be of that
-second kind — it would attach to one existing function and touch no piece data at all. Which kind a
+second kind — pure Clojure in the backend process, attaching to one existing function and touching
+no piece data at all. Which kind a
 plugin is determines what governs it: the first is bound by the API and by the piece it operates
 on, the second only by the process it is loaded into.
 
@@ -317,11 +318,18 @@ process-wide with no per-ClassLoader quota, so a plugin's memory use can be neit
 capped. What the JVM does still enforce is strong encapsulation of its own internals — reflective
 access into the JDK is denied by default, and Ooloi opens nothing.
 
-**What remains is the process.** Real confinement of untrusted code is a process-level matter, and
-therefore the operating system's rather than the JVM's. Ooloi's frontend/backend separation is a
-process boundary, but it is drawn for authority over musical truth rather than for containment: it
-governs what a plugin can do to a score, not what it can do to the machine it runs on. How plugins
-are to be confined is forthcoming.
+**None of this changes the requirement.** An open ecosystem in which anyone may publish a plugin
+needs plugins that cannot compromise the user's machine (§Core Plugin Architecture, item 4), and
+the loss of one facility narrows the available means rather than the goal. What it rules out is a
+policy layer inside the JVM; what it leaves is the operating system, which confines processes and
+does it better than any in-process scheme ever did, and mediation, where a plugin is handed a
+capability rather than a permission and never holds the dangerous thing in the first place. Ooloi
+already runs its components as separate processes speaking gRPC when deployed that way
+([ADR-0001](0001-Frontend-Backend-Separation.md), [ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md)),
+so the machinery a process boundary would need is not foreign to the architecture — though that
+boundary is presently drawn for authority over musical truth rather than for containment, and
+governs what a plugin can do to a score rather than what it can do to the machine. Which means are
+chosen, and how they combine, is decided with the plugin implementation.
 
 ### Standard Plugin Development Infrastructure
 
@@ -394,13 +402,18 @@ Backend plugins store configuration as piece settings (ADR-0016):
 - No separate plugin settings files for backend plugins
 - Example: `(defsetting ::h/Piece :plugin/musicxml/format-version "4.0" #{"3.0" "3.1" "4.0"})`
 
-> **How a plugin's settings UI is generated is UNDECIDED — this is a requirement, not yet a design.** The need is real and specific: a plugin's `defsetting` declarations live in *backend plugin code*, so unlike the core piece settings — which sit in `shared/` and are therefore on the frontend's classpath already ([ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6) — a plugin's declarations are not available to the frontend locally. Something must carry them across.
->
-> **The hard part is not transport but content**, and it is what makes this a requirement rather than a design. Whatever carries a declaration across must carry enough to build a control from, and a `defsetting` declaration does not uniformly contain that: a **set** validator enumerates its legal values, from which a control type and a precise error message both follow, while an **arbitrary predicate** yields neither — `pos-int?` says nothing about whether to render a spinner or a text field, nor what to tell the user when they type something else. Any scheme that ships declarations must therefore either constrain what a plugin may declare or carry presentation alongside the constraint.
->
-> Alternatives not yet weighed: plugins shipping their declarations in shared code so the frontend reads them locally as it does the core ones; a plugin supplying its own window spec, which ADR-0042's backend-described dialog capability would already transport; or a settings-description call, which would have to answer the content question above before it could be specified.
->
-> Values are a settled matter either way, and only the *declarations* are at issue: a plugin setting's value reaches the frontend in the structural projection like any other, since `:settings` is a structural slot ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a).
+A plugin's settings appear in the Piece Preferences window as ordinary piece settings, under their
+own tab, built by the same registry-driven machinery as the core ones — category, declaration
+order, labels, control type and validator all come from the declaration, and
+[ADR-0043](0043-Frontend-Settings.md) §Settings Window specifies how a declaration becomes a
+control. Nothing has to carry the declarations across in the combined application, where both
+halves share one registry.
+
+Two things remain open, and each is recorded where it belongs rather than here. A precise error
+message does not follow from an arbitrary predicate, as ADR-0043 notes against its own validation
+closure. And a client whose build lacks a plugin's declarations — a genuinely remote backend — meets
+the case [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6 already describes, where a value
+arrives with no label, category or control.
 
 **Benefits:**
 - Settings persist with pieces (sharing, version control)
@@ -411,7 +424,9 @@ Backend plugins store configuration as piece settings (ADR-0016):
 ### Frontend Plugin Settings
 
 Frontend plugins use local settings files:
-- Stored in `~/.ooloi/frontend/plugins/{plugin-id}/settings.edn`
+- Stored under the platform directory (`platform/get-platform-directory`):
+  `~/.ooloi/frontend/plugins/{plugin-id}/settings.edn` on Unix and macOS,
+  `%APPDATA%/Ooloi/frontend/plugins/{plugin-id}/settings.edn` on Windows
 - Simple EDN maps for UI preferences (not musical decisions)
 - File-based persistence, not part of piece data
 - Example: `{:toolbar-position :left :icon-size :large}`
@@ -434,7 +449,7 @@ Backend plugins expose:
 - No UI descriptions
 
 **Future Extensibility:**
-Custom backend-described windows may be added if plugins require UI beyond settings and standard operations. Initial implementation focuses on settings-based configuration which covers the majority of plugin needs.
+Custom backend-described windows are specified in [ADR-0042](0042-UI-Specification-Format.md) — a backend plugin describes a window as pure data, referencing components by qualified symbol and dispatching through symbolic event maps, and the frontend materialises it — and have no production users yet. Initial implementation focuses on settings-based configuration, which covers the majority of plugin needs.
 
 ## Notes
 
