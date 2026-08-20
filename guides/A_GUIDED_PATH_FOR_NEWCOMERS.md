@@ -265,7 +265,7 @@ Three event layers: the frontend event bus (category-based pub/sub backed by the
 
 **33. [ADR-0039: Localisation Architecture](../ADRs/0039-Localisation-Architecture.md)**
 
-GNU gettext `.po` files, `tr-declare` as first-class mechanism for translation key visibility, instant locale switching via event-driven architecture. Short. The critical architectural point: locale is application state, not startup configuration.
+GNU gettext `.po` files, `tr-declare` as first-class mechanism for translation key visibility, instant locale switching via event-driven architecture. Short. The critical architectural point: locale is application state, not startup configuration. The [Translator's Guide](TRANSLATORS_GUIDE.md) is the other side of this ADR — not part of this reading path, since it assumes no Clojure, but worth knowing exists before you add a user-facing string.
 
 **34. [ADR-0042: UI Specification Format](../ADRs/0042-UI-Specification-Format.md)**
 

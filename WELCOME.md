@@ -64,7 +64,7 @@ Once Ooloi reaches its first public release, the architecture will support contr
 
 **6. Core Development**: The musical foundations are complete. Post-release work will concern infrastructure, asynchronous processing, streaming, printing, and cross-platform concerns. This will not include redesigning musical semantics or architectural paradigms.
 
-**7. Translation and Localization**: Help make Ooloi accessible to musicians worldwide by translating the user interface. Ooloi uses industry-standard PO files for translations. See [ADR-0039: Localisation Architecture](ADRs/0039-Localisation-Architecture.md) for details.
+**7. Translation and Localization**: Help make Ooloi accessible to musicians worldwide by translating the user interface. Ooloi uses industry-standard PO files, and the catalogues sit as plain text in your own user folder — editing one and restarting Ooloi is the whole cycle, with no programming and nothing to install. The interface already ships in twenty-two locales, but every non-English one is machine-generated and awaits a native-speaking musician. Start with the [Translator's Guide](guides/TRANSLATORS_GUIDE.md); [ADR-0039: Localisation Architecture](ADRs/0039-Localisation-Architecture.md) is the technical specification behind it.
 
 ## What You're Building On
 
