@@ -2038,11 +2038,52 @@ The second is what a **focus-loss commit** needs. `ooloi-dense-text-field`'s `:o
 
 **Do not reach for a Robot click to focus a field.** The listener cannot tell *how* focus was granted, only that it changed, so the click proves nothing the request does not — and it frequently fails: a click aimed at a field inside a scroll pane lands on an ancestor, the scene's focus owner comes back a container, and the field never focuses. **Nor call the listener's target function directly**, which is the false green of *A Direct-Dispatch Test Is No Evidence That a Control Is Wired* above, wearing a different hat.
 
-**A fact that times out denies focus to the next graphical fact in the same namespace.** Only one window holds OS focus, and a fact left waiting on a `wait-for-state` that will never satisfy is still holding its application up when the next fact starts its own. The next fact's `requestFocus` then does nothing, and its focus precondition fails — which reads exactly like the flakiness described above, and is not: it is deterministic, and it tracks whatever made the earlier fact slow.
-
-This matters most when **establishing** a graphical fact by mutation, because the mutation is precisely what makes an earlier fact fail and therefore time out. Measured: a mutation aimed at one commit closure served two facts, and the second's focus precondition failed on every run until the first was removed — at which point focus was granted and the fact failed cleanly on its own assertion, as intended. **Establish a graphical fact in isolation**, or the mutation perturbs the thing being measured. The same reasoning applies to a graphical fact placed after any fact that can be slow.
-
 **Blur to the pane header or to empty space, never to another field.** A test that ends with a text field still focused fires that field's commit during teardown, against a client already torn down — and the failure guard then aborts the whole namespace, taking every other fact's verdict with it.
+
+#### Why a Field Will Not Take Focus
+
+A `requestFocus` on a text field can be silently discarded, and the symptom names nothing: the field
+reports `isFocused` false **while its Stage is focused and it is still attached to the Scene**. It
+reads as though focus was denied. It was granted and then taken away.
+
+The cause is the scene's own default focus assignment. When a Scene first gains focus, JavaFX gives
+focus to its first focus-traversable node — in a piece window, the button bar's *Piece Settings…*
+button. That assignment is asynchronous, so a node-level request made just before it lands is
+overridden, and nothing asks again. Measured, by reading the scene at the failing assertion:
+
+```
+:focus-owner   "Button@5fbe2d7d[styleClass=button]'Piece Settings…'"
+:node-focused  false
+:node-in-scene true
+:stage-focused true
+```
+
+**Use `util.frontend/await-node-focus!`, and assert on its result.** It requests focus and then
+*waits* — woken by `focusOwnerProperty` changing, never by sampling, per the rule in
+`ooloi.shared.async` that a wait must be woken by the thing it waits for. Its listener does two jobs:
+it delivers when focus arrives, and it **re-requests when focus goes elsewhere**, which is what
+closes the ordering race. The reclaim converges, because the default assignment happens once.
+
+Three things are worth knowing before diagnosing a focus failure yourself, because each was proposed
+with confidence here and disproved by measurement:
+
+- **It is not window activation.** `util.frontend/await-window-focus!` waits until the UI Manager's
+  `:active-window-id` names the window — its own settled record of real OS focus-gain — and the
+  failure survives that, moving down to the node assertion.
+- **It is not a detached node.** cljfx patches the scene graph on every render, so a held reference
+  *could* be an orphan; `:node-in-scene true` says it is not.
+- **Polling for a settled focus owner makes it worse.** Waiting for a non-nil owner proves only that
+  *some* assignment happened, not the final one, and it widens the window for the override — measured
+  at 6 failures in 10 runs, against roughly 1 in 3 without it.
+
+**Diagnose by reading the scene, not by reasoning about timing.** Assert on a map of
+`:node-focused` / `:node-in-scene` / `:focus-owner` / `:stage-focused` rather than on a bare boolean.
+The identity of the actual focus owner is what distinguishes every one of the cases above, and a
+`=> true` throws it away.
+
+A residue remains, roughly one run in twelve: `await-node-focus!` times out *and* the reclaim never
+fires, meaning the focus owner never changed at all — the request was ignored outright and no event
+followed. That case has no evidence-backed explanation yet. Measure it before theorising.
 
 **Robot is what proves a gesture reaches focus.** A Robot click on a *shown* Stage generates real toolkit input, which no other mechanism in a test process does. The canonical case is `active-piece-id` (in `ui.core.active-window`), which resolves the piece the foremost window belongs to (a piece window's `:window/id` is its piece-id; a layout window's `:window/piece-id` names its parent piece), returning `nil` when no piece-derivable window is foremost — the query the File-menu piece actions (Save / Save As / Close) and Close enablement target. It reads the `:active-window-id` atom, which the per-Stage `focused-listener` updates on real focus; `active_window_test` shows a real piece window and a real non-piece window, `robot-click!`s each with the shared `util.robot` helpers, and asserts `active-piece-id` follows focus.
 
