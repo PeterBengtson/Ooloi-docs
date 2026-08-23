@@ -112,6 +112,19 @@ with `create-musician` is exercising a data shape production never produces, and
 the running application throws on. Any test driving an operation the frontend feeds must feed it a
 projected map.
 
+**Build such a fixture with `structural-fields` itself, never with a hand-listed set of keys.** The
+projection *drops the non-structural* rather than *listing the structural*, so a fixture that
+enumerates today's kept fields silently omits every field added afterwards, while continuing to look
+correct — the imitation diverges from the projection at exactly the moment the divergence matters.
+Passing a record through the real helper costs one call and cannot drift.
+
+**The mirror rule binds the Instrument Library, and the two fail in opposite directions.** The library
+holds real `Instrument` records containing real `Staff` records ([ADR-0045](0045-Instrument-Library.md)),
+being the source of the copies that go into pieces, so *its* fixtures must be records and are built
+through `map->instrument`, which converts nested staves. A bare map there fails where a record would
+work; a record in a piece window's fixture passes where it should fail. Neither window's tests can
+catch the other's mistake, which is why both halves are stated here together.
+
 
 #### Kept and dropped, per entity
 

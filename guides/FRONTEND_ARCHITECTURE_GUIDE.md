@@ -1896,6 +1896,56 @@ is that a test helper never lives in a `src/` namespace.
 
 For the complete treatment of Integrant lifecycle, the `with-combined-system` macro, and how Integrant components are wired across all three projects, see the [INTEGRANT_COMPONENTS.md](INTEGRANT_COMPONENTS.md) guide.
 
+#### A Direct-Dispatch Test Is No Evidence That a Control Is Wired
+
+A window's controls emit map events, and cljfx routes those through the renderer's
+`:fx.opt/map-event-handler` — the function the window installs as its `:window/handler`. A test that
+reaches a control's event map off the *description* and calls the window's dispatch function itself
+never travels that route. It hands the map to a closure the component was passed; the application
+hands it to the renderer's handler. Two different closures with the same destination.
+
+The consequence is worth stating as a measurement rather than a caution. Replace a piece window's
+`:window/handler` with `(fn [_] nil)` — no click selects, no arrow expands, no field commits, every
+control inert — and a suite of direct-dispatch facts covering those controls **passes in full**. Only
+a test that fires the materialised control in a mounted window fails. A window covered solely by
+direct-dispatch facts therefore has no evidence it is wired at all, and the failure mode is a live
+control that silently reaches nothing.
+
+At least one test per window must fire a real control in a mounted scene graph. It needs no Robot: a
+Robot grants OS *focus*, and firing a button does not require focus. Find the node by a stable
+property of its own — an icon literal, an id — and `.fire` it inside `run-on-fx-thread-sync!`.
+
+#### A Collapsed Pane Keeps Its Old Bounds
+
+Setting a pane's expansion state through the window's expansion map works as specified: the renderer
+re-invokes, cljfx applies `:expanded`, and the `TitledPane` collapses. **Its `boundsInLocal` does not
+follow.** In a shown window the collapsed pane goes on reporting the expanded height indefinitely —
+seconds and many pulses later — because nothing forces the layout pass that would revise it. Headless,
+the same pane reports the new height only if the test calls `.applyCss` and `.layout` itself.
+
+So a height is not a reliable witness to expansion state, and anything computed from those bounds —
+a Robot drag coordinate above all — is unaffected by a *programmatic* collapse. **Read `isExpanded` to
+learn whether a pane is collapsed; read a height only to learn what the layout currently believes.**
+Conflating the two turns one stale number into a confident conclusion about a mechanism that is
+working correctly.
+
+**A real click does revise the bounds**, and that is the difference. Clicking the disclosure arrow
+drives the pane's own toggle — its animation, and the layout that follows it — so the height afterwards
+is the collapsed height, and a coordinate computed from it lands where the eye would put it. A test
+whose geometry depends on rows being short therefore has two routes, and they trade against each
+other:
+
+- **Size the window so the question does not arise.** Cheap, and indifferent to how the rows render —
+  but it re-tunes the dependency rather than removing it, so an editor that grows again needs a larger
+  window again.
+- **Collapse through real clicks, then wait for the height to change before aiming.** Genuinely
+  end-to-end and immune to editor growth. It costs more gestures, more wall-clock, and one more thing
+  per click that can miss — and the wait must be on the height *dropping*, since the state flips long
+  before the layout does.
+
+Either way, waiting on `isExpanded` proves only that the toggle happened. Where a coordinate is about
+to be computed from a bound, the bound is what must be waited on.
+
 #### Testing Wired Component Behaviour Without a Stage
 
 When a test needs to verify production event listener behaviour wired into a component tree by a builder function — validation logic, CSS class changes, settings commits — the test does not need a Stage, Scene, or OS-level window focus:
