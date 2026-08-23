@@ -21,6 +21,7 @@ Under implementation
     - [The complete verb family, and two layers](#the-complete-verb-family-and-two-layers)
     - [A musician appears at most once in a layout](#a-musician-appears-at-most-once-in-a-layout)
     - [One gesture is one transaction](#one-gesture-is-one-transaction)
+    - [An inline edit is one call, not a batch](#an-inline-edit-is-one-call-not-a-batch)
     - [Destructive gestures are guarded](#destructive-gestures-are-guarded)
     - [A gesture is a network-transparent ACID transaction](#a-gesture-is-a-network-transparent-acid-transaction)
   - [5. The window title](#5-the-window-title)
@@ -82,7 +83,7 @@ The window is built from a pure spec function and the declarative window pipelin
 
 ### 4. Drag-and-drop across the workspace
 
-Every structural edit in the window is a drag, a drop, or a deletion. The gestures form a small, uniform grammar; what a drop does is determined by what is dragged and where it lands.
+Every change to the piece's *makeup* — what it contains, and in what order — is a drag, a drop, or a deletion. The gestures form a small, uniform grammar; what a drop does is determined by what is dragged and where it lands. Editing an entity's own definitional fields is the other half of the window's work and takes a different route, stated at the end of this section.
 
 | Drag | Onto | Result |
 |---|---|---|
@@ -166,6 +167,18 @@ Reads resolve to `Musician` records in the layout's order (not the piece's). **`
 **One gesture is one transaction.** Every gesture above is a single atomic operation on the piece. The window does not stream a gesture to the backend as separate edits and leave the backend to infer their grouping; it composes the gesture itself into an explicit list of backend calls and submits that list as one `SRV/atomic` batch — a vector of `{:method-name :vpd :piece-id :parameters}` operations executed inside one backend STM transaction. Dragging several musicians onto the Layouts pane to make a score is therefore not several operations but one: the window builds the call list — add a new layout, then `add-musician` each dragged musician onto it (the backend records each reference in the layout's `:musician-uuids`; the window never writes that vector, and no client operation sets it) — submits it once, and the backend commits it once. This differs from how the Instrument Library edits its catalogue, where the backend derives the effective change from a submitted new version ([ADR-0045](0045-Instrument-Library.md)); the Piece Window knows the calls a gesture comprises and groups them itself.
 
 That single transaction yields, by [ADR-0052](0052-Change-Detection-and-Event-Generation.md), exactly one `:piece-structure-changed` event for the piece — its structural coalescing scope collapses the transaction's changes to one event — delivered per-piece to this window, which refetches the structural snapshot and re-renders. And by [ADR-0015](0015-Undo-and-Redo.md) the same transaction boundary is one named undo step. One gesture is one transaction, one event, one refetch, and one entry on the piece's undo stack.
+
+#### An inline edit is one call, not a batch
+
+**An inline edit is one call, not a batch.** A gesture that changes the piece's makeup composes a list of operations because it *is* several operations. Editing an entity's own field is not: a name, an abbreviation, a number, a range, a transposition, a clef is one slot on one entity, and it reaches the piece as one granular call on that entity's own VPD — `(SRV/set-<attr> vpd piece-id value)`, addressed `[:m mi]`, `[:m mi ii]`, `[:m mi ii si]` by level. The editors announce every edit at field granularity and the window keeps that granularity; it does not accumulate a form and submit an entity, which is how the Instrument Library edits its catalogue ([ADR-0045](0045-Instrument-Library.md)) and deliberately not how a piece is edited.
+
+Being one operation, such an edit needs no name from its caller: the gRPC boundary derives the undo step's label from the operation it invoked ([ADR-0015](0015-Undo-and-Redo.md) §Mutation Sites), so the Edit menu offers to undo *Set Name* with nothing composed for the purpose. Grouping a lone call into a batch would take that away and substitute the batch default, which is a worse label for a truer one.
+
+**What decides the shape is the number of operations, not whether the field looks composite.** Several fields are parts of a larger one — a range half names one end of a map its setter takes whole, a transposition component names one token of a vector, a clef override lives inside the transposition map — and a commit to any of them is a read-modify-write against the entity as it stands, producing one setter call and no more. Composite does not mean batched.
+
+Where a commit genuinely implies more than one operation it is an `SRV/atomic` batch like any other gesture, and carries an explicit name because the boundary has no single operation to derive one from. One commit does: **unticking Transposing**, which clears the instrument's transposition and brings each of its staves' written clefs into line ([ADR-0045](0045-Instrument-Library.md) §Transposition). Its batch is one transaction, one event, one refetch and one named undo step, exactly as a drop's is.
+
+Both routes end in the same place. A field write lands on a structural slot, so it announces itself through the ordinary change-detection cycle ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3b), the window refetches, and the pane redraws — the rename appearing in every layout that lists the renamed musician, layouts holding references rather than copies.
 
 #### Destructive gestures are guarded
 

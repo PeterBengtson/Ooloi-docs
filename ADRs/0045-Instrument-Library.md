@@ -262,6 +262,22 @@ with the clef. The `:clef-overrides` key within `:transposition` captures these 
 No functions are stored in the library atom or in persistence. Transposer functions are constructed
 at the call site: `(apply make-transposer (:sounding->written (:transposition instrument)))`.
 
+**Turning transposition off clears the map whole, and the staff clefs follow.** The editor's
+Transposing control writes the field rather than a flag, so unticking it sets `:transposition` to
+`nil` — and any `:clef-overrides` go with it, living inside that map. That is the unified map paying
+for itself a second time: overrides surviving on a non-transposing instrument is one of the states it
+exists to make structurally impossible, so nothing has to remember to remove them.
+
+The instrument's staves are then brought into line: each staff's written default clef is set to its
+*own* sounding default clef. For a non-transposing instrument written pitch **is** sounding pitch, so
+the two must agree; and the sounding-clef control is only shown while the instrument transposes, so a
+written clef left disagreeing would be both wrong and no longer visible to correct. Each staff
+follows its own sounding clef, never the first staff's, since a multi-staff instrument may sound in
+different clefs on different staves.
+
+Unticking is therefore lossy, and deliberately so: the overrides are stashed nowhere and re-ticking
+seeds a plain unison rather than restoring them. Undo is the route back.
+
 #### Examples
 
 ```clojure
