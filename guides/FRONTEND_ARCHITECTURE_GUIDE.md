@@ -20,6 +20,7 @@
    - [4.2 Why This Separation Exists](#42-why-this-separation-exists)
    - [4.3 cljfx Spec Over Java Interop](#43-cljfx-spec-over-java-interop)
    - [4.4 Custom cljfx Component Functions](#44-custom-cljfx-component-functions)
+     - [Entity Editors](#entity-editors)
    - [4.5 Per-Window Reactive Renderer](#45-per-window-reactive-renderer)
    - [4.6 Style Classes — The setAll() Trap](#46-style-classes--the-setall-trap)
    - [4.7 JavaFX Event Phases and the Interactive Control Guard](#47-javafx-event-phases-and-the-interactive-control-guard)
@@ -632,11 +633,12 @@ cljfx supports functions as `:fx/type` values. Each Ooloi custom component funct
 | `ooloi-transposition-controls` | HBox with direction/quality/interval combo-boxes and octave spinner; accepts `:locale` cache-buster |
 | `ooloi-transposition-field` | nil → unchecked checkbox; non-nil → VBox with transposition controls and clef override rows; accepts `:locale` |
 | `ooloi-clef-selector-field` | Clef selector: label + clef combo-box using `ooloi-labelled-field`. Uses `clef-choices` derived from `staff/valid-clefs`. Accepts `:label`, `:value`, `:locale`, `:on-value-changed`, `:disable` |
-| `ooloi-written-clef` | Written clef section: clef selector row + `[+]` button + aux-range rows (one per `:aux-ranges` entry). Aux-range clef combos exclude default written clef and sibling aux clefs. Accepts `:clefs`, `:label`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
+| `ooloi-written-clef` | Written clef section: clef selector row + `[+]` button (fires `:staff-aux-add`) + aux-range rows (one per `:aux-ranges` entry). Aux-range clef combos exclude default written clef and sibling aux clefs. Accepts `:clefs`, `:label`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
 | `ooloi-sounding-clef` | Sounding clef selector (transposing instruments only). Accepts `:clefs`, `:label`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
-| `ooloi-aux-range-row` | Single aux-range row: clef combo + low/high text fields + `[-]` button. Fires `:staff-aux-clef-changed`, `:staff-aux-text-changed`, `:staff-aux-commit`, `:staff-aux-remove` events. Accepts `:clef`, `:aux-range`, `:available-clefs`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
-| `ooloi-instrument-editor` | Instrument editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors. Passes `(permissions/allowed? :edit-staff)` as `:editable?` to each staff editor. Accepts `:instrument`, `:locale`, `:editable?`, `:selected-staves`, `:on-staff-clicked`, `:on-staff-drag-detected` (3-arity fn wrapped in per-staff closure), `:on-collapsed`, `:on-expanded-changed`. `:on-drag-over` marks a staff drag's target instrument whether expanded or collapsed; a collapsed instrument **spring-opens** after a hover dwell (*Spring-loading*, under §The Piece Window's Panes) so the drop lands inside, rather than rejecting |
-| `ooloi-staff-editor` | Staff editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic with staff name and translated written default-clef. Content VBox with name/short-name text fields, num-lines spinner, written-clef (with aux-ranges), sounding-clef (when transposing). All controls respect `:editable?`. Accepts `:staff`, `:locale`, `:editable?`, `:transposing?`, `:instrument-id`, `:selected`, `:on-mouse-clicked`. `:on-drag-over` sets `:target-instrument-id` and `:target-staff-id` (the latter used by copy; the reorder position comes from the shared drop-target scan) |
+| `ooloi-aux-range-row` | Single aux-range row: clef combo + low/high text fields + `[-]` button. Fires `:staff-aux-clef-changed` (the clef combo), `:staff-field-changed` with `:field :aux-ranges` (each half's `:on-commit`, naming its clef and its half) and `:staff-aux-remove` (the `[-]`). Requires `:dispatch`. Accepts `:clef`, `:aux-range`, `:available-clefs`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
+| `ooloi-musician-editor` | Musician editor built on `ooloi-openable-pane` with `:arrow-only-expand true` — the outermost of the entity editors. `:graphic` the composed numbered-name header with its doubling annotation; content VBox with the musician's `:name`, `:short-name` and `:number` rows followed by an `ooloi-instrument-editor` per instrument. **Requires `:dispatch`** (*Entity Editors*, below). Accepts `:musician`, `:numeral-settings`, `:selection`, `:expanded`, `:locale`, `:lazy-content`, and the three window-local drag callbacks `:on-musician-drag-detected`, `:on-instrument-drag-detected`, `:on-staff-drag-detected` |
+| `ooloi-instrument-editor` | Instrument editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors. Passes `(permissions/allowed? :edit-staff)` as `:editable?` to each staff editor. **Requires `:dispatch`** — asserted, so a window that omits it fails at first render (*Entity Editors*, below). Accepts `:instrument`, `:locale`, `:editable?`, `:selected-staves`, `:on-staff-clicked`, `:on-staff-drag-detected` (3-arity fn wrapped in per-staff closure), `:on-collapsed`, `:on-expanded-changed`. `:on-drag-over` marks a staff drag's target instrument whether expanded or collapsed; a collapsed instrument **spring-opens** after a hover dwell (*Spring-loading*, under §The Piece Window's Panes) so the drop lands inside, rather than rejecting |
+| `ooloi-staff-editor` | Staff editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic with staff name and translated written default-clef. Content VBox with name/short-name text fields, num-lines spinner, written-clef (with aux-ranges), sounding-clef (when transposing). All controls respect `:editable?`. **Requires `:dispatch`** (*Entity Editors*, below). Accepts `:staff`, `:locale`, `:editable?`, `:transposing?`, `:instrument-id`, `:selected`, `:on-mouse-clicked`. `:on-drag-over` sets `:target-instrument-id` and `:target-staff-id` (the latter used by copy; the reorder position comes from the shared drop-target scan) |
 
 These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
 
@@ -645,6 +647,60 @@ These ensure consistent spatial rhythm throughout the application without repeat
 | Function | Signature | Purpose |
 |----------|-----------|---------|
 | `action-handler` | `[f]` | Returns a `javafx.event.EventHandler` that calls `(f)`, ignoring the event. Use instead of inline `reify javafx.event.EventHandler` for `.setOnAction` and similar no-arg wiring |
+
+#### Entity Editors
+
+`ooloi-musician-editor`, `ooloi-instrument-editor` and `ooloi-staff-editor` are one pattern in three
+sizes, mounted by two windows that hold their data quite differently — the Instrument Library, which
+owns its catalogue outright, and the Piece Window, which holds a projection of a piece it does not own.
+An editor for a further entity is written by following this shape rather than inventing one.
+
+**The shape.** An entity editor is an `ooloi-openable-pane` with `:arrow-only-expand true`, whose
+`:graphic` is the entity's composed header and whose `:content` is a `:v-box` of that entity's own
+editable field rows — `ooloi-labelled-field` wrapping a dense control — followed by an editor per
+structural child. Nothing else nests: a musician editor contains instrument editors, an instrument
+editor contains staff editors, a staff editor contains only rows.
+
+**Every commit is one event carrying its own value.** A control builds a closure that dispatches
+`{:event/type :<entity>-field-changed :id <entity-id> :field <field> :value <v>}`. There is no
+accumulator, no keystroke event, and no separate blur event meaning *committed* — the value travels
+with the commit, so the mounting window holds no per-field state. The event name is
+`<entity>-field-changed`; a commit-shaped name such as `:<entity>-field-commit` is not used.
+
+**`:dispatch` is a required prop, not optional plumbing.** Every component that builds commit closures
+calls `assert-dispatch!` and refuses to render without one, in the manner the formatters already refuse
+a `:text-key` without a `:locale`. The failure then arrives at the first render of any window mounting
+the editor, rather than waiting for a user to type into a field nobody tested.
+
+**Two routes reach the window's handler, and they are not the same route.** A commit closure calls the
+`:dispatch` function the window passed down; a map-valued prop — `:on-mouse-clicked`, a combo box's
+`:on-value-changed`, a button's `:on-action` — is routed by cljfx through the renderer's
+`:fx.opt/map-event-handler`, the window's `:window/handler`. Both arrive at the same handler, and the
+distinction matters only when testing: a mutation that breaks one leaves the other working. See
+*A Direct-Dispatch Test Is No Evidence That a Control Is Wired*.
+
+**What the window does with a commit is the window's own business.** The Instrument Library has the
+record in hand and applies the result with object-form setters. The Piece Window must name the
+operation instead — one granular `SRV/<setter>` on the entity's own VPD, resolved from the event's
+`:id` against the live projection, dispatched off the JavaFX thread and never read back. Field
+granularity is kept rather than accumulating a form and submitting it whole, which is what lets the
+gRPC boundary name each undo step from the operation itself: the Edit menu reads *Set Name* with
+nothing composed for the purpose. A handler that recognises no such field raises rather than falling
+through silently, naming the level and the field, so an untaught arm surfaces as a notification.
+
+**Where the write computation lives.** Fields that are parts of a larger value — a range half, a
+transposition component, a clef override, an aux range — need a read-modify-write against the entity
+as it stands, and that arithmetic is identical in both windows. It lives in `ui.core.field-edits`,
+which takes the entity and the commit and returns the **writes**, `{:attr … :value …}`. A field that
+is a plain slot needs nothing there; the musician handler uses `field-edits` not at all. The count of
+returned writes *is* the one-call-or-batch rule, so no handler has to remember it.
+
+**A field row displaces the geometry a drop scan counts.** Where an editor's pane is also a drop
+target, its content children are no longer only the structural children — the field rows are children
+too. The shared scan tolerates this by construction: `compute-rows-drop-target-id` skips a node with
+no `:id`, and `staff-drop-target-id` filters to `TitledPane`. Any scan that instead counts rows
+positionally must apply the same filter, or every drop into an expanded pane lands one position late,
+silently and with nothing failing.
 
 ### 4.5 Per-Window Reactive Renderer
 
@@ -1973,9 +2029,18 @@ When a test needs to verify production event listener behaviour wired into a com
 
 The `with-ui-manager` macro wires the event bus (required for `set-app-setting!` to publish `:setting-changed` events). `show-app-settings!` creates a mounted renderer and subscribes to `(:event-bus mgr)` for setting changes. After a setting change, `Thread/sleep 400` allows the renderer cycle to complete. Private production functions are callable directly via `(#'ns/fn ...)`.
 
-**`Node.focusedProperty` is drivable in tests only under Robot.** In test processes initialised via `Platform/startup`, the OS grants focus to no Stage by default — so `requestFocus()` has no effect, `focusedProperty` never changes, and its ChangeListeners never fire. That is because focus is never *granted*, not because the listeners are inert: a `javafx.scene.robot.Robot` click on a **shown** Stage grants real OS focus, and the listeners fire normally (this is how `:active-window-id` and `active-piece-id` are tested). The `ooloi-dense-text-field` `:on-commit` callback fires on both Enter and focus loss; to verify a focus-loss commit *without* Robot, call the listener's target function directly rather than expecting `requestFocus()` to simulate focus transfer.
+**`Node.focusedProperty` needs a Stage that actually has focus.** In a test process initialised via `Platform/startup`, the OS grants focus to no Stage by default — so `requestFocus()` has no effect, `focusedProperty` never changes, and its ChangeListeners never fire. The listeners are not inert; focus is simply never *granted*. Two things grant it, and which one a test needs depends on what it is proving:
 
-**The one exception is `javafx.scene.robot.Robot`.** A Robot click on a *shown* Stage generates real toolkit input and grants genuine OS focus — the only mechanism that does. Focus-driven behaviour is therefore tested with Robot, not `requestFocus`. The canonical case is `active-piece-id` (in `ui.core.active-window`), which resolves the piece the foremost window belongs to (a piece window's `:window/id` is its piece-id; a layout window's `:window/piece-id` names its parent piece), returning `nil` when no piece-derivable window is foremost — the query the File-menu piece actions (Save / Save As / Close) and Close enablement target. It reads the `:active-window-id` atom, which the per-Stage `focused-listener` updates on real focus; `active_window_test` shows a real piece window and a real non-piece window, `robot-click!`s each with the shared `util.robot` helpers, and asserts `active-piece-id` follows focus.
+- **A `javafx.scene.robot.Robot` click on a shown Stage** generates real toolkit input, and with it genuine OS focus. This is the only way to prove that a real gesture moves focus, and it is how `:active-window-id` and `active-piece-id` are tested.
+- **A window shown under `{:graphical? true}`** already holds real OS focus, granted by the window manager rather than by any input. Inside such a window `requestFocus()` works normally.
+
+The second is what a **focus-loss commit** needs. `ooloi-dense-text-field`'s `:on-commit` fires on both Enter and blur, and those are *different code*: `:on-action` is a prop, rebuilt on every render, while blur runs through a `focusedProperty` listener installed once at node creation via `ext-on-instance-lifecycle`. A test that only presses Enter has not touched the blur path at all — and blur is how a field is normally left. Drive it by requesting focus on the field and then on something else, inside a window shown `{:graphical? true}`.
+
+**Do not reach for a Robot click to focus a field.** The listener cannot tell *how* focus was granted, only that it changed, so the click proves nothing the request does not — and it frequently fails: a click aimed at a field inside a scroll pane lands on an ancestor, the scene's focus owner comes back a container, and the field never focuses. **Nor call the listener's target function directly**, which is the false green of *A Direct-Dispatch Test Is No Evidence That a Control Is Wired* above, wearing a different hat.
+
+**Blur to the pane header or to empty space, never to another field.** A test that ends with a text field still focused fires that field's commit during teardown, against a client already torn down — and the failure guard then aborts the whole namespace, taking every other fact's verdict with it.
+
+**Robot is what proves a gesture reaches focus.** A Robot click on a *shown* Stage generates real toolkit input, which no other mechanism in a test process does. The canonical case is `active-piece-id` (in `ui.core.active-window`), which resolves the piece the foremost window belongs to (a piece window's `:window/id` is its piece-id; a layout window's `:window/piece-id` names its parent piece), returning `nil` when no piece-derivable window is foremost — the query the File-menu piece actions (Save / Save As / Close) and Close enablement target. It reads the `:active-window-id` atom, which the per-Stage `focused-listener` updates on real focus; `active_window_test` shows a real piece window and a real non-piece window, `robot-click!`s each with the shared `util.robot` helpers, and asserts `active-piece-id` follows focus.
 
 **Shutdown race — JAT flush before pool halt.** `run-later!` callbacks queued during `show-window!` or `attach-notification-widget!` may still be pending on the JAT when the pool is halted, causing `RejectedExecutionException`. Drain the JAT queue with a no-op `run-on-fx-thread-sync!` before halting the pool. `with-ui-manager` performs this automatically. Never write manual pool/bus/manager boilerplate in tests.
 

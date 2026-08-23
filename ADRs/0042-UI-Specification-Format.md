@@ -16,6 +16,7 @@ Implemented
   - [Modal dialogs: one core, two entry points](#modal-dialogs-one-core-two-entry-points)
   - [Content Builder Pattern](#content-builder-pattern)
   - [Custom cljfx Component Functions](#custom-cljfx-component-functions)
+  - [Editor Field Commits: One Event Per Control, Carrying Its Value](#editor-field-commits-one-event-per-control-carrying-its-value)
   - [Per-Window Reactive Renderer](#per-window-reactive-renderer)
     - [Architecture](#architecture)
     - [How it works](#how-it-works)
@@ -491,6 +492,52 @@ The formatter uses cljfx's **cell factory pattern** internally: `:button-cell` (
 This is the idiomatic cljfx approach for non-string ComboBox items. It preserves map event handler dispatch (cljfx merges `:fx/event` into the map and dispatches), works with the `:locale` cache-buster (new cell factory functions capture the current `tr` on re-render), and keeps specs at the data level (keywords transport over gRPC).
 
 Without `:choices`, all props pass through unchanged (for cases where items are already strings or the caller manages display directly).
+
+### Editor Field Commits: One Event Per Control, Carrying Its Value
+
+Editor components — the entity editors and the field rows they are built from — are reused by more
+than one window, and the windows that mount them hold their data differently: one owns the records it
+edits, another holds a projection of state owned elsewhere. Three rules make a control's edit
+intelligible to any of them without the control knowing which it is in.
+
+**A control commits once, and the commit carries its value.** The event is
+`{:event/type :<entity>-field-changed :id <entity-id> :field <field> :value <v>}`, where `:value` is
+already of the field's own type — a String from a text field, a parsed number from the numeric field,
+an Integer from a spinner. A field whose value is one half of a larger one names its half in the event
+rather than assembling the whole. The mounting window therefore holds **no per-field state**: there is
+nothing to accumulate between a keystroke and a commit, and nothing to reconcile if the commit never
+comes.
+
+The rejected alternative was two events per field — a keystroke event carrying the text, and a blur
+event meaning *committed* that carried nothing. Nothing better was available at the time:
+`:on-focused-changed` is a property listener, and cljfx discards the observable, so a blur handler
+receives a bare boolean with no route back to the control that lost focus. The consequence was an
+accumulator per mounting window and a validation pass on every character typed. Placing the value in
+the commit removes both, and removes them for every window that mounts an editor rather than for the
+one that noticed.
+
+**The event is named for what happened, not for the mechanism.** `<entity>-field-changed`; a control
+does not emit a `-field-commit` variant, and there is no separate event family for a sub-field of a
+larger value.
+
+**A component that builds commit closures requires a dispatch function, and asserts it.** The
+mounting window supplies `:dispatch`; the component checks it and refuses to render without one, in
+the same manner that a formatter refuses a `:text-key` unaccompanied by a `:locale`. The failure then
+occurs at the first render of any window mounting the editor, rather than when a user types into a
+field no test covered. The cost is that every call site declares `:dispatch`, which is the same price
+the locale guard charges for `:locale`, and is paid for the same reason.
+
+**A spinner commits on focus loss, carrying its value; never per arrow click.** Routing each
+increment to a save turns a held arrow into a stream of writes, and — where those writes are undoable —
+into a stream of undo steps for one gesture. This rule belongs to the spinner component rather than to
+its call sites, so every spinner obeys it and a future one inherits it. For the same reason, the
+string-to-number coercion belongs to the numeric field component, whose stated purpose is owning it.
+
+**Consequence for undo.** Because a commit is one operation rather than an accumulated form, a mutation
+boundary that derives undo descriptions from the operation invoked needs nothing composed for the
+purpose: one commit becomes one named step. A gesture that genuinely implies several operations is the
+exception and must name itself explicitly; the number of resulting operations decides this, not whether
+the field looks composite.
 
 ### Per-Window Reactive Renderer
 
