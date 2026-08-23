@@ -2040,6 +2040,10 @@ The second is what a **focus-loss commit** needs. `ooloi-dense-text-field`'s `:o
 
 **Blur to the pane header or to empty space, never to another field.** A test that ends with a text field still focused fires that field's commit during teardown, against a client already torn down — and the failure guard then aborts the whole namespace, taking every other fact's verdict with it.
 
+**Robot is what proves a gesture reaches focus.** A Robot click on a *shown* Stage generates real toolkit input, which no other mechanism in a test process does. The canonical case is `active-piece-id` (in `ui.core.active-window`), which resolves the piece the foremost window belongs to (a piece window's `:window/id` is its piece-id; a layout window's `:window/piece-id` names its parent piece), returning `nil` when no piece-derivable window is foremost — the query the File-menu piece actions (Save / Save As / Close) and Close enablement target. It reads the `:active-window-id` atom, which the per-Stage `focused-listener` updates on real focus; `active_window_test` shows a real piece window and a real non-piece window, `robot-click!`s each with the shared `util.robot` helpers, and asserts `active-piece-id` follows focus.
+
+**Shutdown race — JAT flush before pool halt.** `run-later!` callbacks queued during `show-window!` or `attach-notification-widget!` may still be pending on the JAT when the pool is halted, causing `RejectedExecutionException`. Drain the JAT queue with a no-op `run-on-fx-thread-sync!` before halting the pool. `with-ui-manager` performs this automatically. Never write manual pool/bus/manager boilerplate in tests.
+
 #### Why a Field Will Not Take Focus
 
 A `requestFocus` on a text field can be silently discarded, and the symptom names nothing: the field
@@ -2084,10 +2088,6 @@ The identity of the actual focus owner is what distinguishes every one of the ca
 A residue remains, roughly one run in twelve: `await-node-focus!` times out *and* the reclaim never
 fires, meaning the focus owner never changed at all — the request was ignored outright and no event
 followed. That case has no evidence-backed explanation yet. Measure it before theorising.
-
-**Robot is what proves a gesture reaches focus.** A Robot click on a *shown* Stage generates real toolkit input, which no other mechanism in a test process does. The canonical case is `active-piece-id` (in `ui.core.active-window`), which resolves the piece the foremost window belongs to (a piece window's `:window/id` is its piece-id; a layout window's `:window/piece-id` names its parent piece), returning `nil` when no piece-derivable window is foremost — the query the File-menu piece actions (Save / Save As / Close) and Close enablement target. It reads the `:active-window-id` atom, which the per-Stage `focused-listener` updates on real focus; `active_window_test` shows a real piece window and a real non-piece window, `robot-click!`s each with the shared `util.robot` helpers, and asserts `active-piece-id` follows focus.
-
-**Shutdown race — JAT flush before pool halt.** `run-later!` callbacks queued during `show-window!` or `attach-notification-widget!` may still be pending on the JAT when the pool is halted, causing `RejectedExecutionException`. Drain the JAT queue with a no-op `run-on-fx-thread-sync!` before halting the pool. `with-ui-manager` performs this automatically. Never write manual pool/bus/manager boilerplate in tests.
 
 #### Waiting for Window Lifecycle Events
 
