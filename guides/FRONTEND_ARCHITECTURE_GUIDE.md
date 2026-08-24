@@ -718,8 +718,14 @@ the two commit routes from drifting apart: they call one closure.
 instrument and a Layout from the musicians it lists, so emptying either field writes the derived
 name. Written, not displayed: a name existing only as a display value never reaches the output the
 piece exists to produce, and a layout's name is engraved onto part title pages. A Layout's pane
-header shows a derived title over an empty slot regardless, which is why a test of this behaviour
-reads the piece and never the header.
+header shows a derived title over an empty slot regardless, so a test of this behaviour must read
+the **field** — the piece and the header are both satisfied by a field left stale.
+
+**A commit sets the field's text back to what the model holds.** A field is a view, and between
+committing and the model answering, the typed text exists nowhere but the node. Where the commit
+reverts to the value already stored, nothing in the piece changes, so no event is emitted and no
+render follows — and without this the box would stay as the user left it, showing a value the model
+declined. Where the commit does change the model, the render that follows replaces it as usual.
 
 Where there is nothing to derive from, the typed value stands. A Musician holding no instruments has
 no main, and an Instrument has no derivation at all — an instrument in a piece is a copy taken from
