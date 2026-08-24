@@ -516,7 +516,7 @@ accumulator per mounting window and a validation pass on every character typed. 
 the commit removes both, and removes them for every window that mounts an editor rather than for the
 one that noticed.
 
-**One gesture, one handler: a trigger installed once must not carry per-render data.** A control
+**Two triggers, one handler: a trigger installed once must not carry per-render data.** A control
 committing on both Enter and blur has two triggers and must still have exactly one handler.
 `:on-action` is a prop, replaced every render; a blur listener is installed once at node creation
 and cljfx never revisits it — `ext-on-instance-lifecycle` calls `:on-created` from `create` alone. A
