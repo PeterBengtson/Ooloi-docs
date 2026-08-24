@@ -21,6 +21,7 @@
    - [4.3 cljfx Spec Over Java Interop](#43-cljfx-spec-over-java-interop)
    - [4.4 Custom cljfx Component Functions](#44-custom-cljfx-component-functions)
      - [Entity Editors](#entity-editors)
+     - [What a Committed Name Becomes](#what-a-committed-name-becomes)
    - [4.5 Per-Window Reactive Renderer](#45-per-window-reactive-renderer)
    - [4.6 Style Classes — The setAll() Trap](#46-style-classes--the-setall-trap)
    - [4.7 JavaFX Event Phases and the Interactive Control Guard](#47-javafx-event-phases-and-the-interactive-control-guard)
@@ -701,6 +702,44 @@ too. The shared scan tolerates this by construction: `compute-rows-drop-target-i
 no `:id`, and `staff-drop-target-id` filters to `TitledPane`. Any scan that instead counts rows
 positionally must apply the same filter, or every drop into an expanded pane lands one position late,
 silently and with nothing failing.
+
+#### What a Committed Name Becomes
+
+A field commit does not always store what was typed, and the rules hold in both windows that mount
+these editors.
+
+**Committed text is trimmed.** Leading and trailing whitespace is stripped in
+`ooloi-dense-text-field`, on both arms of its commit contract — Enter and focus loss — so every text
+control in the application inherits it and no call site repeats it. That is the argument
+`ooloi-dense-numeric-field` already makes for housing its own coercion there, and it is what keeps
+the two commit routes from drifting apart: they call one closure.
+
+**A blank name reverts where the entity has a derivation.** A Musician takes its name from its main
+instrument and a Layout from the musicians it lists, so emptying either field writes the derived
+name. Written, not displayed: a name existing only as a display value never reaches the output the
+piece exists to produce, and a layout's name is engraved onto part title pages. A Layout's pane
+header shows a derived title over an empty slot regardless, which is why a test of this behaviour
+reads the piece and never the header.
+
+Where there is nothing to derive from, the typed value stands. A Musician holding no instruments has
+no main, and an Instrument has no derivation at all — an instrument in a piece is a copy taken from
+the library at drop time with no link back, and the derivations run the other way, a musician taking
+its name from its instrument. Constraining those is field validation's business, not the commit
+handler's.
+
+**A Staff name is optional, and usually absent**, so Staff stands outside this entirely and a cleared
+staff name is stored as the blank it is. A staff name exists for the multi-staff instrument — an
+organ's Manual and Pedal, a choir's voice parts — and the great majority of the staves in the bundled
+library carry none. `:short-name` is outside it too, on every entity: an abbreviation a user does not
+want is legitimately absent.
+
+**Blank means `clojure.string/blank?`** — nil, the empty string, or any run of whitespace. The
+narrower test would admit `"   "` as a name every display treats as absent, and would disagree with
+`layout-automatic-name?`, which asks the same question of a stored name.
+
+**The decision is made once**, in `name-to-write`, each caller composing only its own derivation. A
+rule spelled out per entity is a rule that drifts — the argument ADR-0054 §8 makes for the numbering
+pass, applying again here.
 
 ### 4.5 Per-Window Reactive Renderer
 
