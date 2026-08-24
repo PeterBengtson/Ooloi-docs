@@ -516,6 +516,14 @@ accumulator per mounting window and a validation pass on every character typed. 
 the commit removes both, and removes them for every window that mounts an editor rather than for the
 one that noticed.
 
+**One gesture, one handler: a trigger installed once must not carry per-render data.** A control
+committing on both Enter and blur has two triggers and must still have exactly one handler.
+`:on-action` is a prop, replaced every render; a blur listener is installed once at node creation
+and cljfx never revisits it — `ext-on-instance-lifecycle` calls `:on-created` from `create` alone. A
+listener carrying its own copy of the commit logic therefore freezes whatever that logic closed over
+at creation, and the two routes diverge silently, one acting on current data and the other on the
+first render's. So blur *fires* the event rather than performing the commit.
+
 **The event is named for what happened, not for the mechanism.** `<entity>-field-changed`; a control
 does not emit a `-field-commit` variant, and there is no separate event family for a sub-field of a
 larger value.

@@ -711,8 +711,12 @@ these editors.
 **Committed text is trimmed.** Leading and trailing whitespace is stripped in
 `ooloi-dense-text-field`, on both arms of its commit contract — Enter and focus loss — so every text
 control in the application inherits it and no call site repeats it. That is the argument
-`ooloi-dense-numeric-field` already makes for housing its own coercion there, and it is what keeps
-the two commit routes from drifting apart: they call one closure.
+`ooloi-dense-numeric-field` already makes for housing its own coercion there.
+
+There is one commit route, not two arms of one. `:on-action` is a cljfx prop, replaced on every
+render; the blur listener is installed once at node creation, where it can see nothing a later
+render changed, so it does not commit — it fires the same `ActionEvent` Enter fires. Two triggers,
+one handler.
 
 **A blank name reverts where the entity has a derivation.** A Musician takes its name from its main
 instrument and a Layout from the musicians it lists, so emptying either field writes the derived
@@ -721,11 +725,14 @@ piece exists to produce, and a layout's name is engraved onto part title pages. 
 header shows a derived title over an empty slot regardless, so a test of this behaviour must read
 the **field** — the piece and the header are both satisfied by a field left stale.
 
-**A commit sets the field's text back to what the model holds.** A field is a view, and between
-committing and the model answering, the typed text exists nowhere but the node. Where the commit
-reverts to the value already stored, nothing in the piece changes, so no event is emitted and no
-render follows — and without this the box would stay as the user left it, showing a value the model
-declined. Where the commit does change the model, the render that follows replaces it as usual.
+**The revert repaints the field, and only for the two fields that have a derivation.** A field is a
+view of the model, and a commit does not otherwise touch it: the render that follows a write
+repaints it. The blank revert is the exception, because the value written is the one already
+stored — nothing changes, no event is emitted, no render follows, and the box would stay empty
+showing a value the model declined. So the Musician name field and the Layout name field ask for
+the revert, by name, and nothing else does. A field that stores a blank as the blank it is has no
+use for one, and imposing it on every text control would put a visible revert-then-update on
+gestures that never needed it.
 
 Where there is nothing to derive from, the typed value stands. A Musician holding no instruments has
 no main, and an Instrument has no derivation at all — an instrument in a piece is a copy taken from
