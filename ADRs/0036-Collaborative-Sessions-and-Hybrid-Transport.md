@@ -259,32 +259,32 @@ Context switching is **asymmetric** by design.
 
 **Entering Collaboration** (in-process → remote, voluntary):
 1. User invokes "Connect to other Ooloi…"; dialog collects host, port, TLS flag, optional display name.
-2. **Outbound precondition gate**: if any piece is subscribed locally (non-empty Event Router `subscription-state`), `switch-to!` refuses and the UI surfaces a confirmation dialog explaining that local pieces must be closed first.
+2. **Outbound precondition gate**: if any piece is subscribed locally (the Event Router holds a subscription for one), `switch-to!` refuses and the UI surfaces a confirmation dialog explaining that local pieces must be closed first.
 3. With no local pieces open, `switch-to!` sends a graceful `Disconnect` RPC to the current (in-process) backend with a bounded deadline (default 2000ms), then closes the in-process channels, opens network channels with JWT authentication, re-registers with the remote, and publishes the three switch events (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection). The Disconnect call is best-effort: `:ok` / `:timeout` / `:error` are all treated identically — `switch-to!` always proceeds to channel teardown and re-registration. The identity-aware setOnCancelHandler backstop (ADR-0024 §Connection Lifecycle, PHASE 7) protects any subsequent late server-side cancel processing from wiping the new entry.
 4. UI shows collaboration mode with host name and guest role.
 
 **Exiting Collaboration** (remote → in-process, voluntary Disconnect):
 1. User invokes "Disconnect".
 2. **Intent confirmation**: dialog asks "really disconnect from <host>?" — confirming proceeds, cancelling leaves the frontend on the remote backend.
-3. No precondition gate. `switch-to! :in-process` sends a graceful `Disconnect` RPC to the current (remote) backend with the same bounded deadline, closes the remote channels, drops any remote piece subscriptions, clears `subscription-state` defensively, re-registers with the local backend, and publishes the three switch events (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection).
+3. No precondition gate. `switch-to! :in-process` sends a graceful `Disconnect` RPC to the current (remote) backend with the same bounded deadline, closes the remote channels, drops any remote piece subscriptions, clears each hold's record of them, re-registers with the local backend, and publishes the three switch events (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection).
 4. UI returns to standalone mode.
 
 **Switching Between Remote Hosts** (network → network, voluntary):
 1. User invokes "Connect to other Ooloi…" while already on a remote backend (e.g. currently a guest on Ooloi A, wants to join Ooloi B's session instead).
 2. No precondition gate. The current subscriptions are remote views, not save-state-bearing local work — the gate's purpose does not apply.
-3. `switch-to!` sends a graceful `Disconnect` RPC to the current remote backend, closes its channels, drops the prior backend's piece subscriptions, clears `subscription-state` defensively, opens network channels to the new remote, re-registers, and publishes the three switch events (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection).
+3. `switch-to!` sends a graceful `Disconnect` RPC to the current remote backend, closes its channels, drops the prior backend's piece subscriptions, clears each hold's record of them, opens network channels to the new remote, re-registers, and publishes the three switch events (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection).
 4. UI shows collaboration mode with the new host name and guest role.
 
 **Involuntary Reversion** (remote → in-process, ADR-0040):
 1. Remote connection is lost. gRPC delivers exactly one terminal event on the client's response observer, never both: a graceful server close (`ig/halt-key!`, an orderly shutdown) delivers `onCompleted`, while an abrupt loss — network partition, TLS failure, server death — delivers `onError`. **Both arms revert.** Neither may leave the client configured for a transport that is gone.
 2. The terminal event acts only if the channel it was opened against is still the live one — see §Terminal Event Identity. A terminal event on a superseded channel is not a connection loss and must not revert.
 3. The observer's `revert-fn` posts a persistent red "host disconnected" notification, then invokes `switch-to! :in-process` automatically. No intent confirmation; no gate.
-4. The recursive `switch-to!` clears `subscription-state` and publishes the same three switch events as a voluntary Disconnect (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection), so the collaboration menu reverts to `:local` enablement and the Tier 1 backend cache clears.
+4. The recursive `switch-to!` clears the recorded subscriptions and publishes the same three switch events as a voluntary Disconnect (`:instrument-library-changed`, `:collaboration-state-changed`, `:backend-changed` — see §Frontend Reconnection), so the collaboration menu reverts to `:local` enablement and the Tier 1 backend cache clears.
 5. UI returns to standalone mode; the red notification persists until the user dismisses it.
 
 **Rationale for the asymmetry.** The gate exists to protect the user's own work. Local pieces (those open against the in-process backend) are save-state-bearing and irreplaceable; silently leaving them when switching to a remote context is unacceptable, so the gate forces a deliberate close. Remote pieces, conversely, are the host's work; the guest holds only a view. Dropping that view on Disconnect (or when switching to another remote host) is exactly equivalent to closing a tab on a collaborative document, and adding a "close all remote pieces first" step would be friction without semantic value.
 
-Concretely, the gate fires only when the *current* transport is `:in-process`. Switches that originate from a remote backend — whether back to in-process (voluntary Disconnect, involuntary reversion) or to another remote (switching hosts) — are never refused, and `subscription-state` is cleared defensively on every such switch because the piece-ids tracked there refer only to the backend that issued them. Voluntary Disconnect confirms *intent* rather than gating on *state*; involuntary reversion can do neither — the connection is already gone; switching between hosts proceeds directly through the same "Connect to other Ooloi…" flow without an extra confirmation, since the new host's connect dialog is itself the intent surface.
+Concretely, the gate fires only when the *current* transport is `:in-process`. Switches that originate from a remote backend — whether back to in-process (voluntary Disconnect, involuntary reversion) or to another remote (switching hosts) — are never refused, and each hold's record of its subscription is cleared on every such switch, because the piece-ids it names refer only to the backend that issued them. Voluntary Disconnect confirms *intent* rather than gating on *state*; involuntary reversion can do neither — the connection is already gone; switching between hosts proceeds directly through the same "Connect to other Ooloi…" flow without an extra confirmation, since the new host's connect dialog is itself the intent surface.
 
 A *future option*, not part of the initial implementation: replace the outbound refusal with auto-close-with-save-if-dirty once piece-window UX (ADRs covering open/save flow) is in place. The call site for `switch-to!` is unchanged; only the precondition body is replaced.
 
@@ -302,7 +302,7 @@ stateDiagram-v2
     ConnectIntent --> LocalWork: Cancel
 
     ConnectIntent --> OutboundGate: Submit
-    OutboundGate: subscription-state empty?
+    OutboundGate: any piece subscribed?
 
     OutboundGate --> LocalWork: Refused — local pieces open<br/>(precondition dialog shown)
     OutboundGate --> LocalWork: Failed — target unreachable<br/>(fallback to local, dialog stays open to retry)
@@ -316,11 +316,11 @@ stateDiagram-v2
     DisconnectIntent: "Really disconnect from <host>?"
     DisconnectIntent --> RemoteCollaboration: Cancel
 
-    DisconnectIntent --> LocalWork: Confirm — switch-to! :in-process<br/>clears subscription-state
+    DisconnectIntent --> LocalWork: Confirm — switch-to! :in-process<br/>clears the recorded subscriptions
 
     RemoteCollaboration --> LocalWork: Involuntary reversion<br/>(ADR-0040, no intent dialog)
 
-    RemoteCollaboration --> RemoteCollaboration: User invokes Connect to other Ooloi…<br/>(new host — no gate, clears subscription-state)
+    RemoteCollaboration --> RemoteCollaboration: User invokes Connect to other Ooloi…<br/>(new host — no gate, clears the recorded subscriptions)
 
     RemoteCollaboration --> LocalWork: Failed host switch<br/>(fallback to local, never back to the old host)
 
@@ -332,11 +332,15 @@ This diagram shows the *states* and the user actions that move between them; the
 
 ### Frontend Reconnection: `switch-to!`
 
-Transport switching from the frontend is mediated by a single named operation on the `grpc-clients` component: `switch-to!`. The operation atomically replaces the client's transport — closing the existing API pool and event-stream, opening new ones against the target, re-registering with the target backend, and clearing the Event Router's `subscription-state` (piece-ids are server-local and do not carry across backends). On every completed switch it publishes **three events** on the frontend event bus (ADR-0031 §Frontend Event Categories):
+Transport switching from the frontend is mediated by a single named operation on the `grpc-clients` component: `switch-to!`. The operation atomically replaces the client's transport — closing the existing API pool and event-stream, opening new ones against the target, re-registering with the target backend, and clearing each piece hold's record of its subscription (piece-ids are server-local and do not carry across backends, and the connection that issued them is gone). On every completed switch it publishes **three events** on the frontend event bus (ADR-0031 §Frontend Event Categories):
 
 - `:instrument-library-changed` (category `:instrument-library`) — invalidates the Instrument Library cache, whose contents belong to the backend just left. Whether that is answered by a fetch now or by one when the window next opens is [ADR-0022 §The Invalidation Invariant](0022-Lazy-Frontend-Backend-Architecture.md#the-invalidation-invariant)'s to decide, not this operation's.
 - `:collaboration-state-changed` (category `:collaboration`) — the menu-enablement seam re-evaluates (see §Collaboration Menu Enablement).
-- `:backend-changed` (category `:backend`) — backend-scoped frontend caches invalidate; `undo-redo` subscribes to clear its Tier 1 backend undo cache, whose timestamps and descriptions belonged to the previous backend (ADR-0015 §Tier 1).
+- `:backend-changed` (category `:backend`) — backend-scoped frontend state answers for itself. `undo-redo` clears its Tier 1 backend undo cache, whose timestamps and descriptions belonged to the previous backend (ADR-0015 §Tier 1); and the windowing system **closes every open piece window**, because each is a view onto a piece the new backend has never heard of.
+
+  That the windows *close*, where a cache merely marks itself stale, follows from what they are: a cache can be refilled from whichever backend the frontend is now on, and a view onto a piece that backend never had cannot. Which windows are affected needs no per-window record, since the outbound precondition below refuses in-process → remote while any piece is subscribed — so local and remote pieces are never held at once, and on a completed switch every open piece window belongs to the backend being left.
+
+  They close **without asking about unsaved changes**. The piece is the host's work, the local backend never had it, and the dirty flag itself came from the departed backend's projection: a Save would offer an action that cannot succeed, and put a question to the user that no answer resolves. Ending a *session* is a different matter and closes nothing — a host terminating one has not changed transport, and the scores on screen are its own.
 
 **A refused switch publishes none of the three, and clears nothing.** "Completed" is doing real work in the sentence above: a refusal is not a switch that failed, it is a switch that never began, so none of the three invalidations it would announce is true. The distinction matters most for `:instrument-library-changed`, which would send an open Instrument Library window to refetch through a client that is not connected — and it is easy to lose, because a refusal returns a value like any other and a caller that does not recognise it will carry on into the completion path. `switch-to!` therefore refuses **before** any teardown, alongside the outbound precondition below, rather than discovering the refusal in the registration's return value.
 
@@ -349,7 +353,7 @@ ADR-0031 §Subscription State Management records which pieces this client holds.
 - `:in-process` — returns the frontend to its local always-running in-process backend. This is the default state, the reversion target when a remote connection drops (per ADR-0040), and what the "Disconnect" menu action invokes.
 - A `{:host h :port p :tls? boolean}` map — opens a network transport against the specified remote backend. This is what the "Connect to other Ooloi…" dialog invokes after host/port/TLS input.
 
-**Outbound precondition (in-process → remote).** `switch-to!` refuses when the *current* transport is `:in-process`, the target is a remote map, AND `subscription-state` is non-empty — local pieces are save-state-bearing and must be closed by the user before the context shift. The refusal mechanism at the component level is an implementation detail (exception, boolean return, error map — whichever fits cleanly); the UI surface is a confirmation dialog explaining the precondition, not a silent failure.
+**Outbound precondition (in-process → remote).** `switch-to!` refuses when the *current* transport is `:in-process`, the target is a remote map, AND some piece is subscribed — local pieces are save-state-bearing and must be closed by the user before the context shift. The refusal mechanism at the component level is an implementation detail (exception, boolean return, error map — whichever fits cleanly); the UI surface is a confirmation dialog explaining the precondition, not a silent failure.
 
 **Switches from a remote backend are never gated.** Remote pieces are views, not owned work. This covers three sub-cases:
 
@@ -357,7 +361,7 @@ ADR-0031 §Subscription State Management records which pieces this client holds.
 - *Remote → in-process (involuntary reversion, per ADR-0040)*: proceeds without dialog — the connection is already gone.
 - *Remote → remote (switching hosts)*: proceeds directly. The "Connect to other Ooloi…" dialog for the new host is itself the intent surface; no separate confirmation is needed.
 
-In all three sub-cases, `subscription-state` is cleared defensively before re-registration — the piece-ids tracked there refer only to the backend that issued them, and are meaningless against any other backend.
+In all three sub-cases, the recorded subscriptions are cleared before re-registration — the piece-ids they name refer only to the backend that issued them, and are meaningless against any other.
 
 ### Connection Failure and Fallback
 
