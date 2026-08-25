@@ -14,6 +14,7 @@ Implemented
   - [Alternatives Considered](#alternatives-considered)
 - [Per-Piece Event Routing](#per-piece-event-routing)
   - [Two kinds of subscription, and why the word is dangerous](#two-kinds-of-subscription-and-why-the-word-is-dangerous)
+  - [The piece hold: both subscriptions as one resource](#the-piece-hold-both-subscriptions-as-one-resource)
   - [Two orthogonal axes for a piece event](#two-orthogonal-axes-for-a-piece-event)
   - [Routing diagram](#routing-diagram)
 - [Consequences](#consequences)
@@ -148,14 +149,131 @@ audit, log or debug a piece's events adds itself the same way.
 legible from the name alone. `add-piece-handler!` and `remove-piece-handler!` are the local pair:
 they register and drop a handler against a piece id, and neither leaves the process.
 `subscribe-to-piece` and `unsubscribe-from-piece` are the wire pair: they issue and revoke this
-client's piece subscription. A piece window's open performs one of each — the handler first, so it is
-ready for the first event the wire delivers — and its close performs the mirror, revoking the piece
-subscription before dropping the handler, so no event can arrive to find its handler already gone.
+client's piece subscription. A piece window needs one of each, and does not perform them itself: it
+takes a **piece hold**, which composes both and closes them as one act — see the section below.
 
 The rule that follows: a component that wants a piece's events **never issues its own piece
 subscription, and above all never its own unsubscribe** — that would revoke delivery for every other
 consumer in the client and can close the piece on the backend. It takes a local subscription, or
 reads state that another component already maintains from those events.
+
+### The piece hold: both subscriptions as one resource
+
+A piece window needs one of each kind at once — a local handler to receive its piece's events, and
+the wire subscription that makes them arrive — and must give up both when it closes. Held as separate
+obligations, the close has no ordering to rely on, and the gap is not theoretical: a refetch answering
+an event that arrived *during* the close outlives the revocation and asks the backend for a piece that
+close-on-last-release has already removed.
+
+A **piece hold** is those obligations as one resource with a close. The word is the backend's own for
+the same relationship seen from the other side — a piece stays in the Piece Manager exactly as long as
+some client holds it ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md) §Piece Lifetime), and
+`close-if-unheld!` removes it when none does. A hold is this client's hold on one piece: taken when its
+window opens, released as one act when it closes, and the thing whose release can leave the piece
+unheld. It is deliberately *not* called a subscription — it contains one of each, and the section above
+exists because that word already names two things.
+
+**Three operations, on the Event Router**, which owns them because the state must outlive the window
+that uses it:
+
+| Operation | What it does |
+|---|---|
+| `(take-piece-hold! event-router piece-id handler)` | registers the handler, **then** issues the piece subscription |
+| `(when-held [event-router piece-id] & body)` | runs `body` only while the hold stands, counting it for its duration |
+| `(release-piece-hold! event-router piece-id)` | refuses, drains, revokes the subscription, drops the handler |
+
+The four operations of §Resolved 21 keep their contracts and the hold composes them. Nothing else
+performs the pairing itself.
+
+**A hold has three states, and two of them refuse.** The middle one is the one that is easy to miss:
+a hold being released is *closed but still present*, because the drain needs somewhere to count.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Held: take-piece-hold!
+    Held --> Closing: release-piece-hold! begins — refuse
+    Closing --> Gone: drained, revoked, handler dropped
+    Gone --> [*]
+
+    note right of Held
+        admits work
+        and counts it
+    end note
+
+    note right of Closing
+        refuses work — the count
+        can only fall from here
+    end note
+
+    note right of Gone
+        no hold at all —
+        refuses by absence
+    end note
+```
+
+**Why the release closes before it drains, and not the other way round.** A drain is worth performing
+only if what it waits for stops growing while it waits. Refusing first makes the count stable, and the
+consequence is the property the whole arrangement rests on: **the bound on that wait governs tidiness,
+not correctness.** However the wait ends, nothing further can be issued. No timing assumption remains
+load-bearing, which is the test of whether an arrangement like this lasts rather than merely working
+today.
+
+```mermaid
+sequenceDiagram
+    participant ER as Event Router
+    participant H as The piece hold
+    participant R as A refetch<br/>(pool thread)
+    participant BE as Backend
+
+    Note over H: held — admitting work
+    ER->>H: event arrives
+    H->>R: admitted, counted in
+    Note over H: the window closes → release-piece-hold!
+    Note over H: 1. refuse — closed, still present
+    ER->>H: another event arrives
+    H--xER: refused, no fetch issued
+    Note over H: 2. drain — for what was admitted earlier
+    R-->>H: finished, counted out
+    H->>BE: 3. unsubscribe-from-piece
+    Note over BE: last subscriber gone — the piece<br/>may be released (ADR-0022)
+    H->>H: 4. drop the handler
+```
+
+Two properties of that mechanism are load-bearing rather than incidental, and both are easy to get
+wrong:
+
+- **Admission and count-in are one atomic operation.** Checked and incremented separately, a close
+  landing between them admits work the drain has already walked past — the original defect, in a
+  narrower window.
+- **Work counting out must survive its own hold being gone.** A release whose wait expires drops the
+  hold while that work is still running, so the count-out meets nothing. It must leave nothing —
+  neither a resurrected hold nor a throw. An exception here lands on a pool thread, where it becomes a
+  logged stack trace in a run that reports itself green: precisely the failure the hold exists to
+  remove.
+
+**A fetch made under a hold cannot find its piece gone, and needs no answer for it.** A piece leaves
+the Piece Manager only through close-on-last-release ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)
+§Piece Lifetime), which counts this client for as long as its hold stands. So while a hold admits
+work the piece exists, and once it no longer admits work no fetch is issued: the two conditions are
+the same condition. `get-piece-structure` therefore carries no *piece gone* result, and a window needs
+no branch for one — a piece a window holds is a piece the backend has.
+
+That is a property of the hold rather than of the piece, and it is worth being exact about what it
+does not cover. A window can still outlive the **backend** that issued its piece: a remote host that
+vanishes leaves its guest's windows over pieces no current backend has heard of. That is a lost
+connection rather than a released piece, it produces no fetch — no event can arrive on a stream that
+is gone — and it is answered by closing those windows, not by a value returned from one.
+
+**What the hold supersedes.** The close's internal order — revoke, then drop the handler — was
+justified above as *"so no event can arrive to find its handler already gone"*. That reason no longer
+carries weight. After the refusal, an event arriving before the handler is dropped reaches it, submits
+work and is refused; had the handler gone first, the event would find nothing and do nothing. Both are
+harmless, because refusal now covers what the ordering used to. The order is kept for symmetry with the
+open, not because anything depends on it.
+
+**It generalises, which is the point.** A second view of one piece, a rendering cache, a plugin — any
+per-piece consumer that fetches — gets the close protocol right by taking a hold, rather than by
+re-deriving it correctly each time.
 
 ### Two orthogonal axes for a piece event
 
@@ -1044,11 +1162,11 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 
 **Opening a Piece:**
 1. User opens piece (File → Open, or connects to existing piece)
-2. Windowing System calls Event Router: add-piece-handler!(piece-id, handler) — registering the window's per-piece event handler, so it is ready before any event can arrive
-3. Windowing System calls Event Router: subscribe-to-piece(piece-id)
-4. Event Router calls backend API: subscribe-to-piece-events(piece-id)
-5. Backend acknowledges subscription, starts streaming events for that piece
-6. **No paintlist data downloaded yet** - piece subscription only enables event reception
+2. Windowing System calls Event Router: take-piece-hold!(piece-id, handler) — one act, which registers the window's per-piece handler and then issues the piece subscription, in that order, so nothing can arrive to find nothing registered
+3. Event Router calls backend API: subscribe-to-piece-events(piece-id)
+4. Backend acknowledges subscription, starts streaming events for that piece
+5. **No paintlist data downloaded yet** - piece subscription only enables event reception
+6. Every fetch the window makes for that piece runs under `when-held`, so the close can refuse and drain it
 
 **Opening a Layout Window:**
 1. User opens layout window (within an already-opened piece)
@@ -1059,11 +1177,12 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 
 **Closing a Piece:**
 1. User closes piece window
-2. Windowing System calls Event Router: unsubscribe-from-piece(piece-id)
-3. Event Router calls backend API: unsubscribe-from-piece-events(piece-id)
-4. Backend stops streaming events for that piece to this client — and, if this was the piece's *last* subscriber, removes it from the Piece Manager (close-on-last-release, [ADR-0022 §Piece Lifetime](0022-Lazy-Frontend-Backend-Architecture.md))
-5. Windowing System calls Event Router: remove-piece-handler!(piece-id) — the mirror of the open, and last, so no event arrives to find its handler already gone
-6. Cache Manager may evict cached data for that piece (or retain for quick reopen)
+2. Windowing System calls Event Router: release-piece-hold!(piece-id) — one act, whose four steps follow
+3. The hold is **closed**: from this instant no further fetch for that piece may begin, however long the rest takes
+4. The hold **drains**: it waits for fetches admitted before the close, a wait whose result cannot grow while it waits and whose bound therefore governs tidiness rather than correctness
+5. Event Router calls backend API: unsubscribe-from-piece-events(piece-id). Backend stops streaming events for that piece to this client — and, if this was the piece's *last* subscriber, removes it from the Piece Manager (close-on-last-release, [ADR-0022 §Piece Lifetime](0022-Lazy-Frontend-Backend-Architecture.md)). Nothing of this client's is outstanding by now, which is what step 4 was for
+6. The handler is dropped, so the Event Router delivers nothing further for that piece
+7. Cache Manager may evict cached data for that piece (or retain for quick reopen)
 
 **Combined App Scenario:**
 - User creates new piece or opens local file
@@ -1237,9 +1356,9 @@ Can be consumed directly by Grafana (native JSON data source support) for unifie
 
 20. **Component Integration and Dependency Injection:** Components wire together via Integrant dependency injection with clear boundaries. **Frontend Event Bus (Integrant Component):** Depends on `thread-pool` (Integrant ref). Pure data structure `{:pool pool :subscribers (atom {})}` created during `init-key`. Both the UI Manager and Event Router receive it as an Integrant dependency. **Event Router (Integrant Component):** Depends on `grpc-clients` (Integrant ref) and `event-bus` (Integrant ref). Pure pipeline for category-routed events: categorise → batch → `eb/publish!` to frontend event bus; per-piece events (`:piece-structure-changed`) are dispatched directly to the subscribing window. No direct category handlers — category processing happens through bus subscribers mediated by the UI Manager. Manages the subscription state atom internally. **Rendering Data Manager (NOT Integrant Component):** Pure data structure: 4 atoms + pure functions. Created via simple factory function `(create-rendering-data-manager)`. Owned by the Fetch Coordinator. Rationale for NOT being component: No lifecycle needed (atoms don't require cleanup), no stateful resources (no connections, threads, files), purely functional interface. **Fetch Coordinator (Integrant Component):** Depends on `grpc-clients` (Integrant ref), `thread-pool` (Integrant ref to shared Claypoole pool). Creates and owns the Rendering Data Manager. Uses shared pool for concurrent fetches (max 4 via CAS-based slot claiming). Requires component status because it holds mutable dispatch state (in-flight counter, priority queues) requiring cleanup on halt. **Integrant Configuration:** `{:ooloi.shared.components/thread-pool {:size 4}, :ooloi.frontend.components/event-bus {:thread-pool (ig/ref :ooloi.shared.components/thread-pool)}, :ooloi.frontend.components/grpc-clients {}, :ooloi.frontend.components/fetch-coordinator {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients) :thread-pool (ig/ref :ooloi.shared.components/thread-pool)}, :ooloi.frontend.components/event-router {:grpc-clients (ig/ref :ooloi.frontend.components/grpc-clients) :event-bus (ig/ref :ooloi.frontend.components/event-bus)}, :ooloi.frontend.components/ui-manager {:event-bus (ig/ref :ooloi.frontend.components/event-bus)}}`. Rationale: The Event Router publishes to the bus and the UI Manager subscribes. Neither needs direct references to downstream subsystems (RDM, FC, etc.) — bus-mediated delivery decouples them. This provides clean dependency management without global state, enables testing with mock dependencies, and follows Integrant lifecycle patterns.
 
-21. **Subscription State Management:** Event Router maintains an internal record of the pieces this client is subscribed to. **State Structure:** `{:subscription-state (atom #{piece-id-1 piece-id-2 ...})}`. **Subscribe Operation:** Proxy subscription request to backend via gRPC, on success add piece-id to subscription-state atom, return result to caller. **Unsubscribe Operation:** Proxy unsubscription request to backend via gRPC, on success remove piece-id from subscription-state atom, return result to caller. **API Surface:** two pairs, one per side of the wire — the mechanical test of *Two kinds of subscription* made structural, so a call site names which it performs. `(subscribe-to-piece event-router piece-id)` issues this client's piece subscription: it proxies to the backend and records the piece-id. `(unsubscribe-from-piece event-router piece-id)` revokes it, proxies to the backend, and updates the record. `(add-piece-handler! event-router piece-id handler)` registers `handler` against that piece-id so the Event Router dispatches that piece's per-piece events (currently `:piece-structure-changed`) directly to it — not via a shared category — and `(remove-piece-handler! event-router piece-id)` drops it. The handler pair never touches the wire, and neither pair constrains the other. All four implemented in `ooloi.frontend.components.event-router` namespace. **Rationale:** the record exists for transport switching, not for recovery. `switch-to!` consults it as an outbound precondition — a switch from the in-process backend to a remote one is refused while local pieces remain open, since local pieces are save-state-bearing and must be closed deliberately ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Frontend Reconnection) — and clears it on every completed switch, because piece-ids are issued by, and meaningful only against, the backend that issued them. The state is simple (a set of piece-ids) and requires no persistence: subscriptions are session-scoped and do not survive a change of backend. **The two operations are deliberately asymmetric across teardown, and it is not an oversight.** `unsubscribe-from-piece` makes its backend call only when the client's API pool is still connected, and simply skips it otherwise: the subscription is reclaimed anyway by the server's identity-aware cancel-handler backstop ([ADR-0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) §Connection Lifecycle), so a skipped unsubscribe leaks nothing. `subscribe-to-piece` carries no such guard, and must not acquire one by symmetry: a skipped *subscribe* leaves a piece window permanently without events, silently and for the rest of the session, which is strictly worse than the exception a guard would suppress. Guard the operation whose failure is harmless; let the one whose failure is not be loud.
+21. **Subscription State Management:** Event Router maintains an internal record of the pieces this client is subscribed to. **State Structure:** `{:subscription-state (atom #{piece-id-1 piece-id-2 ...})}`. **Subscribe Operation:** Proxy subscription request to backend via gRPC, on success add piece-id to subscription-state atom, return result to caller. **Unsubscribe Operation:** Proxy unsubscription request to backend via gRPC, on success remove piece-id from subscription-state atom, return result to caller. **API Surface:** two pairs, one per side of the wire — the mechanical test of *Two kinds of subscription* made structural, so a call site names which it performs. `(subscribe-to-piece event-router piece-id)` issues this client's piece subscription: it proxies to the backend and records the piece-id. `(unsubscribe-from-piece event-router piece-id)` revokes it, proxies to the backend, and updates the record. `(add-piece-handler! event-router piece-id handler)` registers `handler` against that piece-id so the Event Router dispatches that piece's per-piece events (currently `:piece-structure-changed`) directly to it — not via a shared category — and `(remove-piece-handler! event-router piece-id)` drops it. The handler pair never touches the wire, and neither pair constrains the other. All four implemented in `ooloi.frontend.components.event-router` namespace. **A piece window composes none of them directly** — it takes a *piece hold*, which pairs them and closes them as one act (§The piece hold); the four remain the primitives that hold is built from. **Rationale:** the record exists for transport switching, not for recovery. `switch-to!` consults it as an outbound precondition — a switch from the in-process backend to a remote one is refused while local pieces remain open, since local pieces are save-state-bearing and must be closed deliberately ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Frontend Reconnection) — and clears it on every completed switch, because piece-ids are issued by, and meaningful only against, the backend that issued them. The state is simple (a set of piece-ids) and requires no persistence: subscriptions are session-scoped and do not survive a change of backend. **The two operations are deliberately asymmetric across teardown, and it is not an oversight.** `unsubscribe-from-piece` makes its backend call only when the client's API pool is still connected, and simply skips it otherwise: the subscription is reclaimed anyway by the server's identity-aware cancel-handler backstop ([ADR-0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) §Connection Lifecycle), so a skipped unsubscribe leaks nothing. `subscribe-to-piece` carries no such guard, and must not acquire one by symmetry: a skipped *subscribe* leaves a piece window permanently without events, silently and for the rest of the session, which is strictly worse than the exception a guard would suppress. Guard the operation whose failure is harmless; let the one whose failure is not be loud.
 
-22. **Component API Surfaces:** Clear API boundaries between components enable testing and future evolution. **Frontend Event Bus API:** `(create-event-bus pool)` returns `{:pool pool :subscribers (atom {})}`. `(subscribe! bus category handler-fn)` registers handler for a category. `(unsubscribe! bus category handler-fn)` removes handler. `(publish! bus category events)` dispatches events to all category subscribers via Claypoole futures. **Rendering Data Manager API:** `(create-rendering-data-manager)` returns `{:page-views (atom {}) :system-views (atom {}) :staff-views (atom {}) :measure-views (atom {})}`. `(mark-stale! rdm vpd)` marks paintlist at VPD as stale, returns nil. `(update-paintlist! rdm vpd paintlist)` updates paintlist at VPD, returns nil. `(get-paintlist rdm vpd)` gets paintlist at VPD, returns paintlist or nil if missing/stale. `(is-stale? rdm vpd)` checks if paintlist at VPD is stale, returns boolean. RDM is a pure data cache (atoms) — updates happen on background threads; only the subsequent scene graph repaint uses `fx/run-later!`. **Fetch Coordinator API:** `(queue-fetch! fc vpd priority)` queues paintlist fetch at priority level (`:critical`, `:high`, `:normal`, `:low`), returns nil immediately, fetch happens asynchronously on background thread, completion updates RDM on background thread and schedules repaint via `fx/run-later!`. **Event Router API:** `(subscribe-to-piece event-router piece-id)` issues this client's piece subscription — proxies to backend, records the piece-id; `(unsubscribe-from-piece event-router piece-id)` revokes it and updates tracking. `(add-piece-handler! event-router piece-id handler)` registers `handler` for per-piece dispatch of that piece's events to the window; `(remove-piece-handler! event-router piece-id)` drops it. The handler pair is local and never touches the wire. Rationale: Explicit API surfaces enable component testing in isolation with mocks, clear contracts for future maintainers, API evolution without implementation coupling. These APIs are minimal — only operations needed by collaborating components. Internal operations (aggregator flushing, thread pool management) remain encapsulated.
+22. **Component API Surfaces:** Clear API boundaries between components enable testing and future evolution. **Frontend Event Bus API:** `(create-event-bus pool)` returns `{:pool pool :subscribers (atom {})}`. `(subscribe! bus category handler-fn)` registers handler for a category. `(unsubscribe! bus category handler-fn)` removes handler. `(publish! bus category events)` dispatches events to all category subscribers via Claypoole futures. **Rendering Data Manager API:** `(create-rendering-data-manager)` returns `{:page-views (atom {}) :system-views (atom {}) :staff-views (atom {}) :measure-views (atom {})}`. `(mark-stale! rdm vpd)` marks paintlist at VPD as stale, returns nil. `(update-paintlist! rdm vpd paintlist)` updates paintlist at VPD, returns nil. `(get-paintlist rdm vpd)` gets paintlist at VPD, returns paintlist or nil if missing/stale. `(is-stale? rdm vpd)` checks if paintlist at VPD is stale, returns boolean. RDM is a pure data cache (atoms) — updates happen on background threads; only the subsequent scene graph repaint uses `fx/run-later!`. **Fetch Coordinator API:** `(queue-fetch! fc vpd priority)` queues paintlist fetch at priority level (`:critical`, `:high`, `:normal`, `:low`), returns nil immediately, fetch happens asynchronously on background thread, completion updates RDM on background thread and schedules repaint via `fx/run-later!`. **Event Router API:** `(subscribe-to-piece event-router piece-id)` issues this client's piece subscription — proxies to backend, records the piece-id; `(unsubscribe-from-piece event-router piece-id)` revokes it and updates tracking. `(add-piece-handler! event-router piece-id handler)` registers `handler` for per-piece dispatch of that piece's events to the window; `(remove-piece-handler! event-router piece-id)` drops it. The handler pair is local and never touches the wire. **The piece hold sits above these four** (§The piece hold): `(take-piece-hold! event-router piece-id handler)` opens one, `(when-held [event-router piece-id] & body)` runs work under it, and `(release-piece-hold! event-router piece-id)` refuses, drains, revokes and drops. A per-piece consumer uses the hold; the four below it are what the hold performs. Rationale: Explicit API surfaces enable component testing in isolation with mocks, clear contracts for future maintainers, API evolution without implementation coupling. These APIs are minimal — only operations needed by collaborating components. Internal operations (aggregator flushing, thread pool management) remain encapsulated.
 
 ### Outstanding
 
