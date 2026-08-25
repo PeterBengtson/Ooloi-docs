@@ -1126,10 +1126,11 @@ the JAT.
 3. Event Router publishes `:system` disconnect event to bus → UI Manager shows "Disconnected"
 4. Rendering data remains as-is
 5. Operation reverts to the in-process backend, with a persistent notification ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Involuntary Reversion)
-6. The remembered subscription set is cleared — its piece-ids belonged to the backend that is gone
-7. Nothing is resubscribed and no events are replayed; the user reconnects when they choose
+6. The recorded subscriptions are cleared — their piece-ids belonged to the backend that is gone
+7. **Every open piece window closes**, each being a view onto a piece no current backend has heard of ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Frontend Reconnection). No save prompt: the piece is the host's work and the local backend never had it
+8. Nothing is resubscribed and no events are replayed; the user reconnects when they choose
 
-**Result:** reversion, not recovery. There is no catchup protocol because there is nothing to catch up on.
+**Result:** reversion, not recovery. There is no catchup protocol because there is nothing to catch up on, and nothing left on screen that claims otherwise. Item 4 is about the *rendering* cache, which keeps its paintlists; a piece window is not a cache, and does not stay.
 
 ### Key Architectural Properties
 
@@ -1180,7 +1181,7 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 
 **Disconnection:** Connection lost → Event Router detects → Stops receiving events → Publishes `:system` disconnect to bus → UI Manager shows connection status → Rendering data remains as-is
 
-**Involuntary loss:** Operation reverts to the in-process backend ([ADR-0040](0040-Single-Authority-State-Model.md) §Deployment Model). The remembered subscription set is cleared, since its piece-ids were issued by the backend that is gone. No automatic reconnection, no queue replay, no reconciliation — the user decides when to reconnect, and does so through the same "Connect to other Ooloi…" flow as any other connection.
+**Involuntary loss:** Operation reverts to the in-process backend ([ADR-0040](0040-Single-Authority-State-Model.md) §Deployment Model). The recorded subscriptions are cleared, since their piece-ids were issued by the backend that is gone, and **every open piece window closes with them** — a window is a view onto a piece the new backend has never heard of, and unlike a cache it cannot be refilled from one ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Frontend Reconnection). Closing them raises no save prompt: the piece is the host's work, and the local backend the client reverts to never had it. No automatic reconnection, no queue replay, no reconciliation — the user decides when to reconnect, and does so through the same "Connect to other Ooloi…" flow as any other connection.
 
 **Key insight:** Clients never need to "catch up" on missed events. A new connection fetches current state when it needs it.
 
