@@ -17,6 +17,13 @@ Implemented
   - [Content Builder Pattern](#content-builder-pattern)
   - [Custom cljfx Component Functions](#custom-cljfx-component-functions)
   - [Editor Field Commits: One Event Per Control, Carrying Its Value](#editor-field-commits-one-event-per-control-carrying-its-value)
+    - [A control commits once, and the commit carries its value](#a-control-commits-once-and-the-commit-carries-its-value)
+    - [Two triggers, one handler — a trigger installed once must not carry per-render data](#two-triggers-one-handler--a-trigger-installed-once-must-not-carry-per-render-data)
+    - [The event is named for what happened, not for the mechanism](#the-event-is-named-for-what-happened-not-for-the-mechanism)
+    - [A component that builds commit closures requires a dispatch function, and asserts it](#a-component-that-builds-commit-closures-requires-a-dispatch-function-and-asserts-it)
+    - [A control either hands its handler to cljfx or invokes it itself, and only the first takes a map](#a-control-either-hands-its-handler-to-cljfx-or-invokes-it-itself-and-only-the-first-takes-a-map)
+    - [A spinner commits on focus loss, carrying its value, never per arrow click](#a-spinner-commits-on-focus-loss-carrying-its-value-never-per-arrow-click)
+    - [Consequence for undo — one commit is one named step](#consequence-for-undo--one-commit-is-one-named-step)
   - [Per-Window Reactive Renderer](#per-window-reactive-renderer)
     - [Architecture](#architecture)
     - [How it works](#how-it-works)
@@ -509,7 +516,9 @@ than one window, and the windows that mount them hold their data differently: on
 edits, another holds a projection of state owned elsewhere. These rules make a control's edit
 intelligible to any of them without the control knowing which it is in.
 
-**A control commits once, and the commit carries its value.** The event is
+#### A control commits once, and the commit carries its value
+
+The event is
 `{:event/type :<entity>-field-changed :id <entity-id> :field <field> :value <v>}`, where `:value` is
 already of the field's own type — a String from a text field, a parsed number from the numeric field,
 an Integer from a spinner. A field whose value is one half of a larger one names its half in the event
@@ -525,27 +534,32 @@ accumulator per mounting window and a validation pass on every character typed. 
 the commit removes both, and removes them for every window that mounts an editor rather than for the
 one that noticed.
 
-**Two triggers, one handler: a trigger installed once must not carry per-render data.** A control
-committing on both Enter and blur has two triggers and must still have exactly one handler.
+#### Two triggers, one handler — a trigger installed once must not carry per-render data
+
+A control committing on both Enter and blur has two triggers and must still have exactly one handler.
 `:on-action` is a prop, replaced every render; a blur listener is installed once at node creation
 and cljfx never revisits it — `ext-on-instance-lifecycle` calls `:on-created` from `create` alone. A
 listener carrying its own copy of the commit logic therefore freezes whatever that logic closed over
 at creation, and the two routes diverge silently, one acting on current data and the other on the
 first render's. So blur *fires* the event rather than performing the commit.
 
-**The event is named for what happened, not for the mechanism.** `<entity>-field-changed`; a control
+#### The event is named for what happened, not for the mechanism
+
+`<entity>-field-changed`; a control
 does not emit a `-field-commit` variant, and there is no separate event family for a sub-field of a
 larger value.
 
-**A component that builds commit closures requires a dispatch function, and asserts it.** The
-mounting window supplies `:dispatch`; the component checks it and refuses to render without one, in
+#### A component that builds commit closures requires a dispatch function, and asserts it
+
+The mounting window supplies `:dispatch`; the component checks it and refuses to render without one, in
 the same manner that a formatter refuses a `:text-key` unaccompanied by a `:locale`. The failure then
 occurs at the first render of any window mounting the editor, rather than when a user types into a
 field no test covered. The cost is that every call site declares `:dispatch`, which is the same price
 the locale guard charges for `:locale`, and is paid for the same reason.
 
-**A control either hands its handler to cljfx or invokes it itself, and which one follows from when it
-commits.** A checkbox, combo box or list view commits when the toolkit reports that its value changed,
+#### A control either hands its handler to cljfx or invokes it itself, and only the first takes a map
+
+Which one it is follows from when the control commits. A checkbox, combo box or list view commits when the toolkit reports that its value changed,
 so the handler is an ordinary cljfx prop — `:on-selected-changed`, `:on-value-changed` — and may be a
 function *or* a map: for a map, cljfx merges the new value in as `:fx/event` and dispatches it through
 the renderer's `:fx.opt/map-event-handler`. A text field, numeric field, spinner or search field
@@ -560,13 +574,17 @@ second — which costs nothing, because the frontend provides all custom windows
 plugin wanting value input declares settings and has its form generated
 ([ADR-0043](0043-Frontend-Settings.md) §Settings Window) rather than describing controls.
 
-**A spinner commits on focus loss, carrying its value; never per arrow click.** Routing each
+#### A spinner commits on focus loss, carrying its value, never per arrow click
+
+Routing each
 increment to a save turns a held arrow into a stream of writes, and — where those writes are undoable —
 into a stream of undo steps for one gesture. This rule belongs to the spinner component rather than to
 its call sites, so every spinner obeys it and a future one inherits it. For the same reason, the
 string-to-number coercion belongs to the numeric field component, whose stated purpose is owning it.
 
-**Consequence for undo.** Because a commit is one operation rather than an accumulated form, a mutation
+#### Consequence for undo — one commit is one named step
+
+Because a commit is one operation rather than an accumulated form, a mutation
 boundary that derives undo descriptions from the operation invoked needs nothing composed for the
 purpose: one commit becomes one named step. A gesture that genuinely implies several operations is the
 exception and must name itself explicitly; the number of resulting operations decides this, not whether
