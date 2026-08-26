@@ -2056,6 +2056,43 @@ other:
 Either way, waiting on `isExpanded` proves only that the toggle happened. Where a coordinate is about
 to be computed from a bound, the bound is what must be waited on.
 
+#### Aimable Is Not the Same Question as Present
+
+The section above says a height is not a witness to expansion state. The same holds one step
+further out: **a height is not a witness to layout at all**, and a test that waits on one before
+driving a gesture is waiting on the wrong thing.
+
+A row nested inside a container that is closed is in the scene graph already, carrying whatever
+height the last layout pass gave it. So a wait for "this row has a height" is satisfied the moment
+the row exists — before the container it sits in has been opened and laid out. A coordinate computed
+from those bounds reports the parent's origin, the gesture is aimed into empty space below the
+content, and because nothing is under the cursor there is no drag source and no `DRAG_DETECTED` at
+all. The gesture does nothing, and reads as a defect in the drop handler rather than in the wait.
+
+Every gesture that must open a container to reach its row is exposed to this — in the piece window,
+every instrument- and staff-level drag.
+
+**Two waits, because there are two questions, and one name cannot answer both honestly.**
+
+| Helper | Waits for | For |
+|---|---|---|
+| `await-rows-aimable!` | the point the gesture will act on hit-tests back to the intended pane | a Robot gesture, which needs a laid-out row at a screen position |
+| `await-rows-present!` | `node-by-id` returns the node at all | a test firing a synthetic event at a node, which computes no coordinate |
+
+`await-rows-aimable!` asks the only question the gesture cares about — *will a press here land on
+this row?* — which no stale bound can answer falsely, and which is equally immune to a hidden
+parent, a layout still in flight, and a row scrolled out of view, each of which would defeat the
+gesture too. It requires a layout, and therefore a shown window: under a headless UI manager
+`show-window!` registers a Stage without ever showing it, nothing is laid out, and the question has
+no answer. A headless test wants `await-rows-present!`, which is the whole of what it needs — cljfx
+renders asynchronously after a state write, so a row exists only once built, and its pane filters
+arrive with it.
+
+Keeping them apart by name is the point rather than a tidiness. A single wait that answers the
+weaker question where the stronger one was meant is indistinguishable from one that works, and that
+is exactly how the defect above survived: the helper was named for what the caller wanted and
+checked something cheaper.
+
 #### Testing Wired Component Behaviour Without a Stage
 
 When a test needs to verify production event listener behaviour wired into a component tree by a builder function — validation logic, CSS class changes, settings commits — the test does not need a Stage, Scene, or OS-level window focus:
