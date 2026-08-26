@@ -506,7 +506,7 @@ Without `:choices`, all props pass through unchanged (for cases where items are 
 
 Editor components — the entity editors and the field rows they are built from — are reused by more
 than one window, and the windows that mount them hold their data differently: one owns the records it
-edits, another holds a projection of state owned elsewhere. Three rules make a control's edit
+edits, another holds a projection of state owned elsewhere. These rules make a control's edit
 intelligible to any of them without the control knowing which it is in.
 
 **A control commits once, and the commit carries its value.** The event is
@@ -543,6 +543,22 @@ the same manner that a formatter refuses a `:text-key` unaccompanied by a `:loca
 occurs at the first render of any window mounting the editor, rather than when a user types into a
 field no test covered. The cost is that every call site declares `:dispatch`, which is the same price
 the locale guard charges for `:locale`, and is paid for the same reason.
+
+**A control either hands its handler to cljfx or invokes it itself, and which one follows from when it
+commits.** A checkbox, combo box or list view commits when the toolkit reports that its value changed,
+so the handler is an ordinary cljfx prop — `:on-selected-changed`, `:on-value-changed` — and may be a
+function *or* a map: for a map, cljfx merges the new value in as `:fx/event` and dispatches it through
+the renderer's `:fx.opt/map-event-handler`. A text field, numeric field, spinner or search field
+commits at a moment the **component** chooses — Enter, blur, focus loss — and no JavaFX property
+reports that moment carrying the committed value, so the component holds the handler and calls it. Its
+prop takes a function only, and a map passed to one is a *map lookup* returning nil rather than an
+error, which is why it is asserted in the manner `:dispatch` is. The asymmetry is not a wart to be
+filed off by giving every control one prop name: the two groups differ because their commits are
+different events, one reported to the control and one decided by it, and a shared name would hide that
+rather than resolve it. It follows that a serialised spec can drive the first group and not the
+second — which costs nothing, because the frontend provides all custom windows (§*Approach*) and a
+plugin wanting value input declares settings and has its form generated
+([ADR-0043](0043-Frontend-Settings.md) §Settings Window) rather than describing controls.
 
 **A spinner commits on focus loss, carrying its value; never per arrow click.** Routing each
 increment to a save turns a held arrow into a stream of writes, and — where those writes are undoable —
