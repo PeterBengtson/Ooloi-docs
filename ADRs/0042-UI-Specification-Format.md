@@ -830,7 +830,13 @@ The consequence is not obvious and has caused real regressions. **A MOUSE_CLICKE
 
 **A drag-and-drop gesture synthesises a trailing MOUSE_CLICKED** when press and release targets overlap, and in a nested structure it bubbles from child to parent, firing the parent's selection handler and destroying the selection the drag handler just set. Selection handlers in drag-and-drop containers therefore gate on `selection-click?`, which combines the interactive-control guard with `(.isStillSincePress event)` — false after a drag. This defect is **invisible to Robot-based tests**, which suppress MOUSE_CLICKED after a drag; it is reachable only by a handler-level test with a synthetic `MouseEvent` whose `stillSincePress` is false.
 
-**Identity-based reconciliation is required where nested panes reorder.** A child spec under drag reordering carries `:fx/key` with a stable identity, because cljfx otherwise matches by vector position: after a reorder, `:on-created` closures that captured item identity for drag-target tracking are stale.
+**Anything installed once must not capture what can change.** `ext-on-instance-lifecycle`'s `:on-created` runs when a node is built and never again; `:on-advanced` fires only when the *instance* changes, so a node reused for a different item has its props refreshed and everything installed at creation left alone. This covers every `:on-created` installation, not only a pane's event filters: a control's focus listener is installed the same way and goes stale the same way. Whatever it closed over goes on naming whichever item occupied that position when the node was built — so a pane toggles, selects or marks as drop target the wrong row, and a field commits its value to the wrong entity.
+
+So a filter takes its identity from the node rather than from a closure. The row's identity rides on `:user-data`, an ordinary setter prop that cljfx re-applies on every advance, and the filter reads it from the node when the event arrives and hands it to the callback — which therefore takes the identity as an argument instead of closing over it. `:user-data` rather than `:id` because an id is a string and an identity need not be: a musician shown inside a layout is keyed by the pair naming that occurrence. Nothing about a row is captured, so nothing about a row can go stale.
+
+Where a pane's identity cannot change — a settings tile, an instrument-family pane, anything in a list that never reorders — a callback closing over it captures nothing that changes and is unaffected by this rule.
+
+Reconciliation order is then a question of efficiency rather than correctness. A child spec under drag reordering still carries `:fx/key` where it can, so cljfx moves nodes instead of re-patching every one of them — but no behaviour depends on it, and omitting it costs work rather than correctness.
 
 ### Architectural Invariants
 
