@@ -630,6 +630,7 @@ cljfx supports functions as `:fx/type` values. Each Ooloi custom component funct
 | Component | Encapsulated layout |
 |-----------|---------------------|
 | `ooloi-button-bar` | Right-aligned HBox with a spacer Region; consistent button padding |
+| `ooloi-layout-pane` | Plain ScrollPane carrying the `"scroll-pane"` base class — the one way to describe a scroll pane in application code. Named for its role, not its control type: this is the Layout window's viewport, the surface that grows zoom, panning and eventually the Skija canvas. Distinct from `ooloi-vscroll-pane`, whose `:fit-to-width` and panel border make it a titled panel that happens to scroll, and which therefore cannot serve a canvas needing horizontal scrolling |
 | `ooloi-vscroll-pane` | Optionally titled ScrollPane with a muted border; title style via `TITLE_4`. Guarded when titled: `:text-key` + `:locale`, or `:raw-text` |
 | `ooloi-labelled-field` | HBox label + control; with optional `:description`, label + VBox[control, muted wrapped description] (tri-partite). Control-agnostic; reusable in editors and dialogs |
 | `ooloi-range-field` | HBox with label, low/high sub-labels and text fields |
