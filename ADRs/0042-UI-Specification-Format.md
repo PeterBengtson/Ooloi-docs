@@ -278,12 +278,45 @@ Given a requested origin and a default size, placement proceeds thus:
    and bottom edges stay within the screen's visual bounds. A window therefore becomes effectively
    smaller the further down and to the right it is placed, and — this being unconditional rather than
    part of the collision path — a window at `n = 0` whose default size would overhang the screen is
-   trimmed just the same. **No window ever opens with an edge off-screen.**
+   trimmed just the same. **No resizable window ever opens with an edge off-screen.**
+
+   **A non-resizable window is never trimmed.** `:window/resizable? false` says the size is
+   code-controlled — the window is sized to hold its content — so shrinking it does not make it fit,
+   it makes it wrong, cutting off the very thing it was sized for. This is the same reason
+   `show-window!` refuses to restore a *persisted* size for such a window, and the two refusals are
+   one rule seen twice: nothing outside the spec may resize a window that declares it cannot be
+   resized. The consequence for placement is that such a window cannot shrink its way down a
+   diagonal — a candidate takes it at full size or not at all — so its cascade is more limited than a
+   resizable window's and reaches the give-up arm sooner. One that fits nowhere overhangs, which is
+   the honest outcome: a window larger than the screen and forbidden to shrink has no placement that
+   is both on-screen and correct, and showing it whole is the lesser failure.
 3. **A candidate already occupied is passed over.** Coinciding with the position of any window
    currently on screen — not merely one of the same kind — advances *n*.
 4. **A column that runs out overflows to the next.** When the fitted size has fallen below
-   `minimum-window-size` there is no usable room left down this diagonal, so placement returns to the
-   origin's y with `n = 0` and the x advanced by `column-step`, and repeats from there.
+   `minimum-size-fraction` of the size the window asked for, there is no usable room left down this
+   diagonal, so placement returns to the origin's y with `n = 0` and the x advanced by `column-step`,
+   and repeats from there.
+
+   **The floor is relative to the request, not absolute, and not relative to the screen.** "Too small
+   to be worth opening here" is a property of the window rather than of the display: a confirmation
+   dialog and a score window disagree entirely about whether 400 × 300 is usable, and an absolute
+   figure is wrong at both ends — on a large display it lets a window shrink far below what it asked
+   for before overflowing, and on a small one it can exceed what a small window wanted in the first
+   place. A window states the size it needs by requesting it; the fraction says how much of that it
+   may lose and still be worth placing. This needs no constant tuned per display and differs per
+   window kind for free.
+5. **When there is no room left at all, the request stands.** Columns march rightwards and are
+   themselves fitted, so each is narrower than the last, and eventually none can hold a window of the
+   minimum size. Placement then stops looking and returns the **requested origin**, fitted to the
+   screen but unstaggered.
+
+**That last step is what makes placement terminate, and it is not a detail.** Without it the search
+has no end: a column too narrow for the minimum triggers an overflow, and the next column is narrower
+still, so the condition that ends one column creates the next. A window opened on a full screen would
+hang the application rather than appear. Giving up returns the one position always available — the one
+that was asked for — and the visible consequence is that windows overlap once the screen is full,
+which is what a full screen means and what every desktop does. Staggering is a courtesy for the common
+case, not a guarantee to be preserved at the cost of opening the window at all.
 
 **Persisted geometry is exempt from all of it.** A window the user has moved or resized comes back
 exactly where they left it — never staggered, never trimmed, however many windows share that position.
@@ -302,7 +335,7 @@ indirection with no second consumer.
 |---|---|---|
 | `stagger-step` | 22.0 on macOS, 20.0 elsewhere | The per-candidate offset, applied in both axes, so successive windows cascade down and to the right in the host platform's manner |
 | `column-step` | 200.0 | The x advance when a column is exhausted; large enough that the new column reads as a separate run rather than a continuation of the old |
-| `minimum-window-size` | 400 × 300 | The fitted size below which a window has stopped being usable, and the column is therefore full |
+| `minimum-size-fraction` | 2/3 | How far a window may be trimmed before its column counts as full — as a fraction of **the size that window asked for**, not an absolute |
 
 **The step follows the host platform, and has two arms rather than three.** macOS cascades at 22
 points and Windows at 20, so each is matched. Linux is given the Windows value, not one of its own,
