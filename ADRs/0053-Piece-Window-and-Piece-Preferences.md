@@ -11,6 +11,7 @@ Under implementation
   - [1. The window is the piece's manifestation](#1-the-window-is-the-pieces-manifestation)
   - [2. Direct manipulation, not modes or dialogs](#2-direct-manipulation-not-modes-or-dialogs)
   - [3. Anatomy: the two panes](#3-anatomy-the-two-panes)
+    - [Opening a layout](#opening-a-layout)
     - [Every level rests closed until it is opened](#every-level-rests-closed-until-it-is-opened)
     - [The window remembers its layout](#the-window-remembers-its-layout)
   - [4. Drag-and-drop across the workspace](#4-drag-and-drop-across-the-workspace)
@@ -81,6 +82,16 @@ The window is built from a pure spec function and the declarative window pipelin
 
 **The button bar** carries the window's actions, among them the button that opens this piece's Preferences window (§6).
 
+#### Opening a layout
+
+A layout opens into a window of its own — its score or its part (§7) — by two routes, and **both act on the selection** rather than on a row. Select five parts and either route gives five windows.
+
+**Double-clicking** a layout opens every selected layout. Where the row double-clicked is not already selected the first click selects it, replacing what was selected before, so double-clicking a single row opens exactly that layout — not as a special case but as the same rule over a selection of one. Where the row *is* part of a multi-selection, every member opens, and a gesture on any one of them will do it. **File ▸ Open**, and its accelerator, is the same act without the gesture.
+
+Acting on the selection rather than the row is what makes multi-selection in the Layouts pane worth having. The pane already assembles a selection to drag as a unit (§4); were opening confined to the row under the cursor, a composer extracting a wind section would open its parts one after another for no reason but that.
+
+Open reads the **foremost** window, so it changes meaning only where the meaning is unambiguous: a Piece Window with layouts selected is the one context in which Open opens layouts. Everywhere else — no selection, a selection of musicians rather than layouts, or any other window in front — it keeps its other meaning and raises the piece picker to open a piece ([ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md)). One command, two objects, decided by what is in front of the user and what is selected in it; the command is never disabled, because there is always one of the two it can do.
+
 #### Every level rests closed until it is opened
 
 A container opens because the user asked to see inside it, never because it has just been created: dragging an instrument in to make a Musician, the user already knows what they dragged, so opening the new row to show it spends the editing surface on something the gesture has already said. Neither pane's closed row hides what it holds — a Musician's header carries the doubling annotation, which names every instrument the player holds ([ADR-0054](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md) §7), and a Layout with no name of its own takes its title from what it lists, so a score of ten musicians says as much on its row. The one gesture that does need to see inside a container — placing a doubling into an existing Musician — is served by the spring-loaded expansion of §4, which opens the hovered target under the drag.
@@ -105,7 +116,7 @@ Every change to the piece's *makeup* — what it contains, and in what order —
 | A Musician | elsewhere within the Musicians pane | The musician is reordered |
 | One or more Musicians | empty space in the Layouts pane | A new Layout is created whose `:musician-uuids` are exactly the dragged musicians — many make a score, one makes a part |
 | A Musician | a position within an existing Layout | The musician's uuid is inserted into that layout's `:musician-uuids` at the drop position |
-| _(double-click)_ | a Layout | The layout's own window opens, showing its score or part |
+| _(double-click)_ | a Layout | Every selected layout's own window opens, showing its score or part — as **File ▸ Open** also does (§3) |
 
 #### Move and copy
 
