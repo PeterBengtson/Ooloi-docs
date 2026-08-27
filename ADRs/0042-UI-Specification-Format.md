@@ -12,6 +12,7 @@ Implemented
 - [Decision](#decision)
   - [Approach](#approach)
   - [Metadata Keys](#metadata-keys)
+  - [First-open placement: fit, stagger, and column overflow](#first-open-placement-fit-stagger-and-column-overflow)
   - [Dynamic window titles: raw :title vs the :window/title-key fallback](#dynamic-window-titles-raw-title-vs-the-windowtitle-key-fallback)
   - [Modal dialogs: one core, two entry points](#modal-dialogs-one-core-two-entry-points)
   - [Content Builder Pattern](#content-builder-pattern)
@@ -260,6 +261,59 @@ Backend plugins store their configuration as piece settings ([ADR-0016](0016-Set
 
 **First-open position and size** (plain `:x` / `:y` / `:width` / `:height`, optional)
 - A window's position and size before any persisted geometry exist are ordinary `:x` / `:y` / `:width` / `:height` in the spec — not `:window/*` keys. `show-window!` merges persisted geometry over them, so they govern only the first-ever open (see §"Established Usage Patterns: Floating windows → Ambient indicators" for how the collaboration palette computes its first-open `:x` / `:y`). There is no dedicated `:window/default-*` key.
+- What the spec states is a **request**, not a placement: the UI Manager fits it to the screen and staggers it clear of the windows already there. See §*First-open placement: fit, stagger, and column overflow* below.
+
+### First-open placement: fit, stagger, and column overflow
+
+A first-open position and size are what a window **asks for**. What it gets is that request fitted to
+the screen and moved clear of the windows already on it. This is one mechanism for every window kind,
+applied by the UI Manager, so no window module carries placement logic of its own and a new window
+kind inherits the behaviour by declaring a position at all.
+
+Given a requested origin and a default size, placement proceeds thus:
+
+1. **Candidates cascade from the origin.** The *n*-th candidate position is the origin offset by
+   `n × (stagger-step, stagger-step)`, for `n = 0, 1, 2 …`.
+2. **Every candidate is fitted to the screen.** The width and height are trimmed so the window's right
+   and bottom edges stay within the screen's visual bounds. A window therefore becomes effectively
+   smaller the further down and to the right it is placed, and — this being unconditional rather than
+   part of the collision path — a window at `n = 0` whose default size would overhang the screen is
+   trimmed just the same. **No window ever opens with an edge off-screen.**
+3. **A candidate already occupied is passed over.** Coinciding with the position of any window
+   currently on screen — not merely one of the same kind — advances *n*.
+4. **A column that runs out overflows to the next.** When the fitted size has fallen below
+   `minimum-window-size` there is no usable room left down this diagonal, so placement returns to the
+   origin's y with `n = 0` and the x advanced by `column-step`, and repeats from there.
+
+**Persisted geometry is exempt from all of it.** A window the user has moved or resized comes back
+exactly where they left it — never staggered, never trimmed, however many windows share that position.
+Placement applies to a *first* open, and the stagger exists precisely to give a window with no
+remembered place one that does not hide its predecessor; a remembered place is the user's own decision
+and is not second-guessed. This is why the merge order in `show-window!` matters: placement computes
+the request, persisted geometry overrides it.
+
+The mechanism and its constants belong to the UI Manager, beside `show-window!`, which is their only
+reader. They are deliberately *not* housed with the screen-edge insets the floating surfaces share:
+those are read by several independent surfaces, whereas placement is performed in exactly one place
+and a window kind that wants it declares a position and receives it. A separate home would be
+indirection with no second consumer.
+
+| Constant | Value | What it governs |
+|---|---|---|
+| `stagger-step` | 22.0 on macOS, 20.0 elsewhere | The per-candidate offset, applied in both axes, so successive windows cascade down and to the right in the host platform's manner |
+| `column-step` | 200.0 | The x advance when a column is exhausted; large enough that the new column reads as a separate run rather than a continuation of the old |
+| `minimum-window-size` | 400 × 300 | The fitted size below which a window has stopped being usable, and the column is therefore full |
+
+**The step follows the host platform, and has two arms rather than three.** macOS cascades at 22
+points and Windows at 20, so each is matched. Linux is given the Windows value, not one of its own,
+because there is nothing there to match: on Linux window placement belongs to the window manager
+rather than to the toolkit, and the managers differ from one another — several place windows centred
+or by a fit-finding heuristic and cascade not at all. A third constant would encode a convention that
+does not exist. The platform test is `ooloi.shared.platform/macos?`, never a raw
+`System/getProperty` read.
+
+Placement measures against the **primary screen's visual bounds** — the usable area, excluding the
+menu bar and dock — as the floating surfaces do.
 
 **`:window/style`** (keyword, optional)
 - JavaFX StageStyle: `:decorated` (default), `:undecorated`, `:transparent`, `:utility`
