@@ -84,9 +84,15 @@ The window is built from a pure spec function and the declarative window pipelin
 
 #### Opening a layout
 
-A layout opens into a window of its own — its score or its part (§7) — by two routes, and **both act on the selection** rather than on a row. Select five parts and either route gives five windows.
+A layout opens into a window of its own — its score or its part (§7) — by three routes, and **all three act on the selection** rather than on a row. Select five parts and any of them gives five windows.
 
-**Double-clicking** a layout opens every selected layout. Where the row double-clicked is not already selected the first click selects it, replacing what was selected before, so double-clicking a single row opens exactly that layout — not as a special case but as the same rule over a selection of one. Where the row *is* part of a multi-selection, every member opens, and a gesture on any one of them will do it. **File ▸ Open**, and its accelerator, is the same act without the gesture.
+**Double-clicking** a layout opens every selected layout. Where the row double-clicked is not already selected the first click selects it, replacing what was selected before, so double-clicking a single row opens exactly that layout — not as a special case but as the same rule over a selection of one. Where the row *is* part of a multi-selection, every member opens, and a gesture on any one of them will do it.
+
+**Enter** does the same from the keyboard, on whatever is selected. It is not a convenience bolted onto the mouse gesture but the same act reached without one: a pane navigated by arrow keys needs a way to open what the arrows have reached, and a user who never touches the mouse must be able to work the pane at all. This is Ooloi's established activate gesture rather than a rule invented here — the piece picker already opens the selected entry on Enter, over the same `activate-key?` predicate, and the Layouts pane is its second consumer.
+
+**Enter inside an editor field commits that field and opens nothing.** Enter already means *commit* in every editable row (§2, and [ADR-0042](0042-UI-Specification-Format.md) §*Editor Field Commits*), and a layout can be open with its name field focused, so the two meanings meet on the same key. The one in the field wins, because that is where the user is typing. This is the rule the pane already applies to Delete — which deletes the selection, except inside a field, where it deletes a character — and Enter joins it rather than being excepted from it.
+
+**File ▸ Open**, and its accelerator, is the same act again from the menu.
 
 Acting on the selection rather than the row is what makes multi-selection in the Layouts pane worth having. The pane already assembles a selection to drag as a unit (§4); were opening confined to the row under the cursor, a composer extracting a wind section would open its parts one after another for no reason but that.
 
