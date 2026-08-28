@@ -812,6 +812,14 @@ This is the guard the async test helpers already apply — `wait-for-state` and 
 
 On close, `close-window!` removes every declared watch, so the pair is symmetric — installation delivers, removal detaches.
 
+**Watch the narrowest ref that carries what the window needs, and guard the callback.** `add-watch` fires on *every* change to its ref, so a watch declared on a ref carrying more than the window's interest runs on unrelated activity — a ref holding a view's selection and expansion state alongside the data another window follows will fire on every click.
+
+**The cost is not the call; it is what an unguarded callback then does.** A wakeup that compares two values and returns is negligible, and stating the rule as though it were about that would misplace it. But a callback written without the comparison performs its whole effect on every unrelated change: a title watch would dispatch to the JAT, swap the registry entry, recompose the title, set it on the Stage and re-derive the Window-menu labels — for each window declaring it — because a selection moved in another window. That is real work, and the guard is what turns it back into a no-op.
+
+So where the value of interest is not separately addressable, the ref cannot be narrowed and the obligation moves into the callback: **derive the value from the old and new states and do nothing when they are equal.** Narrowing the ref is preferred where it is available, and a value that later gains its own ref takes the watch with it, at which point the guard becomes redundant rather than load-bearing.
+
+Note the interaction with the delivery contract above: installation calls the fn with `nil` as the old value precisely so that a guard of this shape does not skip it.
+
 #### Event Dispatch Pipeline
 
 The UI Manager provides a **declarative event dispatch pipeline** for windows that need to handle user interactions through pure functions. Rather than each window module manually constructing a renderer and wiring event handlers, a window declares its needs in the `:window-open-requested` event and the UI Manager builds the pipeline uniformly.
