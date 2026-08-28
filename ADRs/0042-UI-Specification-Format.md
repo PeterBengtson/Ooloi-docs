@@ -13,6 +13,7 @@ Implemented
   - [Approach](#approach)
   - [Metadata Keys](#metadata-keys)
   - [First-open placement: fit, stagger, and column overflow](#first-open-placement-fit-stagger-and-column-overflow)
+  - [Calm: the pace of the interface](#calm-the-pace-of-the-interface)
   - [Dynamic window titles: raw :title vs the :window/title-key fallback](#dynamic-window-titles-raw-title-vs-the-windowtitle-key-fallback)
   - [Modal dialogs: one core, two entry points](#modal-dialogs-one-core-two-entry-points)
   - [Content Builder Pattern](#content-builder-pattern)
@@ -409,6 +410,59 @@ menu bar and dock — as the floating surfaces do.
 - `:window/title-key` takes precedence: if both are present, the resolved translation replaces `:title`
 - Spec authors must use `:window/title-key` for all titles — all user-facing strings must be localisable per ADR-0039
 - No production code passes hardcoded UI strings via `:title`; static window titles go through `tr-declare` + `:window/title-key`. (Titles that track *user data* — the piece name — are set as raw text through `set-window-title!`; see "Dynamic window titles" below.)
+
+### Calm: the pace of the interface
+
+Where a window opens is settled above. The pace at which it arrives and leaves is settled here, and it
+is a design position rather than a default.
+
+**The principle.** The person using this software is a musician trying to think about music, and every
+uninvited visual element is a small interruption of that thinking. So the interface does not perform its
+capabilities: nothing appears unbidden, nothing flashes, nothing demands acknowledgement. When Ooloi has
+something to say it informs and withdraws, organically and gently. This is not minimalism as a style
+choice, and it is not decoration — it is a constraint on behaviour, and the timings below are its
+measure.
+
+**Every window participates.** A window fades in when shown, fades out when closed, and dims when it
+loses focus. This is foundational rather than per-window: no kind opts out, the splash screen included,
+and the same is true of the surfaces that are not windows — a notification's slot grows and collapses,
+and an ambient indicator's glyph breathes on a continuously varying cycle with **no metronome cadence**
+([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §*Per-Window Indicators*). One
+atmosphere, not a set of local choices.
+
+**The pace is chosen.** The window constants live in one place, `window-transitions`, and apply to every
+window: `window-fade-in-ms` **1000**, `window-fade-out-ms` **2000**, `window-focus-gain-ms` and
+`window-focus-loss-ms` **150** each, and `window-focus-dim` **-0.15** while unfocused. A close is
+deliberately slower than an open. The notification constants sit with the notification lifecycle in the
+UI Manager and follow the same rule: a slot grows over `entrance-height-ms` **700** while its
+notification fades in over `entrance-fade-ms` **1000**; it remains for `notification-dismiss-ms`
+**10000**, long enough to be read without being waited on; and it fades out over `exit-fade-ms` **3000**
+while its slot collapses over `exit-height-ms` **1500** — slowly enough not to snatch itself away. The
+splash screen is held for `min-splash-ms` **2000** however quickly the system starts, so a fast launch
+does not flash past. These are the interface's pace, not tuning parameters, and they are not shortened
+to make anything feel faster.
+
+**A shortened duration is exceptional and states its reason where it is applied.** The application has
+one such exception, and it is the model for any other: the Quit save pass floors `window-fade-out-ms` at
+`quit-fade-out-ms` **500** for its duration, because the pass waits for each piece's window to finish
+before bringing the next one forward and asking about it, and at the full duration that reads as dawdling
+when the application is on its way out. It is applied as a **floor, never a ceiling**, so a caller that
+has already set a shorter fade keeps it, and it is restored however the pass ends.
+
+**Correctness never depends on a duration, and that is what keeps the pace free to change.** Nothing in
+the window lifecycle is sequenced by elapsed time: a window's teardown waits for its own fade to finish
+*and* for every window it owns to finish closing, each reporting completion, rather than for any computed
+interval. An interval derived from an animation length is a fact about that animation rather than about
+the ordering it stands for, and it becomes wrong — silently — the moment the animation changes. See
+§*Window Manager Integration* and [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §7, where a
+piece and every window it owns fade out together and vanish as one object.
+
+**`with-zero-animation-times` removes the thing under test, if the thing under test is the ordering.**
+Zeroing the durations is the right tool for a fact whose subject lies elsewhere and which should not wait
+for animations, and the combined-application harness applies it by default for exactly that reason. But a
+zero-duration fade collapses the interval in which an ordering defect can exist — an owned window's close
+completes *inside* its owner's, so an ordering that is wrong at 2000 ms looks right at zero. A fact whose
+subject *is* the sequencing therefore runs at the real durations and says so in its own comment.
 
 ### Dynamic window titles: raw `:title` vs the `:window/title-key` fallback
 

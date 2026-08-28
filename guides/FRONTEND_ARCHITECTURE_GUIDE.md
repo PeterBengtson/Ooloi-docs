@@ -1876,6 +1876,8 @@ This allows lifecycle behaviour to be exercised in tests without requiring a vis
 
 Headless mode ensures that window management, event publication, and persistence logic are not coupled to a running desktop environment.
 
+Headless is orthogonal to a second thing tests routinely suppress: the **animation durations**. `with-zero-animation-times` sets them to zero, and `with-started-app` applies it by default, so most facts neither wait for fades nor depend on them. That is right where the fade is incidental — and wrong where the *ordering* is the subject, because a zero-duration fade collapses the interval in which an ordering defect can exist. The rule, and the design position the durations express, are in [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §*Calm: the pace of the interface*.
+
 ### 12.2 Pure Builder Testing
 
 Because UI structure is expressed as data (cljfx specs), most builder functions can be evaluated as ordinary pure functions.
