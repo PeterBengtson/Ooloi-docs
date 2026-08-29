@@ -1772,10 +1772,12 @@ the native application menu — three surfaces, so three layers:
    serves a menu bar present in the scene graph — the per-window bars on Windows and Linux.
 2. **Scene-level accelerators (Windows/Linux only).** `collect-accelerators` derives
    `KeyCodeCombination` → handler pairs from the command catalogue, taking every command that carries
-   both an `:accelerator` and an `:on-action`. `open-piece-window!` — the sole production call site —
-   registers them in its `:window/on-open`, binding them to that window's own scene, because the
-   embedded menu bar exists per window. Not used on macOS: there the system menu bar already carries
-   MenuItem accelerators as native key equivalents (layer 1).
+   both an `:accelerator` and an `:on-action`. They are registered in a `:window/on-open`, bound to
+   that window's own scene, because the embedded menu bar exists per window. **Every window that can
+   act on a piece registers them, and only those windows do**: `open-piece-window!` for a piece
+   window and `open-layout-window!` for a layout window — the two production call sites, and the same
+   pair that build the bars. Not used on macOS: there the system menu bar already carries MenuItem
+   accelerators as native key equivalents (layer 1).
 3. **Native Cocoa accelerators.** `setup-macos-app-menu!` gives the application-menu items native key
    equivalents via `native-modifier-map`, which maps to `META_DOWN` rather than `SHORTCUT_DOWN` —
    NSMenuFX inspects `getMeta()` directly and does not resolve the platform-agnostic modifier.
@@ -1979,10 +1981,12 @@ disconnect); the Collaborators *panel* toggle belongs under Window with the othe
 
 Where the bar *lives* is likewise platform-specific:
 
-- **macOS** has one **global system menu bar**, installed once at startup (step 2) and shared by every window. Piece windows attach no menu of their own.
-- **Windows / Linux** have no global menu, so **each piece window carries its own**. `open-piece-window!` is platform-sensitive: on those platforms it builds a `MenuBar` for the window and attaches it (with the command accelerators) to that window's scene; on macOS it attaches none. Every window that can act on a piece therefore has a working menu on every platform, however it was opened — New, Open, or session restore.
+- **macOS** has one **global system menu bar**, installed once at startup (step 2) and shared by every window. No window attaches a menu of its own; a second bar inside a window would duplicate a menu already on screen.
+- **Windows / Linux** have no global menu, so **each window that can act on a piece carries its own**. `open-piece-window!` and `open-layout-window!` are platform-sensitive: on those platforms each builds a `MenuBar` for the window it opens and attaches it (with the command accelerators) to that window's scene; on macOS neither attaches one. Every window that can act on a piece therefore has a working menu on every platform, however it was opened — New, Open, session restore, a double-click on a layout, or a piece reopening the windows it owned.
 
-Because the menu can exist in *many* places on Windows/Linux (one bar per piece window), dynamic menu-text updates — locale changes, enablement-driven labels — go through a **multi-bar `refresh-menu-text!`**: it iterates every open piece window's bar on Windows/Linux, and updates the single global bar on macOS. The command descriptors (the menu *items*) are identical across platforms; only their *placement* and *refresh fan-out* differ.
+**The bar is the ordinary platform bar in both cases, never a reduced one.** Each command carries its own `:enabled?`, and those predicates read the foremost window: Close acts on the window in front, Save and Save As on the piece that owns it, File ▸ Open keeps its two meanings. So a layout window takes the same bar a piece window does and the commands decide for themselves what is available from it — no per-window-kind menu structure, and nothing to keep in step.
+
+Because the menu can exist in *many* places on Windows/Linux (one bar per such window), dynamic menu-text updates — locale changes, enablement-driven labels — go through a **multi-bar `refresh-menu-text!`**: it walks the whole window registry and refreshes a bar wherever it finds one, and updates the single global bar on macOS. Walking the registry rather than a list of window kinds is what makes a kind that later acquires a bar need no change there. The command descriptors (the menu *items*) are identical across platforms; only their *placement* and *refresh fan-out* differ.
 
 The same multiplicity governs one further piece of per-menu state. Each **Edit** menu records itself while it is pulled down, through show and hide handlers installed where the bar is built — the one point every bar on every platform passes through. The undo/redo items' text is a backend-supplied description that may be fetched only while something is displaying it ([ADR-0015](0015-Undo-and-Redo.md) §Description Localisation), and "something" here is an open Edit menu, of which there may be several.
 
