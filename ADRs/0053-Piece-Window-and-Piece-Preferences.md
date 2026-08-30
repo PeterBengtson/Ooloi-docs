@@ -203,6 +203,19 @@ Being one operation, such an edit needs no name from its caller: the gRPC bounda
 
 Where a commit genuinely implies more than one operation it is an `SRV/atomic` batch like any other gesture, and carries an explicit name because the boundary has no single operation to derive one from. One commit does: **unticking Transposing**, which clears the instrument's transposition and brings each of its staves' written clefs into line ([ADR-0045](0045-Instrument-Library.md) §Transposition). Its batch is one transaction, one event, one refetch and one named undo step, exactly as a drop's is.
 
+**A clearer name is the second reason to compose a batch, and it is the one case in which a batch of a
+single operation is right.** How a step is labelled is [ADR-0015](0015-Undo-and-Redo.md) §*Mutation
+Sites*: a lone call keys on its own method name, while a batch's caller supplies an explicit
+`:undo-key`. So where a derived label would name the *mechanism* rather than the *act* — a drop onto a
+musician is *add a doubling*, whatever call implements it — composing a batch is how the user is shown
+what they did, and is worth doing for that reason alone. This is why a drag-and-drop gesture is a named
+batch however few operations it collapses to.
+
+The complete rule, over both reasons: **a single `SRV/` call wherever one suffices, since the label
+comes free; an `SRV/atomic` batch where more steps are required, or where a name clearer to the user is
+wanted.** Only an *unnamed* batch of one loses anything, substituting the generic default for a derived
+label — the case ruled out above. A field edit's shape is still decided by its operation count.
+
 Both routes end in the same place. A field write lands on a structural slot, so it announces itself through the ordinary change-detection cycle ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3b), the window refetches, and the pane redraws — the rename appearing in every layout that lists the renamed musician, layouts holding references rather than copies.
 
 #### Destructive gestures are guarded
