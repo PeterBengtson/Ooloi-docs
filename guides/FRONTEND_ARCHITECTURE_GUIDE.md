@@ -1926,6 +1926,21 @@ escalate to a genuinely shown window (`:ui-mode :graphical`) — but never hand-
 the cell factory with `.updateIndex`: a cell created outside `VirtualFlow`'s lifecycle is a parallel
 world, and defeats the point of crossing the seam.
 
+**A never-shown node is inert, and not only for lookups.** The cell technique above meets that
+inertness in its loudest form — a `lookupAll` that comes back empty. It has a quieter one. A
+registered-but-never-shown Stage builds no skin, and a control without a skin has nothing reading its
+own properties; a JavaFX property that changes once and is then never read stays *invalid*, and an
+`invalidated()` callback attached to it never fires again. `Tab.selected` is such a property, and
+`onSelectionChanged` fires from its invalidation — so on a skinless `TabPane` the first selection is
+reported and every later one is silent. This is worse than an empty lookup, because it does not look
+like a test problem: the node moves, every assertion about the node passes, and only the *report* is
+missing, which reads exactly like a window that never wired its handler. So a test that reaches a
+mounted control forces `applyCss` and `layout` on the scene root first, and a helper that walks to
+such a control does it there, where no caller has to remember. Measured on a `TabPane`: without the
+pass, four consecutive selections produce one report; with it, four. Reading the property from the
+test has the same effect for the same reason, and is the wrong fix — it makes the test the thing
+keeping production alive.
+
 **Drag-and-drop needs a Robot, and a Robot has one blind spot.** Synthetic `Event/fireEvent` cannot
 initiate a drag: `startDragAndDrop` is triggered by toolkit-level input, so a D&D test needs
 `javafx.scene.robot.Robot` driving a real Stage with the production renderer mounted. The shared
