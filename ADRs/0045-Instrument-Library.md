@@ -70,7 +70,7 @@ piece windows, or the piece lifecycle. This makes it a clean specimen for valida
 
 ### Backend Component
 
-The Instrument Library is an Integrant component with two internal members:
+The Instrument Library is an Integrant component holding:
 
 - **`library` atom** — holds `{:version <integer> :instruments <vector> :excluded <set>}`. An
   atom suffices because the library is a single container; no coordination with other refs is
@@ -81,10 +81,16 @@ The Instrument Library is an Integrant component with two internal members:
   access to the existing tombstones without disk I/O.
 - **writer agent** — receives persist tasks asynchronously so that write operations return
   immediately without blocking on disk I/O.
+- **the bundle's `:id` set** — computed once at initialisation and held on the component, so the
+  tombstone computation on every write reads it without touching the disk.
+- **`:status :running`** — the key the system-health functions require of every component in the
+  combined configuration.
 
-The library is loaded from a bundled EDN file at component initialisation. User modifications are
-persisted to the platform-specific user data directory, which takes precedence over the bundle on
-subsequent starts.
+The library is loaded at component initialisation from the bundled EDN, which is **one file per
+family** read in canonical score order — woodwinds, brass, percussion, other, keyboards, plucked,
+voices, strings — rather than a single file. User modifications are persisted to the
+platform-specific user data directory, which takes precedence over the bundle on subsequent
+starts.
 
 ### API Surface
 

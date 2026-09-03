@@ -90,7 +90,7 @@ The backend uses a clean metadata-driven architecture for method dispatch:
 
 - **Direct metadata queries**: All VPD macros use `methods-with-category` for real-time filtering by `:vpd-category` metadata
 - **Pure functional approach**: On-demand filtering with `(-> @method-var meta :vpd-category)` queries
-- **Nine category system**: `:getters`, `:set-item`, `:set-seq`, `:set-attribute`, `:change-set-item-set`, `:change-set-seq`, `:change-set-item-remove`, `:settings-get`, `:settings-set`
+- **Category system**: `:getters`, `:objectless-get`, `:set-item`, `:set-seq`, `:set-attribute`, `:change-set-item-set`, `:change-set-seq`, `:change-set-item-remove`, `:settings-get`, `:settings-set`. `:objectless-get` serves scoped reads such as `has-music?`, which receive the whole piece and the raw VPD rather than the addressed item, and `:set-item` fans out by name prefix into adders, setters, removers, movers, reorderers and copiers.
 
 **VPD Dispatch Architecture**:
 Each category maps directly to a VPD macro through metadata filtering:

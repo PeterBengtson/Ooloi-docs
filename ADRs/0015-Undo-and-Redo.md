@@ -1550,9 +1550,15 @@ or network calls on the JAT.
 ```
 
 The fetched description is cached in the backend timestamp cache until the next
-`:undo-state-changed` notification for that resource marks it stale. For local entries,
-the existing setting-name convention applies (`:ui/theme` → `:setting.ui.theme`). When no
-undo is available, the item falls back to the static `:menu.edit.undo` key.
+`:undo-state-changed` notification for that resource marks it stale. When no undo is
+available, the item falls back to the static `:menu.edit.undo` key.
+
+**A local entry's description is composed rather than looked up.** The setting-name
+convention (`:ui/theme` → `:setting.ui.theme`) yields the setting's own settings-panel
+label, and that label is a bare noun — "Theme", "Port" — which cannot stand as a
+description on its own. It is interpolated into `:setting.undo.change` ("Change %{name}"),
+so the gesture word sits with the description rather than in the menu template, where a
+backend description arriving as a complete phrase would inherit it too.
 
 #### Ownership Awareness
 
