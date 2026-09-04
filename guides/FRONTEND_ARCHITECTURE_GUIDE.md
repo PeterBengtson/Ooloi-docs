@@ -1687,12 +1687,13 @@ There is no duplication between "settings storage" and "settings UI." The window
 
 ### 10.3 Validation Feedback
 
-When a user enters an invalid value, the system provides immediate visual feedback through two mechanisms:
+Validation feedback takes one of two forms, and which one applies is decided by whether the invalid value stays on screen.
 
-1. **Field styling** — the control receives `:error? true`, applying `error-style` (a Category 1 lookup variable cascade that redefines AtlantaFX's danger tokens on the field's subtree).
-2. **Error notification** — a persistent error notification displays a human-readable message explaining what is wrong. Error notifications do not auto-dismiss.
+An **editor field over a value that was already valid** refuses the commit. The field is restored to what it held before the edit; the control plays the rejection signal, its face and border fading to the danger tokens over 300 ms and back over ten seconds; and an error notification carrying a ten-second timeout says what was wrong. Focus is not interfered with, because the field holds a valid value again and Ooloi never boxes you in.
 
-Both are driven by a uniform validation closure: `(fn [value] → nil | error-message-string)`. The closure wraps whatever validation backend applies — the app settings registry predicate, a `clojure.spec` check for domain records like instruments and staves, or any future validation system. The form field formatter calls the closure without knowing what is behind it.
+A **dialog assembling a value that does not yet exist**, such as the Connect dialog, keeps what the user typed and blocks the action instead. The failing field carries `:error? true`, which applies `error-style` — a Category 1 lookup variable cascade over the danger tokens — and the dialog's primary button stays disabled until every field passes. Validation runs on each keystroke here rather than at commit, so the button never lags behind the fields.
+
+Both are driven by a uniform validation closure: `(fn [value] → nil | error-message-string)`. The closure wraps whatever validation backend applies — the app settings registry, the piece settings registry, or a `clojure.spec` check for domain records like instruments and staves. The form field formatter calls the closure without knowing what is behind it, which is what lets a window get validation feedback by passing `:validate` and nothing more.
 
 For spec-validated domain records, the closure extracts structured failure data from `s/explain-data` and humanises it via a translatable predicate lookup table (e.g. `pos-int?` → "Must be a positive integer"). The table grows incrementally; unknown predicates fall back to `(str pred)`.
 

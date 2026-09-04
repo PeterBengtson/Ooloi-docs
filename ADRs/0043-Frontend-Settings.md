@@ -13,6 +13,10 @@ Implemented
   - [Setting Definitions](#setting-definitions)
   - [Validation Architecture](#validation-architecture)
   - [Validation Feedback Architecture](#validation-feedback-architecture)
+    - [Uniform Closure Interface](#uniform-closure-interface)
+    - [Error Display](#error-display)
+    - [The Rejection Signal](#the-rejection-signal)
+    - [s/explain-data Humanisation Path](#sexplain-data-humanisation-path)
   - [Translation Integration](#translation-integration)
   - [Storage](#storage)
   - [API](#api)
@@ -188,12 +192,39 @@ The closure captures its validation context at construction time. Consumers call
 
 #### Error Display
 
-Validation errors produce two simultaneous effects:
+Validation feedback takes one of two forms, decided by whether the invalid value stays on screen.
 
-1. **Visual styling** — the field receives `:error? true`, which applies `styles/error-style` (Category 1 lookup variable cascade). The field turns danger-coloured.
-2. **Error notification** — `show-error-notification!` displays the closure's error message. Error notifications do not auto-dismiss — they persist until the user explicitly dismisses them or the value becomes valid (dismissed programmatically via `dismiss-notification!`).
+**A refused commit, where the field already held a valid value.** An editor field over an existing entity — an instrument's name, a setting's value — refuses the commit and puts the field back to what it held before the edit:
 
-This uses existing infrastructure with no new UI components. A future refinement may add inline pop-up messages anchored to the field for stronger spatial association; the closure interface remains unchanged — only the consumer changes from notification to inline display.
+1. **The field is restored, explicitly.** A field is a view of the model, and a commit does not otherwise touch it: the render that follows a write repaints it. A refused commit writes nothing, so no render follows, and without the restore the field would go on displaying text the model declined.
+2. **The control plays the rejection signal** (below).
+3. **`show-error-notification!` displays the closure's message with a `:timeout-ms` of ten seconds.** Once the field has reverted, the notification is the only remaining evidence that an edit was refused, which is why the duration is chosen rather than inherited; the dismiss timer pauses while the pointer rests on the notification.
+
+Nothing is retained between renders: no notification id to track, no timer to clear, no `:error?` to unset later.
+
+Focus is left alone. The field holds a valid value once it has been restored, so there is nothing to keep the user in it for, and keeping them there would contradict the rule the interface is built on — Ooloi never freezes and never boxes you in ([ADR-0042](0042-UI-Specification-Format.md) §Calm).
+
+**An invalid value the user is still assembling.** A dialog gathering a value that does not yet exist — the Connect dialog's host and port — keeps what was typed and blocks the *action* instead: the field carries `:error? true`, and the dialog's primary button is disabled while any field fails its closure. Restoring would be wrong here, since a host field the user has just cleared should stay cleared while they type a new one. Validation runs on each keystroke for this form, because a gate re-evaluated only at commit leaves the button a keystroke behind what the fields say.
+
+The same styling applies to a control displaying a value it did not produce — a setting read from a file written by another build, which the load path preserves without validating (§Storage).
+
+`:error? true` applies `styles/error-style`, a Category 1 lookup variable cascade redefining the background, foreground and border tokens on the control's subtree so AtlantaFX's multi-stop painting keeps its simulated border while showing danger colours. Three slots, because a value that is both displayed and invalid is wrong in every part of the control that can say so.
+
+**A persistent error notification remains the tier for a failure that is not transient** — a file that will not open, a connection that will not establish. The user has nothing to correct in place, so the notification waits until it is dismissed.
+
+This uses existing infrastructure with no new UI components. A future refinement may anchor messages to the field itself for stronger spatial association; the closure interface stays as it is, and only the consumer changes.
+
+#### The Rejection Signal
+
+A refused commit is signalled on the control itself, because the notification sits at the edge of the screen and does not say which field was refused.
+
+The control's face and border fade to the danger tokens and back — in over 300 ms, out over ten seconds. The foreground is left untouched: the value on display is valid again once the field has been restored, and a text field's foreground is the user's own text while a checkbox's is the field's name, so colouring either would say something untrue.
+
+The mechanism is the cascade `error-style` uses, with two slots interpolated rather than fixed. JavaFX interpolates neither an inline style string nor a CSS colour, so the danger and background tokens are resolved to concrete colours and the interpolated pair is written into the cascade as the animation runs.
+
+Its pace follows [ADR-0042](0042-UI-Specification-Format.md) §Calm, which separates what arrives of its own accord from what answers a user act: the entrance takes the prompt curve that focus gain takes, the withdrawal the slow one every unbidden arrival takes. A refused commit answers a user act, so it arrives promptly; nothing demands acknowledgement, so it withdraws slowly. The signal is a fade, never a flash.
+
+Every form control carries it — text field, numeric field, combo box, spinner and checkbox — since a validator may reject a combination of fields rather than a single value, and any of them can be the control that was edited when it does.
 
 #### `s/explain-data` Humanisation Path
 
@@ -338,11 +369,13 @@ The settings registry provides everything needed to generate a Settings window:
   drift apart; adding a setting whose default is a number requires no layout decision at all.
 - **Labels**: setting name via `(tr :setting.ui.theme)`, description via `(tr :setting.ui.theme.desc)`. Description Labels render with `:wrap-text true` and `:max-width 480.0` so long descriptions (a sentence or two) break to multiple lines instead of stretching the row beyond the scroll-pane viewport. New settings must keep this — a setting whose description Label omits `:wrap-text` widens the row to its single-line preferred width and defeats the scroll-pane's `:fit-to-width true` constraint.
 - **Choice labels**: `(tr :setting.ui.theme.nord-dark)` → "Dark"
-- **Validation feedback**: immediate validation on input change via the uniform closure interface (see [Validation Feedback Architecture](#validation-feedback-architecture)). Invalid fields receive `:error? true` styling; error messages display as persistent notifications.
+- **Validation feedback**: a field is validated when it commits, through the uniform closure interface (see [Validation Feedback Architecture](#validation-feedback-architecture)). A refused commit restores the field to the value it held before the edit, plays the rejection signal, and raises an error notification that expires.
 
 The Settings window is implemented in `app_settings_window.clj` (`frontend/src/main/clojure/ooloi/frontend/ui/app/app_settings_window.clj`), consuming the registry to generate the UI automatically. It follows the content builder pattern ([ADR-0042](0042-UI-Specification-Format.md)): a private `build-full-content-spec` returns a cljfx description map for the complete window content, and `show-app-settings!` (public) handles lifecycle via the UI Manager.
 
-What the user sees is not described in that namespace. The row, the tabbed surface holding the rows, and the bar beneath are shared components — `ooloi-setting-row`, `ooloi-setting-tabs`, `ooloi-setting-button-bar` — mounted equally by the Piece Preferences window ([ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6), so the two settings surfaces are one implementation and cannot drift apart in appearance. What stays with this window is what is its own: which settings exist and how they are grouped, how its `tr` keys are derived, what a setting's current value and default are, and what writing one means. Each tab holds a ScrollPane of setting rows — a Tile with a ComboBox for choices, a Tile with a TextField for validator-based settings — each with a per-field reset button; the bar beneath provides Reset All Defaults, scoped to the tab being shown, and OK.
+What the user sees is not described in that namespace. The row and the tabbed surface holding the rows are shared components — `ooloi-setting-row` and `ooloi-setting-tabs` — mounted equally by the Piece Preferences window ([ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §6), so the two settings surfaces are one implementation and cannot drift apart in appearance. The bar beneath, `ooloi-setting-button-bar`, is mounted by this window alone. What stays with this window is what is its own: which settings exist and how they are grouped, how its `tr` keys are derived, what a setting's current value and default are, and what writing one means. Each tab holds a ScrollPane of setting rows — a Tile with a ComboBox for choices, a Tile with a TextField for validator-based settings — each with a per-field reset button; the bar beneath provides Reset All Defaults, scoped to the tab being shown, and an OK button that does nothing but close the window.
+
+**The OK button is here because Reset All is.** A destructive batch invites a deliberate way out of the window that follows it, so the two belong together. A settings surface offering no Reset All needs neither, which is why the Piece Preferences window has no bar at all: its per-field reset is the only reset it offers, and in a window where every change takes effect as it is made there is nothing for an OK button to do.
 
 The builder is a **pure function of the window's state**, which is what keeps it evaluable as ordinary data. The window remembers which of its tiles are open and which tab it was showing, and reads both **once, as it opens**, into that state — never on the render path, since the builder runs once per setting on every render pass and a read there would be a file read per row per pass. Neither belongs in the window's geometry record: they are kept under the window's own scope, beside the Instrument Library's and the one shared by every Piece Preferences window ([Frontend Architecture Guide §3.5](../guides/FRONTEND_ARCHITECTURE_GUIDE.md)). What is stored for the tab is the **category** — the namespace of the setting's keyword, carried as a keyword — and never its translated label: the surface orders its tabs by that label, so a stored label would stop matching the moment the interface language changed, and the window would silently fall back to the first tab.
 

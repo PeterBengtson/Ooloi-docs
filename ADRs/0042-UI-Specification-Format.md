@@ -423,6 +423,15 @@ something to say it informs and withdraws, organically and gently. This is not m
 choice, and it is not decoration — it is a constraint on behaviour, and the timings below are its
 measure.
 
+**And it never boxes you in.** The same regard for the user's attention forbids taking it hostage.
+Ooloi does not freeze while it works: a long import or a large save proceeds while the composing
+carries on around it, and the undo chain may change under an open menu, because time here does not
+wait to be asked. A preference takes effect as it is made rather than on the far side of an OK
+button. A control that refuses a value says so and lets the user go, rather than holding focus until
+what it holds is acceptable. Where a question genuinely has to be answered — whether unsaved work is
+to be discarded — it is asked, and that is the exception the rule tolerates rather than the pattern
+it is built from.
+
 **Every window participates.** A window fades in when shown, fades out when closed, and dims when it
 loses focus. This is foundational rather than per-window: no kind opts out, the splash screen included,
 and the same is true of the surfaces that are not windows — a notification's slot grows and collapses,
@@ -1421,7 +1430,7 @@ The constants split into two structural categories by mechanism, but both share 
 
 ##### Category 1 — Lookup Variable Cascade (form field error styling)
 
-**Targets:** `TextField`, `ComboBox`, `Spinner` — controls whose AtlantaFX theming uses a multi-stop `-fx-background-color` layer where the outer stop references `-color-border-default` and the inner stop references `-color-bg-default` to simulate a border. Direct `-fx-background-color` on these controls destroys the multi-stop structure and erases the simulated border; the lookup variable cascade is the only mechanism that changes their appearance while preserving the border.
+**Targets:** `TextField`, `ComboBox`, `Spinner`, `CheckBox` — controls whose AtlantaFX theming uses a multi-stop `-fx-background-color` layer where the outer stop references `-color-border-default` and the inner stop references `-color-bg-default` to simulate a border. Direct `-fx-background-color` on these controls destroys the multi-stop structure and erases the simulated border; the lookup variable cascade is the only mechanism that changes their appearance while preserving the border. A `CheckBox` carries that structure on its `.box` sub-node rather than on the control itself, and the cascade reaches it there: set on the control, it retints the box and leaves the label's text alone unless the foreground slot is redefined with it.
 
 **A second cascade target — control interiors painted from a lookup variable.** Some AtlantaFX controls paint their interior from a lookup variable rather than a direct property. A `ListView`'s cells paint from `-color-bg-default` (the `.list-view` control node itself has *no* background — `.getBackground()` is `nil`), and they ignore both a direct `-fx-background-color` and `-fx-control-inner-background`. To retint a list's interior surface, redefine the lookup variable over the subtree (`-color-bg-default: -color-bg-subtle`) — the same cascade, but a single slot rather than the three-slot border-preservation pattern. This is `list-surface-style`, applied to the piece picker's listing pane.
 
