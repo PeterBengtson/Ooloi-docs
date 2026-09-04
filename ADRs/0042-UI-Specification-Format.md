@@ -14,6 +14,14 @@ Implemented
   - [Metadata Keys](#metadata-keys)
   - [First-open placement: fit, stagger, and column overflow](#first-open-placement-fit-stagger-and-column-overflow)
   - [Calm: the pace of the interface](#calm-the-pace-of-the-interface)
+    - [The principle](#the-principle)
+    - [And it never boxes you in](#and-it-never-boxes-you-in)
+    - [Every window participates](#every-window-participates)
+    - [The pace is chosen: every timing in the interface, by name](#the-pace-is-chosen-every-timing-in-the-interface-by-name)
+    - [The two interpolators, and which answers a user act](#the-two-interpolators-and-which-answers-a-user-act)
+    - [A shortened duration is exceptional](#a-shortened-duration-is-exceptional)
+    - [Correctness never depends on a duration](#correctness-never-depends-on-a-duration)
+    - [When to zero the durations in a test, and when not to](#when-to-zero-the-durations-in-a-test-and-when-not-to)
   - [Dynamic window titles: raw :title vs the :window/title-key fallback](#dynamic-window-titles-raw-title-vs-the-windowtitle-key-fallback)
   - [Modal dialogs: one core, two entry points](#modal-dialogs-one-core-two-entry-points)
   - [Content Builder Pattern](#content-builder-pattern)
@@ -416,12 +424,16 @@ menu bar and dock — as the floating surfaces do.
 Where a window opens is settled above. The pace at which it arrives and leaves is settled here, and it
 is a design position rather than a default.
 
+#### The principle
+
 **The principle.** The person using this software is a musician trying to think about music, and every
 uninvited visual element is a small interruption of that thinking. So the interface does not perform its
 capabilities: nothing appears unbidden, nothing flashes, nothing demands acknowledgement. When Ooloi has
 something to say it informs and withdraws, organically and gently. This is not minimalism as a style
 choice, and it is not decoration — it is a constraint on behaviour, and the timings below are its
 measure.
+
+#### And it never boxes you in
 
 **And it never boxes you in.** The same regard for the user's attention forbids taking it hostage.
 Ooloi does not freeze while it works: a long import or a large save proceeds while the composing
@@ -432,12 +444,16 @@ what it holds is acceptable. Where a question genuinely has to be answered — w
 to be discarded — it is asked, and that is the exception the rule tolerates rather than the pattern
 it is built from.
 
+#### Every window participates
+
 **Every window participates.** A window fades in when shown, fades out when closed, and dims when it
 loses focus. This is foundational rather than per-window: no kind opts out, the splash screen included,
 and the same is true of the surfaces that are not windows — a notification's slot grows and collapses,
 and an ambient indicator's glyph breathes on a continuously varying cycle with **no metronome cadence**
 ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §*Per-Window Indicators*). One
 atmosphere, not a set of local choices.
+
+#### The pace is chosen: every timing in the interface, by name
 
 **The pace is chosen.** The window constants live in one place, `window-transitions`, and apply to every
 window: `window-fade-in-ms` **1000**, `window-fade-out-ms` **2000**, `window-focus-gain-ms` and
@@ -454,6 +470,8 @@ constants sit with it in `rejection`: it arrives over `rejection-fade-in-ms` **3
 are one gesture rather than two of different lengths. These are the interface's pace, not tuning
 parameters, and they are not shortened to make anything feel faster.
 
+#### The two interpolators, and which answers a user act
+
 **The two curves are chosen by category, not by speed.** `organic` is for what arrives or leaves of
 its own accord; `organic-snap`, which reaches its value sooner and still settles gently, is for what
 answers something the user has just done. Focus gain takes the second at 150 ms, and the rejection
@@ -462,12 +480,16 @@ first curve because by then nothing is demanding anything. Both live in `window-
 public for that reason: a second copy of their control points elsewhere is how an atmosphere stops
 being one.
 
+#### A shortened duration is exceptional
+
 **A shortened duration is exceptional and states its reason where it is applied.** The application has
 one such exception, and it is the model for any other: the Quit save pass floors `window-fade-out-ms` at
 `quit-fade-out-ms` **500** for its duration, because the pass waits for each piece's window to finish
 before bringing the next one forward and asking about it, and at the full duration that reads as dawdling
 when the application is on its way out. It is applied as a **floor, never a ceiling**, so a caller that
 has already set a shorter fade keeps it, and it is restored however the pass ends.
+
+#### Correctness never depends on a duration
 
 **Correctness never depends on a duration, and that is what keeps the pace free to change.** Nothing in
 the window lifecycle is sequenced by elapsed time: a window's teardown waits for its own fade to finish
@@ -476,6 +498,8 @@ interval. An interval derived from an animation length is a fact about that anim
 the ordering it stands for, and it becomes wrong — silently — the moment the animation changes. See
 §*Window Manager Integration* and [ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §7, where a
 piece and every window it owns fade out together and vanish as one object.
+
+#### When to zero the durations in a test, and when not to
 
 **`with-zero-animation-times` removes the thing under test, if the thing under test is the ordering.**
 Zeroing the durations is the right tool for a fact whose subject lies elsewhere and which should not wait
@@ -1451,9 +1475,15 @@ The constants split into two structural categories by mechanism, but both share 
 
 Two cascade constants exist. `list-surface-style` is the single-slot kind, redefining `-color-bg-default` to tint the piece picker's listing surface. `error-style` is the three-slot kind, and marks a form control displaying a value that is invalid and stays invalid — a dialog field the user has still to fix, or a control showing a value written by another build. The form controls carry it through an `:error?` prop rather than a call site attaching a style string: the state belongs to the control, so the control is told what is true of it.
 
-**A control's rendered stops cannot be mapped back to the tokens that produced them, and nothing should try.** The shapes differ: a text field and a combo box paint two stops, a spinner one, and a `CheckBox` none at all. Any rule inferring "the first stop is the border" holds for the controls it was written against and fails silently on the next one — it animates or paints toward the wrong colour, in whichever theme nobody is looking at. Where a token's *value* is wanted rather than a control's appearance, resolve the token: give the node a flat background of it and read what comes back. A token has one value whatever paints from it, so a widget added later needs no rule of its own.
-
 **Why not notifications or selection?** Notifications use AtlantaFX's separate `-color-notify-bg` token system (see Notification Styling below). Selection uses a direct `-fx-background-color` property (Category 2) because the lookup variable cascade leaks into nested children — containers can nest selectable items (musicians → instruments → staves), and a cascade would make descendants appear selected. A direct property confines the highlight to the target node only.
+
+##### How many background stops a control paints, and why you must not infer a token from one
+
+A control's rendered background stops cannot be mapped back to the lookup variables that produced them, and nothing should try. The shapes differ, measured: a `TextField` and a `ComboBox` paint **two** stops, a `Spinner` paints **one**, and a `CheckBox` paints **none** — it leaves that to the `.box` its skin creates. So a rule of the form "the first stop is the border, the second is the face" holds for the controls it was written against and fails silently on the next one, painting or animating toward the wrong colour in whichever theme nobody happens to be looking at.
+
+Where a token's **value** is wanted rather than a control's appearance, resolve the token instead: give the node a flat `-fx-background-color` of it and read the single colour that comes back. This works on any control, including one that paints no background of its own, because the reading gives it one. It also works for a token under a redefinition — reading `-color-bg-default` on a node carrying `error-style` yields whatever `error-style` makes it, so a value can be resolved without naming the token it is redefined to.
+
+A token has one value whatever paints from it. That is what makes this survive a widget the code has never met: it either draws from the tokens in question and is affected, or does not and is left alone, with no rule to add either way.
 
 ##### Category 2 — Direct Property Strings Using Semantic Tokens
 

@@ -14,6 +14,7 @@ Implemented
   - [Validation Architecture](#validation-architecture)
   - [Validation Feedback Architecture](#validation-feedback-architecture)
     - [Uniform Closure Interface](#uniform-closure-interface)
+    - [Why a failure is data rather than a message](#why-a-failure-is-data-rather-than-a-message)
     - [Error Display](#error-display)
     - [The Rejection Signal](#the-rejection-signal)
     - [s/explain-data Humanisation Path](#sexplain-data-humanisation-path)
@@ -162,33 +163,43 @@ Ooloi uses three distinct validation backends:
 
 | Backend | Where | Mechanism |
 |---------|-------|-----------|
-| App settings (this ADR) | `def-app-setting` registry | `:choices` set or `:validator` predicate |
-| Piece settings ([ADR-0016](0016-Settings.md)) | `defsetting` registry | Set or predicate |
+| App settings (this ADR) | `def-app-setting` registry | `:choices` map or `:validator` predicate |
+| Piece settings ([ADR-0016](0016-Settings.md)) | `defsetting` registry | `:choices` map or `:validator` predicate, beside a required `:category` and an optional `:control` |
 | Domain records | `create-instrument`, `create-staff` | `clojure.spec.alpha` |
 
-All three currently use fail-fast exceptions. UI editors need non-throwing, live validation with user-facing feedback. Rather than each editor knowing which validation system to call, a uniform closure interface wraps the underlying mechanism:
+All three throw at their write boundary, which is right for a write and useless for an editor: a UI needs to ask whether a value *would* be accepted without suffering the consequences of its not being. Rather than each editor knowing which validation system to call, a uniform closure wraps the mechanism.
+
+**The contract is `(fn [value] → nil | failure)`.** `nil` means valid. A failure is **data, not a message**: a map naming a `:failure` type and carrying whatever that type needs in order to be described.
 
 ```clojure
-;; Contract: (fn [value] → nil | error-message-string)
-;; nil = valid, string = localised error message
-
-;; App setting — wraps registry predicate
+;; App setting — wraps the registry entry
 (fn [value]
-  (let [{:keys [choices validator]} (get @registry setting-key)]
+  (let [{:keys [choices validator]} (registry-entry setting-key)]
     (cond
       (and choices (not (contains? choices value)))
-      (str "Must be one of: " (str/join ", " (map #(tr (get choices %)) (keys choices))))
+      {:failure :must-be-one-of :choices choices}  ; the map itself: the i18n keys are in it
 
       (and validator (not (validator value)))
-      (str "Invalid value: " value)))) ; → humanised via tr keys over time
+      {:failure :invalid-value :value value})))
 
-;; Instrument spec — wraps clojure.spec
+;; Domain record — wraps clojure.spec
 (fn [instrument]
   (when-not (s/valid? ::instrument/instrument instrument)
-    (format-explain-data (s/explain-data ::instrument/instrument instrument))))
+    {:failure  :spec-violation
+     :problems (::s/problems (s/explain-data ::instrument/instrument instrument))}))
 ```
 
-The closure captures its validation context at construction time. Consumers call it uniformly without knowing whether a predicate, a choices set, or a full clojure.spec is behind it.
+The closure captures its validation context at construction time. Consumers call it uniformly without knowing whether a predicate, a choices map, or a full `clojure.spec` is behind it.
+
+#### Why a failure is data rather than a message
+
+The same discipline [ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md) applies to open and save failures, and it earns three things here.
+
+**A failure becomes a sentence in one place.** A single pure mapping from failure type to `tr` key serves all three backends, rather than each composing its own prose. That matters most for the spec backend, whose predicate humanisation is a growable table (below): as data, that table is part of the one mapping instead of living inside one closure while the other two build strings their own way.
+
+**The closure is independent of the locale.** A message composed inside it would be composed at *validation* time — a moment, not a render — and so would be right only for as long as nothing changed language in between. Composing at the point of display is the rule the rest of the interface already follows for every keyed label.
+
+**A failure becomes comparable.** A test asserts `{:failure :must-be-one-of}` rather than matching a sentence, so it says what it means, and improving the wording of a message does not break facts about validation.
 
 #### Error Display
 
@@ -198,7 +209,7 @@ Validation feedback takes one of two forms, decided by whether the invalid value
 
 1. **The field is restored, explicitly.** A field is a view of the model, and a commit does not otherwise touch it: the render that follows a write repaints it. A refused commit writes nothing, so no render follows, and without the restore the field would go on displaying text the model declined.
 2. **The control plays the rejection signal** (below).
-3. **`show-error-notification!` displays the closure's message with a `:timeout-ms` of ten seconds.** Once the field has reverted, the notification is the only remaining evidence that an edit was refused, which is why the duration is chosen rather than inherited; the dismiss timer pauses while the pointer rests on the notification.
+3. **`show-error-notification!` displays the failure, translated at that moment, with a `:timeout-ms` of ten seconds.** Once the field has reverted, the notification is the only remaining evidence that an edit was refused, which is why the duration is chosen rather than inherited; the dismiss timer pauses while the pointer rests on the notification.
 
 Nothing is retained between renders: no notification id to track, no timer to clear, no `:error?` to unset later.
 
@@ -244,7 +255,7 @@ The `:pred` values fall into a small, closed set that can be mapped to `tr` keys
 | `valid-families` | `:validation.must-be-valid-family` |
 | `valid-clef-set` | `:validation.must-be-valid-clef` |
 
-Initial implementation uses `(str pred)` as the message. The lookup table grows as translations are added. `s/nilable` fields produce two problems per failure (pred branch + nil branch); the nil branch is filtered out before display.
+This table is part of the one failure-to-`tr`-key mapping described above, not a second mechanism inside the spec closure: the closure returns the problems as data, and they are humanised where every other failure type is. An unmapped predicate falls back to `(str pred)`, and the table grows as translations are added. `s/nilable` fields produce two problems per failure — the predicate branch and a nil branch — and the nil branch is dropped, since it says only that the field is not permitted to be absent, which is never the thing the user got wrong.
 
 ### Translation Integration
 
