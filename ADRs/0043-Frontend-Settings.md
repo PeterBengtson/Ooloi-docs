@@ -268,7 +268,7 @@ All user-facing strings follow [ADR-0039](0039-Localisation-Architecture.md). Tr
 | Choice label | `:setting.<category>.<name>.<value>` | `:setting.ui.theme.nord-dark` |
 | Category tab | `:setting-category.<category>` | `:setting-category.ui` |
 
-All keys must appear as literals in `tr-declare` — no computed keys ([ADR-0039](0039-Localisation-Architecture.md) invariant 7). The `def-app-setting` choices map references the same literal tr keys. At runtime, the settings infrastructure calls `tr` with keys from the registry; the scanner finds these keys in `tr-declare`, not in the `tr` call sites.
+Every key a setting can produce is declared in a `tr-declare` ([ADR-0039](0039-Localisation-Architecture.md) invariant 7). That is the whole of the requirement: how a call site assembles the keyword is beside the point, and the settings windows do assemble theirs — `:setting.<category>.<name>` and its `.desc` sibling are built from the setting's own namespace and name. The scanner finds those keys in the `tr-declare`, never at the call site, which is exactly the data-driven case it is built to tolerate.
 
 ### Storage
 

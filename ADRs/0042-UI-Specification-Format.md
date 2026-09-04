@@ -53,6 +53,7 @@ Implemented
     - [AtlantaFX Style Class Reference](#atlantafx-style-class-reference)
     - [CSS Semantic Token Reference](#css-semantic-token-reference)
     - [-style Constants — Semantic Styling via One Namespace, Two Mechanisms](#-style-constants--semantic-styling-via-one-namespace-two-mechanisms)
+    - [How many background stops a control paints, and why you must not infer a token from one](#how-many-background-stops-a-control-paints-and-why-you-must-not-infer-a-token-from-one)
     - [Cascade mechanism — inspection point and reference values](#cascade-mechanism--inspection-point-and-reference-values)
     - [Established Usage Patterns](#established-usage-patterns)
     - [Documented Exceptions](#documented-exceptions)
@@ -1477,14 +1478,6 @@ Two cascade constants exist. `list-surface-style` is the single-slot kind, redef
 
 **Why not notifications or selection?** Notifications use AtlantaFX's separate `-color-notify-bg` token system (see Notification Styling below). Selection uses a direct `-fx-background-color` property (Category 2) because the lookup variable cascade leaks into nested children — containers can nest selectable items (musicians → instruments → staves), and a cascade would make descendants appear selected. A direct property confines the highlight to the target node only.
 
-##### How many background stops a control paints, and why you must not infer a token from one
-
-A control's rendered background stops cannot be mapped back to the lookup variables that produced them, and nothing should try. The shapes differ, measured: a `TextField` and a `ComboBox` paint **two** stops, a `Spinner` paints **one**, and a `CheckBox` paints **none** — it leaves that to the `.box` its skin creates. So a rule of the form "the first stop is the border, the second is the face" holds for the controls it was written against and fails silently on the next one, painting or animating toward the wrong colour in whichever theme nobody happens to be looking at.
-
-Where a token's **value** is wanted rather than a control's appearance, resolve the token instead: give the node a flat `-fx-background-color` of it and read the single colour that comes back. This works on any control, including one that paints no background of its own, because the reading gives it one. It also works for a token under a redefinition — reading `-color-bg-default` on a node carrying `error-style` yields whatever `error-style` makes it, so a value can be resolved without naming the token it is redefined to.
-
-A token has one value whatever paints from it. That is what makes this survive a widget the code has never met: it either draws from the tokens in question and is affected, or does not and is left alone, with no rule to add either way.
-
 ##### Category 2 — Direct Property Strings Using Semantic Tokens
 
 **Targets:** `ScrollPane` wrappers, `Label` nodes, `FontIcon` nodes, and other regions that do not use AtlantaFX's multi-stop simulated-border structure. For these controls, the correct mechanism is setting a JavaFX CSS property directly to a value that references an AtlantaFX semantic token (`-color-bg-subtle`, `-color-fg-muted`, etc.). The right-hand side is resolved by AtlantaFX at theme load time, so the visual effect tracks theme changes automatically. There is no simulated-border structure to preserve, and no cascade is required — the direct property is what the target control actually reads.
@@ -1512,6 +1505,14 @@ Ooloi constants use Ooloi vocabulary. Notification constants are prefixed `notif
 ##### Grep invariant test
 
 `frontend/test/clojure/ooloi/frontend/ui/core/colour_invariants_test.clj` scans all `.clj` files under `frontend/src/main/clojure/` for hex literals, `rgb(...)`/`rgba(...)` strings, `javafx.scene.paint.Color` constructors, and hardcoded `-fx-*-color` values. Lines with a `;; colour-literal-allowed: <reason>` comment are allowlisted; every other match is a build failure. A separate invariant check forbids inline `:style "-fx-..."` string literals outside `styles.clj` itself — every inline `:style` at a call site must reference a constant from the `styles` namespace.
+
+#### How many background stops a control paints, and why you must not infer a token from one
+
+A control's rendered background stops cannot be mapped back to the lookup variables that produced them, and nothing should try. The shapes differ, measured: a `TextField` and a `ComboBox` paint **two** stops, a `Spinner` paints **one**, and a `CheckBox` paints **none** — it leaves that to the `.box` its skin creates. So a rule of the form "the first stop is the border, the second is the face" holds for the controls it was written against and fails silently on the next one, painting or animating toward the wrong colour in whichever theme nobody happens to be looking at.
+
+Where a token's **value** is wanted rather than a control's appearance, resolve the token instead: give the node a flat `-fx-background-color` of it and read the single colour that comes back. This works on any control, including one that paints no background of its own, because the reading gives it one. It also works for a token under a redefinition — reading `-color-bg-default` on a node carrying `error-style` yields whatever `error-style` makes it, so a value can be resolved without naming the token it is redefined to.
+
+A token has one value whatever paints from it. That is what makes this survive a widget the code has never met: it either draws from the tokens in question and is affected, or does not and is left alone, with no rule to add either way.
 
 #### Cascade mechanism — inspection point and reference values
 

@@ -18,7 +18,7 @@ Implemented
   - [Runtime Loading and Caching](#runtime-loading-and-caching)
 - [Key Design](#key-design)
   - [Key Structure and Context](#key-structure-and-context)
-  - [No Computed Keys](#no-computed-keys)
+  - [Every Key Is Declared](#every-key-is-declared)
   - [Two Extraction Mechanisms](#two-extraction-mechanisms)
   - [Declaration Use Cases](#declaration-use-cases)
   - [Named Parameters](#named-parameters)
@@ -49,7 +49,7 @@ Implemented
   - [4. Named parameters only](#4-named-parameters-only)
   - [5. No sentence assembly from fragments](#5-no-sentence-assembly-from-fragments)
   - [6. No localisation logic in protocol, persistence, or collaboration paths](#6-no-localisation-logic-in-protocol-persistence-or-collaboration-paths)
-  - [7. No computed keys](#7-no-computed-keys)
+  - [7. Every key is declared](#7-every-key-is-declared)
   - [8. PO files are the sole translator interface](#8-po-files-are-the-sole-translator-interface)
   - [9. Every bundled catalogue is grammatically correct for every value of n](#9-every-bundled-catalogue-is-grammatically-correct-for-every-value-of-n)
 - [Documentation](#documentation)
@@ -355,16 +355,29 @@ The key directly becomes the `msgctxt` in the PO file. This allows translators t
 - Understand UI placement (menu vs dialog vs tooltip vs error)
 - Detect insufficient context and flag issues
 
-### No Computed Keys
+### Every Key Is Declared
 
-The invariant is absolute: **no computed keys**. Every translation key must exist as a literal keyword somewhere in the source code, deterministically extractable by static analysis. Computed keys — keywords constructed at runtime from strings, variables, or function results — are forbidden. This is what makes build-time verification possible.
+The invariant is absolute, and it is about **declaration**, not about construction: **every key that can reach `tr` must appear as a literal keyword in the source** — in a `tr` call, or in a `tr-declare` map. That is what makes build-time verification possible, because the scanner's union of extracted and declared keys is checked against `en_GB.po`.
 
-**Forbidden** — computed keys that defeat static extraction:
+**How a key is assembled at the call site is beside the point.** Constructing one at runtime is ordinary and widespread — from a setting's namespace and name, from a clef or an interval, from a menu's name — and it is legitimate exactly when every value it can produce is declared:
 
 ```clojure
-(tr (keyword (str "menu." section "." action)))  ; constructed at runtime
-(tr (get key-map some-key))                       ; resolved at runtime
+;; Legitimate: the call site computes, and the declaration enumerates.
+(tr-declare {:clef.treble "Treble" :clef.bass "Bass" :clef.alto "Alto"})
+
+(defn clef-label [clef]
+  (tr (keyword (str "clef." (name clef)))))     ; scanner skips this; the declaration covers it
 ```
+
+```clojure
+;; A violation: nothing declares what this can produce, so no catalogue can contain it
+;; and no translator can ever be offered it.
+(tr (keyword (str "menu." section "." action)))
+```
+
+The two examples are the same construction. What separates them is whether a `tr-declare` enumerates the results — which is why the rule cannot be stated as a prohibition on how the keyword is built.
+
+The failure mode this prevents is a key that exists only at runtime: absent from every catalogue, so it renders as its own name, and invisible to the build because nothing named it. A concatenating call site whose results are declared has none of those properties.
 
 ### Two Extraction Mechanisms
 
@@ -518,7 +531,7 @@ Build-time verification operates in two modes depending on context:
   - Keys from bare `tr` calls only: `[TODO: Translation needed]` placeholder as msgstr
 - Warns about TODO entries and orphaned keys
 - Tolerant of *incompleteness*, so development can iterate rapidly
-- **Fails on defects that are never legitimate**: any plural-integrity violation (see below), a duplicate key, a computed key, or a catalogue that parses to nothing
+- **Fails on defects that are never legitimate**: any plural-integrity violation (see below), a duplicate key, a non-literal `tr-declare` argument, or a catalogue that parses to nothing
 
 **Strict Mode** (CI/build, `lein i18n :strict true`):
 - Extracts all `tr` keys from source
@@ -765,7 +778,7 @@ This architecture requires several distinct capabilities. The implementation str
 
 **Implementation** (`shared/src/main/clojure/ooloi/shared/i18n/verify.clj`):
 - Parse source with Clojure reader (not regex)
-- Extract literal keywords (reject computed keys)
+- Extract literal keywords from `tr` calls and `tr-declare` maps; skip a non-literal `tr` argument, and reject a non-literal `tr-declare` map
 - Compare against `en_GB.po` msgctxt values
 - Auto-add mode: append missing keys (tr-declare defaults as msgstr, TODO for bare tr keys)
 - Strict mode: fail on missing keys or TODO entries
@@ -834,9 +847,11 @@ Messages are complete translatable units, never concatenated pieces. A sentence 
 
 These layers are locale-agnostic. A piece saved by one user and opened by another under a different locale is the same piece; nothing about language survives into the file, the wire format, or a collaboration session.
 
-### 7. No computed keys
+### 7. Every key is declared
 
-Every translation key is a literal keyword in source code — either in a `tr` call or a `tr-declare` map. Keys constructed at runtime are forbidden, because a key that cannot be found by reading the source cannot be extracted, verified, or offered to a translator.
+Every translation key appears as a literal keyword in source — in a `tr` call or in a `tr-declare` map — because a key that cannot be found by reading the source cannot be extracted, verified, or offered to a translator.
+
+The invariant governs declaration, not construction. A call site may assemble a key at runtime from a setting's name, a clef, an interval or a menu's name, and many do; what it may not do is produce a value that no `tr-declare` enumerates. See [Every Key Is Declared](#every-key-is-declared).
 
 ### 8. PO files are the sole translator interface
 

@@ -584,7 +584,7 @@ A dropdown control filters the visible entries by `:language`. The options are:
 | All (show all) | `:instrument-library.language.all` | `"All"` |
 
 Options are translated via `(tr key)` per [ADR-0039](0039-Localisation-Architecture.md). Keys
-must be declared with `tr-declare`; no computed keys. All seven keys must be added to every `.po`
+must be declared with `tr-declare`. All seven keys must be added to every `.po`
 locale file in `resources/i18n/`.
 
 Selecting a language shows only instruments whose `:language` value matches. Selecting **Other**
