@@ -448,8 +448,19 @@ notification fades in over `entrance-fade-ms` **1000**; it remains for `notifica
 **10000**, long enough to be read without being waited on; and it fades out over `exit-fade-ms` **3000**
 while its slot collapses over `exit-height-ms` **1500** — slowly enough not to snatch itself away. The
 splash screen is held for `min-splash-ms` **2000** however quickly the system starts, so a fast launch
-does not flash past. These are the interface's pace, not tuning parameters, and they are not shortened
-to make anything feel faster.
+does not flash past. A form control refusing a commit answers with the rejection signal, whose two
+constants sit with it in `rejection`: it arrives over `rejection-fade-in-ms` **300** and leaves over
+`rejection-fade-out-ms` **10000**, the same span the notification beside it is readable for, so the two
+are one gesture rather than two of different lengths. These are the interface's pace, not tuning
+parameters, and they are not shortened to make anything feel faster.
+
+**The two curves are chosen by category, not by speed.** `organic` is for what arrives or leaves of
+its own accord; `organic-snap`, which reaches its value sooner and still settles gently, is for what
+answers something the user has just done. Focus gain takes the second at 150 ms, and the rejection
+signal takes it too — a refusal answers a user act, so it arrives promptly, and then withdraws on the
+first curve because by then nothing is demanding anything. Both live in `window-transitions` and are
+public for that reason: a second copy of their control points elsewhere is how an atmosphere stops
+being one.
 
 **A shortened duration is exceptional and states its reason where it is applied.** The application has
 one such exception, and it is the model for any other: the Quit save pass floors `window-fade-out-ms` at
@@ -1438,7 +1449,9 @@ The constants split into two structural categories by mechanism, but both share 
 
 **Three-slot pattern.** Form-field error constants use the same three slots: background, foreground, border. This is not an accident — the three-slot pattern is what makes the cascade preserve the simulated border uniformly across every form control. Surface-tint constants like `list-surface-style` are the exception: with no border to preserve, they redefine only the slot they need (`-color-bg-default`).
 
-**Current status:** `list-surface-style` (the piece picker's listing surface, a single-slot `-color-bg-default` cascade) is the first realized cascade constant. The three-slot `error-style` for form field validation is future work; the cascade mechanism and three-slot pattern are documented here as its specification.
+Two cascade constants exist. `list-surface-style` is the single-slot kind, redefining `-color-bg-default` to tint the piece picker's listing surface. `error-style` is the three-slot kind, and marks a form control displaying a value that is invalid and stays invalid — a dialog field the user has still to fix, or a control showing a value written by another build. The form controls carry it through an `:error?` prop rather than a call site attaching a style string: the state belongs to the control, so the control is told what is true of it.
+
+**A control's rendered stops cannot be mapped back to the tokens that produced them, and nothing should try.** The shapes differ: a text field and a combo box paint two stops, a spinner one, and a `CheckBox` none at all. Any rule inferring "the first stop is the border" holds for the controls it was written against and fails silently on the next one — it animates or paints toward the wrong colour, in whichever theme nobody is looking at. Where a token's *value* is wanted rather than a control's appearance, resolve the token: give the node a flat background of it and read what comes back. A token has one value whatever paints from it, so a widget added later needs no rule of its own.
 
 **Why not notifications or selection?** Notifications use AtlantaFX's separate `-color-notify-bg` token system (see Notification Styling below). Selection uses a direct `-fx-background-color` property (Category 2) because the lookup variable cascade leaks into nested children — containers can nest selectable items (musicians → instruments → staves), and a cascade would make descendants appear selected. A direct property confines the highlight to the target node only.
 
@@ -1464,7 +1477,7 @@ The constants split into two structural categories by mechanism, but both share 
 
 ##### Ooloi vocabulary, not AtlantaFX vocabulary
 
-Ooloi constants use Ooloi vocabulary. Notification constants are prefixed `notification-` (e.g. `notification-error-style`) to disambiguate from future form field constants (e.g. a forthcoming `error-style` for form fields). The underlying AtlantaFX tokens (`-color-danger-muted`, `-color-notify-bg`, `-color-fg-muted`, `-color-bg-subtle`) remain as AtlantaFX named them — that is their vocabulary, not ours. The constants insulate the rest of the codebase from AtlantaFX's naming choices so that Ooloi plugins, tests, and call sites see a semantic vocabulary rooted in Ooloi's own domain concepts.
+Ooloi constants use Ooloi vocabulary. Notification constants are prefixed `notification-` (e.g. `notification-error-style`) to distinguish them from the form field constant of the same concept, `error-style`. The underlying AtlantaFX tokens (`-color-danger-muted`, `-color-notify-bg`, `-color-fg-muted`, `-color-bg-subtle`) remain as AtlantaFX named them — that is their vocabulary, not ours. The constants insulate the rest of the codebase from AtlantaFX's naming choices so that Ooloi plugins, tests, and call sites see a semantic vocabulary rooted in Ooloi's own domain concepts.
 
 ##### Grep invariant test
 
@@ -1619,7 +1632,8 @@ Windows opt in by declaring `:window/title-decorators` (see §Metadata Keys). Th
 | Purpose | Approach | Usage |
 |---------|----------|-------|
 | Flat icon button (reset) | `Styles/FLAT` style class | Reset-to-default buttons beside settings fields |
-| Invalid input | `:error?` prop on formatter | Set declaratively at render time — the formatter will apply a Category 1 `styles/error-style` via `:style` when `:error? true` (form-field validation, forthcoming) |
+| Invalid input | `:error?` prop on formatter | Set declaratively at render time — the formatter applies the Category 1 `styles/error-style` via `:style` when `:error? true`. Carried by the dense text field, numeric field, combo box, spinner and checkbox, and threaded to its `:control` by `ooloi-labelled-field` |
+| A refused commit | `rejection/play!` on the node | Imperative, because it is an event rather than a state: the field is restored, so what it holds is valid again and a standing colour would say otherwise. Face and border fade to the danger tokens and back, and the node's own style is put back when it finishes |
 
 `ooloi-dense-text-field`, `ooloi-dense-combo-box`, `ooloi-dense-spinner`, and `ooloi-labelled-field` all accept an `:error?` boolean prop. `ooloi-labelled-field` threads `:error?` through to its nested `:control`. Callers read their view-state `:field-errors` map at render time:
 
