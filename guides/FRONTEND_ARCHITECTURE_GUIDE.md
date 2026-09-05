@@ -699,8 +699,19 @@ through silently, naming the level and the field, so an untaught arm surfaces as
 transposition component, a clef override, an aux range — need a read-modify-write against the entity
 as it stands, and that arithmetic is identical in both windows. It lives in `ui.core.field-edits`,
 which takes the entity and the commit and returns the **writes**, `{:attr … :value …}`. A field that
-is a plain slot needs nothing there; the musician handler uses `field-edits` not at all. The count of
-returned writes *is* the one-call-or-batch rule, so no handler has to remember it.
+is a plain slot needs nothing there; the musician handler uses `field-edits` not at all.
+
+**It returns nothing that restates a value the entity already holds.** A commit fires at a moment the
+control chose, and a moment carries no information about whether anything changed — so the question is
+asked at the control for what was *typed*, and here for what was *computed*. Unticking Transposing
+brings every staff's written clef into line with its sounding one, and a transposing instrument usually
+reads the clef it sounds in, so most of those writes say nothing new.
+
+**The count settles whether the writes must land together; the ACT settles what the undo step is
+called.** Two questions, and neither answers the other. Reading the second off the first held only
+while every write was still being sent, because the one commit that wrote more than once happened also
+to be the one that deserved a name — see
+[ADR-0042](../ADRs/0042-UI-Specification-Format.md) §*Consequence for undo*.
 
 **A field row displaces the geometry a drop scan counts.** Where an editor's pane is also a drop
 target, its content children are no longer only the structural children — the field rows are children
@@ -725,17 +736,24 @@ render changed, so it does not commit — it fires the same `ActionEvent` Enter 
 one handler.
 
 **A blank name reverts where the entity has a derivation.** A Musician takes its name from its main
-instrument and a Layout from the musicians it lists, so emptying either field writes the derived
+instrument and a Layout from the musicians it lists, so emptying either field means the derived
 name. Written, not displayed: a name existing only as a display value never reaches the output the
 piece exists to produce, and a layout's name is engraved onto part title pages. A Layout's pane
 header shows a derived title over an empty slot regardless, so a test of this behaviour must read
 the **field** — the piece and the header are both satisfied by a field left stale.
 
+**Written only where it differs from what is stored, which is usually not the case.** A musician's
+name *is* its main instrument's until someone edits it, so the ordinary clear asks for the value
+already there — and writing it would cost a call, an event, a refetch on every subscribed client and
+an undo step for a field nobody changed. A name is a plain slot and never reaches the write
+computation that drops an instrument's no-op writes, so the same question is asked in `name-to-write`
+instead.
+
 **The revert repaints the field, and only for the two fields that have a derivation.** A field is a
 view of the model, and a commit does not otherwise touch it: the render that follows a write
-repaints it. The blank revert is the exception, because the value written is the one already
-stored — nothing changes, no event is emitted, no render follows, and the box would stay empty
-showing a value the model declined. So the Musician name field and the Layout name field ask for
+repaints it. The blank revert is the exception, and the rule above is exactly why — the derived value
+usually equals the stored one, so nothing is written, no event is emitted, no render follows, and the
+box would stay empty showing a value the model declined. So the Musician name field and the Layout name field ask for
 the revert, by name, and nothing else does. A field that stores a blank as the blank it is has no
 use for one, and imposing it on every text control would put a visible revert-then-update on
 gestures that never needed it.
@@ -894,9 +912,9 @@ The Instrument Library window was the first consumer of Ooloi's shared selection
 
 - **A drag-and-drop gesture composes one backend transaction.** A drop reads what was dragged and where it landed, composes the corresponding backend calls, submits them as one atomic batch, and trusts the invalidation/refetch cycle to redraw — never an optimistic local mutation. Every *copy* — a clone, held with the platform's copy modifier — is an ordinary insert followed by a re-identify step in the same transaction, so the copy stops sharing identity with its source before anything observes it: a duplicate-in-place then a fresh-id pass when source and copy share a container, an insert-by-reference then a fresh-id pass when the copy lands in a different one. And a gesture may be *refused*: dropping a musician onto a layout that already lists it composes nothing — the first refused drop in the workspace, because no musician appears twice in one score or part. The refusal is meant to be signalled with the operating system's no-drop cursor; on macOS that cursor does not yet appear during the refused drag-over, though the drop is refused regardless.
 
-- **An inline field edit is one call, and what it should write is shared with the Instrument Library.** The entity editors announce every edit at field granularity, and the Piece Window keeps that granularity: a commit becomes one granular setter on that entity's own VPD, not an accumulated form submitted whole. Because it is one operation, the boundary names its undo step from the operation itself, so the Edit menu reads *Set Name* with nothing composed for the purpose; grouping it into a batch would replace that with the batch's generic label. **The number of operations decides the shape, not whether the field looks composite** — a range half, a transposition component and a clef override are each read-modify-written into a single setter call, while the one commit that genuinely implies several, unticking Transposing, is an atomic batch carrying an explicit name.
+- **An inline field edit is one call, and what it should write is shared with the Instrument Library.** The entity editors announce every edit at field granularity, and the Piece Window keeps that granularity: a commit becomes one granular setter on that entity's own VPD, not an accumulated form submitted whole. Because it is one operation, the boundary names its undo step from the operation itself, so the Edit menu reads *Set Name* with nothing composed for the purpose; grouping it into an *unnamed* batch would replace that with the batch's generic label. **A composite field does not mean a batched commit** — a range half, a transposition component and a clef override are each read-modify-written into a single setter call. **What composes a batch is the act**: unticking Transposing is an atomic batch carrying an explicit name, and stays one even when dropping its no-op writes leaves it a single operation, because the name belongs to the act rather than to the count. Nothing is sent at all where the value does not differ from what the entity holds.
 
-  Working out *what* to write is the same arithmetic in both windows, and it lives in one place: `ui.core.field-edits` takes the entity as it currently stands and the commit, and returns the **writes** — `{:attr … :value …}`, plus a staff index where a write targets a staff. Returning writes rather than a function over an entity is what lets the two windows differ where they must: the Instrument Library has the record in hand and reduces them onto it, while the Piece Window holds a projection of a piece it does not own and must name the operation instead. A useful consequence is that the count of returned writes *is* the one-call-or-batch rule, so no handler has to remember it.
+  Working out *what* to write is the same arithmetic in both windows, and it lives in one place: `ui.core.field-edits` takes the entity as it currently stands and the commit, and returns the **writes** — `{:attr … :value …}`, plus a staff index where a write targets a staff. Returning writes rather than a function over an entity is what lets the two windows differ where they must: the Instrument Library has the record in hand and reduces them onto it, while the Piece Window holds a projection of a piece it does not own and must name the operation instead. It returns nothing that restates a value the entity already holds, so a commit that changed nothing produces nothing to send; the count of what remains says whether those writes must land together, and the act — never the count — says what the undo step is called.
 
 - **Spring-loading — a closed container opens under a hover.** A container collapsed when a drag begins is not a dead end: hovering a compatible drag over it opens it after a brief dwell, so the drop lands inside where it can be seen, rather than being rejected. This belongs to the drop *target*, not the drag — a closed Musician opens for a library instrument exactly as for one dragged within the pane, a closed Instrument for any staff, a closed Layout for a Musicians selection. The dwell is what makes it a spring-load rather than open-on-touch: a cursor merely passing over on its way elsewhere must not open every pane it crosses.
 

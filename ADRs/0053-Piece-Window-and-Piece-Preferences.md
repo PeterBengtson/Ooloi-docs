@@ -199,9 +199,11 @@ That single transaction yields, by [ADR-0052](0052-Change-Detection-and-Event-Ge
 
 Being one operation, such an edit needs no name from its caller: the gRPC boundary derives the undo step's label from the operation it invoked ([ADR-0015](0015-Undo-and-Redo.md) §Mutation Sites), so the Edit menu offers to undo *Set Name* with nothing composed for the purpose. Grouping a lone call into a batch would take that away and substitute the batch default, which is a worse label for a truer one.
 
-**What decides the shape is the number of operations, not whether the field looks composite.** Several fields are parts of a larger one — a range half names one end of a map its setter takes whole, a transposition component names one token of a vector, a clef override lives inside the transposition map — and a commit to any of them is a read-modify-write against the entity as it stands, producing one setter call and no more. Composite does not mean batched.
+**A composite field does not mean a batched commit.** Several fields are parts of a larger one — a range half names one end of a map its setter takes whole, a transposition component names one token of a vector, a clef override lives inside the transposition map — and a commit to any of them is a read-modify-write against the entity as it stands, producing one setter call and no more. What a field *looks* like decides nothing.
 
-Where a commit genuinely implies more than one operation it is an `SRV/atomic` batch like any other gesture, and carries an explicit name because the boundary has no single operation to derive one from. One commit does: **unticking Transposing**, which clears the instrument's transposition and brings each of its staves' written clefs into line ([ADR-0045](0045-Instrument-Library.md) §Transposition). Its batch is one transaction, one event, one refetch and one named undo step, exactly as a drop's is.
+**And nothing a commit writes is a value the entity already holds.** A commit fires at a moment the control chose, and a moment says nothing about whether anything was typed ([ADR-0042](0042-UI-Specification-Format.md) §*A commit carries a change*), so the question is asked at the control for what was typed and again at the write computation for what was derived. Unticking Transposing brings each staff's written clef into line with its sounding one, and a transposing instrument usually reads the clef it sounds in; a name cleared to ask for its derivation back usually asks for the name already stored. Neither is sent. Tabbing through an entity's fields to read them therefore costs nothing at all — no call, no event, no refetch, no undo step.
+
+**Unticking Transposing** is the one commit that can imply more than one operation, clearing the instrument's transposition and bringing each of its staves' written clefs into line ([ADR-0045](0045-Instrument-Library.md) §Transposition). It is an `SRV/atomic` batch like any other gesture — one transaction, one event, one refetch and one named undo step, exactly as a drop's is — and it carries an explicit name because **the act deserves one**, not merely because it has several operations to compose. Once the no-op staff writes are dropped it commonly reduces to a single operation, and it is a named batch still.
 
 **A clearer name is the second reason to compose a batch, and it is the one case in which a batch of a
 single operation is right.** How a step is labelled is [ADR-0015](0015-Undo-and-Redo.md) §*Mutation
@@ -214,7 +216,13 @@ batch however few operations it collapses to.
 The complete rule, over both reasons: **a single `SRV/` call wherever one suffices, since the label
 comes free; an `SRV/atomic` batch where more steps are required, or where a name clearer to the user is
 wanted.** Only an *unnamed* batch of one loses anything, substituting the generic default for a derived
-label — the case ruled out above. A field edit's shape is still decided by its operation count.
+label — the case ruled out above.
+
+**A field edit is governed by both reasons, not only the first.** It was once excepted here — its shape
+said to follow its operation count alone — and that exception is withdrawn: the checkbox acts above are
+named batches of a single operation, which is precisely the case this arm exists for. What the count
+still settles is whether writes must land together; what the *act* settles is what the step is called,
+and neither answers the other.
 
 Both routes end in the same place. A field write lands on a structural slot, so it announces itself through the ordinary change-detection cycle ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3b), the window refetches, and the pane redraws — the rename appearing in every layout that lists the renamed musician, layouts holding references rather than copies.
 

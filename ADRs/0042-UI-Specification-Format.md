@@ -28,6 +28,7 @@ Implemented
   - [Custom cljfx Component Functions](#custom-cljfx-component-functions)
   - [Editor Field Commits: One Event Per Control, Carrying Its Value](#editor-field-commits-one-event-per-control-carrying-its-value)
     - [A control commits once, and the commit carries its value](#a-control-commits-once-and-the-commit-carries-its-value)
+    - [A commit carries a change, or it is not a commit](#a-commit-carries-a-change-or-it-is-not-a-commit)
     - [A commit can be refused, and refusing it has two halves](#a-commit-can-be-refused-and-refusing-it-has-two-halves)
     - [Two triggers, one handler — a trigger installed once must not carry per-render data](#two-triggers-one-handler--a-trigger-installed-once-must-not-carry-per-render-data)
     - [The event is named for what happened, not for the mechanism](#the-event-is-named-for-what-happened-not-for-the-mechanism)
@@ -721,6 +722,36 @@ accumulator per mounting window and a validation pass on every character typed. 
 the commit removes both, and removes them for every window that mounts an editor rather than for the
 one that noticed.
 
+#### A commit carries a change, or it is not a commit
+
+A control commits at a *moment*, and a moment says nothing about whether anything was typed. The two
+groups below differ here as they differ everywhere else: a checkbox or combo box commits *because* the
+toolkit reported that its value changed, so it cannot fire on an unchanged one, while a text field,
+numeric field or spinner commits when Enter is pressed or focus moves — events that arrive whether or
+not the user touched anything. The self-invoking group must therefore establish for itself what the
+other group is given: **a commit is dispatched only where the value differs from the one the control
+displays.**
+
+The comparison belongs to the control, because the control is what holds both values — the model's, as
+its `:text` or `:value` prop, and the user's, as its contents. Each level compares what *it* considers
+the value, and the two compose rather than duplicate: a text field asks whether the text it would send
+differs from the text it shows, and the numeric field wrapping it asks whether the *number* differs, so
+`03` typed over a displayed `3` passes the first question and stops at the second. A spinner compares
+against the `:value` it was last rendered with.
+
+Nor is anything validated. A value already in the model was accepted when it was written, so asking
+again answers the same question and could only refuse something the piece already contains.
+
+**Below the control, the same question is asked of what a commit *means*** rather than of what was
+typed, because a value can be computed rather than entered. Unticking Transposing brings every staff's
+written clef into line with its sounding one, and a transposing instrument usually reads the clef it
+sounds in, so most of those writes restate what is already there. A name cleared to ask for its
+derivation back is the same case from the other end: a musician's name is its main instrument's until
+someone edits it, so the ordinary clear asks for the value already stored. Neither reaches the backend.
+
+What the rule buys is one sentence long: tabbing through an entity's fields to read them costs nothing.
+Without it every focus move is a write, an event, a refetch on each subscribed client, and an undo step.
+
 #### A commit can be refused, and refusing it has two halves
 
 A commit is not unconditional. A control takes `:validate`, a closure `(fn [value] → nil | failure)`
@@ -728,9 +759,9 @@ asked at the moment of the commit and before anything is dispatched. A `nil` acc
 proceeds as above. Anything else refuses it: the value is put back to what the control displayed
 before, the rejection signal plays on the control, `:on-commit` is never called, and the failure is
 handed to `:on-reject`. Nothing downstream learns of the edit, so a mounting window needs no arm for a
-value that was refused. `:validate` is optional, and a control without one commits whatever it is
-given. A field that is one half of a larger value is validated as that half, matching the half its
-commit already names.
+value that was refused. `:validate` is optional; a control without one commits any value that differs
+from the one it displays, and asks nothing further. A field that is one half of a larger value is
+validated as that half, matching the half its commit already names.
 
 The two halves of a refusal are split because they need different things. **Putting the value back,
 and saying so on the control**, is the control's, because it holds the node: only it can restore what
@@ -815,9 +846,23 @@ string-to-number coercion belongs to the numeric field component, whose stated p
 
 Because a commit is one operation rather than an accumulated form, a mutation
 boundary that derives undo descriptions from the operation invoked needs nothing composed for the
-purpose: one commit becomes one named step. A gesture that genuinely implies several operations is the
-exception and must name itself explicitly; the number of resulting operations decides this, not whether
-the field looks composite.
+purpose: one commit becomes one named step.
+
+**What decides whether a commit composes a batch is the act, not the number of operations the act turns
+out to need.** Two independent questions meet here and neither answers the other: whether the writes
+must land together is a fact about the writes, while what the step is *called* is a fact about the
+gesture. A batch is composed when either demands it — several operations that must commit as one, or an
+act whose own name reads better to the user than the operation's would
+([ADR-0053](0053-Piece-Window-and-Piece-Preferences.md) §4) — and an atomic commit carrying no name is a
+defect rather than a default.
+
+Reading the name off the count is the error this forecloses, and that reading held only by coincidence:
+while every write was still being sent, the one commit that wrote more than once happened also to be the
+one that deserved a name. Once writes that change nothing stop being sent, unticking Transposing commonly
+reduces to the single write clearing the transposition — and read off the count, the Edit menu would call
+it *Set Transposition*, naming the mechanism, for an act the user knows as stopping transposition on an
+instrument the label would no longer mention. The Transposing and clef-override checkboxes each perform
+two acts, and each act is named for itself.
 
 ### Per-Window Reactive Renderer
 
