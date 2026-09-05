@@ -203,9 +203,7 @@ The same discipline [ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md) a
 
 #### Error Display
 
-Validation feedback takes one of two forms, decided by whether the invalid value stays on screen.
-
-**A refused commit, where the field already held a valid value.** An editor field over an existing entity — an instrument's name, a setting's value — refuses the commit and puts the field back to what it held before the edit:
+An editor field refuses a commit it cannot accept, and puts the field back to what it held before the edit:
 
 1. **The field is restored, explicitly.** A field is a view of the model, and a commit does not otherwise touch it: the render that follows a write repaints it. A refused commit writes nothing, so no render follows, and without the restore the field would go on displaying text the model declined.
 2. **The control plays the rejection signal** (below).
@@ -215,9 +213,11 @@ Nothing is retained between renders: no notification id to track, no timer to cl
 
 Focus is left alone. The field holds a valid value once it has been restored, so there is nothing to keep the user in it for, and keeping them there would contradict the rule the interface is built on — Ooloi never freezes and never boxes you in ([ADR-0042](0042-UI-Specification-Format.md) §Calm).
 
-**An invalid value the user is still assembling.** A dialog gathering a value that does not yet exist — the Connect dialog's host and port — keeps what was typed and blocks the *action* instead: the field carries `:error? true`, and the dialog's primary button is disabled while any field fails its closure. Restoring would be wrong here, since a host field the user has just cleared should stay cleared while they type a new one. Validation runs on each keystroke for this form, because a gate re-evaluated only at commit leaves the button a keystroke behind what the fields say.
+**This is the whole of it, and it holds in every window.** A dialog assembling a value that does not yet exist — the Connect dialog's host and port — behaves exactly as an instrument's name does: the refused value goes back, the control says so, and the notification says why. No action is blocked and no button is disabled. A second set of rules for one window would be a second interface to learn, and disabling the way out of a dialog is precisely the boxing-in the interface refuses.
 
-The same styling applies to a control displaying a value it did not produce — a setting read from a file written by another build, which the load path preserves without validating (§Storage).
+Validation therefore runs at the commit, never at the keystroke. A field is asked whether the value would be accepted at the moment the user says they are done with it, and not before — which is also the only moment at which the question has an answer. A value under construction is not a value: an email address is invalid at every keystroke but the last, and a port is not a port until its digits are all there. A field that judged each keystroke could not be typed into.
+
+`:error?` marks the one kind of invalidity this does not reach: **a control displaying a value it did not produce** — a setting read from a file written by another build, which the load path preserves without validating (§Storage). Nothing was refused there, so there is nothing to put back, and the state stands until the user changes it.
 
 `:error? true` applies `styles/error-style`, a Category 1 lookup variable cascade redefining the background, foreground and border tokens on the control's subtree so AtlantaFX's multi-stop painting keeps its simulated border while showing danger colours. Three slots, because a value that is both displayed and invalid is wrong in every part of the control that can say so.
 

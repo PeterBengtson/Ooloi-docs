@@ -649,11 +649,11 @@ cljfx supports functions as `:fx/type` values. Each Ooloi custom component funct
 
 These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
 
-**Utility helpers** in `cljfx.clj` — not component functions, but shared imperative helpers used across UI modules:
+**Utility helpers** — not component functions, but shared imperative helpers a UI module reaches for. `action-handler` lives in `ui/core/fx.clj`, beside `run-later!` and `assert-fx-thread!`: a menu item, a window transition and a dialog all need one, and only one of those has anything to do with building a scene graph.
 
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `action-handler` | `[f]` | Returns a `javafx.event.EventHandler` that calls `(f)`, ignoring the event. Use instead of inline `reify javafx.event.EventHandler` for `.setOnAction` and similar no-arg wiring |
+| Function | Namespace | Signature | Purpose |
+|----------|-----------|-----------|---------|
+| `action-handler` | `ui.core.fx` | `[f]` | Returns a `javafx.event.EventHandler` that calls `(f)`, ignoring the event. Use instead of inline `reify javafx.event.EventHandler` for `.setOnAction`, `.setOnFinished` and similar no-arg wiring |
 
 #### Entity Editors
 
@@ -1687,13 +1687,13 @@ There is no duplication between "settings storage" and "settings UI." The window
 
 ### 10.3 Validation Feedback
 
-Validation feedback takes one of two forms, and which one applies is decided by whether the invalid value stays on screen.
+Validation feedback has one form, and every editor field in the application takes it. A field refuses a commit it cannot accept: it is restored to what it held before the edit; the control plays the rejection signal, its face and border fading to the danger tokens over 300 ms and back over ten seconds; and an error notification carrying a ten-second timeout says what was wrong. Focus is not interfered with, because the field holds a valid value again and Ooloi never boxes you in.
 
-An **editor field over a value that was already valid** refuses the commit. The field is restored to what it held before the edit; the control plays the rejection signal, its face and border fading to the danger tokens over 300 ms and back over ten seconds; and an error notification carrying a ten-second timeout says what was wrong. Focus is not interfered with, because the field holds a valid value again and Ooloi never boxes you in.
+A dialog is not an exception. The Connect dialog's host and port behave exactly as an instrument's name does — the refused value goes back, the control says so, the notification says why — and nothing is disabled while the user works. A second set of rules for one window would be a second interface to learn, and disabling the way out of a dialog is the boxing-in the interface refuses.
 
-A **dialog assembling a value that does not yet exist**, such as the Connect dialog, keeps what the user typed and blocks the action instead. The failing field carries `:error? true`, which applies `error-style` — a Category 1 lookup variable cascade over the danger tokens — and the dialog's primary button stays disabled until every field passes. Validation runs on each keystroke here rather than at commit, so the button never lags behind the fields.
+Validation therefore runs at the commit rather than at the keystroke, which is also the only moment at which the question has an answer. A value under construction is not a value: an email address is invalid at every keystroke but the last, and a port is not a port until its digits are all there — a field that judged each keystroke could not be typed into. `:error?` marks the one invalidity this does not reach: a control displaying a value it did not produce, such as a setting read from a file written by another build.
 
-Both are driven by a uniform validation closure: `(fn [value] → nil | failure)`, where a failure is **data rather than a message** — a map naming a `:failure` type and carrying what that type needs to be described. The closure wraps whatever validation backend applies — the app settings registry, the piece settings registry, or a `clojure.spec` check for domain records like instruments and staves. The form field formatter calls it without knowing what is behind it, which is what lets a window get validation feedback by passing `:validate` and nothing more.
+It is driven by a uniform validation closure: `(fn [value] → nil | failure)`, where a failure is **data rather than a message** — a map naming a `:failure` type and carrying what that type needs to be described. The closure wraps whatever validation backend applies — the app settings registry, the piece settings registry, or a `clojure.spec` check for domain records like instruments and staves. The form field formatter calls it without knowing what is behind it, which is what lets a window get validation feedback by passing `:validate` and nothing more.
 
 Turning a failure into a sentence happens once, at the point of display, through a single mapping from failure type to `tr` key — the same shape ADR-0051 uses for open and save failures. Three consequences follow: the humanisation table serves all three backends instead of one closure composing prose while the others do it their own way; the closure is independent of the locale, so a message is never composed at validation time and shown after a language change; and a failure is comparable, so a test asserts `{:failure :must-be-one-of}` rather than matching a sentence that someone may later improve.
 
