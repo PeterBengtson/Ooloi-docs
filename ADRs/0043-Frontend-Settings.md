@@ -182,12 +182,13 @@ All three throw at their write boundary, which is right for a write and useless 
       (and validator (not (validator value)))
       {:failure :invalid-value :value value})))
 
-;; Domain record — wraps clojure.spec
-(fn [instrument]
-  (when-not (s/valid? ::instrument/instrument instrument)
-    {:failure  :spec-violation
-     :problems (::s/problems (s/explain-data ::instrument/instrument instrument))}))
+;; Domain field — wraps clojure.spec, over the value the commit would produce
+(fn [value]
+  (when-let [problems (seq (::s/problems (s/explain-data ::instrument/range value)))]
+    {:failure :spec-violation :problems problems}))
 ```
+
+**What the spec backend is handed is a value, never an entity assembled in order to be validated.** A field is put to the spec named after the attribute it writes, and a field editing part of a wider value is put to the whole of that value — a range half to the pair it would complete, since `::instrument/pitch-range` reads the low and the high together. Building a would-be record instead would be both unnecessary and impossible in the general case: an editor is mounted over the structural projection as readily as over records ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a), and a projection is a plain map holding a structural subset, missing by design the fields a record spec requires.
 
 The closure captures its validation context at construction time. Consumers call it uniformly without knowing whether a predicate, a choices map, or a full `clojure.spec` is behind it.
 
@@ -209,7 +210,11 @@ An editor field refuses a commit it cannot accept, and puts the field back to wh
 2. **The control plays the rejection signal** (below).
 3. **`show-error-notification!` displays the failure, translated at that moment, with a `:timeout-ms` of ten seconds.** Once the field has reverted, the notification is the only remaining evidence that an edit was refused, which is why the duration is chosen rather than inherited; the dismiss timer pauses while the pointer rests on the notification.
 
-Nothing is retained between renders: no notification id to track, no timer to clear, no `:error?` to unset later.
+Nothing is retained between renders: no notification id to track, no timer to clear, no `:error?` to unset later, and no per-field error map for a window to keep.
+
+**The three steps do not all belong to the same place, and that is what `:on-reject` is for.** A control holds the node, so the restore and the signal are its: only it can put text back and fade the thing the user was looking at. Only a window holds the UI Manager a notification needs, and giving one to a leaf would drag a component reference down the tree from every window that mounts a field. So the formatter takes `:validate`, and when a commit is refused it restores, signals, declines to call `:on-commit`, and hands the failure to `:on-reject` — a callback written beside `:on-commit`, from the same scope, which dispatches the refusal as an event the mounting window answers with the manager it already holds.
+
+The division follows from what each side can reach rather than from preference, and it is what lets one editor serve two windows that hold their data quite differently: what a refusal *means* is decided by whichever window mounted the field.
 
 Focus is left alone. The field holds a valid value once it has been restored, so there is nothing to keep the user in it for, and keeping them there would contradict the rule the interface is built on — Ooloi never freezes and never boxes you in ([ADR-0042](0042-UI-Specification-Format.md) §Calm).
 

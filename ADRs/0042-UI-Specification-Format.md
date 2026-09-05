@@ -28,6 +28,7 @@ Implemented
   - [Custom cljfx Component Functions](#custom-cljfx-component-functions)
   - [Editor Field Commits: One Event Per Control, Carrying Its Value](#editor-field-commits-one-event-per-control-carrying-its-value)
     - [A control commits once, and the commit carries its value](#a-control-commits-once-and-the-commit-carries-its-value)
+    - [A commit can be refused, and refusing it has two halves](#a-commit-can-be-refused-and-refusing-it-has-two-halves)
     - [Two triggers, one handler — a trigger installed once must not carry per-render data](#two-triggers-one-handler--a-trigger-installed-once-must-not-carry-per-render-data)
     - [The event is named for what happened, not for the mechanism](#the-event-is-named-for-what-happened-not-for-the-mechanism)
     - [A component that builds commit closures requires a dispatch function, and asserts it](#a-component-that-builds-commit-closures-requires-a-dispatch-function-and-asserts-it)
@@ -720,6 +721,37 @@ accumulator per mounting window and a validation pass on every character typed. 
 the commit removes both, and removes them for every window that mounts an editor rather than for the
 one that noticed.
 
+#### A commit can be refused, and refusing it has two halves
+
+A commit is not unconditional. A control takes `:validate`, a closure `(fn [value] → nil | failure)`
+asked at the moment of the commit and before anything is dispatched. A `nil` accepts, and the commit
+proceeds as above. Anything else refuses it: the value is put back to what the control displayed
+before, the rejection signal plays on the control, `:on-commit` is never called, and the failure is
+handed to `:on-reject`. Nothing downstream learns of the edit, so a mounting window needs no arm for a
+value that was refused. `:validate` is optional, and a control without one commits whatever it is
+given. A field that is one half of a larger value is validated as that half, matching the half its
+commit already names.
+
+The two halves of a refusal are split because they need different things. **Putting the value back,
+and saying so on the control**, is the control's, because it holds the node: only it can restore what
+is displayed and fade the thing the user was looking at. **Saying what was wrong, in a sentence**, is
+the mounting window's, because a notification needs the UI Manager, and giving one to a leaf would
+drag a component reference down the tree of every window that mounts a field. So the failure leaves as
+a callback and the window turns it into a message — which is also what lets one editor serve two
+windows that hold their data quite differently, since what a refusal *means* is decided by whichever
+window mounted the field. What the user sees is specified in
+[ADR-0043](0043-Frontend-Settings.md) §*Validation Feedback Architecture*.
+
+Neither half keeps state. The restore, the signal and the report all happen inside the one commit, so
+there is nothing for a later render to clear, and an editor of refusable fields keeps no per-field
+error map. `:error?` (§*Theme-Independent Styling* → *Form controls*) is the standing counterpart and
+marks a different condition: a value that is on display and stays wrong, rather than a commit that
+never happened.
+
+What the closure consults is the caller's business, and a control knows only that a failure is not
+`nil`: a setting is put to the validator its registry entry declares, an entity field to the spec for
+that field.
+
 #### Two triggers, one handler — a trigger installed once must not carry per-render data
 
 A control committing on both Enter and blur has two triggers and must still have exactly one handler.
@@ -759,6 +791,17 @@ rather than resolve it. It follows that a serialised spec can drive the first gr
 second — which costs nothing, because the frontend provides all custom windows (§*Approach*) and a
 plugin wanting value input declares settings and has its form generated
 ([ADR-0043](0043-Frontend-Settings.md) §Settings Window) rather than describing controls.
+
+**A control of the first group that can refuse takes the second group's route.** The toolkit has
+already changed the value by the time any listener runs, so a control carrying `:validate` holds the
+listener itself: left to cljfx, the commit is dispatched from a listener on that same property before
+the refusal has been decided, and the restore then sends the old value after the refused one — two
+writes for one edit, and two undo steps, the first carrying a value the backend refuses. Holding the
+listener means the dispatch is made once, and only for a value that was accepted. This is a lifecycle
+rather than a formatter, because the caller's handler may still be a map: routing one needs the
+renderer's `:fx.opt/map-event-handler`, which lives in cljfx's opts and is never visible to a
+component function, so the handler is turned into a callable by cljfx's own event-handler lifecycle
+and parked on the node for the listener to find.
 
 #### A spinner commits on focus loss, carrying its value, never per arrow click
 
@@ -1665,17 +1708,21 @@ Windows opt in by declaring `:window/title-decorators` (see §Metadata Keys). Th
 | Flat icon button (reset) | `Styles/FLAT` style class | Reset-to-default buttons beside settings fields |
 | Invalid input | `:error?` prop on formatter | Set declaratively at render time — the formatter applies the Category 1 `styles/error-style` via `:style` when `:error? true`. Carried by the dense text field, numeric field, combo box, spinner and checkbox, and threaded to its `:control` by `ooloi-labelled-field` |
 | A refused commit | `rejection/play!` on the node | Imperative, because it is an event rather than a state: the field is restored, so what it holds is valid again and a standing colour would say otherwise. Face and border fade to the danger tokens and back, and the node's own style is put back when it finishes |
+| Asking whether a value is acceptable | `:validate` prop on formatter | A closure `(fn [value] → nil \| failure)`, asked at the commit; a failure refuses it, and the control restores and signals rather than committing (§*Editor Field Commits* → *A commit can be refused*) |
+| Reporting a refusal | `:on-reject` prop on formatter | Handed the failure once the value is back, carrying it to the window that mounted the field — the only place holding the UI Manager a notification needs |
 
-`ooloi-dense-text-field`, `ooloi-dense-combo-box`, `ooloi-dense-spinner`, and `ooloi-labelled-field` all accept an `:error?` boolean prop. `ooloi-labelled-field` threads `:error?` through to its nested `:control`. Callers read their view-state `:field-errors` map at render time:
+`ooloi-dense-text-field`, `ooloi-dense-combo-box`, `ooloi-dense-spinner`, and `ooloi-labelled-field` all accept an `:error?` boolean prop. `ooloi-labelled-field` threads `:error?` through to its nested `:control`. A caller sets it from whatever tells it the displayed value is invalid and stays so:
 
 ```clojure
 {:fx/type ofx/ooloi-dense-text-field
  :text-key :instrument.name
- :error? (boolean (get-in @*view-state [:field-errors :name]))
+ :error? (not (setting-known-good? current))
  :on-action ...}
 ```
 
 The declarative prop eliminates all dynamic style-class mutation for validation. There is no `.addStyleClass`/`.removeStyleClass` pair; the cljfx diff applies the correct `:style` on each render.
+
+`:validate` and `:on-reject` are the transient counterpart: a refusal restores, signals and reports within the one commit, so a caller passing them keeps no state at all and an editor needs no per-field error map.
 
 **Tile selection** (instrument and staff editors):
 
