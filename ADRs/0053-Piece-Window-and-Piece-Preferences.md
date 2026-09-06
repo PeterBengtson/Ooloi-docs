@@ -24,7 +24,7 @@ Under implementation
     - [The complete verb family, and two layers](#the-complete-verb-family-and-two-layers)
     - [A musician appears at most once in a layout](#a-musician-appears-at-most-once-in-a-layout)
     - [One gesture is one transaction](#one-gesture-is-one-transaction)
-    - [An inline edit is one call, not a batch](#an-inline-edit-is-one-call-not-a-batch)
+    - [An inline edit is one call, unless a name is derived from it](#an-inline-edit-is-one-call-unless-a-name-is-derived-from-it)
     - [Destructive gestures are guarded](#destructive-gestures-are-guarded)
     - [A gesture is a network-transparent ACID transaction](#a-gesture-is-a-network-transparent-acid-transaction)
   - [5. The window title](#5-the-window-title)
@@ -193,11 +193,15 @@ Reads resolve to `Musician` records in the layout's order (not the piece's). **`
 
 That single transaction yields, by [ADR-0052](0052-Change-Detection-and-Event-Generation.md), exactly one `:piece-structure-changed` event for the piece — its structural coalescing scope collapses the transaction's changes to one event — delivered per-piece to this window, which refetches the structural snapshot and re-renders. And by [ADR-0015](0015-Undo-and-Redo.md) the same transaction boundary is one named undo step. One gesture is one transaction, one event, one refetch, and one entry on the piece's undo stack.
 
-#### An inline edit is one call, not a batch
+#### An inline edit is one call, unless a name is derived from it
 
-**An inline edit is one call, not a batch.** A gesture that changes the piece's makeup composes a list of operations because it *is* several operations. Editing an entity's own field is not: a name, an abbreviation, a number, a range, a transposition, a clef is one slot on one entity, and it reaches the piece as one granular call on that entity's own VPD — `(SRV/set-<attr> vpd piece-id value)`, addressed `[:m mi]`, `[:m mi ii]`, `[:m mi ii si]` by level. The editors announce every edit at field granularity and the window keeps that granularity; it does not accumulate a form and submit an entity, which is how the Instrument Library edits its catalogue ([ADR-0045](0045-Instrument-Library.md)) and deliberately not how a piece is edited.
+**An inline edit is one call.** A gesture that changes the piece's makeup composes a list of operations because it *is* several operations. Editing an entity's own field is not: a name, an abbreviation, a number, a range, a transposition, a clef is one slot on one entity, and it reaches the piece as one granular call on that entity's own VPD — `(SRV/set-<attr> vpd piece-id value)`, addressed `[:m mi]`, `[:m mi ii]`, `[:m mi ii si]` by level. The editors announce every edit at field granularity and the window keeps that granularity; it does not accumulate a form and submit an entity, which is how the Instrument Library edits its catalogue ([ADR-0045](0045-Instrument-Library.md)) and deliberately not how a piece is edited.
 
 Being one operation, such an edit needs no name from its caller: the gRPC boundary derives the undo step's label from the operation it invoked ([ADR-0015](0015-Undo-and-Redo.md) §Mutation Sites), so the Edit menu offers to undo *Set Name* with nothing composed for the purpose. Grouping a lone call into a batch would take that away and substitute the batch default, which is a worse label for a truer one.
+
+**Unless the slot it writes is one some other name is derived from.** A musician takes its identity from its main instrument and a layout takes its name from the musicians it lists ([ADR-0054](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md) §5), so a commit to one of those slots can leave another entity describing something the piece no longer contains. What follows rides the commit's own transaction, because undo must take them together: undoing a rename alone would restore the name and leave the part still called after what it became. The same holds for the three numeral settings, whose window is not this one — a layout's name is composed under them, so changing one re-derives every layout name still in the automation's hands.
+
+Such a commit is therefore a batch, and the only batch in the window that does not name its own act: it carries the key its lone call would have derived, so *Set Name* is what the Edit menu reads whether or not anything followed. Propagation is a consequence of the edit rather than a second act, and telling the user it happened would describe their gesture back to them as something larger than it was.
 
 **A composite field does not mean a batched commit.** Several fields are parts of a larger one — a range half names one end of a map its setter takes whole, a transposition component names one token of a vector, a clef override lives inside the transposition map — and a commit to any of them is a read-modify-write against the entity as it stands, producing one setter call and no more. What a field *looks* like decides nothing.
 

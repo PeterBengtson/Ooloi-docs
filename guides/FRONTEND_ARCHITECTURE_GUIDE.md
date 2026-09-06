@@ -737,8 +737,9 @@ one handler.
 
 **A blank name reverts where the entity has a derivation.** A Musician takes its name from its main
 instrument and a Layout from the musicians it lists, so emptying either field means the derived
-name. Written, not displayed: a name existing only as a display value never reaches the output the
-piece exists to produce, and a layout's name is engraved onto part title pages. A Layout's pane
+name. Written, not displayed: a name existing only as a display value is not there to be reached
+for afterwards, and a layout's name is where the user starts when they come to format that layout.
+A Layout's pane
 header shows a derived title over an empty slot regardless, so a test of this behaviour must read
 the **field** — the piece and the header are both satisfied by a field left stale.
 
