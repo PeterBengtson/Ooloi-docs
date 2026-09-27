@@ -119,11 +119,11 @@ Each atom calculates four-directional extents from its center (left, right, up, 
 
 ### Pipeline Stage 2: Raster Creation (Fan-In across Measure Stack)
 
-Stage 2 creates a unified rhythmic raster across the vertical measure stack (fan-in), collecting minimum, ideal, and gutter widths from all measures at this temporal position. When measures have different rhythmic content, reconciliation produces synchronized vertical alignment with rational rhythmic positions (including tuplet divisions like 1/3, 2/3). The resulting MeasureStackFormatter stores all three width components (min, ideal, gutter), establishing the solution space between physical feasibility (minimum) and musical intent (ideal). This unified raster with complete width metrics becomes the input for Stage 3 system breaking.
+Stage 2 creates a unified rhythmic raster across the vertical measure stack (fan-in), collecting minimum, ideal, and gutter widths from all measures at this temporal position. When measures have different rhythmic content, reconciliation produces synchronized vertical alignment with rational rhythmic positions (including tuplet divisions like 1/3, 2/3). The resulting MeasureStackFormatter stores the width components (min, ideal, gutter) and the stack's largest column ratio — the largest ratio of minimum to ideal width among its column gaps, which bounds how far the stack can be scaled ([ADR-0037 §Column-Level Feasibility](0037-Measure-Distribution-Optimization.md#column-level-feasibility)) — establishing the solution space between physical feasibility (minimum) and musical intent (ideal). This unified raster with complete width metrics becomes the input for Stage 3 system breaking.
 
 ### Pipeline Stage 3: System Breaking (Single)
 
-Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (exact min/ideal/gutter widths for every measure stack), the algorithm evaluates candidate systems by subtracting the preamble width (clef + key signature, computed on-demand) and gutter width from available system width, then computing scale factors. The objective function uses proportional scaling with quadratic cost on deviation from ideal spacing, producing breaks that are globally optimal for that cost function, given its inputs, while preserving rhythmic proportionality. Output: system break decisions and scale factors per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
+Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (exact min/ideal/gutter widths and column ratios for every measure stack), the algorithm evaluates candidate systems by subtracting from the available system width the preamble width (clef + key signature, computed on-demand) and gutter width at the system's start, and the postamble width (cautionaries for a change taking effect at the start of the next system, and the system-end form of a double, final or repeat barline) at its end, then computing scale factors. The objective function uses proportional scaling, with Knuth–Plass demerits computed from each system's adjustment ratio (ADR-0037), producing breaks that are globally optimal for that cost function, given its inputs, while preserving rhythmic proportionality. Output: system break decisions and scale factors per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
 
 ### Pipeline Stage 4: Atom Positioning (Fan-Out per Measure)
 
@@ -133,11 +133,11 @@ Stage 4 applies scale factors from Stage 3 to position atoms at their actual coo
 
 Stage 5 renders connecting elements using finalized atom positions from Stage 4 (fan-out per musician, parallel processing). Each musician independently generates their spanners (ties, slurs, beams, hairpins, pedal markings, ottava lines) - no cross-musician coordination required. Spanners are musician-local: ties connect notes played by the same musician, beams within the same part. Left margins are created (instrument names, clefs, brackets, braces, key signatures). For measures at system start, graphical decorations are added within gutter space (courtesy accidentals, tie continuation arcs). Each musician determines their vertical space requirements - spanners may push staves apart. Output: system heights (maximum vertical extent across all musicians in each system).
 
-**Stage 5 is height-complete**: System heights are definitive, providing Stage 6 with complete information for optimal page breaking.
+**Stage 5 is height-complete**: System heights are definitive, providing Stage 6 with complete information for page breaking.
 
 ### Pipeline Stage 6: Page Breaking (Single)
 
-Stage 6 uses Knuth-Plass dynamic programming to determine optimal page break points (single pass, not parallelizable). With complete information from Stage 5 (actual system heights including all spanner vertical extent), the algorithm arranges systems vertically within page boundaries, adding or removing pages as needed. Output: final page breaks, completing the layout. After this stage, all positions (horizontal and vertical) are locked.
+Stage 6 determines page break points by a dynamic programme over the system sequence (single pass, not parallelizable), whose cost function is not yet specified ([ADR-0037 §Page Breaking](0037-Measure-Distribution-Optimization.md#page-breaking-second-pass-stage-6)). With complete information from Stage 5 (actual system heights including all spanner vertical extent), the algorithm arranges systems vertically within page boundaries, adding or removing pages as needed. Output: final page breaks, completing the layout. After this stage, all positions (horizontal and vertical) are locked.
 
 **Why Stage 6 is separate from Stage 3**: Horizontal distribution (system breaking) cannot know vertical space requirements until Stage 5 computes spanner extent. Separating system and page breaking enables complete information at each stage.
 
@@ -719,13 +719,13 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 10. **Closed Semantic Model**: Rendering cannot affect musical semantics. Complete information enables optimal distribution without feedback loops or heuristics.
 
-11. **Optimal Distribution for the Stated Cost Function**: Stage 3 has complete knowledge (measure widths + system-start deltas for preamble and gutter) enabling, in one pass, system breaking that is globally optimal for its cost function ([ADR-0037](0037-Measure-Distribution-Optimization.md)), given those inputs; Stage 6 has complete system heights for page breaking that is optimal in the same sense.
+11. **Optimal Distribution for the Stated Cost Function**: Stage 3 has complete knowledge (measure widths, system-start deltas for preamble and gutter, and system-end postamble widths) enabling, in one pass, system breaking that is globally optimal for its cost function ([ADR-0037](0037-Measure-Distribution-Optimization.md)), given those inputs; Stage 6 has complete system heights for its page breaking, whose cost function is not yet specified.
 
 ## Trade-offs
 
 This architecture breaks the circular dependencies that collapse traditional notation software (spanners ↔ spacing ↔ system breaking ↔ measure widths) by establishing strict dependency order. The trade-offs are inherent to that solution:
 
-**Complexity concentration in Stages 3 and 6**: Global optimization decisions (system breaking in Stage 3, page breaking in Stage 6) use Knuth-Plass dynamic programming. This is intentional but requires sophisticated algorithms.
+**Complexity concentration in Stages 3 and 6**: Global decisions (system breaking in Stage 3, page breaking in Stage 6) are made by dynamic programming — Knuth-Plass in Stage 3 ([ADR-0037](0037-Measure-Distribution-Optimization.md)), and in Stage 6 a dynamic programme over the system sequence whose cost function is not yet specified. This is intentional but requires sophisticated algorithms.
 
 **Strict dependency ordering**: Spanners cannot influence spacing. System breaking cannot feed back to atom formation. This constraint is the architecture's strength, but it means certain edge cases must be resolved within stage boundaries rather than through iteration.
 
