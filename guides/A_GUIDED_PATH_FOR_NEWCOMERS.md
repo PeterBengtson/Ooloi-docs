@@ -2,7 +2,7 @@
 
 This guide exists because the documentation does not naturally sort itself for a first reader.
 
-Architecture Decision Records are numbered chronologically — in the order decisions were made, not in the order a newcomer needs to encounter them. Reading ADR-0001 through ADR-0045 in sequence means confronting sophisticated distributed-systems reasoning before you understand what a `Piece` contains, or encountering the lazy frontend-backend synchronisation architecture before you know what VPDs are. The answer keeps arriving before you have understood the question.
+Architecture Decision Records are numbered chronologically — in the order decisions were made, not in the order a newcomer needs to encounter them. Reading the ADRs in numerical order means confronting sophisticated distributed-systems reasoning before you understand what a `Piece` contains, or encountering the lazy frontend-backend synchronisation architecture before you know what VPDs are. The answer keeps arriving before you have understood the question.
 
 This path reorganises the material by conceptual dependency. Each phase builds the vocabulary the next phase requires. If you follow it, nothing should be opaque when you arrive at it.
 
@@ -212,9 +212,9 @@ This is worth understanding thoroughly. It is the first empirical confirmation t
 
 *The crown of the architecture. Where all prior foundations become consequence.*
 
-**26. [Blog: "The Rendering Pipeline: Ooloi's Core Architecture"](https://www.ooloi.org/home/the-rendering-pipeline-oolois-core-architecture)**
+**26. [Blog: "Six Degrees of Unification"](https://www.ooloi.org/home/six-degrees-of-unification)**
 
-Peter's own description of ADR-0028 in prose, written when the specification was complete. Read this before the ADR itself; it gives the conceptual shape — the fan-out/fan-in pattern, the separation of connecting from non-connecting elements, the plugin hooks at each stage — without the engineering detail.
+Peter's own description of the six-stage pipeline in prose. Read this before the ADR itself; it gives the conceptual shape — the fan-out/fan-in pattern, system and page breaking as dynamic programming over stable inputs, connecting elements resolved against fixed atom positions — without the engineering detail.
 
 **27. [ADR-0028: Hierarchical Rendering Pipeline](../ADRs/0028-Hierarchical-Rendering-Pipeline.md)**
 
@@ -229,7 +229,7 @@ Six stages:
 
 The gutter model is the detail that enables Stage 3 to be provably optimal: every measure carries both its normal width and the additional space it needs when appearing at system start, so Stage 3 has complete information when making break decisions.
 
-Plugin hooks exist at every stage. Core notation elements and plugin-defined elements use identical interfaces.
+Plugins participate at two points: the atom hook in Stage 1, which produces an atom's extent and cached paintlist, and the spanner hook in Stage 5, which generates connecting elements from final atom positions. Core notation elements and plugin-defined elements use identical interfaces.
 
 **28. [ADR-0037: Measure Distribution Optimisation](../ADRs/0037-Measure-Distribution-Optimization.md)**
 
