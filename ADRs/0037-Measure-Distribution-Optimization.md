@@ -176,7 +176,7 @@ The reduction does not emerge from clever optimization techniques. It emerges fr
 - Explicit stage boundaries preventing premature coupling
 - Rational arithmetic eliminating error accumulation that would destabilize convergence
 
-The result: a problem that would otherwise require heuristics, iteration limits, and manual correction becomes solvable by straightforward dynamic programming with guaranteed optimality. The algorithm is not novel; its applicability is what the architecture creates.
+The result: a problem that would otherwise require heuristics, iteration limits, and manual correction becomes solvable by straightforward dynamic programming, whose result is guaranteed optimal for its cost function, given its inputs. The algorithm is not novel; its applicability is what the architecture creates.
 
 ### Optimization Characterization
 
@@ -185,7 +185,9 @@ The distribution problem exhibits structure that admits polynomial-time exact op
 **Discrete break selection**:
 Dynamic programming over the sequence of N measure stacks determines optimal system and page break points. For each potential break location, the algorithm evaluates whether remaining measures fit within capacity (after reserving preamble and gutter space) and computes resulting discomfort. Optimal substructure holds: optimal solution for measures 1..k combined with optimal solution for measures k+1..N yields optimal solution for 1..N.
 
-Break selection relies on **separable system costs** and **optimal substructure**, not convexity. The dynamic programming algorithm computes the globally optimal break configuration for the discrete segmentation problem.
+Break selection relies on **separable system costs** and **optimal substructure**, not convexity. The dynamic programming algorithm computes the break configuration of least total cost for the discrete segmentation problem, under the stated cost function and given its inputs.
+
+**What "optimal" means in this ADR**: *optimal* always means minimal total cost under the cost function specified here (the segment cost model below, plus any `break-penalty-fn` terms), given the metrics Stages 1–2 supply. It is a statement about that cost function and those inputs, not about layout quality in any wider sense: a different cost function, or different upstream metrics, would have a different optimum.
 
 Complexity: O(N²) for system breaks, O(S²) for page breaks where S = number of systems.
 
@@ -228,7 +230,7 @@ Given identical input (measure stacks with their bounds, system/page capacities)
 - Deterministic evaluation order (DP iterates t increasing, s decreasing; updates only on strict improvement)
 - Normalisation-based allocation (no iterative solver convergence)
 
-Edit locality as first-class goal: When measures are inserted, deleted, or modified, the system aims to preserve break decisions for unaffected regions, minimizing perceptual layout "jitter" during editing.
+**Edit locality**: Preserving break decisions away from an edit, to minimise perceptual layout "jitter" during editing, is a goal. The DP does not provide it: a global optimum is not local. See [Edit Locality](#edit-locality).
 
 ## Decision
 
@@ -333,7 +335,7 @@ System layout when measure s is first:
 - Courtesy accidentals for tied-to notes at position 0 (graphical decorations, not semantic accidentals)
 - Tie continuation arcs (visual portion of ties broken at system boundaries)
 
-**Critical architectural property:** The gutter width is computed in Stage 1 from complete information about the measure's layout, including all semantic accidentals at position 0. If existing accidentals already provide sufficient space for the courtesy accidental, the gutter width is 0N—only the additional space needed beyond the measure's existing layout is reserved. Stage 3 knows exactly how much additional space each measure requires *before* making any distribution decisions. This enables mathematically optimal distribution without heuristics or iteration.
+**Critical architectural property:** The gutter width is computed in Stage 1 from complete information about the measure's layout, including all semantic accidentals at position 0. If existing accidentals already provide sufficient space for the courtesy accidental, the gutter width is 0N—only the additional space needed beyond the measure's existing layout is reserved. Stage 3 knows exactly how much additional space each measure requires *before* making any distribution decisions. This lets Stage 3 find the distribution that is optimal for its cost function, given these inputs, without heuristics or iteration.
 
 **What is NOT in the gutter:** All semantic accidentals are computed and positioned by [ADR-0035](0035-Remembered-Alterations.md) and are included in the measure's `min_width` and `ideal_width`. The gutter contains only graphical decorations added by Stage 5 for visual clarity at system boundaries.
 
@@ -399,7 +401,7 @@ This is **normalisation**, not optimisation:
 - Preserves proportional relationships by construction
 - Preamble and gutter space are reserved separately; neither scales
 - No iteration, no convergence, no tuning parameters
-- Predictable behavior enabling edit locality
+- Predictable behavior: within a fixed break configuration, a change to one stack alters only its own system's scale factor
 - Near-zero computational cost
 - Clean architectural separation: DP selects breaks, allocation is derived
 
@@ -410,7 +412,7 @@ This is **normalisation**, not optimisation:
 3. **No heuristics**: Pure mathematical formula, deterministic outcome
 4. **Speed**: O(K) per system with K â‰ˆ 10-20, essentially free
 5. **Predictability**: Users can mentally predict system behavior
-6. **Edit stability**: Local changes cause minimal layout ripple
+6. **Contained allocation**: Within a fixed break configuration, a change to one stack alters only its own system's scale factor
 
 **Handling constraints**:
 ```clojure
@@ -679,12 +681,12 @@ The gutter model eliminates feedback through **complete information**:
 
 1. **Stage 1** computes exact measure content (min, ideal) + exact gutter delta
 2. **Stage 3** has *complete knowledge* of both scenarios (mid-system and system-start) for every measure
-3. **Stage 3** computes *mathematically optimal* system breaks - not heuristic, not iterative
+3. **Stage 3** computes the system breaks that are optimal for its cost function, given these inputs - not heuristic, not iterative
 4. **Stage 4** positions atoms using scale factors from Stage 3
 5. **Stage 5** adds graphical decorations based on actual positions and computes system heights
-6. **Stage 6** computes *mathematically optimal* page breaks using actual system heights
+6. **Stage 6** computes the page breaks that are optimal for its cost function, using actual system heights
 
-The gutter width is not "we might need space" - it's "this is exactly how much space the graphical decoration requires." Stage 3 doesn't guess. It has full information to make the globally optimal decision in one pass.
+The gutter width is not "we might need space" - it's "this is exactly how much space the graphical decoration requires." Stage 3 doesn't guess. It has full information to make, in one pass, the decision that is globally optimal for its cost function.
 
 ### Semantic vs Graphical Content
 
@@ -707,7 +709,7 @@ The semantic model remains closed. Stage 5 only adds visual decoration within pr
 
 With complete information and no feedback:
 - **Deterministic**: Same input always produces same output
-- **Optimal**: Not "good enough" but mathematically best
+- **Optimal**: Minimal cost under the stated cost function, given its inputs - an exact result for that function, not an approximation of it
 - **Stable**: No jitter from iteration or heuristics
 - **Fast**: One pass through the pipeline, no convergence loops
 
@@ -763,7 +765,13 @@ If editorial preferences are needed (e.g., prefer structural boundaries), they c
 
 ### Edit Locality
 
-When measures are modified, the system attempts to preserve existing break decisions for distant unaffected regions. This minimizes perceptual layout "jitter" during editing. Immutable data structures enable efficient incremental recomputation: only modified subtrees require re-evaluation.
+Edit locality — preserving break decisions away from an edit, so that the layout does not visibly "jitter" while the user works — is a goal. The algorithm does not provide it.
+
+The break configuration Stage 3 selects is a global optimum, and a global optimum is not local. An edit to stack `m` can change system breaks after `m` and before `m`: the DP finds the configuration of least total cost for the whole sequence, and the chosen breaks are traced backwards from its end, so a change of cost at `m` can alter the choice of breaks anywhere in the score. Nor is there any guarantee that, beyond some point, the new break decisions coincide with the previous solution again.
+
+What holds is that recomputation is cheap. Stack metrics are cached (see [Caching and Incremental Recompute](#caching-and-incremental-recompute)), so re-running Stage 3 after an edit is scalar arithmetic over the cached metrics: collision detection, atom formation and vertical reconciliation are not repeated for any stack whose content did not change.
+
+The mechanisms by which edit locality is to be achieved are an open design question, which this ADR does not settle.
 
 ### Caching and Incremental Recompute
 
@@ -792,16 +800,16 @@ Edits affect Stages 3-4 only through changes to stack metrics:
 
 1. **Local edit**: modifying or inserting notation in a measure updates only the affected stack's upstream-derived width values.
 
-2. **Fast path (break stability)**: if the updated stack's metrics do not change the optimal break configuration (or do not change the stack's system membership), then:
+2. **Fast path (break stability)**: Stage 3 is re-run over the cached metrics. If the resulting break configuration is unchanged, then:
 
-   * only that stack's `actual_width` may change (via the system scale factor), and often not even that
-   * Stage 5 updates are confined to connecting elements that touch the edited measure and/or the edited stack
+   * the scale factor of the system containing the edited stack may change, and with it the `actual_width` of every stack in that system; no other system's scale factor changes
+   * Stage 4 repositioning and Stage 5 regeneration are confined to that system and to connecting elements that touch it
    * no other systems require recomputation
 
-3. **Ripple path (break changes)**: if the updated stack's metrics change feasibility or cost enough to alter system breaks, recomputation is still bounded:
+3. **Ripple path (break changes)**: if the re-run produces a different break configuration:
 
-   * unaffected stacks retain cached metrics and therefore remain identical DP input
-   * only the region whose optimal substructure changes must be re-evaluated; once break decisions converge back to the previous solution, downstream layout is provably unchanged (determinism + identical input suffix)
+   * unaffected stacks retain cached metrics, so the DP runs over the same scalar input as before except at the edited stack, and no upstream work is repeated for them
+   * the changed breaks are not confined to the neighbourhood of the edit: they may occur after it and before it, and nothing guarantees that the new configuration coincides with the previous one beyond any particular point (see [Edit Locality](#edit-locality))
    * `actual_width` recomputation is confined to systems whose membership or width policy changed
 
 #### Practical Complexity
@@ -809,15 +817,12 @@ Edits affect Stages 3-4 only through changes to stack metrics:
 With cached stack metrics, Stage 3 runtime is dominated by DP over **scalars**, not by collision/layout work. Edit-time recomputation is typically:
 
 * **O(size of edited measure)** for upstream recalculation of the edited stack
-* plus **O(K)** (where `K â‰ˆ measures/system`) for local system allocation updates
-* plus at worst **O(Î”×K)** when a breakpoint ripple propagates across `Î”` stacks, with all other stacks remaining cache hits
+* plus a Stage 3 re-run: **O(N×K)** scalar segment evaluations over cached metrics, with no collision or layout work for any unchanged stack
+* plus **O(K)** (where `K ≈ measures/system`) allocation for each system whose membership or scale factor changed
 
 #### Relationship to Edit Locality
 
-This caching strategy is the concrete mechanism behind the ADR's edit-locality goal:
-
-* locality is achieved not by heuristics, but by **stable, cached stage outputs** and deterministic recomputation on a reduced 1D representation
-* the system avoids whole-score reflow not by forbidding it, but because cached aggregates make whole-score reflow unnecessary in the common case
+This caching strategy makes recomputation after an edit cheap: re-running Stage 3 costs scalar arithmetic over cached aggregates, and no upstream work is repeated for stacks whose content did not change. It does not make the result local. A re-run may change breaks anywhere in the score; how break decisions away from an edit are to be preserved is the open question stated under [Edit Locality](#edit-locality).
 
 ## Implementation
 
@@ -865,40 +870,49 @@ The following implementation performs **Stage 3: System Breaking** - distributin
        
        ;; Try previous break at prefix length s (represents stacks 0..s-1)
        ;; System contains stacks s..t-1
-       (doseq [s (range (dec t) -1 -1)
-               :let [system-width (system-width-fn s t)
-                     ;; Reserve preamble and gutter space for system-start stack
-                     preamble (get-preamble-width stacks s)  ;; On-demand, cached by clef/keysig combo
-                     gutter (get-in stacks [s :gutter] 0N)
-                     available (- system-width preamble gutter)
-                     ;; Check if measures can fit in remaining space
-                     total-min (- (nth min-prefix t) (nth min-prefix s))]
-               :while (<= total-min available)]
-         
-         ;; Check tighter feasibility: scale factor must not require clamping
-         (let [total-ideal (- (nth ideal-prefix t) (nth ideal-prefix s))
-               scale-factor (/ available total-ideal)
-               segment-stacks (subvec stacks s t)
-               max-ratio (reduce max 0N (map #(/ (:min %) (:ideal %)) segment-stacks))
-               feasible? (>= scale-factor max-ratio)]
-           
-           (when (and feasible? (some? (nth best s)))
-             ;; Compute cost using closed form (valid because feasibility guarantees no clamping)
-             ;; cost = (scale - 1)² × Σ ideal_i²
-             ;; Gutter does not participate in cost - it is fixed overhead
-             (let [total-ideal-sq (- (nth ideal-sq-prefix t) (nth ideal-sq-prefix s))
-                   scale-deviation (- scale-factor 1N)
-                   geometric-cost (* (* scale-deviation scale-deviation) total-ideal-sq)
-                   penalty-cost (break-penalty-fn stacks s t)
-                   segment-cost (+ geometric-cost penalty-cost)
-                   total-cost (+ (nth best s) segment-cost)
-                   current-best (nth best t)]
-               
-               ;; Update if this is better (nil = infinity)
-               (when (or (nil? current-best)
-                         (< total-cost current-best))
-                 (assoc! best t total-cost)
-                 (assoc! prev t s)))))))
+       ;; Each step leftwards extends the segment by exactly one stack (stack s),
+       ;; so max(min_i / ideal_i) over the segment is carried forward in O(1)
+       ;; rather than rescanned
+       (loop [s (dec t)
+              max-ratio 0N]
+         (when (>= s 0)
+           (let [max-ratio (max max-ratio (/ (get-in stacks [s :min])
+                                             (get-in stacks [s :ideal])))
+                 system-width (system-width-fn s t)
+                 ;; Reserve preamble and gutter space for system-start stack
+                 preamble (get-preamble-width stacks s)  ;; On-demand, cached by clef/keysig combo
+                 gutter (get-in stacks [s :gutter] 0N)
+                 available (- system-width preamble gutter)
+                 ;; Check if measures can fit in remaining space
+                 total-min (- (nth min-prefix t) (nth min-prefix s))]
+
+             ;; Early termination: stop once the minimums no longer fit
+             (when (<= total-min available)
+
+               ;; Check tighter feasibility: scale factor must not require clamping
+               (let [total-ideal (- (nth ideal-prefix t) (nth ideal-prefix s))
+                     scale-factor (/ available total-ideal)
+                     feasible? (>= scale-factor max-ratio)]
+
+                 (when (and feasible? (some? (nth best s)))
+                   ;; Compute cost using closed form (valid because feasibility guarantees no clamping)
+                   ;; cost = (scale - 1)² × Σ ideal_i²
+                   ;; Gutter does not participate in cost - it is fixed overhead
+                   (let [total-ideal-sq (- (nth ideal-sq-prefix t) (nth ideal-sq-prefix s))
+                         scale-deviation (- scale-factor 1N)
+                         geometric-cost (* (* scale-deviation scale-deviation) total-ideal-sq)
+                         penalty-cost (break-penalty-fn stacks s t)
+                         segment-cost (+ geometric-cost penalty-cost)
+                         total-cost (+ (nth best s) segment-cost)
+                         current-best (nth best t)]
+
+                     ;; Update if this is better (nil = infinity)
+                     (when (or (nil? current-best)
+                               (< total-cost current-best))
+                       (assoc! best t total-cost)
+                       (assoc! prev t s)))))
+
+               (recur (dec s) max-ratio))))))
      
      ;; Return results
      {:breaks (reconstruct-breaks (persistent! prev) n)
@@ -1014,7 +1028,7 @@ This is not an optimization of a more complex algorithm—it is the canonical co
 4. **Deterministic**: Same input always produces same output with no floating-point variation
 5. **Fast**: O(K) where K â‰ˆ 10-20, essentially zero cost
 6. **Predictable**: Users can mentally predict allocation behavior
-7. **Edit-stable**: Local changes cause minimal layout ripple
+7. **Contained**: Within a fixed break configuration, a change to one stack alters only its own system's allocation
 
 **Verification**:
 ```clojure
@@ -1066,7 +1080,7 @@ The implementation uses proportional scaling as the primary width allocation str
 - **No degrees of freedom**: Allocation is purely derived from break choice
 - **Fast**: O(K) per system, essentially zero cost
 - **Predictable**: Mental model matches implementation
-- **Edit-stable**: Local changes have minimal layout impact
+- **Contained**: Within a fixed break configuration, a change to one stack alters only its own system's allocation
 
 This approach may prove entirely adequate. If empirical testing reveals systematic visual problems, asymmetric optimisation can be considered, but complexity should not be added speculatively.
 
@@ -1078,18 +1092,20 @@ The algorithm accepts an optional `break-penalty-fn` parameter with signature `(
 
 The DP uses a two-part feasibility check:
 1. **Necessary**: `Σ min_i ≤ available` (minimums must fit after reserving gutter) - O(1) via prefix sums
-2. **Sufficient for proportional scaling**: `scale_factor ≥ max(min_i / ideal_i)` - O(K) segment scan
+2. **Sufficient for proportional scaling**: `scale_factor ≥ max(min_i / ideal_i)` - O(1) per segment, using a running maximum
 
 The second condition ensures the scale factor is large enough that no stack requires clamping. Without it, proportional scaling could produce allocations below minimums.
+
+The running maximum works because the inner loop visits segments in a fixed order: for fixed `t`, `s` decreases from `t-1`, so each candidate segment `[s, t)` is the previous one extended by the single stack `s`. The maximum over the new segment is therefore `max(previous maximum, min_s / ideal_s)`, one comparison per step. Rescanning the segment instead would cost O(K) per segment and O(N×K²) in total.
 
 **Segment Evaluation**:
 
 Each candidate segment (s, t) requires:
 1. **Gutter lookup**: O(1) to get `gutter[s]`
-2. **Feasibility**: O(K) scan to compute `max(min_i / ideal_i)` over the segment
+2. **Feasibility**: O(1) to extend the running `max(min_i / ideal_i)` by stack `s`
 3. **Cost**: O(1) closed-form computation using prefix sums
 
-The feasibility scan is the only per-segment O(K) work. Cost computation uses precomputed `ideal-sq-prefix` for O(1) evaluation.
+Every per-segment step is O(1). Cost computation uses precomputed `ideal-sq-prefix`; feasibility uses the running maximum carried by the inner loop.
 
 **Rational Arithmetic Throughout**:
 - All numeric literals use `N` suffix: `0N`
@@ -1131,13 +1147,13 @@ The feasibility scan is the only per-segment O(K) work. Cost computation uses pr
 | Outer loop | O(N) | Each position once |
 | Inner loop | O(K) typical | Early termination when infeasible |
 | Gutter lookup | O(1) | Per-segment constant time |
-| Feasibility check | O(K) | Scan for max(min_i / ideal_i) |
+| Feasibility check | O(1) | Running max(min_i / ideal_i), extended by one stack per step |
 | Cost computation | O(1) | Closed form using prefix sums |
 | **Total (worst case)** | O(N²) | Without early termination |
 | **Total (typical)** | O(N×K) | With monotone width policy, K ≈ 15 |
 | Page breaking | O(S²) | S = number of systems |
 
-At N=800 measures, K=15: ~12,000 segment evaluations. Feasibility is O(K) per segment; cost is O(1). Still trivial.
+At N=800 measures, K=15: ~12,000 segment evaluations, each O(1) for both feasibility and cost.
 
 ## Relationship to Knuth-Plass
 
@@ -1189,13 +1205,15 @@ Ooloi's pipeline architecture transforms the problem. By the time Stage 3 execut
 
 What remains is exactly the Knuth-Plass problem formulation. The algorithm is textbook; its applicability is what the architecture creates.
 
-**Why this approach is commonly avoided in real-time notation editors**:
+**Why the DP runs once per pass**:
 
-The Knuth-Plass algorithm is well-known in typesetting circles. Real-time notation editors have commonly avoided it—not because the algorithm is unsuitable to music, but because their architectures lack the preconditions that make it applicable. Mutable state creates feedback loops between spacing and symbol positioning. Coupled evaluation of horizontal and vertical concerns prevents the clean 1-dimensional reduction. The algorithm requires a problem formulation that these architectures cannot provide.
+Knuth-Plass itself is efficient—O(N²) in the general case, O(N×K) with early termination. In Ooloi it runs once per layout pass, on inputs that do not change while it runs. Three preconditions of the pipeline provide this:
 
-Performance concerns likely compound the architectural barriers. Knuth-Plass itself is efficient—O(N²) in the general case, O(N×K) with early termination. But in architectures where spacing decisions feed back into collision detection, which feeds back into spacing, the algorithm would need to run repeatedly as geometry iteratively stabilizes. Each edit could trigger multiple full recomputations. The cost isn't the algorithm; it's the inability to run it once on stable inputs. When you cannot guarantee that width metrics are finalized before distribution begins, even an efficient algorithm becomes expensive through repetition.
+- **Stable scalar inputs**: Stage 3 receives stable scalar inputs from completed upstream stages. Every width it consumes is final before it begins.
+- **No feedback between stages**: No later stage changes Stage 3's inputs, so the DP never has to be re-run while geometry settles.
+- **Immutability**: Immutability enables precise cache invalidation: edits affect only the stacks whose upstream metrics actually changed, not the entire sequence.
 
-Ooloi's decoupled pipeline inverts this situation. Stage 3 receives stable scalar inputs from completed upstream stages. The DP executes once, on data that will not change during computation. Immutability enables precise cache invalidation: edits affect only the stacks whose upstream metrics actually changed, not the entire sequence. What would be expensive in an iterative architecture becomes trivial: at N=800 measures with K=15 measures per system, approximately 12,000 segment evaluations of simple arithmetic complete in milliseconds.
+At N=800 measures with K=15 measures per system, a pass is approximately 12,000 segment evaluations, each O(1) scalar arithmetic.
 
 Ooloi's ability to apply Knuth-Plass is therefore not algorithmic sophistication but architectural consequence. The pipeline stages, immutable data structures, and rational arithmetic create both the problem formulation and the performance characteristics the algorithm requires. This is the pattern throughout Ooloi: apparently simple solutions become available—and become fast—when architecture eliminates the coupling that made them inapplicable.
 
@@ -1213,12 +1231,12 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 
 **Positive:**
 
-1. **Exact optimization** - Polynomial-time algorithm finds globally optimal break configuration
+1. **Exact optimization** - Polynomial-time algorithm finds the break configuration of least cost under the stated cost function, given its inputs
 2. **Proportionality preservation** - Rhythmic relationships maintained across systems by construction
 3. **Complete information** - Gutter deltas enable optimal decisions without feedback
 4. **Closed semantic model** - Rendering decorations cannot affect musical semantics
 5. **Deterministic output** - Identical input produces identical layout across platforms
-6. **Edit locality** - Changes affect only local regions where possible
+6. **Cheap recomputation** - An edit re-runs Stage 3 over cached scalar metrics, without repeating upstream work for unchanged stacks
 7. **Variable system widths** - Natural handling of final systems, editorial overrides, page geometry
 8. **Clean stage separation** - No feedback loops with connecting elements or decorations
 9. **Performance** - O(N×K) complexity handles large scores efficiently
@@ -1232,6 +1250,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 3. **Staff-local effects** - Compression affects individual staves within stacks, not uniform visual degradation
 4. **Policy-free core** - Algorithm is purely geometric by default; editorial preferences can be added via optional `break-penalty-fn` without modifying the core
 5. **Gutter storage** - Each stack carries `gutter` (typically 0N); overhead is minimal
+6. **Global breaks** - The break configuration is a global optimum, so an edit can change system breaks anywhere in the score; the mechanisms for edit locality are an open design question
 
 **Future Considerations:**
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Under implementation
+Accepted
 
 ## Table of Contents
 
@@ -123,7 +123,7 @@ Stage 2 creates a unified rhythmic raster across the vertical measure stack (fan
 
 ### Pipeline Stage 3: System Breaking (Single)
 
-Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (exact min/ideal/gutter widths for every measure stack), the algorithm evaluates candidate systems by subtracting the preamble width (clef + key signature, computed on-demand) and gutter width from available system width, then computing scale factors. The objective function uses proportional scaling with quadratic cost on deviation from ideal spacing, producing globally optimal breaks while preserving rhythmic proportionality. Output: system break decisions and scale factors per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
+Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (exact min/ideal/gutter widths for every measure stack), the algorithm evaluates candidate systems by subtracting the preamble width (clef + key signature, computed on-demand) and gutter width from available system width, then computing scale factors. The objective function uses proportional scaling with quadratic cost on deviation from ideal spacing, producing breaks that are globally optimal for that cost function, given its inputs, while preserving rhythmic proportionality. Output: system break decisions and scale factors per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
 
 ### Pipeline Stage 4: Atom Positioning (Fan-Out per Measure)
 
@@ -719,7 +719,7 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 10. **Closed Semantic Model**: Rendering cannot affect musical semantics. Complete information enables optimal distribution without feedback loops or heuristics.
 
-11. **Mathematically Optimal Distribution**: Stage 3 has complete knowledge (measure widths + system-start deltas for preamble and gutter) enabling globally optimal system breaking in one pass, and Stage 6 has complete system heights for optimal page breaking.
+11. **Optimal Distribution for the Stated Cost Function**: Stage 3 has complete knowledge (measure widths + system-start deltas for preamble and gutter) enabling, in one pass, system breaking that is globally optimal for its cost function ([ADR-0037](0037-Measure-Distribution-Optimization.md)), given those inputs; Stage 6 has complete system heights for page breaking that is optimal in the same sense.
 
 ## Trade-offs
 
@@ -728,6 +728,8 @@ This architecture breaks the circular dependencies that collapse traditional not
 **Complexity concentration in Stages 3 and 6**: Global optimization decisions (system breaking in Stage 3, page breaking in Stage 6) use Knuth-Plass dynamic programming. This is intentional but requires sophisticated algorithms.
 
 **Strict dependency ordering**: Spanners cannot influence spacing. System breaking cannot feed back to atom formation. This constraint is the architecture's strength, but it means certain edge cases must be resolved within stage boundaries rather than through iteration.
+
+**System and page breaking are optimised separately**: Stage 3 chooses system breaks and Stage 6 chooses page breaks; the two are not optimised jointly. The number of systems is therefore chosen without the pages in view. Stage 6 can only choose which of the system boundaries Stage 3 produced become page boundaries: it cannot move a system break, for instance to place a rest at a page turn. Optimising both together would require the heights of systems that Stage 5 has not built, and so would have to work from estimates of those heights.
 
 **Gutter width accounting**: Stage 1 computes `gutter_width` for every measure, even though only system-start measures will use it. This is minimal overhead (typically only tied-to notes at position 0) but represents computation that may not be used.
 
@@ -770,7 +772,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 ### Alternative 4: Post-Hoc Spacing Adjustment
 **Approach**: After discovering system breaks, compress existing spacing to accommodate courtesy accidentals.
 **Rejection Reasons**:
-- Would work in 99% of cases but breaks the optimality guarantee
+- Would work in 99% of cases but breaks the guarantee that Stage 3's breaks are optimal for its cost function
 - Introduces feedback loop: adjustment might change system breaks
 - Requires iteration or "good enough" heuristics
 - Non-deterministic results possible
@@ -819,4 +821,4 @@ The six-stage approach recognises that atom formation with extent calculation, v
 
 The atom-relative geometry invariant ensures that the expensive Stage 1 computation runs only when musical content changes. Layout adjustments - however dramatic - require only repositioning of pre-computed atoms, enabling responsive editing even during extensive reformatting operations.
 
-The gutter model ensures that system-start decorations (courtesy accidentals, tie continuations) are accommodated with complete information, enabling mathematically optimal distribution without feedback loops, heuristics, or iteration. The semantic model remains closed after ADR-0035; Stage 5 adds only graphical decorations that do not affect musical meaning.
+The gutter model ensures that system-start decorations (courtesy accidentals, tie continuations) are accommodated with complete information, enabling distribution that is optimal for the stated cost function without feedback loops, heuristics, or iteration. The semantic model remains closed after ADR-0035; Stage 5 adds only graphical decorations that do not affect musical meaning.

@@ -229,7 +229,7 @@ Six stages:
 - **Stage 5** (fan-out per musician): Spanners and margins. Ties, slurs, beams, hairpins, and glissandi are drawn once final positions are known. Gutter decorations (courtesy accidentals, tie continuations) are added here. System heights become definitive at this stage.
 - **Stage 6** (single): Page breaking. Dynamic programming over the system sequence using actual heights from Stage 5.
 
-The gutter model is the detail that enables Stage 3 to be provably optimal: every measure carries both its normal width and the additional space it needs when appearing at system start, so Stage 3 has complete information when making break decisions.
+The gutter model is the detail that enables Stage 3's breaks to be provably optimal for its cost function, given its inputs: every measure carries both its normal width and the additional space it needs when appearing at system start, so Stage 3 has complete information when making break decisions.
 
 Plugins participate at two points: the atom hook in Stage 1, which produces an atom's extent and cached paintlist, and the spanner hook in Stage 5, which generates connecting elements from final atom positions. Core notation elements and plugin-defined elements use identical interfaces.
 
