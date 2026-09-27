@@ -10,6 +10,7 @@ Accepted
   - [Architectural Reduction](#architectural-reduction)
   - [What "Optimal" Means](#what-optimal-means)
   - [Optimization Characterization](#optimization-characterization)
+  - [Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)
 - [Decision](#decision)
   - [Architectural Position](#architectural-position)
   - [Interface Contract](#interface-contract)
@@ -143,7 +144,7 @@ Given a musical score with N measures and M staves, the system must distribute N
 Connecting elements (ties, slurs, hairpins, beams, glissandi, ottava lines) do not participate in the distribution optimization. They are computed in Stage 5 after positions are finalized, and adapt to the determined geometry.
 
 **Objective**:
-Minimize total demerits — each system's cost, derived from how far it is stretched or compressed from its ideal proportions — while satisfying capacity constraints. The intent is that minimizing total demerits produces layouts perceived as stable and professionally typeset.
+Minimize total demerits — each system's cost, derived from how far it is stretched or compressed from its ideal proportions, measured against how far it can be — while satisfying capacity constraints. The intent is that minimizing total demerits produces layouts perceived as stable and professionally typeset.
 
 **Architectural thesis**:
 Taken as a whole, the measure distribution problem couples vertical alignment, horizontal spacing, system breaks, page breaks, and connecting element geometry into a single optimization. Ooloi's staged pipeline architecture decouples these concerns, collapsing the distribution problem into a form solvable by known algorithms (specifically, Knuth-Plass style dynamic programming). The algorithm is not new, and optimal breaking by dynamic programming has been applied to music before (see [Prior Art](#prior-art)); this ADR specifies how Ooloi's pipeline reduces its own problem to that form.
@@ -232,7 +233,14 @@ r = (available − Σ natural) / Σ stretch     when available ≥ Σ natural   
 r = (available − Σ natural) / Σ shrink      when available <  Σ natural   (shrinking)
 ```
 
-Under the proportional baseline every gap's stretch and shrink equal its natural width, the ideal, so `Σ stretch = Σ shrink = Σ ideal_i` and **`r = scale_factor − 1`**: negative under compression, positive under stretching.
+In the baseline, **stretch and shrink are proportional to natural width**, calibrated so that `r` keeps its Knuth–Plass meaning: `r = −1` at the tightest permissible system, and `r = 1` at a system stretched by its full stretchability ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). Each gap's stretch is `σ × ideal`, with `σ` the stretchability parameter, and its shrink is `(1 − max ρ_i) × ideal`, where `max ρ_i` is the largest column ratio over the system's stacks. With `scale_factor = available / Σ ideal_i`:
+
+```
+r = (scale_factor − 1) / σ               when scale_factor ≥ 1   (stretching)
+r = (scale_factor − 1) / (1 − max ρ_i)   when scale_factor <  1   (shrinking)
+```
+
+`r` is negative under compression and positive under stretching, and one scale factor still applies to the whole system. `r = −1` exactly at the system's collision limit, `scale_factor = max ρ_i`, so Knuth–Plass's feasibility condition `r ≥ −1` coincides with the column-ratio condition of [Column-Level Feasibility](#column-level-feasibility). A feasible system that is shrinking has `max ρ_i ≤ scale_factor < 1`, so the denominator is positive. The shrinkability depends on the segment alone and uses the running `max ρ_i` the DP already carries, so the DP stays exact.
 
 The **badness** of the system is a function of `r` alone, not weighted by content:
 
@@ -252,11 +260,11 @@ d = (l + b)²           when p = 0, and for a forced break
 
 **Tolerance**: an optional bound on badness. A segment whose badness exceeds it is treated as infeasible.
 
-**Why the badness of `r`**: the adjustment ratio is what a reader sees — how far a system is stretched or compressed. A cost weighted by content, such as `Σ (actual_i − ideal_i)²`, which under proportional scaling is `(scale − 1)² × Σ ideal_i²`, makes two systems with the same adjustment ratio cost differently according to how their content is divided into measures: the same music in more, shorter measures has a smaller `Σ ideal_i²` and so costs less at the same stretch. That difference has no musical justification.
+**Why the badness of `r`**: the adjustment ratio is what a reader sees — how far a system is stretched or compressed, measured against how far it can go. A cost weighted by content, such as `Σ (actual_i − ideal_i)²`, which under proportional scaling is `(scale − 1)² × Σ ideal_i²`, makes two systems with the same adjustment ratio cost differently according to how their content is divided into measures: the same music in more, shorter measures has a smaller `Σ ideal_i²` and so costs less at the same stretch. That difference has no musical justification.
 
-**Parameters**: the badness coefficient `c`, exponent `e`, cap `b_max`, per-system penalty `l` and tolerance are parameters. Their documented starting points are TeX's implementation of Knuth–Plass: `c = 100`, `e = 3` (badness "a reasonably close approximation to 100(t/s)³"), `b_max = 10000` ("infinitely bad"), `l = 10` (plain TeX's `\linepenalty`) and tolerance 200 (plain TeX's `\tolerance`). The empirical validation decides them ([Evaluation Criteria](#evaluation-criteria)).
+**Parameters**: the badness coefficient `c`, exponent `e`, cap `b_max`, per-system penalty `l`, tolerance and stretchability `σ` are parameters. The documented starting points of the first five are TeX's implementation of Knuth–Plass: `c = 100`, `e = 3` (badness "a reasonably close approximation to 100(t/s)³"), `b_max = 10000` ("infinitely bad"), `l = 10` (plain TeX's `\linepenalty`) and tolerance 200 (plain TeX's `\tolerance`). The starting point of `σ` is `1/2` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). TeX's constants are meaningful only under that calibration. The empirical validation decides all six ([Evaluation Criteria](#evaluation-criteria)).
 
-**Exact arithmetic**: demerits are exact rationals — with `e = 3`, of degree six in `r` — and are still O(1) per segment. Any approximation, for example of a non-integer exponent, must be deterministic, so that every platform computes identical demerits.
+**Exact arithmetic**: `σ` and `max ρ_i` are rationals, so `r` is exact. Demerits are exact rationals — with `e = 3`, of degree six in `r` — and are still O(1) per segment. Any approximation, for example of a non-integer exponent, must be deterministic, so that every platform computes identical demerits.
 
 **Additive separable cost model**:
 - **System-level cost**: each system's demerits depend only on its own adjustment ratio and the penalty of its break — that is, on the segment alone. The `min` value and the largest column ratio `ρ` participate in feasibility checking; the `preamble`, `gutter` and `postamble` values determine the available space, and through it `r`; none of them enters the cost otherwise.
@@ -275,6 +283,21 @@ Given identical input (measure stacks with their bounds, system/page capacities)
 - Normalisation-based allocation (no iterative solver convergence)
 
 **Edit locality**: Preserving break decisions away from an edit, to minimise perceptual layout "jitter" during editing, is a goal. The DP does not provide it: a global optimum is not local. See [Edit Locality](#edit-locality).
+
+### Calibrating the Adjustment Ratio
+
+TeX's constants assume that the adjustment ratio `r` is measured against the limits of the glue. `r = −1` is the tightest line TeX permits, because glue cannot shrink beyond its shrinkability; at `r = 1` a line's glue is stretched by its full stretchability, with badness 100. If stretch and shrink both equalled natural width, `r` would be `scale_factor − 1`, a deviation from the ideal rather than from those limits, and the constants would lose their meaning:
+
+- **Compression would be nearly free.** A system at its collision limit with `max ρ_i = 0.8` would have `r = −0.2` and badness 0.8, which TeX's scale calls nearly perfect.
+- **Tolerance 200 would admit about 126% stretch**: it bounds `100 × |r|³` by 200, so `|r| ≤ 1.26`.
+- **The per-system penalty would dominate.** `l = 10` contributes at least `l² = 100` per system, while badness stays below 1 up to a deviation of about 21%. The DP would chiefly minimise the number of systems. With content spread evenly over systems of one width, it would compress systems by up to about 18% at about 10 systems, and about 15% at about 30, rather than add one.
+
+The calibration gives `r` its meaning at both ends, and TeX's constants — `c`, `e`, `b_max`, `l` and the tolerance — are meaningful only under it:
+
+- **Shrinking**: each gap's shrink is `(1 − max ρ_i) × natural`, the system's room above its tightest column, so `r = (scale_factor − 1) / (1 − max ρ_i)` and `r = −1` is the system's collision limit. Knuth–Plass's limit on shrinking and this ADR's feasibility condition are then the same point.
+- **Stretching**: stretch has no collision limit, so its scale is a parameter, the stretchability `σ`: each gap's stretch is `σ × natural`, and `r = (scale_factor − 1) / σ`. The documented starting point is `σ = 1/2`. A system stretched to one and a half times its ideal width then has `r = 1` and badness 100, the same badness as a system at its collision limit, and tolerance 200 admits stretch up to about 63%. No engraving source fixes the value: it is where the documented constants start, and the empirical validation decides it ([Evaluation Criteria](#evaluation-criteria)).
+
+Both keep proportional fitting, one scale factor per system; the calibration changes only how that scale factor is judged. How the same calibration applies under the other fitting rules is stated under [Fitting Rules](#fitting-rules).
 
 ## Decision
 
@@ -508,13 +531,13 @@ The `max` clamp is defensive. Under the feasibility contract (`scale ≥ max(ρ_
 
 **Notes on the cost**:
 
-With proportional scaling, `actual_i = ideal_i × scale_factor` for all i, so every stack deviates from its ideal by the same ratio, `r = scale_factor − 1`. The system's cost is the badness of that single ratio, combined into demerits (see the segment cost model under [Optimization Characterization](#optimization-characterization)) — not a sum over its stacks.
+With proportional scaling, `actual_i = ideal_i × scale_factor` for all i, so every stack deviates from its ideal by the same factor, and the system has a single adjustment ratio: `(scale_factor − 1) / σ` when stretching, `(scale_factor − 1) / (1 − max ρ_i)` when shrinking ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). The system's cost is the badness of that single ratio, combined into demerits (see the segment cost model under [Optimization Characterization](#optimization-characterization)) — not a sum over its stacks.
 
 The preamble, gutter and postamble do not participate in cost computation. They are fixed overhead; they affect the cost only through the available width, and so through `r`.
 
 **Relationship to Knuth-Plass**:
 
-Proportional scaling is the Knuth–Plass glue model in the special case where every glue's stretch and shrink are proportional to its natural width; see [Relationship to Knuth-Plass](#relationship-to-knuth-plass) for the mapping and the extensions it leaves available.
+Proportional scaling is the Knuth–Plass glue model in the special case where every glue's stretch and shrink are proportional to its natural width, by the factors `σ` and `1 − max ρ_i`; see [Relationship to Knuth-Plass](#relationship-to-knuth-plass) for the mapping and the extensions it leaves available.
 
 ### Variable System Widths
 
@@ -932,7 +955,7 @@ Visual judgement, together with measurements taken on the same scores:
 - How many breaks an edit changes (stability)
 - Running time
 
-These measurements also decide the **badness exponent and the constants** of the segment cost model — the coefficient, exponent, cap, per-system penalty `l` and tolerance — starting from TeX's values ([Optimization Characterization](#optimization-characterization)).
+These measurements also decide the **badness exponent and the constants** of the segment cost model — the coefficient, exponent, cap, per-system penalty `l` and tolerance, starting from TeX's values ([Optimization Characterization](#optimization-characterization)) — and the **stretchability `σ`**, starting from `1/2` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). The constants and `σ` are judged together: TeX's constants are meaningful only under the calibration, and `σ` sets the stretch at which a system counts as badly as one at its collision limit.
 
 ### Exact Re-optimisation After an Edit
 
@@ -995,7 +1018,11 @@ A fitting rule is a choice of elasticity. There are four candidates:
 
 Whether the hierarchy should sharpen or flatten under compression is an engraving question, decided by the empirical validation rather than by the model. The baseline is the rule this ADR's formulas and code carry; none of the others is chosen until the validation decides.
 
-**All four are linear glue.** A stack's stretch and shrink are closed-form sums over its gaps, so the adjustment ratio `r` is O(1) per segment from prefix sums of natural width, stretch and shrink; badness and demerits follow from `r` in O(1), and the DP stays exact. Feasibility is O(1) per segment under all four. Under rules 3 and 4 no gap's shrink exceeds its room above its minimum, so feasibility is `Σ min ≤ available` (adjustment ratio `r ≥ −1`), taken from prefix sums. Under rules 1 and 2 a gap can reach its minimum before the system as a whole does, so feasibility is bounded by the gap with the least room — under the baseline the largest column ratio ([Column-Level Feasibility](#column-level-feasibility)), under even fitting the smallest `ideal − min` — carried as a running extremum while the segment grows, one comparison per step.
+**All four are linear glue.** A stack's stretch and shrink are closed-form sums over its gaps, so the adjustment ratio `r` is O(1) per segment from prefix sums of natural width, stretch and shrink; badness and demerits follow from `r` in O(1), and the DP stays exact. Under all four, `r` is calibrated as under the baseline ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)): `r = −1` is the limit of shrinking, feasibility is `r ≥ −1`, and it is O(1) per segment.
+
+- **Shrinking, rules 3 and 4**: no gap's shrink exceeds its room above its minimum — under rule 3 it is exactly that room, `ideal − min`, so `Σ shrink = Σ ideal − Σ min` and `r = −1` where `Σ min = available`. `r` already reaches `−1` at the limit of the glue and needs no normalisation; it is taken from prefix sums.
+- **Shrinking, rules 1 and 2**: a gap can reach its minimum before the system as a whole does, so the shrink is normalised by the gap with the least room, and `r = −1` exactly when that gap reaches its minimum. Under the baseline the shrink is `(1 − max ρ_i) × natural`, with `max ρ_i` the largest column ratio ([Column-Level Feasibility](#column-level-feasibility)). Under even fitting every gap's shrink is the least room over the segment, `min_j (ideal_j − min_j)`, so `Σ shrink` is that least room times the number of gaps, taken from a prefix sum of gap counts. The extremum is carried as a running extremum while the segment grows, one comparison per step.
+- **Stretching**: `σ` is the stretchability per unit of natural width. Under rules 1 and 3 each gap's stretch is `σ × ideal`, so `r = (scale_factor − 1) / σ`. Under rule 4 it is `σ × w(d) × ideal`, with `w` the duration weighting: `σ` sets how far a system can stretch, and the weighting sets how the stretch is distributed, so that `w = 1` for every duration gives rule 3's stretch. Under rule 2 every gap's stretch is `σ` times the segment's mean ideal gap, so `Σ stretch = σ × Σ ideal`, as under the baseline. In all four, `Σ stretch` depends only on the segment.
 
 Under any rule but the baseline, Stage 4 applies the system's adjustment ratio through each gap's own glue rather than one scale factor to every atom. The evaluation covers systems containing one dense or incompressible measure among sparse ones, the behaviour of the rhythmic hierarchy under stretch and under compression, consistency in complex rhythmic contexts, and the proportionality each rule gives up.
 
@@ -1003,7 +1030,7 @@ Under any rule but the baseline, Stage 4 applies the system's adjustment ratio t
 
 Under the baseline, one scale factor is applied to every column gap within every stack. A column gap stays at or above its own minimum only if `scale ≥ min_gap / ideal_gap` for that gap, so the ratio the sufficient feasibility condition takes for a stack is the **largest column ratio within it**, `ρ_i = max_j(min_gap_j / ideal_gap_j)`, not the stack's `min / ideal`. The two coincide only when every column of a stack is equally compressible; otherwise a stack can pass a stack-level check while one of its columns collides.
 
-Each stack therefore carries `ρ_i` as `:min-ratio` ([Interface Contract](#interface-contract)), and the sufficient condition for a system is `scale ≥ max(ρ_i)` over its stacks. `Σ min_i ≤ available` remains the necessary condition, with `min_i` the sum of the stack's minimum gaps. Grouping and width overrides carry the ratio through ([Editorial Control Mechanisms](#editorial-control-mechanisms)).
+Each stack therefore carries `ρ_i` as `:min-ratio` ([Interface Contract](#interface-contract)), and the sufficient condition for a system is `scale ≥ max(ρ_i)` over its stacks. The same `max(ρ_i)` sets the system's shrinkability, so that under the calibrated adjustment ratio this condition is `r ≥ −1` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). `Σ min_i ≤ available` remains the necessary condition, with `min_i` the sum of the stack's minimum gaps. Grouping and width overrides carry the ratio through ([Editorial Control Mechanisms](#editorial-control-mechanisms)).
 
 ### End-of-System Width
 
@@ -1033,14 +1060,27 @@ The following implementation performs **Stage 3: System Breaking** - distributin
       (and (== c1 c2) (< k1 k2))))
 
 (def knuth-plass-parameters
-  "Segment cost parameters. The values are TeX's, as documented starting points;
-   the empirical validation decides them."
+  "Segment cost parameters, as documented starting points; the empirical
+   validation decides them. All but :stretchability are TeX's, and are
+   meaningful only under the calibrated adjustment ratio."
   {:badness-coefficient 100N  ;; c: badness ≈ c × |r|^e
    :badness-exponent 3        ;; e: an integer, so badness stays an exact rational
    :badness-cap 10000N        ;; b_max: "infinitely bad"
    :line-penalty 10N          ;; l: added to every system; favours fewer systems
-   :tolerance nil})           ;; bound on badness beyond which a segment is infeasible;
+   :tolerance nil             ;; bound on badness beyond which a segment is infeasible;
                               ;; nil = no bound (plain TeX's \tolerance is 200)
+   :stretchability 1/2})      ;; σ: stretch per unit of natural width; r = 1 at
+                              ;; a scale factor of 1 + σ
+
+(defn adjustment-ratio
+  "Adjustment ratio of a system under the baseline, calibrated so that r = -1
+   at the system's collision limit (scale = max-ratio) and r = 1 at a scale
+   of 1 + σ. Called only for feasible segments, so max-ratio < 1 whenever
+   scale < 1."
+  [scale max-ratio {:keys [stretchability]}]
+  (if (>= scale 1N)
+    (/ (- scale 1N) stretchability)
+    (/ (- scale 1N) (- 1N max-ratio))))
 
 (defn badness
   "Badness of a system with adjustment ratio r: c × |r|^e, capped at b_max.
@@ -1135,36 +1175,38 @@ The following implementation performs **Stage 3: System Breaking** - distributin
                ;; not, because preamble[s] and gutter[s] vary with s
                (when (<= total-min system-width)
                  
-                 ;; Adjustment ratio under the baseline: stretch and shrink equal
-                 ;; natural width, so Σ stretch = Σ shrink = Σ ideal and r = scale - 1
                  (let [total-ideal (- (nth ideal-prefix t) (nth ideal-prefix s))
-                       scale-factor (/ available total-ideal)
-                       r (- scale-factor 1N)
-                       b (badness r params)
-                       ;; Necessary: minimums fit after reserving preamble, gutter and postamble
-                       ;; Sufficient: the scale factor keeps every column gap at or above
-                       ;; its minimum
-                       ;; Tolerance: badness within the optional bound
-                       feasible? (and (<= total-min available)
-                                      (>= scale-factor max-ratio)
-                                      (or (nil? tolerance) (<= b tolerance)))]
+                       scale-factor (/ available total-ideal)]
                    
-                   (when (and feasible? (some? (nth best s)))
-                     ;; Demerits from badness, the per-system penalty and the break's
-                     ;; penalty. Preamble, gutter and postamble enter only through
-                     ;; available, and so through r
-                     (let [d (demerits b (break-penalty-fn stacks s t) params)
-                           [prefix-cost prefix-tie] (nth best s)
-                           candidate [(+ prefix-cost d)
-                                      (+ prefix-tie (nth tie-term t))]
-                           current-best (nth best t)]
+                   ;; Necessary: minimums fit after reserving preamble, gutter and postamble
+                   ;; Sufficient: the scale factor keeps every column gap at or above
+                   ;; its minimum — equivalently, the calibrated r is at least -1
+                   (when (and (<= total-min available)
+                              (>= scale-factor max-ratio)
+                              (some? (nth best s)))
+                     
+                     ;; Calibrated adjustment ratio: shrink measured against the room above
+                     ;; the tightest column, stretch against σ
+                     (let [r (adjustment-ratio scale-factor max-ratio params)
+                           b (badness r params)]
                        
-                       ;; Update if the candidate pair is lexicographically smaller
-                       ;; (nil = infinity); ties in cost are resolved by the secondary term
-                       (when (or (nil? current-best)
-                                 (pair< candidate current-best))
-                         (assoc! best t candidate)
-                         (assoc! prev t s)))))
+                       ;; Tolerance: badness within the optional bound
+                       (when (or (nil? tolerance) (<= b tolerance))
+                         ;; Demerits from badness, the per-system penalty and the break's
+                         ;; penalty. Preamble, gutter and postamble enter only through
+                         ;; available, and so through r
+                         (let [d (demerits b (break-penalty-fn stacks s t) params)
+                               [prefix-cost prefix-tie] (nth best s)
+                               candidate [(+ prefix-cost d)
+                                          (+ prefix-tie (nth tie-term t))]
+                               current-best (nth best t)]
+                           
+                           ;; Update if the candidate pair is lexicographically smaller
+                           ;; (nil = infinity); ties in cost are resolved by the secondary term
+                           (when (or (nil? current-best)
+                                     (pair< candidate current-best))
+                             (assoc! best t candidate)
+                             (assoc! prev t s)))))))
                  
                  (recur (dec s) max-ratio)))))))
      
@@ -1182,7 +1224,7 @@ For each candidate segment [s, t):
 4. Compute `available = system_width - preamble - gutter - postamble`
 5. Check feasibility: `Σ min_i ≤ available`, and `scale ≥ max(ρ_i)`
 6. Compute scale factor: `available / Σ ideal_i`
-7. Compute the adjustment ratio `r = scale − 1`, its badness, and the system's demerits; preamble, gutter and postamble are fixed overhead and enter only through `available`
+7. Compute the calibrated adjustment ratio — `(scale − 1) / σ` when stretching, `(scale − 1) / (1 − max ρ_i)` when shrinking — its badness, and, within the tolerance, the system's demerits; preamble, gutter and postamble are fixed overhead and enter only through `available`
 
 The preamble, gutter and postamble are reserved space that does not participate in scaling or cost computation.
 
@@ -1218,25 +1260,27 @@ The DP algorithm subtracts preamble, gutter and postamble from the policy-provid
 
 ### Segment Cost Computation
 
-Under the feasibility contract (`scale ≥ max(ρ_i)`), proportional scaling produces `actual_i = ideal_i × scale` with no clamping required, so every stack in the system is stretched or compressed by the same adjustment ratio:
+Under the feasibility contract (`scale ≥ max(ρ_i)`), proportional scaling produces `actual_i = ideal_i × scale` with no clamping required, so every stack in the system is stretched or compressed by the same factor, and the system has one calibrated adjustment ratio ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)):
 
 ```
-r = (available − Σ ideal_i) / Σ ideal_i = scale − 1
+scale = available / Σ ideal_i
+r = (scale − 1) / σ                 when scale ≥ 1   (stretching)
+r = (scale − 1) / (1 − max ρ_i)     when scale <  1   (shrinking)
 b = min(b_max, c × |r|^e)
 d = (l + b)² ± p²
 ```
 
-With precomputed prefix sums of `Σ ideal_i` (and, under the other [fitting rules](#fitting-rules), of `Σ stretch_i` and `Σ shrink_i`), `r` and therefore the demerits are O(1) per segment:
+With precomputed prefix sums of `Σ ideal_i` (and, under the other [fitting rules](#fitting-rules), of `Σ stretch_i` and `Σ shrink_i`) and the running `max ρ_i`, `r` and therefore the demerits are O(1) per segment:
 
 ```clojure
-;; Segment cost (inline in DP loop)
+;; Segment cost (inline in DP loop, for a feasible segment)
 (let [preamble (get-preamble-width stacks s)
       gutter (get-in stacks [s :gutter] 0N)
       postamble (get-postamble-width stacks t)
       available (- system-width preamble gutter postamble)
       total-ideal (- (nth ideal-prefix t) (nth ideal-prefix s))
       scale-factor (/ available total-ideal)
-      r (- scale-factor 1N)
+      r (adjustment-ratio scale-factor max-ratio params)
       b (badness r params)
       d (demerits b (break-penalty-fn stacks s t) params)]
   ...)
@@ -1363,9 +1407,9 @@ The running maximum works because the inner loop visits segments in a fixed orde
 Each candidate segment (s, t) requires:
 1. **Reservation lookups**: O(1) to get `preamble[s]` and `gutter[s]`; `postamble[t]` is fixed for the inner loop
 2. **Feasibility**: O(1) to extend the running `max(ρ_i)` by stack `s`
-3. **Cost**: O(1) — the adjustment ratio from prefix sums, then badness and demerits from it
+3. **Cost**: O(1) — the adjustment ratio from prefix sums and the running `max(ρ_i)`, then badness and demerits from it
 
-Every per-segment step is O(1). Cost computation uses the `ideal-prefix` sums; feasibility uses the running maximum carried by the inner loop.
+Every per-segment step is O(1). Cost computation uses the `ideal-prefix` sums, and, when the system is shrinking, the running maximum carried by the inner loop; feasibility uses the same running maximum.
 
 **Rational Arithmetic Throughout**:
 - All numeric literals use `N` suffix: `0N`
@@ -1412,7 +1456,7 @@ Every per-segment step is O(1). Cost computation uses the `ideal-prefix` sums; f
 | Inner loop | O(K) typical | Early termination once minimums exceed the full system width |
 | Reservation lookups | O(1) | Preamble and gutter per segment; postamble per outer iteration |
 | Feasibility check | O(1) | Running max(ρ_i), extended by one stack per step |
-| Cost computation | O(1) | Adjustment ratio from prefix sums; badness and demerits from it |
+| Cost computation | O(1) | Adjustment ratio from prefix sums and the running max(ρ_i); badness and demerits from it |
 | **Total (worst case)** | O(N²) | Without early termination |
 | **Total (typical)** | O(N×K) | With monotone width policy, K ≈ 15 |
 | Page breaking | O(S²) | S = number of systems |
@@ -1431,16 +1475,17 @@ This section defines the relationship once. Elsewhere in this ADR, "Knuth-Plass"
 |-------------|---------|
 | Box | Atom |
 | Natural width of glue | Ideal distance between atom origins |
-| Shrinkability of glue | `ideal − min` for the gap |
+| Stretchability of glue | `σ × ideal` in the baseline, with `σ` a parameter |
+| Shrinkability of glue | `(1 − max ρ_i) × ideal` in the baseline, the system's room above its tightest column; at most `ideal − min` under [fitting rules](#fitting-rules) 3 and 4 |
 | Legal breakpoint | Legal break position, normally a barline |
 | Line length | System width less preamble, gutter and postamble |
-| Adjustment ratio of a line | Adjustment ratio `r` of a system; `r = scale_factor − 1` in the baseline (below) |
+| Adjustment ratio of a line | Adjustment ratio `r` of a system; in the baseline `(scale_factor − 1) / σ` when stretching and `(scale_factor − 1) / (1 − max ρ_i)` when shrinking (below) |
 | Badness, about `100 × \|r\|³`, capped | Badness `b(r) = min(b_max, c × \|r\|^e)`, starting from `c = 100`, `e = 3` |
 | Demerits `(l + b)² ± p²` | Demerits `(l + b)² ± p²`, with `p` from `break-penalty-fn` |
 | Line penalty `l` | Per-system penalty `l` |
 | Tolerance | Optional bound on badness |
 
-**Proportional scaling as a special case**: Proportional scaling is the case in which every glue's stretchability and shrinkability equal its natural width. The Knuth–Plass adjustment ratio then gives one uniform scale factor per system: a line of adjustment ratio `r` sets every gap to `natural × (1 + r)`, which is `ideal_i × scale_factor` with `r = scale_factor − 1`. In the baseline, each gap's `min` enters only as a floor on that uniform scale — the feasibility condition `scale_factor ≥ max(ρ_i)`, the largest column ratio — rather than as a per-gap shrinkability.
+**Proportional scaling as a special case**: Proportional scaling is the case in which every glue's stretchability and shrinkability are proportional to its natural width, by factors common to the whole system: `σ` for stretch and `1 − max ρ_i` for shrink. The Knuth–Plass adjustment ratio then gives one uniform scale factor per system: a system of adjustment ratio `r` sets every gap to `natural × (1 + σ × r)` when stretching and `natural × (1 + (1 − max ρ_i) × r)` when shrinking, which is `ideal_i × scale_factor` in both cases. The gaps' minimums enter through the shrink factor: `max ρ_i`, the largest column ratio, is where the first column gap reaches its minimum, so `r = −1` is the system's collision limit and Knuth–Plass's condition `r ≥ −1` is the feasibility condition `scale_factor ≥ max(ρ_i)` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)).
 
 **In the baseline**: the adjustment ratio, cubic badness, demerits with the per-system penalty, breakpoint penalties through `break-penalty-fn`, and the tolerance are Knuth–Plass's own, with parameters to be settled by validation.
 
@@ -1586,7 +1631,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 **Neutral:**
 
 1. **Two-pass approach** - System and page breaking separated, not jointly optimized
-2. **Knuth–Plass demerits** - Badness of each system's adjustment ratio, with TeX's constants as starting points; the constants and any asymmetric treatment are settled by empirical validation
+2. **Knuth–Plass demerits** - Badness of each system's adjustment ratio, calibrated so that `r = −1` is the system's collision limit, with TeX's constants and the stretchability `σ = 1/2` as starting points; the constants, `σ` and any asymmetric treatment are settled by empirical validation
 3. **Staff-local effects** - Compression affects individual staves within stacks, not uniform visual degradation
 4. **Policy-free core** - Algorithm is purely geometric by default; editorial preferences can be added via optional `break-penalty-fn` without modifying the core
 5. **Gutter storage** - Each stack carries `gutter` (typically 0N); overhead is minimal
