@@ -32,6 +32,17 @@ Accepted
   - [Deterministic Tie-Breaking](#deterministic-tie-breaking)
   - [Edit Locality](#edit-locality)
   - [Caching and Incremental Recompute](#caching-and-incremental-recompute)
+- [Stability and Quality Extensions](#stability-and-quality-extensions)
+  - [Evaluation Criteria](#evaluation-criteria)
+  - [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit)
+  - [Stability Term](#stability-term)
+  - [Frozen Systems](#frozen-systems)
+  - [Consistency Between Adjacent Systems](#consistency-between-adjacent-systems)
+  - [Badness, Ending Classes and Looseness](#badness-ending-classes-and-looseness)
+  - [Fitting: Proportional or Even](#fitting-proportional-or-even)
+  - [Column-Level Feasibility](#column-level-feasibility)
+  - [End-of-System Width](#end-of-system-width)
+  - [Joint System and Page Breaking](#joint-system-and-page-breaking)
 - [Implementation](#implementation)
   - [Core Dynamic Programming Structure (Stage 3)](#core-dynamic-programming-structure-stage-3)
   - [Segment Cost Computation](#segment-cost-computation)
@@ -39,6 +50,11 @@ Accepted
   - [Break Reconstruction](#break-reconstruction)
   - [Key Implementation Notes](#key-implementation-notes)
 - [Relationship to Knuth-Plass](#relationship-to-knuth-plass)
+- [Prior Art](#prior-art)
+  - [Optimal Breaking by Dynamic Programming](#optimal-breaking-by-dynamic-programming)
+  - [The Space Model](#the-space-model)
+  - [Comparison](#comparison)
+  - [What Is Specific to Ooloi](#what-is-specific-to-ooloi)
 - [Consequences](#consequences)
 - [References](#references)
 
@@ -126,7 +142,7 @@ Connecting elements (ties, slurs, hairpins, beams, glissandi, ottava lines) do n
 Minimize global discomfort derived from system-local stack deviations from ideal proportions, while satisfying capacity constraints. The intent is that minimizing global discomfort produces layouts perceived as stable and professionally typeset.
 
 **Architectural thesis**:
-The measure distribution problem, as typically formulated, couples vertical alignment, horizontal spacing, system breaks, page breaks, and connecting element geometry into a single intractable optimization. Ooloi's staged pipeline architecture decouples these concerns, collapsing the distribution problem into a form solvable by known algorithms (specifically, Knuth-Plass style dynamic programming). The innovation is not the algorithm—it is the architectural reduction that makes the algorithm applicable.
+Taken as a whole, the measure distribution problem couples vertical alignment, horizontal spacing, system breaks, page breaks, and connecting element geometry into a single optimization. Ooloi's staged pipeline architecture decouples these concerns, collapsing the distribution problem into a form solvable by known algorithms (specifically, Knuth-Plass style dynamic programming). The algorithm is not new, and optimal breaking by dynamic programming has been applied to music before (see [Prior Art](#prior-art)); this ADR specifies how Ooloi's pipeline reduces its own problem to that form.
 
 ### Architectural Reduction
 
@@ -176,7 +192,7 @@ The reduction does not emerge from clever optimization techniques. It emerges fr
 - Explicit stage boundaries preventing premature coupling
 - Rational arithmetic eliminating error accumulation that would destabilize convergence
 
-The result: a problem that would otherwise require heuristics, iteration limits, and manual correction becomes solvable by straightforward dynamic programming, whose result is guaranteed optimal for its cost function, given its inputs. The algorithm is not novel; its applicability is what the architecture creates.
+The result: the distribution problem becomes solvable by straightforward dynamic programming, whose result is guaranteed optimal for its cost function, given its inputs. The algorithm is not novel (see [Prior Art](#prior-art)).
 
 ### Optimization Characterization
 
@@ -221,7 +237,7 @@ The cost structure operates at two levels:
 This separability enables independent evaluation of candidate break points during dynamic programming.
 
 **Page breaking: Second-order segmentation**:
-Page breaking is treated as a **second segmentation pass over the system sequence, never interleaved with system breaking**. After optimal system breaks are determined, page breaks are computed independently via a second dynamic programming pass. This architectural separation prevents combined optimization attempts that would compromise determinism and tractability.
+Page breaking is treated as a **second segmentation pass over the system sequence, never interleaved with system breaking**. After optimal system breaks are determined, page breaks are computed independently via a second dynamic programming pass. The passes are separate because page breaking needs actual system heights, which exist only once Stage 5 has built the systems; optimising both together would have to work from estimated heights (see [ADR-0028 §Trade-offs](0028-Hierarchical-Rendering-Pipeline.md#trade-offs)).
 
 **Deterministic outcomes**:
 Given identical input (measure stacks with their bounds, system/page capacities), the algorithm produces identical output. This determinism arises from:
@@ -384,6 +400,8 @@ preamble_width = max over all staves of (clef_width + keysig_width + spacing)
 
 Both are fixed overhead subtracted before proportional scaling. Neither participates in cost computation.
 
+**Postamble**: A system-end counterpart to these system-start reservations will be added: a **postamble**, fixed space at the end of a system for the cautionaries that precede a change taking effect at the start of the next system, such as a key signature or time signature change. It depends on where a system ends, as the preamble and gutter depend on where it starts. The formulas, the dynamic program and the code in this ADR will be updated to reserve it; until then they reserve system-start space only. The same pass makes explicit the column ratio of [Column-Level Feasibility](#column-level-feasibility) and the pair comparison of [Deterministic Tie-Breaking](#deterministic-tie-breaking).
+
 ### Width Allocation: Proportional Scaling
 
 The primary width allocation strategy is **proportional scaling** (normalisation) applied to the space remaining after preamble and gutter reservation:
@@ -430,21 +448,21 @@ With proportional scaling, `actual_i = ideal_i × scale_factor` for all i. There
 
 The gutter does not participate in cost computation. It is fixed overhead; the cost function measures only how far measure content deviates from ideal proportions.
 
-**Comparison with TeX**:
+**Relationship to Knuth-Plass**:
 
-TeX's glue model optimizes aesthetic badness with symmetric penalties around natural width. Ooloi's proportional scaling optimizes semantic preservation (proportionality) without penalties—it simply maintains ratios.
-
-If asymmetric optimisation were adopted, it would differ from TeX by treating compression as semantically destructive (not merely aesthetically undesirable), but this remains speculative pending empirical validation.
+Proportional scaling is the Knuth–Plass glue model in the special case where every glue's stretch and shrink are proportional to its natural width; see [Relationship to Knuth-Plass](#relationship-to-knuth-plass) for the mapping and the extensions it leaves available.
 
 ### Variable System Widths
 
 **System width is per-system policy input**, not a page-wide constant. The allocation formula is parameterized by `system_width` for each system independently.
 
 **Any system may have a different width**, including but not limited to:
-- The final system on a page (commonly narrower to avoid excessive whitespace)
+- The final system of the piece or of a movement (commonly narrower to avoid excessive whitespace)
 - Systems following explicit editorial break markings
-- Systems constrained by page geometry, margins, or layout policy
+- Systems constrained by margins or layout policy
 - Systems accommodating graphical elements or marginal annotations
+
+**What a width may depend on**: Stage 3 chooses system breaks before Stage 6 chooses page breaks, so a system's width is a function of the candidate segment `(s, t)` and of layout settings, never of the page the system will land on. Widths that depend on page position — a narrower last system on each page, widths that vary with a system's place on its page — are not available to Stage 3 (see [ADR-0028 §Trade-offs](0028-Hierarchical-Rendering-Pipeline.md#trade-offs)).
 
 **Architectural implications**:
 
@@ -456,16 +474,16 @@ If asymmetric optimisation were adopted, it would differ from TeX by treating co
 
 4. **No algorithmic complexity added**: The DP evaluates `(s, t)` segments against the width available for that system position, minus gutter. Proportional scaling applies the provided width directly.
 
-**Generalization of TeX's "last line" case**:
+**Per-system width policy**:
 
-TeX treats the final line of a paragraph as potentially having different width (or justification policy). Ooloi generalizes this: **any system may have distinct width policy** without special-casing. The architecture naturally supports heterogeneous system widths because allocation is parameterized, not assumed.
+**Any system may have a distinct width policy** without special-casing, the final system included. Heterogeneous system widths need no additional mechanism because allocation is parameterized by width, not built around a fixed one.
 
 **Expressivity without complexity**:
 
 This architectural freedom enables:
-- Natural handling of final systems (avoid excessive stretch)
+- Natural handling of the final system of a piece or movement (avoid excessive stretch)
 - Editorial control over system widths for specific musical reasons
-- Adaptation to page geometry constraints
+- Adaptation to margins and layout settings
 - Future extensions (e.g., systems of varying width for visual effect)
 
 All while preserving the core property: **proportional scaling maintains rhythmic relationships within whatever width is provided**, with preamble and gutter space reserved for system-start elements.
@@ -480,6 +498,8 @@ subject to: Σ actual_i = available, actual_i ≥ min_i
 ```
 
 where `f` is asymmetric: compression toward `min_width` penalized more heavily than expansion beyond `ideal_width`.
+
+This general formulation is broader than the Knuth–Plass extension of separate stretch and shrink per glue (see [Relationship to Knuth-Plass](#relationship-to-knuth-plass)). That extension keeps allocation in closed form within a system and segment evaluation O(1); the costs listed below apply to the general formulation.
 
 **Potential benefits**:
 - Could avoid extreme compression by preferring non-uniform expansion
@@ -527,7 +547,7 @@ These scenarios are theoretical. The actual question is: **do they occur in real
   (find-optimal-breaks systems page-height-fn))
 ```
 
-This architectural separation prevents combined optimization attempts that would compromise determinism.
+The separation exists because system heights are known only after Stage 5 has built the systems; a combined optimisation would have to work from estimated heights.
 
 ### Editorial Control Mechanisms
 
@@ -753,13 +773,11 @@ This is **selection, not computation**. The space was pre-reserved; Stage 5 rend
 
 ### Deterministic Tie-Breaking
 
-When multiple break configurations produce identical discomfort (a "tie" in cost, not a musical tie), the DP evaluation order ensures consistent choices:
+When break configurations produce identical discomfort (a "tie" in cost, not a musical tie), the configuration is chosen by a secondary cost, compared only when the primary costs are equal. The secondary cost is separable — a sum of per-break terms — and differs for any two distinct configurations: for example, the sum over the configuration's breakpoints `b` of `2^−b`, which, like a binary fraction, is different for any two different sets of breakpoints. Costs are compared as pairs (primary, secondary), lexicographically. Pairs add componentwise and the lexicographic order is preserved under addition, so the DP remains exact for the pair, and the optimum is unique.
 
-1. Outer loop iterates `t` from 1 to N (increasing)
-2. Inner loop iterates `s` from `t-1` to 0 (decreasing)
-3. Updates occur only on strict improvement (`<`, not `<=`)
+Because the choice is a property of the configuration rather than of the order in which a procedure meets candidates, every procedure that minimises the pair — the full pass, and [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit) from forward and backward tables — returns the same configuration. The result is deterministic across runs, platforms and editing histories. Ties are expected rather than exceptional: under rational arithmetic, identical measures produce identical costs.
 
-This means: for equal costs, the algorithm retains the first valid configuration found (larger segments when possible). The result is deterministic across runs and platforms.
+The Stage 3 code sketch still resolves ties by evaluation order (`t` increasing, `s` decreasing, update only on strict improvement), which a backward table cannot reproduce. It is updated to the pair comparison in the same pass that adds the postamble and the column ratio.
 
 If editorial preferences are needed (e.g., prefer structural boundaries), they can be encoded via the optional `break-penalty-fn` parameter, which shifts costs rather than relying on tie-breaking.
 
@@ -771,7 +789,7 @@ The break configuration Stage 3 selects is a global optimum, and a global optimu
 
 What holds is that recomputation is cheap. Stack metrics are cached (see [Caching and Incremental Recompute](#caching-and-incremental-recompute)), so re-running Stage 3 after an edit is scalar arithmetic over the cached metrics: collision detection, atom formation and vertical reconciliation are not repeated for any stack whose content did not change.
 
-The mechanisms by which edit locality is to be achieved are an open design question, which this ADR does not settle.
+The mechanisms that provide it are specified under [Stability and Quality Extensions](#stability-and-quality-extensions): exact re-optimisation after an edit keeps recomputation to about K² evaluations, and a stability term and frozen systems keep breaks where they were.
 
 ### Caching and Incremental Recompute
 
@@ -822,7 +840,95 @@ With cached stack metrics, Stage 3 runtime is dominated by DP over **scalars**, 
 
 #### Relationship to Edit Locality
 
-This caching strategy makes recomputation after an edit cheap: re-running Stage 3 costs scalar arithmetic over cached aggregates, and no upstream work is repeated for stacks whose content did not change. It does not make the result local. A re-run may change breaks anywhere in the score; how break decisions away from an edit are to be preserved is the open question stated under [Edit Locality](#edit-locality).
+This caching strategy makes recomputation after an edit cheap: re-running Stage 3 costs scalar arithmetic over cached aggregates, and no upstream work is repeated for stacks whose content did not change. It does not make the result local. A re-run may change breaks anywhere in the score; the mechanisms that keep break decisions stable are specified under [Stability and Quality Extensions](#stability-and-quality-extensions).
+
+## Stability and Quality Extensions
+
+The baseline specified above is complete and exact on its own. The mechanisms in this section extend it for stability under editing and for layout quality. Each is specified here with its cost and its effect on exactness. Which are enabled by default, and with which parameters, is decided during implementation by the empirical validation in [Consequences](#consequences) — simple scores, then complex ones, then Elektra — against the criteria below; the one exception is [Column-Level Feasibility](#column-level-feasibility), which corrects the baseline itself.
+
+### Evaluation Criteria
+
+Visual judgement, together with measurements taken on the same scores:
+
+- The distribution of per-system scale factors: minimum, maximum, variance
+- The difference between adjacent systems' scale factors
+- The number of systems
+- How many breaks an edit changes (stability)
+- Running time
+
+### Exact Re-optimisation After an Edit
+
+Two tables are kept with the layout: a forward table `F(s)`, the least cost of segmenting stacks `[0, s)` (the DP's `best`), and a backward table `G(t)`, the least cost of segmenting `[t, N)`, computed the same way from the end, with a `next` pointer per entry.
+
+An edit to stack `m` changes the cost of exactly the segments that contain `m`. `F(s)` for `s ≤ m` and `G(t)` for `t > m` involve no such segment and are unchanged. Every segmentation has exactly one segment containing `m`, and by optimal substructure the parts either side of it are independently optimal, so the new optimum is
+
+```
+min over feasible [s, t) with s ≤ m < t of   F(s) + cost′(s, t) + G(t)
+```
+
+— at most about K² evaluations. Breaks are recovered through `prev` on the left and `next` on the right. The result is exact.
+
+- **Range edits**: an edit that changes every segment intersecting a range `[a, b]` — several adjacent stacks, or a width that depends on where a system ends (see [End-of-System Width](#end-of-system-width)) — is re-optimised by a forward DP over the window `[a − K, b + K]`, seeded from `F` and closed with `G`: O((b − a + 2K) × K).
+- **Full passes**: a change of clef or key signature alters the preamble of every later system, and a key signature change alters the accidentals of later measures ([ADR-0035](0035-Remembered-Alterations.md)); a change to forced or prevented breaks changes the problem's partition. These re-run Stage 3 in full.
+- **Refresh**: after an edit, `F(s)` for `s > m` and `G(t)` for `t ≤ m` are stale. They are recomputed off the edit's critical path, O(N×K), or lazily: the next edit at `m₂` needs only the part of each table between the two edits.
+- **Backward early termination** needs the mirror of the width assumption under [Key Implementation Notes](#key-implementation-notes): for fixed `t`, the system width must not increase as the end moves right. Where it does, the backward pass scans every end — slower, still exact.
+- **Ties** are resolved as [Deterministic Tie-Breaking](#deterministic-tie-breaking) specifies, which both the full pass and re-optimisation apply, so a score produces the same layout however its edits arrived.
+
+### Stability Term
+
+`cost″(s, t) = cost(s, t) + λ × D(s, t)`, where `D` measures departure from an anchored previous layout — for example 1 when `s` is not a break of the anchor, or when `[s, t)` is not one of its systems. `D` depends only on the segment, so the objective stays separable and the result is exact for `cost + λD`. That objective is deliberately not the pure proportionality cost: `λ` sets how much quality is exchanged for stability.
+
+- **The anchor is layout data**: persisted with the layout, and identifying breaks by measure identity rather than by index, so that it survives measure insertion and deletion and the layout remains regenerable from semantics and layout data.
+- **Anchor policy sets the refresh cost**: while the anchor is fixed, [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit) applies unchanged, with `F` and `G` computed under the anchored objective. Moving the anchor changes `D` for any segment whose relation to it changed, so both tables are recomputed, O(N×K). When the anchor moves — after every edit, on save, on an explicit reflow — and the value of `λ` are evaluated.
+
+### Frozen Systems
+
+A system the user locks keeps its breaks: its start and end become forced breaks and the breakpoints inside it are prevented, using the pre-segmentation and grouping of [Editorial Control Mechanisms](#editorial-control-mechanisms). A freeze is a constraint, so the result is exact over the configurations that respect it, and it reduces work by partitioning the problem; each partition keeps its own `F` and `G`. Freezes are anchored to measure identity. What happens when an edit inside a frozen system makes it infeasible — refusing the edit, releasing the freeze, or accepting an overfull system — is not yet specified.
+
+### Consistency Between Adjacent Systems
+
+Two exact forms, each needing more DP state than the baseline:
+
+- **Fitness classes**: each system is classified by its scale factor into a small number of bands, and adjacent systems whose bands differ by more than one are penalised. One node per (breakpoint, class): about ×4 state and work with four classes.
+- **Squared difference of adjacent scale factors**: `μ × (scale(s, t) − scale(r, s))²`, where `[r, s)` is the preceding system. The state is the (start, end) of the last system: N×K states with K transitions each, O(N×K²) — about 180,000 evaluations at N = 800, K = 15.
+
+Keeping one node per breakpoint while adding an adjacency term makes the result an approximation (see [Comparison](#comparison)). The term carries a known risk, recorded in a comment in LilyPond's `lily/gourlay-breaking.cc`: where music becomes gradually denser, a uniformity requirement drives cramped lines to become more cramped, because the step from a cramped line of three measures to a loose line of two is large. Scores of gradually changing density are part of the evaluation of either form.
+
+### Badness, Ending Classes and Looseness
+
+- **Cubic badness** in place of the quadratic cost: Knuth–Plass rates a line by badness roughly cubic in its adjustment ratio, which punishes large deviations harder and small ones less and is not weighted by content. O(1) per segment; exact. Evaluated by comparing the break choices of both costs on the same scores.
+- **Ending classes**: the class idea applied to the kind of boundary a system ends on — a phrase end, a rehearsal mark, the end of a movement. A penalty that depends only on the boundary needs no classes; `break-penalty-fn` already expresses it. Classes are needed only when the cost depends on the preceding system's ending, and multiply the state by the number of kinds.
+- **Looseness**: a user control asking for more or fewer systems than the optimum. The system count joins the state, one node per (breakpoint, count): O(S×N×K), which is O(N²) with S ≈ N / K — about 640,000 evaluations at N = 800. Exact.
+
+### Fitting: Proportional or Even
+
+Two steps are kept apart. **Ideal spacing** is derived within each measure from the durations of its notes and tuplets, in Stage 1; duration enters there and only there. **Fitting** puts measures onto systems and scales their ideal widths to fill each system; Stage 3 decides it and Stage 4 applies it. The breaking decision depends on the fitting rule, because the DP judges each candidate system by its feasibility and cost under that rule. A fitting rule weighted by duration would count duration twice, and is not a candidate.
+
+In Knuth–Plass terms the fitting rule is the choice of each glue's stretch and shrink ([Relationship to Knuth-Plass](#relationship-to-knuth-plass)):
+
+- **Proportional** — the baseline: stretch and shrink proportional to natural width, so one scale factor per system. Ratios between ideal widths, and with them the rhythmic hierarchy Stage 1 encoded, are kept.
+- **Even**: every column gap has the same stretch and shrink, so surplus and deficit are shared equally among columns. Ratios are not kept, and the hierarchy flattens.
+- **Shrink bounded by the minimum**: each column gap shrinks by up to `ideal − min`, with proportional stretch. An incompressible gap has zero shrink and the others absorb the compression, which removes the baseline's rigidity — under `scale ≥ max(min_i / ideal_i)` one incompressible stack blocks compression of its whole system. Ratios are kept under stretching and not under compression.
+
+Each is linear glue: a stack's stretch and shrink are closed-form sums, so feasibility and a least-squares cost are O(1) from prefix sums, and the DP stays exact. Under the last, feasibility is `Σ min ≤ available` (adjustment ratio `r ≥ −1`), which keeps every column gap at or above its minimum. Under anything but the baseline, Stage 4 applies the system's adjustment ratio through each gap's own glue rather than one scale factor to every atom. The evaluation covers systems containing one dense or incompressible measure among sparse ones, preservation of rhythmic hierarchy, consistency in complex rhythmic contexts, and the proportionality each rule gives up.
+
+### Column-Level Feasibility
+
+Under the baseline, one scale factor is applied to every column gap within every stack. A column gap stays at or above its own minimum only if `scale ≥ min_gap / ideal_gap` for that gap, so the ratio the sufficient feasibility condition takes for a stack is the **largest column ratio within it**, `max_j(min_gap_j / ideal_gap_j)`, not the stack's `min / ideal`. The two coincide only when every column of a stack is equally compressible; otherwise a stack can pass a stack-level check while one of its columns collides. Wherever this ADR writes `max(min_i / ideal_i)` in the feasibility condition, `min_i / ideal_i` is the stack's largest column ratio. `Σ min_i ≤ available` remains the necessary condition, with `min_i` the sum of the stack's minimum gaps. The formulas, interface contract and code are updated to carry the column ratio explicitly in the same pass that adds the [postamble](#the-preamble-system-start-clef-and-key-signature-width).
+
+### End-of-System Width
+
+The postamble — courtesy clefs, key signatures and time signatures at the end of a system, before a change taking effect at the start of the next — is a width `tail[t]` depending only on where the segment ends: `available = system_width − preamble[s] − gutter[s] − tail[t]`. It is fixed overhead outside the cost, O(1) per segment, constant across the inner loop for fixed `t`, and keeps the result exact. An edit that changes it is a range edit for re-optimisation. It is added to this ADR's formulas and code in a pass of its own (see [The Preamble](#the-preamble-system-start-clef-and-key-signature-width)).
+
+### Joint System and Page Breaking
+
+The design separates system breaking from page breaking ([ADR-0028 §Trade-offs](0028-Hierarchical-Rendering-Pipeline.md#trade-offs)). The alternative is for Stage 3 to emit the best breaking for each system count — one node per (breakpoint, count), O(S×N×K) — and for Stage 6 to choose among them, as LilyPond's optimal page breaker does. Stage 6 would then need the heights of systems that only exist for the breaking Stages 4 and 5 actually build. The ways of supplying them each give something up:
+
+- **Estimated heights**, as LilyPond's "pure" heights are: the breaking is chosen on estimates, and the real heights may not match — a page may overflow, or a better choice may have existed. Correcting it by re-running Stage 6 in a way that can change the breaking is iteration, which the pipeline excludes.
+- **Every candidate built**: Stages 4 and 5 run for each candidate breaking, so Stage 6 chooses on real heights. Exact and unidirectional, but Stage 5 runs once per candidate; limited to a few counts around the optimum (`S − 1`, `S`, `S + 1`), it multiplies that work by the number of candidates.
+- **Separation**, the current design: system breaks are chosen without pages in view, and page turns can only use system boundaries Stage 3 produced.
+
+Determinism holds under all three. Adopting either of the first two changes the ADR-0028 trade-off as well as this ADR, and is decided by the same evaluation.
 
 ## Implementation
 
@@ -886,13 +992,17 @@ The following implementation performs **Stage 3: System Breaking** - distributin
                  ;; Check if measures can fit in remaining space
                  total-min (- (nth min-prefix t) (nth min-prefix s))]
 
-             ;; Early termination: stop once the minimums no longer fit
-             (when (<= total-min available)
+             ;; Early termination: stop once the minimums exceed the full system width.
+             ;; This bound only grows harder to meet as s moves left; `available` does
+             ;; not, because preamble[s] and gutter[s] vary with s
+             (when (<= total-min system-width)
 
-               ;; Check tighter feasibility: scale factor must not require clamping
+               ;; Necessary: minimums fit after reserving preamble and gutter
+               ;; Sufficient: scale factor must not require clamping
                (let [total-ideal (- (nth ideal-prefix t) (nth ideal-prefix s))
                      scale-factor (/ available total-ideal)
-                     feasible? (>= scale-factor max-ratio)]
+                     feasible? (and (<= total-min available)
+                                    (>= scale-factor max-ratio))]
 
                  (when (and feasible? (some? (nth best s)))
                    ;; Compute cost using closed form (valid because feasibility guarantees no clamping)
@@ -952,8 +1062,8 @@ The `system-width-fn` accepts `(start-pos, end-pos)` and returns the total avail
 ;; Narrow final system
 (fn [s t] (if (= t n) final-width standard-width))
 
-;; Position-based policy - varying by page position
-(fn [s t] (width-for-position t))
+;; Narrower final system of each movement
+(fn [s t] (if (movement-end? t) final-width standard-width))
 
 ;; Editorial control - manual overrides
 (fn [s t] (lookup-explicit-width s t))
@@ -1133,10 +1243,11 @@ Every per-segment step is O(1). Cost computation uses precomputed `ideal-sq-pref
 - Note: gutter is O(1) per-segment lookup, not prefix-summed (only first stack contributes)
 
 **Early Termination**:
-- `:while` in inner loop stops when stacks no longer fit
-- Monotonicity: as `s` moves left, `total-min` increases (more stacks)
-- Once infeasible, all earlier `s` also infeasible
-- Reduces effective complexity to O(N×K) where K â‰ˆ 15
+- The inner loop stops once `total-min` exceeds the full `system-width`
+- Monotonicity: as `s` moves left, `total-min` increases (more stacks) and, under the assumption below, `system-width` does not increase; once the minimums exceed the full system width, they do so for every earlier `s`
+- The bound is the full system width, not `available`. Since `available = system_width - preamble[s] - gutter[s]` varies with `s`, a segment that fails against `available` because of a wide preamble or gutter at `s` can be followed by a feasible segment at `s-1`. Preamble and gutter are non-negative, so `available ≤ system_width`, and every feasible segment satisfies the full-width bound
+- The check against `available` is made at each step, as the necessary feasibility condition
+- Reduces effective complexity to O(N×K), where K is the largest number of consecutive stacks whose minimums fit within a full system width (K ≈ 15 typical)
 - **Assumption**: `system-width-fn` must be non-increasing as `s` moves left (for fixed `t`). This holds for typical policies (uniform width, narrower final system). If violated, early termination is invalid and the algorithm must check all `s` values.
 
 **Complexity Analysis**:
@@ -1145,7 +1256,7 @@ Every per-segment step is O(1). Cost computation uses precomputed `ideal-sq-pref
 |-----------|------------|-------|
 | Precomputation | O(N) | Prefix sums for min, ideal, and ideal² |
 | Outer loop | O(N) | Each position once |
-| Inner loop | O(K) typical | Early termination when infeasible |
+| Inner loop | O(K) typical | Early termination once minimums exceed the full system width |
 | Gutter lookup | O(1) | Per-segment constant time |
 | Feasibility check | O(1) | Running max(min_i / ideal_i), extended by one stack per step |
 | Cost computation | O(1) | Closed form using prefix sums |
@@ -1157,17 +1268,39 @@ At N=800 measures, K=15: ~12,000 segment evaluations, each O(1) for both feasibi
 
 ## Relationship to Knuth-Plass
 
-**Structural analogy**:
+This section defines the relationship once. Elsewhere in this ADR, "Knuth-Plass" is shorthand for it.
 
-| TeX Paragraph Breaking | Ooloi Measure Distribution |
-|------------------------|----------------------------|
-| Word sequence | Measure stack sequence |
-| Natural width + glue | Ideal width + flexibility |
-| Line capacity | System capacity (minus gutter) |
-| Badness function | Discomfort function |
-| Aesthetic optimization (symmetric) | Proportionality preservation |
-| Dynamic programming | Dynamic programming |
-| Optimal line breaks | Optimal system breaks |
+**Classification**: Stage 3's baseline is an optimal-segmentation dynamic program in the Knuth–Plass family (Knuth and Plass, 1981; see [Prior Art](#prior-art)). Its cost is least-squares deviation from proportional widths, evaluated in closed form from prefix sums (see [Segment Cost Computation](#segment-cost-computation)).
+
+**Mapping onto the Knuth–Plass primitives**:
+
+| Knuth–Plass | Stage 3 |
+|-------------|---------|
+| Box | Atom |
+| Natural width of glue | Ideal distance between atom origins |
+| Shrinkability of glue | `ideal − min` for the gap |
+| Legal breakpoint | Legal break position, normally a barline |
+| Line length | System width less preamble and gutter |
+| Adjustment ratio of a line | Determines the scale factor of a system (below) |
+
+**Proportional scaling as a special case**: Proportional scaling is the case in which every glue's stretchability and shrinkability are proportional to its natural width. The Knuth–Plass adjustment ratio then gives one uniform scale factor per system: with stretch `c × natural` for every glue, a line of adjustment ratio `r` sets every gap to `natural × (1 + r × c)`, which is `ideal_i × scale_factor` with `scale_factor − 1 = r × c`. In the baseline, each gap's `min` enters only as a floor on that uniform scale — the feasibility condition `scale_factor ≥ max(min_i / ideal_i)` — rather than as a per-gap shrinkability.
+
+**Extensions available**: Each Knuth–Plass feature is therefore an available extension of the baseline, not a departure from it:
+
+- Cubic badness in place of the quadratic cost
+- Separate stretch and shrink, with `ideal − min` as each gap's shrinkability (see [Alternative: Asymmetric Cost Optimization](#alternative-asymmetric-cost-optimization))
+- Fitness classes, for example for different kinds of system endings
+- Penalties at breakpoints, through the existing `break-penalty-fn`
+- Looseness
+
+**The scalar reduction is preserved**: Summing each stack's glue keeps the reduction to one scalar tuple per stack. Prefix sums of natural width, stretch and shrink give O(1) segment cost and O(1) feasibility, as they do for the baseline.
+
+**Exactness and DP state**: The baseline's cost has no term linking adjacent systems, so one DP node per breakpoint is enough for the result to be exact. Cubic badness, separate stretch and shrink, and breakpoint penalties keep that. Two extensions need more state:
+
+- **Fitness classes**: a cost that depends on the class of the preceding system is exact only if the DP keeps one node per (breakpoint, fitness class), which multiplies the work by the number of classes. Keeping a single node per breakpoint with such a term makes the result an approximation.
+- **Looseness**: aiming for a number of systems other than the optimal one requires the number of systems so far to be part of the state, one node per (breakpoint, system count).
+
+**Adoption**: Whether any extension is adopted is decided during implementation, by the empirical validation this ADR specifies under [Future Considerations](#consequences) (simple scores, then complex ones, then Elektra). The extensions are specified, with their costs and evaluation criteria, under [Stability and Quality Extensions](#stability-and-quality-extensions); none is enabled by this ADR.
 
 Both problems share the mathematical structure enabling polynomial-time exact optimization of the reduced subproblem:
 - 1-dimensional sequence with scalar preferences
@@ -1180,17 +1313,11 @@ This approach does **not** solve "general music engraving" or "optimal notation 
 
 The reduction is what matters: by solving vertical coordination, symbol collision, and semantic determinism in earlier stages, the distribution problem becomes structurally similar to paragraph breaking. This is not algorithmic cleverness finding a better heuristic—it is architectural separation creating a problem formulation where exact optimization applies.
 
-**Critical semantic difference from TeX**:
+**What the natural widths mean**:
 
-While structurally analogous, Ooloi's problem has a different semantic emphasis than TeX paragraph breaking:
+`ideal_width` encodes rhythmic proportionality, which has musical meaning. Choosing the proportional special case is what preserves it: all measures in a system share one scale factor, so their ratios hold by construction. Graphical decorations (gutter content) and the preamble are fixed overhead, outside the scaled glue.
 
-- **TeX optimizes aesthetic badness**: Natural width represents aesthetic ideal, compression and expansion are symmetrically undesirable deviations from beauty
-
-- **Ooloi preserves proportionality**: `ideal_width` encodes rhythmic proportionality with musical meaning. The baseline approach (proportional scaling) maintains these relationships by construction rather than through optimisation.
-
-The key difference is not in the cost function but in the goal: TeX seeks visual balance through symmetric penalties. Ooloi seeks semantic preservation through proportionality maintenance, with graphical decorations (gutter content) accommodated as fixed overhead.
-
-If future refinement uses asymmetric optimisation, the distinction would sharpen: compression toward `min_width` would be treated as semantically destructive (destroying proportionality), not merely aesthetically undesirable. But this remains speculative pending empirical validation of the baseline approach.
+Under the separate-stretch-and-shrink extension, compression toward `min_width` would cost proportionality, and the choice of shrinkability would express how much. Whether that extension is needed remains subject to the empirical validation described above.
 
 **Architectural prerequisites**:
 
@@ -1203,7 +1330,7 @@ Ooloi's pipeline architecture transforms the problem. By the time Stage 3 execut
 - Gutter requirements are computed (Stage 1)
 - Connecting elements are deferred (Stage 5)
 
-What remains is exactly the Knuth-Plass problem formulation. The algorithm is textbook; its applicability is what the architecture creates.
+What remains is the Knuth-Plass problem formulation, over measure-stack scalars.
 
 **Why the DP runs once per pass**:
 
@@ -1215,13 +1342,68 @@ Knuth-Plass itself is efficient—O(N²) in the general case, O(N×K) with early
 
 At N=800 measures with K=15 measures per system, a pass is approximately 12,000 segment evaluations, each O(1) scalar arithmetic.
 
-Ooloi's ability to apply Knuth-Plass is therefore not algorithmic sophistication but architectural consequence. The pipeline stages, immutable data structures, and rational arithmetic create both the problem formulation and the performance characteristics the algorithm requires. This is the pattern throughout Ooloi: apparently simple solutions become available—and become fast—when architecture eliminates the coupling that made them inapplicable.
+The pipeline stages, immutable data structures and rational arithmetic provide both the problem formulation and the conditions under which the DP runs once per pass.
+
+## Prior Art
+
+Stage 3 draws on two lineages: optimal breaking by dynamic programming, and a model of horizontal space that separates fixed width from scalable width.
+
+### Optimal Breaking by Dynamic Programming
+
+- **Knuth and Plass**, "Breaking Paragraphs into Lines", *Software—Practice and Experience* 11 (1981), pp. 1119–1184. Optimal line breaking of paragraphs by dynamic programming over legal breakpoints; the family Stage 3 belongs to.
+
+- **Hegazy and Gourlay**, "Optimal line breaking in music", Technical Report OSU-CISRC-8/87-TR33, Department of Computer and Information Science, The Ohio State University (1987); also in *Proceedings of the International Conference on Electronic Publishing, Document Manipulation and Typography*, Nice, April 1988, ed. J. C. van Vliet, Cambridge University Press. It is cited here for its existence and its place in this lineage: it is the report that LilyPond's first line breaker names as its source. This ADR describes nothing of its contents.
+
+- **LilyPond**:
+  - `lily/gourlay-breaking.cc`, by Han-Wen Nienhuys, is present from release 0.1.1 (August 1997) until September 2006. From release 1.1.32 (February 1999) its comment reads: "This algorithms is adapted from the OSU Tech report on breaking lines." What follows describes LilyPond's code, not the report, which may differ from it.
+    - In both the 0.1.1 and the 2006 revisions it is a dynamic program over legal breakpoints that keeps one best predecessor per breakpoint. For each breakpoint it tries lines ending there, extending them backwards one breakpoint at a time until a line becomes infeasible, and traces the chosen breaks back from the end.
+    - In release 0.1.1 the cost of a configuration is the sum of each line's spacing energy, which is separable. The search is bounded: lines longer than a set number of measures, and lines whose energy exceeds a set bound, are not considered, and every candidate line is first evaluated with an approximate spacing solution; a candidate whose approximate energy cannot improve on the best found is skipped, and the exact spacing is computed only for a remaining candidate whose approximate solution fails its constraints. Where these bounds or the approximate screening exclude a line, the result can differ from the optimum of the cost.
+    - In its 2006 form it solves the spacing problem for every candidate line, with no measure or energy bound. A line's demerits are |force| + |previous force − force| + break penalty, with a large penalty for a line that cannot satisfy its spacing constraints. The middle term depends on the previous line, and is evaluated against the single predecessor stored for the line's starting breakpoint; the result is therefore not guaranteed to minimise total demerits.
+  - `lily/constrained-breaking.cc`, by Joe Neeman, is added in February 2006 and replaces it; `gourlay-breaking.cc` is removed in September 2006. It runs a dynamic program over (number of systems, breakpoint), with demerits force² + (previous force − force)² + break penalty, and solves a spring-and-rod spacing problem for every candidate line (`get_line_forces` in `lily/simple-spacer.cc`). It keeps one node per (number of systems, breakpoint), so the adjacency term is again evaluated against a single stored predecessor; with ragged-right lines the demerits reduce to force² plus break penalty, which is separable, and the result is then the exact optimum of that cost.
+  - It works together with an optimal page breaker (`lily/optimal-page-breaking.cc`) and a page-turn breaker (`lily/page-turn-page-breaking.cc`). Page decisions use "pure" heights (`lily/constrained-breaking.cc`), which LilyPond's Contributor's Guide describes as estimates made before line breaking.
+
+### The Space Model
+
+- **MuTeX**: Andrea Steinbach and Angelika Schofer, *Automatisierter Notensatz mit TeX*, master's thesis, Rheinische Friedrich-Wilhelms Universität, Bonn, 1987. Limited to a single staff; it used TeX glue to control horizontal spacing and justification, and so TeX's own line breaking.
+
+- **MusicTeX**: Daniel Taupin, around 1991. It adds multiple staves, as a single-pass system.
+
+- **MusiXTeX**: Daniel Taupin, Ross Mitchell and Andreas Egler, "MusiXTeX : L'écriture de la musique polyphonique ou instrumentale avec TeX", *Cahiers GUTenberg* 21 (1995), pp. 107–113.
+  - The MusiXTeX manual, §1.3.1, explains why TeX glue fails for music: a line holds far fewer bars than a line of text holds words, so treating each bar as a word leaves gaps before the bar rules.
+  - It divides horizontal space into *hard* space (bar rules, clefs, key signatures), which is fixed, and *scalable* space, defined in multiples of one spacing unit, `\elemskip`. One value of `\elemskip` is computed per line, so that the scalable space fills what the hard space leaves.
+  - This corresponds to ADR-0037's split: the preamble and gutter are hard space, ideal widths are scalable space, and `\elemskip` per line is the scale factor per system. ADR-0037 treats only system-start material as hard; bar rules within a system scale with the measures.
+  - Its breaking pass, `musixflx` (Ross Mitchell, 1992–1997), sets a target number of lines from the total width divided by the line width, then fills lines one at a time, adding bars until a line overflows. It is greedy, not optimal.
+
+### Comparison
+
+Each breaker is described against its own cost: whether the result it returns is guaranteed to be the minimum of the cost it defines.
+
+| Breaker | Search | Cost | Exact for its own cost |
+|---------|--------|------|------------------------|
+| `musixflx` (MusiXTeX) | Target line count, then lines filled one at a time | None; `\elemskip` is set to fill each line | No: greedy |
+| LilyPond `gourlay-breaking.cc`, 1997 | DP, one node per breakpoint | Sum of line energies (separable) | Where its measure limit, energy bound and approximate screening do not exclude the optimal line |
+| LilyPond `gourlay-breaking.cc`, 2006 | DP, one node per breakpoint | \|force\| + \|previous force − force\| + penalty | No: the adjacency term is evaluated against one stored predecessor |
+| LilyPond `constrained-breaking.cc` | DP, one node per (system count, breakpoint) | force² + (previous force − force)² + penalty | Justified lines: no, for the same reason. Ragged-right lines: yes |
+| LilyPond page breaking | DP over fixed lines; search over system counts | force² per page plus penalties | Page DP over fixed lines: yes. Search over system counts: no, bounded by heuristics and using estimated heights |
+| Stage 3 | DP, one node per breakpoint | (scale − 1)² × Σ ideal² + `break-penalty-fn` | Yes |
+| Stage 6 | DP over systems | Not yet specified | Not established |
+
+**Why Stage 3 is exact**: its cost has no term linking adjacent systems, so one node per breakpoint loses nothing; every other input — `system-width-fn`, `preamble[s]`, `gutter[s]`, `break-penalty-fn` — depends only on the candidate segment; forced breaks partition the problem into independent subproblems; prevented breaks only reduce the set of breakpoints; and the early-termination bound excludes only infeasible segments (see [Key Implementation Notes](#key-implementation-notes)). In this sense Stage 3 is an exact Knuth–Plass computation. Its cost is the baseline, not the full Knuth–Plass cost model; which extensions keep exactness at which cost in state is stated under [Relationship to Knuth-Plass](#relationship-to-knuth-plass).
+
+**Why Stage 6 is not established**: its cost function is not specified, and page heights that depend on the page — a first page carrying a title, running headers — require the page number, or at least its parity, in the DP state. Both are open.
+
+### What Is Specific to Ooloi
+
+- The combination of the two lineages over measure-stack scalars, structured so that full Knuth–Plass remains available
+- The gutter and preamble as precomputed widths that depend on where a system starts
+- Exact rational arithmetic, giving identical results on every platform
+- Use inside an interactive, collaborative editor
 
 ## Consequences
 
 **Architectural pattern**:
 
-This ADR demonstrates the same architectural property as [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md). In both cases, problems that traditionally require heuristics, special cases, or manual correction collapse into straightforward algorithms when the architecture provides:
+This ADR demonstrates the same architectural property as [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md). In both cases, a problem that looks as though it needs heuristics, special cases, or manual correction reduces to a straightforward algorithm once the architecture provides:
 - Immutable data structures
 - Semantic determinism resolved before the algorithm executes
 - Explicit stage boundaries preventing feedback loops
@@ -1237,7 +1419,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 4. **Closed semantic model** - Rendering decorations cannot affect musical semantics
 5. **Deterministic output** - Identical input produces identical layout across platforms
 6. **Cheap recomputation** - An edit re-runs Stage 3 over cached scalar metrics, without repeating upstream work for unchanged stacks
-7. **Variable system widths** - Natural handling of final systems, editorial overrides, page geometry
+7. **Variable system widths** - Natural handling of final systems, editorial overrides, margins and layout settings
 8. **Clean stage separation** - No feedback loops with connecting elements or decorations
 9. **Performance** - O(N×K) complexity handles large scores efficiently
 10. **Rational arithmetic** - No floating-point drift across platforms
@@ -1250,7 +1432,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 3. **Staff-local effects** - Compression affects individual staves within stacks, not uniform visual degradation
 4. **Policy-free core** - Algorithm is purely geometric by default; editorial preferences can be added via optional `break-penalty-fn` without modifying the core
 5. **Gutter storage** - Each stack carries `gutter` (typically 0N); overhead is minimal
-6. **Global breaks** - The break configuration is a global optimum, so an edit can change system breaks anywhere in the score; the mechanisms for edit locality are an open design question
+6. **Global breaks** - The break configuration is a global optimum, so an edit can change system breaks anywhere in the score; stability comes from the mechanisms under [Stability and Quality Extensions](#stability-and-quality-extensions), not from the DP itself
 
 **Future Considerations:**
 
@@ -1270,6 +1452,11 @@ The formal validation will determine whether the baseline approach is sufficient
 - [ADR-0014: Timewalk](0014-Timewalk.md) (temporal traversal providing measure discovery)
 - [ADR-0029: Global Hash-Consing](0029-Global-Hash-Consing.md) (immutable data structures enabling stage separation)
 - [Knuth–Plass line-breaking algorithm](https://en.wikipedia.org/wiki/Knuth%E2%80%93Plass_line-breaking_algorithm) - Wikipedia overview
-- Knuth, D.E. and Plass, M.F. "Breaking Paragraphs into Lines" (1981) - foundational algorithm
+- Knuth, D.E. and Plass, M.F. "Breaking Paragraphs into Lines", *Software—Practice and Experience* 11 (1981), pp. 1119–1184 - foundational algorithm
+- Hegazy, W.A. and Gourlay, J.S. "Optimal line breaking in music", Technical Report OSU-CISRC-8/87-TR33, The Ohio State University (1987); also in *Proceedings of the International Conference on Electronic Publishing, Document Manipulation and Typography*, Nice, 1988, ed. J.C. van Vliet, Cambridge University Press
+- LilyPond source: `lily/gourlay-breaking.cc` (1997–2006), `lily/constrained-breaking.cc`, `lily/simple-spacer.cc`, `lily/optimal-page-breaking.cc`, `lily/page-turn-page-breaking.cc`
+- Taupin, D., Mitchell, R. and Egler, A. "MusiXTeX : L'écriture de la musique polyphonique ou instrumentale avec TeX", *Cahiers GUTenberg* 21 (1995), pp. 107–113
+- The MusiXTeX manual, §1.3.1 "The three pass system: Introduction"; `musixflx` (Ross Mitchell, 1992–1997)
+- Steinbach, A. and Schofer, A. *Automatisierter Notensatz mit TeX*, master's thesis, Rheinische Friedrich-Wilhelms Universität, Bonn (1987)
 - Ross, T. "The Art of Music Engraving and Processing" (1970) - proportional spacing values
 - Gould, E. "Behind Bars" (2011) - modern engraving standards

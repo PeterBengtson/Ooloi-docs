@@ -92,7 +92,7 @@ Plugins for Ooloi can be closed-source and proprietary. Developers are free to c
 
 ## Contributions
 
-We welcome contributions to Ooloi from the community! By contributing to the core of Ooloi, you agree that your contributions will be licensed under the Mozilla Public License 2.0, with the explicit condition that they are Incompatible With Secondary Licenses. Please see our [CONTRIBUTING.md](CONTRIBUTING.md) file for more details on how to contribute.
+Ooloi's core is sole-authored and not open to contribution. Plugins, translations, documentation, testing and platform work are welcome once contribution opens after release; see [WELCOME](../WELCOME.md). Contributions are licensed under the Mozilla Public License 2.0, Incompatible With Secondary Licenses.
 
 ## Languages
 

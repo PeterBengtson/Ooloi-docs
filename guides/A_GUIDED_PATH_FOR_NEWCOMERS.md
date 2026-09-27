@@ -235,11 +235,11 @@ Plugins participate at two points: the atom hook in Stage 1, which produces an a
 
 **28. [ADR-0037: Measure Distribution Optimisation](../ADRs/0037-Measure-Distribution-Optimization.md)**
 
-The second "impossible problem turned straightforward" result. The Knuth-Plass algorithm — TeX's paragraph-breaking algorithm from 1981, well-known in typesetting circles — applies directly to measure distribution once Stages 1–2 have resolved vertical coordination and collision detection. The problem that had appeared intractable turns out to be textbook dynamic programming on a one-dimensional sequence with separable costs.
+The second result of the same kind as ADR-0035's. Once Stages 1–2 have resolved vertical coordination and collision detection, measure distribution is a segmentation problem in the Knuth–Plass family — TeX's paragraph-breaking algorithm, published in 1981 — and Stage 3's baseline is a special case of that model, with the rest of it available as extensions. The reduced problem is textbook dynamic programming on a one-dimensional sequence with separable costs.
 
-The ADR makes the key point explicitly: the algorithm is not novel; its applicability is what the architecture creates. Without the staged pipeline's separation of vertical coordination and collision detection from the distribution decision, the problem resists this formulation — mutable state creates feedback loops, and coupled evaluation of horizontal and vertical concerns prevents the clean one-dimensional reduction. Ooloi's pipeline creates both preconditions.
+The ADR is explicit that the algorithm is not novel, and its Prior Art section traces optimal breaking in music back through earlier systems. What the pipeline provides is the reduction: by separating vertical coordination and collision detection from the distribution decision, it leaves Stage 3 a one-dimensional sequence of stable scalar inputs, on which the DP runs once per pass.
 
-[Blog post "Twice"](https://www.ooloi.org/home/twice) captures the significance: two problems the industry treats as inherently heuristic — requiring manual correction, special cases, user-facing knobs to tune approximations — collapsed into straightforward algorithms. Same architectural properties both times: immutable data, rational arithmetic, explicit stage boundaries, semantic determinism before layout.
+[Blog post "Twice"](https://www.ooloi.org/home/twice) presents the two results together, and the architectural properties they share: immutable data, rational arithmetic, explicit stage boundaries, semantic determinism before layout.
 
 **29. [ADR-0038: Backend Authoritative Rendering and Terminal Frontend Execution](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**
 
