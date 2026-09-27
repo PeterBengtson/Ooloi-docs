@@ -216,6 +216,8 @@ This is worth understanding thoroughly. It is the first empirical confirmation t
 
 Peter's own description of the six-stage pipeline in prose. Read this before the ADR itself; it gives the conceptual shape — the fan-out/fan-in pattern, system and page breaking as dynamic programming over stable inputs, connecting elements resolved against fixed atom positions — without the engineering detail.
 
+The earlier post, ["The Rendering Pipeline: Ooloi's Core Architecture"](https://www.ooloi.org/home/the-rendering-pipeline-oolois-core-architecture) (23 September 2025), is the historical record of the pipeline as first specified, in five stages. It is superseded by the six-stage design; read it as history, not as a description of the current pipeline.
+
 **27. [ADR-0028: Hierarchical Rendering Pipeline](../ADRs/0028-Hierarchical-Rendering-Pipeline.md)**
 
 Six stages:
