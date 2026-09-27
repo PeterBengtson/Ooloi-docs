@@ -8,6 +8,7 @@ Accepted
 - [Context](#context)
   - [Problem Statement](#problem-statement)
   - [Architectural Reduction](#architectural-reduction)
+  - [What "Optimal" Means](#what-optimal-means)
   - [Optimization Characterization](#optimization-characterization)
 - [Decision](#decision)
   - [Architectural Position](#architectural-position)
@@ -197,6 +198,10 @@ The reduction does not emerge from clever optimization techniques. It emerges fr
 
 The result: the distribution problem becomes solvable by straightforward dynamic programming, whose result is guaranteed optimal for its cost function, given its inputs. The algorithm is not novel (see [Prior Art](#prior-art)).
 
+### What "Optimal" Means
+
+In this ADR, *optimal* always means minimal total demerits under the segment cost model specified below — badness of each system's adjustment ratio, the per-system penalty and the breakpoint penalties from `break-penalty-fn`, with the parameters in force — given the metrics Stages 1–2 supply. It is a statement about that cost function and those inputs, not about layout quality in any wider sense: a different cost function, or different upstream metrics, would have a different optimum.
+
 ### Optimization Characterization
 
 The distribution problem exhibits structure that admits polynomial-time exact optimization of the reduced subproblem:
@@ -205,8 +210,6 @@ The distribution problem exhibits structure that admits polynomial-time exact op
 Dynamic programming over the sequence of N measure stacks determines optimal system break points. For each potential break location, the algorithm evaluates whether remaining measures fit within capacity (after reserving preamble, gutter and postamble space) and computes the resulting demerits. Optimal substructure holds: optimal solution for measures 1..k combined with optimal solution for measures k+1..N yields optimal solution for 1..N.
 
 Break selection relies on **separable system costs** and **optimal substructure**, not convexity. The dynamic programming algorithm computes the break configuration of least total cost for the discrete segmentation problem, under the stated cost function and given its inputs.
-
-**What "optimal" means in this ADR**: *optimal* always means minimal total demerits under the segment cost model specified below — badness of each system's adjustment ratio, the per-system penalty and the breakpoint penalties from `break-penalty-fn`, with the parameters in force — given the metrics Stages 1–2 supply. It is a statement about that cost function and those inputs, not about layout quality in any wider sense: a different cost function, or different upstream metrics, would have a different optimum.
 
 Complexity: O(N²) for system breaks, O(S²) for page breaks where S = number of systems.
 
