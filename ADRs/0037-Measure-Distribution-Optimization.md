@@ -4,6 +4,8 @@
 
 Accepted
 
+Revised October 2026: Hegazy and Gourlay's spring model is adopted as the baseline fitting rule. Each column gap is a spring with an ideal width and a blocking width, which may exceed it; the former baseline, one scale factor per system, is kept as an alternative. See [Gaps as Springs](#gaps-as-springs) and [The Spring Model](#the-spring-model).
+
 ## Table of Contents
 - [Context](#context)
   - [Problem Statement](#problem-statement)
@@ -14,11 +16,13 @@ Accepted
 - [Decision](#decision)
   - [Architectural Position](#architectural-position)
   - [Interface Contract](#interface-contract)
+  - [Gaps as Springs](#gaps-as-springs)
+  - [Constraints Spanning Several Columns](#constraints-spanning-several-columns)
   - [Ideal Width Semantics](#ideal-width-semantics)
   - [The Gutter: System-Start Width Delta](#the-gutter-system-start-width-delta)
   - [The Preamble: System-Start Clef and Key Signature Width](#the-preamble-system-start-clef-and-key-signature-width)
   - [The Postamble: System-End Width](#the-postamble-system-end-width)
-  - [Width Allocation: Proportional Scaling](#width-allocation-proportional-scaling)
+  - [Width Allocation: Applying the Adjustment Ratio](#width-allocation-applying-the-adjustment-ratio)
   - [Variable System Widths](#variable-system-widths)
   - [Alternative: Asymmetric Cost Optimization](#alternative-asymmetric-cost-optimization)
   - [Page Breaking: Second Pass (Stage 6)](#page-breaking-second-pass-stage-6)
@@ -43,11 +47,12 @@ Accepted
   - [Consistency Between Adjacent Systems](#consistency-between-adjacent-systems)
   - [Ending Classes and Looseness](#ending-classes-and-looseness)
   - [Fitting Rules](#fitting-rules)
-  - [Column-Level Feasibility](#column-level-feasibility)
+  - [Feasibility](#feasibility)
   - [End-of-System Width](#end-of-system-width)
   - [Joint System and Page Breaking](#joint-system-and-page-breaking)
 - [Implementation](#implementation)
   - [Core Dynamic Programming Structure (Stage 3)](#core-dynamic-programming-structure-stage-3)
+  - [Solving for the Adjustment Ratio](#solving-for-the-adjustment-ratio)
   - [Segment Cost Computation](#segment-cost-computation)
   - [Width Allocation Implementation](#width-allocation-implementation)
   - [Break Reconstruction](#break-reconstruction)
@@ -56,6 +61,7 @@ Accepted
 - [Prior Art](#prior-art)
   - [Optimal Breaking by Dynamic Programming](#optimal-breaking-by-dynamic-programming)
   - [The Space Model](#the-space-model)
+  - [The Spring Model](#the-spring-model)
   - [Comparison](#comparison)
   - [What Is Specific to Ooloi](#what-is-specific-to-ooloi)
 - [Consequences](#consequences)
@@ -75,14 +81,14 @@ Accepted
 │  │  (parallel)  │      │              │                                 │
 │  └──────────────┘      └──────────────┘                                 │
 │         │                     │                                         │
-│         │              min, min-ratio, ideal, gutter                    │
-│         │              per measure stack                                │
+│         │              min, natural, ordinary ideal,                    │
+│         │              prestretched gaps, gutter per stack              │
 │         ▼                     ▼                                         │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
 │  │               Stage 3: SYSTEM BREAKING (Single)                 │    │
 │  │                                                                 │    │
-│  │   Input: N measure stacks with widths + gutter delta            │    │
-│  │          {:min :min-ratio :ideal :gutter}, all ratios           │    │
+│  │   Input: N measure stacks with gutter delta and                 │    │
+│  │          summaries of their gaps as springs, all ratios         │    │
 │  │                                                                 │    │
 │  │   ┌─────────────────┐                                           │    │
 │  │   │  System Break   │                                           │    │
@@ -91,20 +97,20 @@ Accepted
 │  │            │                                                    │    │
 │  │            ▼                                                    │    │
 │  │   ┌────────────────────────────────────────────────────┐        │    │
-│  │   │       Scale Factor per System                      │        │    │
+│  │   │       Adjustment Ratio per System                  │        │    │
 │  │   │   avail = sys_width - preamble[s] - gutter[s]      │        │    │
 │  │   │                     - postamble[t]                 │        │    │
-│  │   │   scale = avail / Σ ideal_i                        │        │    │
+│  │   │   r solves Σ g_j(r) = avail                        │        │    │
 │  │   └────────────────────────────────────────────────────┘        │    │
 │  │                                                                 │    │
-│  │   Output: System breaks + scale factors                         │    │
+│  │   Output: System breaks + adjustment ratios                     │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 │                                    │                                    │
 │                                    ▼                                    │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
 │  │  Stage 4: ATOM POSITIONING (Fan-out per Measure)                │    │
-│  │  Apply scale factors to atoms, compute absolute coordinates     │    │
-│  │  actual_i = ideal_i × scale_factor                              │    │
+│  │  Apply each system's r to its gaps, compute coordinates         │    │
+│  │  g_j = max(b_j, w_j + r × k_j)                                  │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 │                                    │                                    │
 │                                    ▼                                    │
@@ -130,8 +136,9 @@ Accepted
 Given a musical score with N measures and M staves, the system must distribute N measure stacks (where each stack represents the vertical alignment of M staves at a single temporal position) across systems and pages.
 
 **Input constraints per stack**:
-- `min_width`: Hard lower bound from collision detection (atoms cannot overlap)
-- `ideal_width`: Target proportional spacing based on musical density and conventional engraving practice
+- Its column gaps, each a spring with an ideal width `w_j`, from the durations, and a blocking width `b_j`, the distance at which the atoms on either side would collide; `b_j` may exceed `w_j` (see [Gaps as Springs](#gaps-as-springs))
+- `min_width`: Hard lower bound from collision detection, `Σ b_j` (atoms cannot overlap)
+- `ideal_width`: Target spacing based on musical density and conventional engraving practice, `Σ w_j`
 - `gutter_width`: Additional fixed space required when stack begins a system (default 0N)
 - Cost model: the badness of each system's adjustment ratio, combined into demerits (Knuth–Plass; see the segment cost model below)
 
@@ -161,7 +168,7 @@ The apparent computational difficulty of music layout arises from coupling betwe
 Ooloi's pipeline architecture **decouples these concerns through staged computation**:
 
 **Stage 1-2: Vertical Coordination**
-Parallel collision detection produces measure stack metrics. Each of N stacks emerges with definitive width bounds: `min_width` and `ideal_width` for the measure's semantic content, the largest ratio of minimum to ideal width among its column gaps, plus `gutter_width` for additional system-start space.
+Parallel collision detection produces measure stack metrics. Each of N stacks emerges with its column gaps as springs, an ideal and a blocking width for each, summarised for Stage 3 as a few sums and a short list of prestretched gaps ([Interface Contract](#interface-contract)), plus `gutter_width` for additional system-start space.
 
 **Stage 1 is width-complete**: It computes all horizontal space requirements for atoms, including lyrics, dynamics, articulations, and fixed-size anchors for spanners (e.g., "sffzpp<" letters, minimum crescendo wedge width). Stage 1 cannot compute full spanner geometry (that depends on final positions from Stage 4), but it must include all horizontal space the atom requires, including spanner attachment points.
 
@@ -174,15 +181,15 @@ The vertical alignment problem is solved completely before distribution begins. 
 
 **Stage 3: System Breaking**
 With vertical coordination complete, the problem reduces to:
-- A 1-dimensional sequence of N scalar tuples (min_width, ideal_width, largest column ratio, gutter_width)
-- Preamble and gutter subtraction at the start of each system, and postamble subtraction at its end, before scaling
+- A 1-dimensional sequence of N stack summaries: sums (minimum, natural width, ordinary ideal), the gutter, and each stack's prestretched gaps
+- Preamble and gutter subtraction at the start of each system, and postamble subtraction at its end, before the springs are fitted
 - Capacity-constrained segmentation into systems using Knuth-Plass DP
 - Cost function on each system's adjustment ratio (badness and demerits)
 - No feedback from geometry to distribution logic
-- Output: System break decisions and scale factors per system
+- Output: System break decisions and the adjustment ratio of each system
 
 **Stage 4: Atom Positioning**
-Applies scale factors from Stage 3 to position atoms at their actual coordinates. Non-connecting visual elements (noteheads, accidentals, dynamics) are positioned using the computed scale factors. These elements do not influence distribution.
+Applies each system's adjustment ratio from Stage 3 to every gap in it, positioning atoms at their actual coordinates. Non-connecting visual elements (noteheads, accidentals, dynamics) are positioned from the resulting gap widths. These elements do not influence distribution.
 
 **Stage 5: Spanners and Margins**
 Ties, slurs, and spanning attachments compute geometry based on finalized atom positions from Stage 4. They adapt to the determined layout rather than influencing it. For measures at system-start positions, Stage 5 adds graphical decorations (courtesy accidentals, tie continuations) within the reserved gutter space. Determines actual system heights from vertical extent of connecting elements.
@@ -215,32 +222,30 @@ Break selection relies on **separable system costs** and **optimal substructure*
 Complexity: O(N²) for system breaks, O(S²) for page breaks where S = number of systems.
 
 **Continuous width allocation**:
-Within each system `[s, t)` determined by break selection, actual widths are allocated by **proportional scaling** (normalisation) of the space remaining after preamble, gutter and postamble reservation:
+Within each system `[s, t)` determined by break selection, every gap receives the width its spring gives at the system's adjustment ratio `r`: the least value at which the gaps exactly fill the space remaining after preamble, gutter and postamble reservation ([Gaps as Springs](#gaps-as-springs)):
 
 ```
 available = system_width - preamble[s] - gutter[s] - postamble[t]
-scale_factor = available / Σ ideal_i
-actual_i = ideal_i × scale_factor
+g_j(r) = max(b_j, w_j + r × k_j)        k_j = σ × w_j when r ≥ 0, max(0, w_j − b_j) when r < 0
+r = least r with Σ g_j(r) = available
 ```
 
-This is not optimization—it is a deterministic formula that preserves proportional relationships by construction. All measures in a system receive the same scale factor, so `actual_i / actual_j = ideal_i / ideal_j` always holds.
+This is not optimization: `Σ g_j` is continuous, piecewise linear and non-decreasing in `r`, and `r` is found exactly. Under stretching, every gap that is free to stretch does so in proportion to its ideal width, so rhythmic proportions are kept among those gaps; a gap held open by an accidental keeps its blocking width until the rest of the system catches up with it. Under compression, every gap gives up the same share of its room above its minimum.
 
 **Segment cost model**:
-The cost of a system is Knuth–Plass's. It is judged by its **adjustment ratio** `r` — how far its glue is stretched or shrunk relative to how far it can stretch or shrink:
+The cost of a system is Knuth–Plass's. It is judged by its **adjustment ratio** `r`: how far its gaps are stretched or compressed, measured against how far they can go. In the glue model of Knuth and Plass, `r` is one division:
 
 ```
 r = (available − Σ natural) / Σ stretch     when available ≥ Σ natural   (stretching)
 r = (available − Σ natural) / Σ shrink      when available <  Σ natural   (shrinking)
 ```
 
-In the baseline, **stretch and shrink are proportional to natural width**, calibrated so that `r` keeps its Knuth–Plass meaning: `r = −1` at the tightest permissible system, and `r = 1` at a system stretched by its full stretchability ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). Each gap's stretch is `σ × ideal`, with `σ` the stretchability parameter, and its shrink is `(1 − max ρ_i) × ideal`, where `max ρ_i` is the largest column ratio over the system's stacks. With `scale_factor = available / Σ ideal_i`:
+Under springs it is the value that solves `Σ g_j(r) = available`, which Hegazy and Gourlay call the fitting force. The two coincide whenever no gap is blocked or prestretched. In the baseline:
 
-```
-r = (scale_factor − 1) / σ               when scale_factor ≥ 1   (stretching)
-r = (scale_factor − 1) / (1 − max ρ_i)   when scale_factor <  1   (shrinking)
-```
+- **Shrinking is always one division.** Every gap's shrink is its room above its minimum, `max(0, w_j − b_j)`, so every gap reaches its minimum at the same value, `r = −1`, and none blocks before then: `r = (available − Σ natural) / (Σ natural − Σ min)`, from prefix sums. `r = −1` is exactly `available = Σ min`, the system's collision limit, so Knuth–Plass's condition `r ≥ −1` is the feasibility condition `Σ min ≤ available` ([Feasibility](#feasibility)).
+- **Stretching is one division until a prestretched gap starts to stretch.** Every ordinary gap (`b_j ≤ w_j`) stretches by `σ × w_j` per unit of `r` from `r = 0`. A prestretched gap holds its blocking width until `r` reaches its kink, `(b_j − w_j) / (σ × w_j)`, and stretches from there. While `r` stays below the segment's smallest kink, `r = (available − Σ natural) / (σ × Σ ordinary ideal)`; beyond it, the kinks are walked in order ([Solving for the Adjustment Ratio](#solving-for-the-adjustment-ratio)).
 
-`r` is negative under compression and positive under stretching, and one scale factor still applies to the whole system. `r = −1` exactly at the system's collision limit, `scale_factor = max ρ_i`, so Knuth–Plass's feasibility condition `r ≥ −1` coincides with the column-ratio condition of [Column-Level Feasibility](#column-level-feasibility). A feasible system that is shrinking has `max ρ_i ≤ scale_factor < 1`, so the denominator is positive. The shrinkability depends on the segment alone and uses the running `max ρ_i` the DP already carries, so the DP stays exact.
+`r` is negative under compression and positive under stretching. It depends on the segment alone, so the DP stays exact.
 
 The **badness** of the system is a function of `r` alone, not weighted by content:
 
@@ -260,14 +265,14 @@ d = (l + b)²           when p = 0, and for a forced break
 
 **Tolerance**: an optional bound on badness. A segment whose badness exceeds it is treated as infeasible.
 
-**Why the badness of `r`**: the adjustment ratio is what a reader sees — how far a system is stretched or compressed, measured against how far it can go. A cost weighted by content, such as `Σ (actual_i − ideal_i)²`, which under proportional scaling is `(scale − 1)² × Σ ideal_i²`, makes two systems with the same adjustment ratio cost differently according to how their content is divided into measures: the same music in more, shorter measures has a smaller `Σ ideal_i²` and so costs less at the same stretch. That difference has no musical justification.
+**Why the badness of `r`**: the adjustment ratio is what a reader sees — how far a system is stretched or compressed, measured against how far it can go. A cost weighted by content, such as `Σ (actual_i − ideal_i)²`, which with every gap stretched in proportion is `(σ × r)² × Σ ideal_i²`, makes two systems with the same adjustment ratio cost differently according to how their content is divided into measures: the same music in more, shorter measures has a smaller `Σ ideal_i²` and so costs less at the same stretch. That difference has no musical justification.
 
 **Parameters**: the badness coefficient `c`, exponent `e`, cap `b_max`, per-system penalty `l`, tolerance and stretchability `σ` are parameters. The documented starting points of the first five are TeX's implementation of Knuth–Plass: `c = 100`, `e = 3` (badness "a reasonably close approximation to 100(t/s)³"), `b_max = 10000` ("infinitely bad"), `l = 10` (plain TeX's `\linepenalty`) and tolerance 200 (plain TeX's `\tolerance`). The starting point of `σ` is `1/2` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). TeX's constants are meaningful only under that calibration. The empirical validation decides all six ([Evaluation Criteria](#evaluation-criteria)).
 
-**Exact arithmetic**: `σ` and `max ρ_i` are rationals, so `r` is exact. Demerits are exact rationals — with `e = 3`, of degree six in `r` — and are still O(1) per segment. Any approximation, for example of a non-integer exponent, must be deterministic, so that every platform computes identical demerits.
+**Exact arithmetic**: `σ` and every ideal and blocking width are rationals, and so is every kink; `r` is the solution of a linear equation on one piece of a piecewise-linear function, so it is exact. Demerits are exact rationals — with `e = 3`, of degree six in `r` — and are still O(1) per segment. Any approximation, for example of a non-integer exponent, must be deterministic, so that every platform computes identical demerits.
 
 **Additive separable cost model**:
-- **System-level cost**: each system's demerits depend only on its own adjustment ratio and the penalty of its break — that is, on the segment alone. The `min` value and the largest column ratio `ρ` participate in feasibility checking; the `preamble`, `gutter` and `postamble` values determine the available space, and through it `r`; none of them enters the cost otherwise.
+- **System-level cost**: each system's demerits depend only on its own adjustment ratio and the penalty of its break — that is, on the segment alone. The `min` value participates in feasibility checking; the `preamble`, `gutter` and `postamble` values determine the available space, and through it `r`; none of them enters the cost otherwise.
 - **DP operates on system-level cost units**: the dynamic programming algorithm sums per-system demerits to compute the total.
 
 This separability enables independent evaluation of candidate break points during dynamic programming.
@@ -280,35 +285,35 @@ Given identical input (measure stacks with their bounds, system/page capacities)
 - Rational arithmetic (no floating-point nondeterminism)
 - Immutable data structures (no timing-dependent state)
 - Deterministic tie-breaking: equal costs are resolved by a secondary cost that differs for any two configurations (see [Deterministic Tie-Breaking](#deterministic-tie-breaking))
-- Normalisation-based allocation (no iterative solver convergence)
+- Closed-form allocation: each system's adjustment ratio is the exact solution of a piecewise-linear equation (no iterative solver convergence)
 
 **Edit locality**: Preserving break decisions away from an edit, to minimise perceptual layout "jitter" during editing, is a goal. The DP does not provide it: a global optimum is not local. See [Edit Locality](#edit-locality).
 
 ### Calibrating the Adjustment Ratio
 
-TeX's constants assume that the adjustment ratio `r` is measured against the limits of the glue. `r = −1` is the tightest line TeX permits, because glue cannot shrink beyond its shrinkability; at `r = 1` a line's glue is stretched by its full stretchability, with badness 100. If stretch and shrink both equalled natural width, `r` would be `scale_factor − 1`, a deviation from the ideal rather than from those limits, and the constants would lose their meaning:
+TeX's constants assume that the adjustment ratio `r` is measured against the limits of the glue. `r = −1` is the tightest line TeX permits, because glue cannot shrink beyond its shrinkability; at `r = 1` a line's glue is stretched by its full stretchability, with badness 100. If a gap's stretch and shrink both equalled its natural width, `r` would measure a deviation from the ideal rather than from those limits, and the constants would lose their meaning:
 
-- **Compression would be nearly free.** A system at its collision limit with `max ρ_i = 0.8` would have `r = −0.2` and badness 0.8, which TeX's scale calls nearly perfect.
+- **Compression would be nearly free.** A system at its collision limit with its gaps at 80% of their ideal widths would have `r = −0.2` and badness 0.8, which TeX's scale calls nearly perfect.
 - **Tolerance 200 would admit about 126% stretch**: it bounds `100 × |r|³` by 200, so `|r| ≤ 1.26`.
 - **The per-system penalty would dominate.** `l = 10` contributes at least `l² = 100` per system, while badness stays below 1 up to a deviation of about 21%. The DP would chiefly minimise the number of systems. With content spread evenly over systems of one width, it would compress systems by up to about 18% at about 10 systems, and about 15% at about 30, rather than add one.
 
-The calibration gives `r` its meaning at both ends, and TeX's constants — `c`, `e`, `b_max`, `l` and the tolerance — are meaningful only under it:
+The calibration gives `r` its meaning at both ends, and TeX's constants (`c`, `e`, `b_max`, `l` and the tolerance) are meaningful only under it:
 
-- **Shrinking**: each gap's shrink is `(1 − max ρ_i) × natural`, the system's room above its tightest column, so `r = (scale_factor − 1) / (1 − max ρ_i)` and `r = −1` is the system's collision limit. Knuth–Plass's limit on shrinking and this ADR's feasibility condition are then the same point.
-- **Stretching**: stretch has no collision limit, so its scale is a parameter, the stretchability `σ`: each gap's stretch is `σ × natural`, and `r = (scale_factor − 1) / σ`. The documented starting point is `σ = 1/2`. A system stretched to one and a half times its ideal width then has `r = 1` and badness 100, the same badness as a system at its collision limit, and tolerance 200 admits stretch up to about 63%. No engraving source fixes the value: it is where the documented constants start, and the empirical validation decides it ([Evaluation Criteria](#evaluation-criteria)).
+- **Shrinking**: each gap's shrink is its room above its minimum, `max(0, w_j − b_j)`, so `r = −1` is where every gap reaches its minimum together: the system's collision limit. Knuth–Plass's limit on shrinking and this ADR's feasibility condition are then the same point.
+- **Stretching**: stretch has no collision limit, so its scale is a parameter, the stretchability `σ`: each ordinary gap's stretch is `σ × w_j`. The documented starting point is `σ = 1/2`. A system whose gaps are all free to stretch then reaches `r = 1`, with badness 100, at one and a half times its ideal width: the same badness as a system at its collision limit. Tolerance 200 admits stretch up to about 63%. A prestretched gap contributes to the stretch only once `r` has passed its kink. No engraving source fixes the value of `σ`: it is where the documented constants start, and the empirical validation decides it ([Evaluation Criteria](#evaluation-criteria)).
 
-Both keep proportional fitting, one scale factor per system; the calibration changes only how that scale factor is judged. How the same calibration applies under the other fitting rules is stated under [Fitting Rules](#fitting-rules).
+How the calibration applies under the alternative fitting rules is stated under [Fitting Rules](#fitting-rules).
 
 ## Decision
 
 ### Architectural Position
 
-Measure distribution optimization (system breaking) is Stage 3 of the hierarchical rendering pipeline ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)). It receives measure stack metrics from Stages 1-2 and produces system break decisions and scale factors that Stage 4 uses for atom positioning.
+Measure distribution optimization (system breaking) is Stage 3 of the hierarchical rendering pipeline ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)). It receives measure stack metrics from Stages 1-2 and produces system break decisions and an adjustment ratio per system, which Stage 4 applies to each system's gaps for atom positioning.
 
-The algorithm implements **capacity-constrained segmentation with proportional width allocation**:
+The algorithm implements **capacity-constrained segmentation with spring-based width allocation**:
 1. Dynamic programming (Stage 3) determines optimal system break points, accounting for preamble and gutter space at system starts and postamble space at system ends
-2. Proportional scaling computes scale factors for width allocation within the available space (after preamble, gutter and postamble reservation)
-3. Atom positioning (Stage 4) applies scale factors to compute actual positions
+2. Each system's adjustment ratio is solved exactly from its gaps' springs within the available space (after preamble, gutter and postamble reservation)
+3. Atom positioning (Stage 4) applies each system's adjustment ratio to its gaps to compute actual positions
 4. System heights (Stage 5) are computed from final geometry
 5. Page breaking (Stage 6) is a second dynamic programme, over systems with actual heights, whose cost function is not yet specified
 
@@ -318,35 +323,105 @@ The algorithm implements **capacity-constrained segmentation with proportional w
 ;; Input from Stages 1-2 (computed by ADR-00XX, forthcoming):
 stacks ;; Vector of stack maps
 
-;; Each stack map:
-{:min ratio              ;; Hard collision boundary for measure content
- :min-ratio ratio        ;; Largest column ratio, max_j(min_gap_j / ideal_gap_j)
- :ideal ratio            ;; Target proportional spacing for measure content
- :gutter ratio           ;; Additional space when at system start (default 0N)
- :measure-index int}     ;; Original measure index (for debugging/tracing)
+;; Each stack map summarises the stack's column gaps, each gap j a spring
+;; with ideal width w_j and blocking width b_j (see Gaps as Springs):
+{:min ratio                 ;; Σ b_j: collision floor for the measure's content
+ :natural ratio             ;; Σ max(w_j, b_j): width at r = 0
+ :ideal ratio               ;; Σ w_j: rhythmic target for the measure's content
+ :ordinary-ideal ratio      ;; Σ w_j over gaps with b_j ≤ w_j: what stretches from r = 0
+ :prestretched [[w b] ...]  ;; gaps with b_j > w_j, as [ideal blocking] pairs
+ :gutter ratio              ;; Additional space when at system start (default 0N)
+ :measure-index int}        ;; Original measure index (for debugging/tracing)
 
 ;; Output:
 {:breaks [break-positions]    ;; Vector of indices where systems start
+ :ratios [r ...]              ;; Adjustment ratio of each system (ratio)
  :cost total-demerits}        ;; Total demerits (ratio)
 ```
 
 **Width component semantics**:
 
-- `:min` — collision floor for the measure's semantic content: the sum of its column gaps' minimum widths
-- `:min-ratio` — the largest ratio of minimum to ideal width among the stack's column gaps, written `ρ_i` in formulas; the smallest scale factor at which uniform scaling keeps every column gap at or above its minimum (see [Column-Level Feasibility](#column-level-feasibility))
-- `:ideal` — proportional target for the measure's semantic content
+- `:min` — collision floor for the measure's semantic content: the sum of its gaps' blocking widths
+- `:natural` — the stack's width at `r = 0`: each gap at its ideal width, or at its blocking width where that is larger
+- `:ideal` — rhythmic target for the measure's semantic content: the sum of its gaps' ideal widths
+- `:ordinary-ideal` — the ideal width of the gaps that are free to stretch from `r = 0`
+- `:prestretched` — the gaps whose blocking width exceeds their ideal width, typically a short note followed by one carrying an accidental; Stage 3 derives their kinks from `σ`
 - `:gutter` — additional space required when this measure appears first on a system (default 0N); this space is reserved for graphical decorations (courtesy accidentals, tie continuations) and does not scale
+
+Stage 4 needs every gap's `w_j` and `b_j`, not only the summary; both stay cached with the stack (see [Caching and Incremental Recompute](#caching-and-incremental-recompute)).
 
 The gutter is *additional* to the measure's width, not part of it. When a measure appears first on a system, the system must accommodate `gutter[s] + actual[s]` for that measure.
 
 **Preconditions** (guaranteed by upstream stages):
-- `:ideal` must be positive for all stacks (otherwise scale factor computation fails)
-- `:min` must be positive and `:min ≤ :ideal` for all stacks
-- `:min / :ideal ≤ :min-ratio ≤ 1` for all stacks (the largest column ratio is at least the stack's overall ratio)
+- `:ideal` must be positive for all stacks (so every segment can stretch)
+- `:min` must be positive for all stacks
+- The summary is consistent with the stack's gaps: `:natural = :min + Σ max(0, w_j − b_j)`, and `:ideal = :ordinary-ideal + Σ w` over `:prestretched`
+- Every prestretched pair has `0 ≤ w < b`; a pair with `w = 0` is fixed space, which never stretches
 - `:gutter` must be non-negative (default 0N)
 - At least one feasible segmentation must exist (the entire sequence fits on some number of systems)
 
-The computation of width values is handled by upstream stages, and will be specified in a forthcoming ADR on horizontal spacing (ADR-00XX). If preconditions are violated, behavior is undefined.
+The computation of these values is handled by upstream stages, and will be specified in a forthcoming ADR on horizontal spacing (ADR-00XX). If preconditions are violated, behavior is undefined.
+
+### Gaps as Springs
+
+Every column gap in a measure stack is a spring in the sense of Hegazy and Gourlay (see [The Spring Model](#the-spring-model)). The springs attach to the origins of the atoms on either side, not to their outer edges, because what the eye measures is the distance from one note to the next; the atoms themselves are boxes that cannot pass through each other. A gap `j` has:
+
+- an **ideal width** `w_j`, the distance between atom origins that the durations call for (Stage 1);
+- a **blocking width** `b_j`, the distance at which the atoms on either side would collide, the largest such distance over the stack's staves (Stages 1–2);
+- a **stretch** `σ × w_j` and a **shrink** `max(0, w_j − b_j)`, the baseline elasticity ([Fitting Rules](#fitting-rules)).
+
+Under an adjustment ratio `r` its width is
+
+```
+g_j(r) = max(b_j, w_j + r × σ × w_j)            when r ≥ 0
+g_j(r) = max(b_j, w_j + r × max(0, w_j − b_j))  when r < 0
+```
+
+A gap is **ordinary** when `b_j ≤ w_j`. It is **prestretched** when `b_j > w_j`: the atoms need more room than the durations call for, as when a short note is followed by one carrying an accidental. A prestretched gap holds its blocking width under every compression, and under stretching up to its **kink**, `κ_j = (b_j − w_j) / (σ × w_j)`, where its spring catches up with the collision; beyond that it stretches like any other gap. The accidental takes the room it needs and no more, and once the system is loose enough it costs nothing.
+
+This is the engraver's principle, that everything belonging to a note, accidentals included, should fit within its proportional allocation, made exact: where it cannot fit, the allocation yields only as far as the collision requires.
+
+**What the springs replace.** Before this revision the baseline required `b_j ≤ w_j` for every gap and gave every gap the same proportional stretch and shrink, so that a system had one scale factor. A prestretched gap could not be represented at all, and a gap whose minimum equalled its ideal blocked compression of its whole system. The former baseline survives as an alternative under [Fitting Rules](#fitting-rules).
+
+**Summaries for Stage 3.** Stage 3 never needs the gaps one by one. A segment's width at `r` depends on three sums and on its prestretched gaps:
+
+```
+Σ g_j(r) = Σ natural + r × (Σ natural − Σ min)                             when −1 ≤ r < 0
+Σ g_j(r) = Σ natural + r × σ × Σ ordinary ideal
+           + Σ over prestretched gaps with κ_j < r  of  σ × w_j × (r − κ_j)    when r ≥ 0
+```
+
+So each stack carries `:min`, `:natural`, `:ordinary-ideal` and its `:prestretched` pairs ([Interface Contract](#interface-contract)), and the sums come from prefix sums.
+
+### Constraints Spanning Several Columns
+
+Some minimum distances span more than one gap: a long syllable sung across a melisma, a dynamic or a word of text that must not run into the next, material crossing between staves. A blocking width belongs to one gap, so such a constraint is reduced to blocking widths before Stage 3 sees it, in Stage 2, in the way LilyPond's spacer reduces its rods (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`):
+
+1. For a constraint of distance `D` over gaps `j..k`, find the least `r_D` at which `Σ g_i(r)` over those gaps reaches `D`, using their springs alone and the same exact solver as Stage 3 ([Solving for the Adjustment Ratio](#solving-for-the-adjustment-ratio)). If `Σ b_i ≥ D` already, the constraint is met and nothing changes.
+2. Raise each spanned gap's blocking width to its width at that ratio, `b_i ← g_i(r_D)`; its shrink follows from the new blocking width.
+
+Afterwards the span is at least `D` at every `r ≥ −1`: no spanned gap is narrower than before at any ratio, and each holds at least its share at `r_D`. A raised gap may become prestretched, with its kink at `r_D`. The reduction is conservative: in a tightly compressed system the spanned gaps can hold more room than the constraint strictly needs, because each is fixed at its share at `r_D` rather than free to trade with its neighbours. LilyPond's source accepts the same loss, on the grounds that the denser result looks worse anyway.
+
+Overlapping constraints are applied in a fixed order (by first gap, then by last), so the result is deterministic. Each raises blocking widths only, and raising a blocking width never narrows a gap at any ratio, so the order affects how room is shared, never whether a constraint holds.
+
+```clojure
+(defn reduce-span-constraint
+  "Raises the blocking widths of gaps [j, k) so that together they are at
+   least d wide at every adjustment ratio r ≥ -1 (Stage 2)."
+  [gaps j k d sigma]
+  (let [{:keys [min natural ordinary-ideal prestretched]} (stack-summary (subvec gaps j k))]
+    (if (>= min d)
+      gaps
+      (let [r-d (solve-ratio d min natural ordinary-ideal
+                             (add-kinks (sorted-map) prestretched sigma) sigma)]
+        (reduce (fn [gs i]
+                  (update gs i (fn [{:keys [w b] :as g}]
+                                 (assoc g :b (gap-width w b r-d sigma)))))
+                gaps
+                (range j k))))))
+```
+
+Because `r_D` depends only on the springs inside the span, the reduction is independent of where systems break, and Stage 3's inputs stay fixed before it starts. A constraint that crosses a barline is reduced over the gaps of both stacks: exact within a system and conservative at a break, where the constraint may need less (a lyric extender, say) or be carried by the postamble and gutter. An edit that changes such a constraint changes both stacks, which is a range edit for [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit).
 
 ### Ideal Width Semantics
 
@@ -375,12 +450,12 @@ Therefore, compression effects are **staff-local**, not stack-global:
 This reinforces **stack atomicity** as the correct abstraction boundary. The distribution algorithm operates on stacks without needing staff-aware redistribution or corrective optimization. Visual degradation under compression affects specific staves within stacks, not the system as a whole.
 
 **Key architectural achievement**:
-Traditional engraving compromised proportionality to avoid collisions. Ooloi eliminates collisions upstream (Stage 1), removing the historical justification for proportionality sacrifice.
+Collisions are resolved upstream (Stage 1), so the distribution never has to discover one. Where the music needs more room than proportion allows, the blocking width says exactly how much, and the springs give it that room and no more ([Gaps as Springs](#gaps-as-springs)).
 
 **Constraint structure**:
-- **Hard constraint**: `actual_width ≥ min_width` (collision prevention)
-- **Soft preservation**: `actual_width ≈ ideal_width` (proportionality maintenance)
-- **No upper bound**: Measures may exceed ideal proportionally
+- **Hard constraint**: every gap at or above its blocking width, so `actual_width ≥ min_width` (collision prevention)
+- **Soft preservation**: every gap near its ideal width, departing from it by its spring's elasticity (proportionality maintenance)
+- **No upper bound**: gaps may exceed their ideal widths under stretching
 
 ### The Gutter: System-Start Width Delta
 
@@ -391,11 +466,11 @@ System layout for a system of stacks `[s, t)`:
 ```
 ┌───────────┬──────────┬─────────────┬─────┬─────────────┬────────────┐
 │ PREAMBLE  │  GUTTER  │  measure s  │ ... │ measure t-1 │ POSTAMBLE  │
-│  (fixed)  │ (fixed)  │  (scaled)   │     │  (scaled)   │  (fixed)   │
+│  (fixed)  │ (fixed)  │  (springs)  │     │  (springs)  │  (fixed)   │
 └───────────┴──────────┴─────────────┴─────┴─────────────┴────────────┘
       ↑          ↑           ↑                                 ↑
       │          │           │                                 └─ postamble[t] (does not scale)
-      │          │           └─ actual[i] = ideal[i] × scale_factor
+      │          │           └─ actual[i] = Σ g_j(r) over the gaps of stack i
       │          │
       │          └─ gutter[s] (does not scale)
       │
@@ -421,9 +496,9 @@ preamble = preamble[s]                       ;; Clef + keysig width (max across 
 gutter = gutter[s]                           ;; Only first stack contributes
 postamble = postamble[t]                     ;; System-end cautionaries and barline; 0N when t = N
 available = system_width - preamble - gutter - postamble
-scale_factor = available / Σ ideal_i         ;; Scale factor for all measures
+r = least r with Σ g_j(r) = available       ;; One ratio for every gap in the system
 
-actual[i] = ideal[i] × scale_factor          ;; ALL measures scale the same
+actual[i] = Σ g_j(r) over stack i's gaps     ;; Each gap by its own spring
 ```
 
 **Verification:**
@@ -457,7 +532,7 @@ preamble_width = max over all staves of (clef_width + keysig_width + spacing)
 - **Gutter**: Contingent (present only when tied-to notes require courtesy accidentals, or a start repeat moves to the system's start), precomputed in Stage 1
 - **Postamble**: Contingent (present only when a change takes effect at the start of the next system, or a double, final or repeat barline ends the system), at system end, computed on-demand — see [The Postamble](#the-postamble-system-end-width)
 
-All three are fixed overhead subtracted before proportional scaling. None participates in cost computation.
+All three are fixed overhead subtracted before the springs are fitted. None participates in cost computation.
 
 ### The Postamble: System-End Width
 
@@ -492,52 +567,30 @@ Where neither applies, `postamble[t] = 0N`. At the end of the piece `postamble[N
 
 **User control**: a setting suppresses system-end cautionaries. When it is set, the cautionary part of `postamble[t]` is 0N and Stage 3 sees the change; the barline part remains, since the barline is drawn whatever the setting. Unlike the gutter, which is always reserved, the cautionary part can depend on the setting only because the setting has no page-dependent option: whether a system ends a page is decided in Stage 6, after Stage 3 has used the postamble, so a reservation that depended on page position could not know which systems need it (the reason the gutter is always reserved; see [Enabling User Control](#enabling-user-control)).
 
-### Width Allocation: Proportional Scaling
+### Width Allocation: Applying the Adjustment Ratio
 
-The primary width allocation strategy is **proportional scaling** (normalisation) applied to the space remaining after preamble, gutter and postamble reservation:
+Once breaks are chosen, every gap of a system `[s, t)` receives the width its spring gives at the system's adjustment ratio, within the space remaining after preamble, gutter and postamble reservation:
 
 ```
 available = system_width - preamble[s] - gutter[s] - postamble[t]
-scale_factor = available / Σ ideal_i
-actual_i = ideal_i × scale_factor
+r = least r with Σ g_j(r) = available          (from Stage 3)
+actual_j = g_j(r) = max(b_j, w_j + r × k_j)
 ```
 
-The preamble, gutter and postamble are fixed overhead; none participates in scaling.
+The preamble, gutter and postamble are fixed overhead; none participates.
 
-This is **normalisation**, not optimisation:
-- Deterministic formula with no degrees of freedom
-- Preserves proportional relationships by construction
-- Preamble, gutter and postamble space are reserved separately; none scales
-- No iteration, no convergence, no tuning parameters
-- Predictable behavior: within a fixed break configuration, a change to one stack alters only its own system's scale factor
-- Near-zero computational cost
-- Clean architectural separation: DP selects breaks, allocation is derived
+This is **derivation, not optimisation**:
+- Deterministic: `r` is the exact solution of a piecewise-linear equation, already computed by Stage 3
+- No gap falls below its blocking width, by construction: the `max` is part of the spring, not a defensive clamp
+- Under stretching, every gap free to stretch keeps its proportion to its ideal width; a gap held open by an accidental keeps its blocking width until the system has caught up with it
+- Under compression, every gap gives up the same share of its room above its minimum
+- No iteration, no convergence, no tuning beyond the documented parameters
+- Contained: within a fixed break configuration, a change to one stack alters only its own system's adjustment ratio
+- Near-zero computational cost: O(gaps) per system
 
-**Why this may be sufficient**:
+**Notes on the cost**: the system's cost is the badness of its single adjustment ratio, combined into demerits (see the segment cost model under [Optimization Characterization](#optimization-characterization)), not a sum over its gaps or stacks. The preamble, gutter and postamble affect the cost only through the available width, and so through `r`.
 
-1. **Proportionality preservation**: The scaling factor is identical for all measures, preserving ratios
-2. **Reservation correctness**: System-start decorations and system-end cautionaries and barlines occupy exactly their required space
-3. **No heuristics**: Pure mathematical formula, deterministic outcome
-4. **Speed**: O(K) per system with K ≈ 10-20, essentially free
-5. **Predictability**: Users can mentally predict system behavior
-6. **Contained allocation**: Within a fixed break configuration, a change to one stack alters only its own system's scale factor
-
-**Handling constraints**:
-```clojure
-actual_i = max(min_i, ideal_i × scale_factor)
-```
-
-The `max` clamp is defensive. Under the feasibility contract (`scale ≥ max(ρ_i)`, the largest column ratio over the system's stacks), proportional scaling keeps every column gap at or above its minimum, and so always produces `actual_i ≥ min_i`; the clamp never changes any value. If clamping were to activate, it would indicate the segment was incorrectly selected as feasible.
-
-**Notes on the cost**:
-
-With proportional scaling, `actual_i = ideal_i × scale_factor` for all i, so every stack deviates from its ideal by the same factor, and the system has a single adjustment ratio: `(scale_factor − 1) / σ` when stretching, `(scale_factor − 1) / (1 − max ρ_i)` when shrinking ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). The system's cost is the badness of that single ratio, combined into demerits (see the segment cost model under [Optimization Characterization](#optimization-characterization)) — not a sum over its stacks.
-
-The preamble, gutter and postamble do not participate in cost computation. They are fixed overhead; they affect the cost only through the available width, and so through `r`.
-
-**Relationship to Knuth-Plass**:
-
-Proportional scaling is the Knuth–Plass glue model in the special case where every glue's stretch and shrink are proportional to its natural width, by the factors `σ` and `1 − max ρ_i`; see [Relationship to Knuth-Plass](#relationship-to-knuth-plass) for the mapping and the extensions it leaves available.
+**Relationship to Knuth-Plass**: a spring is Knuth–Plass glue with a blocking width; where no gap is blocked or prestretched, the springs are glue exactly. See [Relationship to Knuth-Plass](#relationship-to-knuth-plass).
 
 ### Variable System Widths
 
@@ -555,11 +608,11 @@ Proportional scaling is the Knuth–Plass glue model in the special case where e
 
 1. **Break selection (DP) operates on feasibility and cost** with whatever width is provided for each candidate system position. The algorithm does not assume uniform justification.
 
-2. **Width allocation is parameterized per system** after breaks are chosen. The proportional scaling formula works identically regardless of system width.
+2. **Width allocation is parameterized per system** after breaks are chosen. The springs are fitted identically whatever the system width.
 
 3. **Determinism is preserved**: Given the same break configuration and per-system width policies, allocation produces identical results.
 
-4. **No algorithmic complexity added**: The DP evaluates `(s, t)` segments against the width available for that system position, minus preamble, gutter and postamble. Proportional scaling applies the provided width directly.
+4. **No algorithmic complexity added**: The DP evaluates `(s, t)` segments against the width available for that system position, minus preamble, gutter and postamble. The springs fill the provided width directly.
 
 **Per-system width policy**:
 
@@ -573,7 +626,7 @@ This architectural freedom enables:
 - Adaptation to margins and layout settings
 - Future extensions (e.g., systems of varying width for visual effect)
 
-All while preserving the core property: **proportional scaling maintains rhythmic relationships within whatever width is provided**, with preamble and gutter space reserved for system-start elements and postamble space for system-end cautionaries.
+All while preserving the core property: **the springs distribute whatever width is provided according to each gap's ideal width and its collision limit**, with preamble and gutter space reserved for system-start elements and postamble space for system-end cautionaries.
 
 ### Alternative: Asymmetric Cost Optimization
 
@@ -586,7 +639,7 @@ subject to: Σ actual_i = available, actual_i ≥ min_i
 
 where `f` is asymmetric: compression toward `min_width` penalized more heavily than expansion beyond `ideal_width`.
 
-This general formulation is broader than the Knuth–Plass extension of separate stretch and shrink per glue (see [Relationship to Knuth-Plass](#relationship-to-knuth-plass)). That extension keeps allocation in closed form within a system and segment evaluation O(1); the costs listed below apply to the general formulation.
+This general formulation is broader than the springs, which already give each gap its own stretch and shrink and a collision limit while keeping allocation in closed form ([Gaps as Springs](#gaps-as-springs)); the costs listed below apply to the general formulation.
 
 **Potential benefits**:
 - Could avoid extreme compression by preferring non-uniform expansion
@@ -603,17 +656,17 @@ This general formulation is broader than the Knuth–Plass extension of separate
 
 **Decision framework**:
 
-This refinement should be considered **only if empirical evaluation** of proportional scaling reveals systematic visual problems that justify the complexity. The baseline approach should be implemented first, tested on real scores (simple → complex → Elektra), and evaluated for acceptability.
+This refinement should be considered **only if empirical evaluation** of the springs reveals systematic visual problems that justify the complexity. The baseline approach should be implemented first, tested on real scores (simple → complex → Elektra), and evaluated for acceptability.
 
-If proportional scaling proves adequate, asymmetric optimization becomes unnecessary complexity. If visual problems emerge, the specific issues will guide cost function design rather than speculative theory.
+If the springs prove adequate, asymmetric optimization becomes unnecessary complexity. If visual problems emerge, the specific issues will guide cost function design rather than speculative theory.
 
-**When proportional scaling might be insufficient**:
+**When the springs might be insufficient**:
 
-1. **Extreme compression**: If `scale_factor` is very small (e.g., 0.6), all stacks compress uniformly. However, since stacks are heterogeneous (some staves dense, others sparse), visual degradation affects only the dense staves within each stack.
+1. **Extreme compression**: as a system approaches `r = −1`, every gap gives up the same share of its room above its minimum, so long values, which have more room, give up more. Whether that is right, or short values should give way first, is an engraving question ([Fitting Rules](#fitting-rules)). Since stacks are heterogeneous (some staves dense, others sparse), visual degradation affects only the dense staves within each stack.
 
-2. **Mixed density across stacks**: A system with one very dense stack and several sparse stacks scales uniformly at the stack level. Within the dense stack, some staves may be heavily compressed while others remain adequate.
+2. **Mixed density across stacks**: a system with one very dense stack and several sparse ones compresses the sparse ones more in absolute terms, since they have more room. Within the dense stack, some staves may be heavily compressed while others remain adequate.
 
-3. **Cliff avoidance**: If a stack's `min_width` is very close to its `ideal_width` (indicating at least one very dense staff), proportional scaling might push that stack near the collision boundary.
+3. **Cliff avoidance**: a gap with little room above its minimum gives up little. Under the former baseline, one such gap blocked compression of its whole system; the springs avoid that.
 
 **Note on staff-local effects**: Since compression primarily affects the most demanding staff within each stack while other staves may remain visually intact, the arguments for asymmetric optimization are weaker than they might initially appear. Stack-level allocation may be adequate even under compression.
 
@@ -680,19 +733,21 @@ This is architecturally correct because:
 The inverse constraint—"do not break between measures 12 and 13"—is handled by treating measure groups as atomic units:
 
 ```clojure
-(defn group-measures 
+(defn group-measures
   "Combines consecutive measures into atomic groups that cannot be split.
-   
-   Each group becomes a single 'super-stack' with aggregated metrics.
-   Only the first stack in the group contributes :gutter; the group's
-   largest column ratio is the largest of its members'."
+
+   Each group becomes a single 'super-stack' with aggregated metrics:
+   the sums add, the prestretched gaps are concatenated, and only the
+   first stack in the group contributes :gutter."
   [stacks no-break-ranges]
-  
+
   (let [grouped (apply-grouping stacks no-break-ranges)]
     (mapv (fn [group]
             {:min (reduce + 0N (map :min group))
-             :min-ratio (reduce max (map :min-ratio group))
+             :natural (reduce + 0N (map :natural group))
              :ideal (reduce + 0N (map :ideal group))
+             :ordinary-ideal (reduce + 0N (map :ordinary-ideal group))
+             :prestretched (into [] (mapcat :prestretched) group)
              :gutter (:gutter (first group))
              :member-stacks group})
           grouped)))
@@ -705,31 +760,27 @@ The DP operates on groups; after breaks are determined, groups expand back to co
 User adjustments to individual measure widths ("stretch this measure," "compress this passage") belong upstream of Stage 3, not within it. Stage 3 consumes the stack width metrics; editorial overrides modify these inputs:
 
 ```clojure
-(defn apply-width-overrides 
-  "Applies user width overrides to stack metrics before distribution.
-   
+(defn apply-width-overrides
+  "Applies user width overrides to a stack's gaps, before its summary is formed.
+
    Overrides may specify:
-   - :min-override  - New minimum width (takes max with collision minimum)
-   - :ideal-override - New ideal width (replaces rhythmic ideal)
-   
-   The largest column ratio follows both: the stack's column ideals scale
-   with its ideal, so their ratios scale inversely, and a raised minimum
-   can itself become the binding ratio."
-  [stacks user-overrides]
-  
-  (reduce 
-    (fn [stacks {:keys [measure-index min-override ideal-override]}]
-      (update stacks measure-index
-        (fn [{:keys [min min-ratio ideal] :as stack}]
-          (let [ideal' (or ideal-override ideal)
-                min'   (if min-override (max min min-override) min)]
-            (assoc stack
-                   :min min'
-                   :ideal ideal'
-                   :min-ratio (max (* min-ratio (/ ideal ideal'))
-                                   (/ min' ideal')))))))
-    stacks
-    user-overrides))
+   - :ideal-override - New ideal width for the stack: every gap's w_j is
+                       scaled by ideal-override / ideal, so their ratios hold
+   - :min-override   - New minimum width for the stack: a constraint of that
+                       distance across all its gaps, reduced like any other
+                       constraint spanning several columns, so it can raise
+                       blocking widths but never lower them
+
+   gaps: vector of {:w ideal, :b blocking}. Returns the overridden gaps."
+  [gaps {:keys [ideal-override min-override]} sigma]
+  (let [ideal (reduce + 0N (map :w gaps))
+        gaps (if ideal-override
+               (let [k (/ ideal-override ideal)]
+                 (mapv #(update % :w * k) gaps))
+               gaps)]
+    (if min-override
+      (reduce-span-constraint gaps 0 (count gaps) min-override sigma)
+      gaps)))
 ```
 
 **Key principle**: The collision-derived `min_width` is a hard floor. User overrides can raise it but not lower it—atoms cannot overlap regardless of editorial intent. The `ideal_width` can be freely overridden since it represents preference, not physics. The `gutter` is not user-adjustable—it reflects SMuFL glyph metrics for system-start decorations.
@@ -766,8 +817,8 @@ These preferences shift costs without creating hard constraints. Combined prefer
 The mechanisms compose cleanly in a defined order:
 
 1. **First**: Apply forced breaks to partition the problem
-2. **Then**: Group measures with prevented breaks into super-stacks
-3. **Then**: Apply width overrides to stack metrics
+2. **Then**: Apply width overrides to the stacks' gaps, and form their summaries
+3. **Then**: Group measures with prevented breaks into super-stacks
 4. **Finally**: Run DP with soft preferences via `break-penalty-fn`
 
 Each mechanism operates at a different level: problem partitioning, input transformation, and cost adjustment. This separation prevents the combinatorial complexity that arises when constraints and preferences are conflated into a single penalty system.
@@ -797,10 +848,10 @@ This approach has fundamental problems:
 
 The gutter model eliminates feedback through **complete information**:
 
-1. **Stage 1** computes exact measure content (min, ideal) + exact gutter delta
+1. **Stage 1** computes exact measure content (each gap's ideal and blocking width) + exact gutter delta
 2. **Stage 3** has *complete knowledge* of every scenario (mid-system, system-start and system-end) for every measure
 3. **Stage 3** computes the system breaks that are optimal for its cost function, given these inputs - not heuristic, not iterative
-4. **Stage 4** positions atoms using scale factors from Stage 3
+4. **Stage 4** positions atoms using each system's adjustment ratio from Stage 3
 5. **Stage 5** adds graphical decorations based on actual positions and computes system heights
 6. **Stage 6** computes page breaks by a dynamic programme over the systems, using actual system heights; its cost function is not yet specified
 
@@ -893,33 +944,32 @@ The mechanisms that provide it are specified under [Stability and Quality Extens
 
 Stage 3 operates over a sequence of measure stacks whose width metrics are **already finalized upstream**. In addition, Ooloi caches the following per **measure stack**:
 
-* `min_width` — hard lower bound for measure content (from Stage 1–2)
-* `min_ratio` — the largest column ratio `ρ`, the lower bound on the scale factor
-* `ideal_width` — proportional target for measure content
+* its gaps' ideal and blocking widths, `w_j` and `b_j`, after the reduction of constraints spanning several columns (Stages 1–2)
+* its summary for Stage 3: `min`, `natural`, `ideal`, `ordinary-ideal` and its prestretched gaps
 * `gutter_width` — additional space for system-start decorations
-* `actual_width` — realized width after Stage 3-4 (scale factors applied by Stage 4)
+* `actual_width` — realized width after Stages 3–4 (each system's adjustment ratio applied to its gaps by Stage 4)
 
-This cache is authoritative at the Stage 3-4 boundary: Stage 3 consumes `(min, min-ratio, ideal, gutter)`, together with the preamble and postamble for each candidate system, and produces break assignments and scale factors; Stage 4 applies scale factors to produce `actual` positions; Stage 5 consumes `actual` and never influences Stages 3-4.
+This cache is authoritative at the Stage 3-4 boundary: Stage 3 consumes the summaries and gutters, together with the preamble and postamble for each candidate system, and produces break assignments and adjustment ratios; Stage 4 applies each system's ratio to its gaps to produce `actual` positions; Stage 5 consumes `actual` and never influences Stages 3-4.
 
 #### Cached Invariants
 
-For each stack `i` in a system `[s, t)`:
+For each stack `i` in a system `[s, t)` with adjustment ratio `r`:
 
-* `scale_factor(system) ≥ ρ_i`, so every column gap of the stack is at or above its minimum, and `actual_width_i ≥ min_width_i`
-* `actual_width_i = ideal_width_i × scale_factor(system)`
-* `scale_factor(system) = available / Σ ideal_width_j` where `available = system_width - preamble[s] - gutter[s] - postamble[t]`
+* `r ≥ −1`, so every gap of the stack is at or above its blocking width, and `actual_width_i ≥ min_width_i`
+* `actual_width_i = Σ g_j(r)` over the stack's gaps
+* the system's actual widths sum to `available = system_width - preamble[s] - gutter[s] - postamble[t]`
 
-The cache additionally implies that per-stack metrics are **stable across edits** unless the edited content is in that stack.
+The cache additionally implies that per-stack metrics are **stable across edits** unless the edited content is in that stack, or in a neighbour joined to it by a constraint across the barline.
 
 #### Incremental Update Consequences
 
 Edits affect Stages 3-4 only through changes to stack metrics:
 
-1. **Local edit**: modifying or inserting notation in a measure updates only the affected stack's upstream-derived width values, and the postamble of any system boundary at which that change takes effect.
+1. **Local edit**: modifying or inserting notation in a measure updates only the affected stack's upstream-derived width values (and its neighbour's, where a constraint spans the barline between them), and the postamble of any system boundary at which that change takes effect.
 
 2. **Fast path (break stability)**: Stage 3 is re-run over the cached metrics. If the resulting break configuration is unchanged, then:
 
-   * the scale factor of the system containing the edited stack may change, and with it the `actual_width` of every stack in that system; no other system's scale factor changes
+   * the adjustment ratio of the system containing the edited stack may change, and with it the `actual_width` of every stack in that system; no other system's ratio changes
    * Stage 4 repositioning and Stage 5 regeneration are confined to that system and to connecting elements that touch it
    * no other systems require recomputation
 
@@ -935,7 +985,7 @@ With cached stack metrics, Stage 3 runtime is dominated by DP over **scalars**, 
 
 * **O(size of edited measure)** for upstream recalculation of the edited stack
 * plus a Stage 3 re-run: **O(N×K)** scalar segment evaluations over cached metrics, with no collision or layout work for any unchanged stack
-* plus **O(K)** (where `K ≈ measures/system`) allocation for each system whose membership or scale factor changed
+* plus **O(K)** (where `K ≈ measures/system`) allocation for each system whose membership or adjustment ratio changed
 
 #### Relationship to Edit Locality
 
@@ -943,7 +993,7 @@ This caching strategy makes recomputation after an edit cheap: re-running Stage 
 
 ## Stability and Quality Extensions
 
-The baseline specified above is complete and exact on its own. The mechanisms in this section extend it for stability under editing and for layout quality. Each is specified here with its cost and its effect on exactness. Which are enabled by default, and with which parameters, is decided during implementation by the empirical validation in [Consequences](#consequences) — simple scores, then complex ones, then Elektra — against the criteria below; the one exception is [Column-Level Feasibility](#column-level-feasibility), which corrects the baseline itself.
+The baseline specified above is complete and exact on its own. The mechanisms in this section extend it for stability under editing and for layout quality. Each is specified here with its cost and its effect on exactness. Which are enabled by default, and with which parameters, is decided during implementation by the empirical validation in [Consequences](#consequences) — simple scores, then complex ones, then Elektra — against the criteria below; the one exception is [Feasibility](#feasibility), which states the baseline's own condition.
 
 ### Evaluation Criteria
 
@@ -954,6 +1004,9 @@ Visual judgement, together with measurements taken on the same scores:
 - The number of systems
 - How many breaks an edit changes (stability)
 - Running time
+- The number of manual interventions (forced breaks, width overrides) needed to reach the layout of a reference engraving: the measure that matters most to an engraver
+
+The test material is chosen for where the difficulty lies: chromatic passages in short values, bars that mix long values with runs of very short ones, vocal scores with dense lyrics, tight orchestral pages, music of gradually changing density, and parts with page turns. The references are printed engravings, not the output of other programs.
 
 These measurements also decide the **badness exponent and the constants** of the segment cost model — the coefficient, exponent, cap, per-system penalty `l` and tolerance, starting from TeX's values ([Optimization Characterization](#optimization-characterization)) — and the **stretchability `σ`**, starting from `1/2` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). The constants and `σ` are judged together: TeX's constants are meaningful only under the calibration, and `σ` sets the stretch at which a system counts as badly as one at its collision limit.
 
@@ -969,7 +1022,7 @@ min over feasible [s, t) with s ≤ m < t of   F(s) + cost′(s, t) + G(t)
 
 — at most about K² evaluations. Breaks are recovered through `prev` on the left and `next` on the right. The result is exact.
 
-- **Range edits**: an edit that changes every segment intersecting a range `[a, b]` — several adjacent stacks, or a width that depends on where a system ends (see [End-of-System Width](#end-of-system-width)) — is re-optimised by a forward DP over the window `[a − K, b + K]`, seeded from `F` and closed with `G`: O((b − a + 2K) × K).
+- **Range edits**: an edit that changes every segment intersecting a range `[a, b]` — several adjacent stacks, a width that depends on where a system ends (see [End-of-System Width](#end-of-system-width)), or a constraint spanning a barline ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)) — is re-optimised by a forward DP over the window `[a − K, b + K]`, seeded from `F` and closed with `G`: O((b − a + 2K) × K).
 - **Full passes**: a change of clef or key signature alters the preamble of every later system, and a key signature change alters the accidentals of later measures ([ADR-0035](0035-Remembered-Alterations.md)); a change to forced or prevented breaks changes the problem's partition. These re-run Stage 3 in full.
 - **Refresh**: after an edit, `F(s)` for `s > m` and `G(t)` for `t ≤ m` are stale. They are recomputed off the edit's critical path, O(N×K), or lazily: the next edit at `m₂` needs only the part of each table between the two edits.
 - **Backward early termination** needs the mirror of the width assumption under [Key Implementation Notes](#key-implementation-notes): for fixed `t`, the system width must not increase as the end moves right. Where it does, the backward pass scans every end — slower, still exact.
@@ -988,6 +1041,8 @@ A system the user locks keeps its breaks: its start and end become forced breaks
 
 ### Consistency Between Adjacent Systems
 
+**Not adopted.** Neither form below is part of the baseline, and neither is planned. Badness is cubic and demerits square it, so under an exact optimum a cramped system survives next to a loose one only when every alternative costs more in total. Where that happens, an evenness term can only buy uniformity by distorting other systems, and the known risk recorded below is exactly that. TeX needs fitness classes because a line holds dozens of words; a system holds a handful of bars, and the cost already does most of the work. The forms are recorded so that the decision can be revisited if the validation shows adjacent systems that the cost fails to catch.
+
 Two exact forms, each needing more DP state than the baseline:
 
 - **Fitness classes**: each system is classified by its adjustment ratio `r` into a small number of bands, and adjacent systems whose bands differ by more than one are penalised. One node per (breakpoint, class): about ×4 state and work with four classes.
@@ -1004,37 +1059,44 @@ Keeping one node per breakpoint while adding an adjacency term makes the result 
 
 Two steps are kept apart. **Ideal spacing** is derived within each measure from the durations of its notes and tuplets, in Stage 1. **Fitting** puts measures onto systems and makes their widths fill each system; Stage 3 decides it and Stage 4 applies it. The breaking decision depends on the fitting rule, because the DP judges each candidate system by its feasibility and cost under that rule.
 
-In Knuth–Plass terms each column gap is glue with two separate parameters ([Relationship to Knuth-Plass](#relationship-to-knuth-plass)):
+Each column gap is a spring with three kinds of parameter ([Gaps as Springs](#gaps-as-springs)):
 
-- its **natural width** — the ideal gap, which is where duration enters;
-- its **elasticity** — its stretch and shrink, which decide how the ideal widths give way when a system is looser or tighter than their sum.
+- its **ideal width**, which is where duration enters;
+- its **blocking width**, which is where collision enters;
+- its **elasticity**, its stretch and shrink, which decide how the ideal widths give way when a system is looser or tighter than they are.
 
-A fitting rule is a choice of elasticity. There are four candidates:
+A fitting rule is a choice of elasticity.
 
-1. **Proportional** — the baseline this ADR's formulas specify. Stretch and shrink are proportional to natural width, so one scale factor applies per system. Under stretch and under compression alike, ratios between ideal widths are kept: the rhythmic hierarchy Stage 1 encoded is preserved in proportion, with absolute differences growing when a system is stretched and shrinking when it is compressed.
-2. **Even**. Every column gap has the same stretch and shrink. Under stretch every gap gains the same amount, so short values gain proportionally more and the hierarchy flattens. Under compression every gap loses the same amount, so short values lose proportionally more and the hierarchy sharpens.
-3. **Shrink bounded by the minimum**. Each gap's shrink is `ideal − min`; stretch is proportional. Under stretch the hierarchy behaves as under the baseline. Under compression gaps give way in proportion to their room above their minimum, so the effect follows the content rather than the durations: where longer values have more room, they give up more and the hierarchy flattens. An incompressible gap has zero shrink and the others absorb the compression, which removes the baseline's rigidity — under `scale ≥ max(ρ_i)`, one incompressible column blocks compression of its whole system.
-4. **Duration-weighted elasticity**. Stretch and shrink are weighted by a function of the gap's duration, with shrink capped at `ideal − min` so that no gap goes below its minimum. The hierarchy follows the weighting: shrink weighted toward shorter values — shorter values compress first — sharpens it under compression; stretch weighted toward longer values sharpens it under stretch, and weighted toward shorter values flattens it. This weights elasticity, not natural width, so it does not count duration a second time; it is the counterpart of rule 3, which weights elasticity by content.
-   - **Stretch**: `stretch_i = σ × w′(d_i) × ideal_i`, where `w` is a dimensionless weighting normalised over the segment, `w′(d_i) = w(d_i) × Σ ideal / Σ (w × ideal)`, so that its ideal-weighted mean over the segment is 1. Then `Σ stretch = σ × Σ ideal`, as under the baseline: `σ` alone sets how far a system can stretch, `r = (scale_factor − 1) / σ`, and the weighting only distributes the stretch among the gaps. The normalisation uses sums over the segment alone — prefix sums of `ideal` and of `w × ideal` — so `Σ stretch` depends on the segment alone and stays O(1). A constant `w` gives rule 3's stretch.
-   - **Shrink**: `shrink_i = min(ideal_i − min_i, κ × v(d_i) × ideal_i)`, where `v` is a dimensionless weighting normalised at a reference duration (`v = 1` there) and `κ` is the shrink's own scale, the shrinkability per unit of natural width. It is not normalised over the segment as the stretch is: a cap per gap applied after a normaliser that depends on the segment would not be a prefix sum. As it stands, each gap's shrink is a fixed quantity, so `Σ shrink` comes from a prefix sum and depends on the segment alone.
-   - **Where `r = −1` falls**: where every gap's capped weighted shrink is exhausted, at `available = Σ ideal − Σ shrink`. That is where `Σ min = available` only when every gap's cap applies; otherwise `r = −1` is reached while some gaps are still above their minimum, and the system is fully compressed by the rule's own glue there.
-   - The weightings `w` and `v` and the scale `κ` are part of the rule, and are decided with it by the validation.
+**The baseline: springs.** Stretch `σ × w_j`, shrink `max(0, w_j − b_j)`. Under stretching, gaps free to stretch keep their proportions and prestretched gaps join at their kinks. Under compression every gap gives up the same share of its room above its minimum: where long values have more room, they give up more, and the rhythmic hierarchy flattens; a gap with no room stays where it is and the others absorb the compression. Every gap reaches its minimum at `r = −1`. This is also LilyPond's default compression.
 
-Whether the hierarchy should sharpen or flatten under compression is an engraving question, decided by the empirical validation rather than by the model. The baseline is the rule this ADR's formulas and code carry; none of the others is chosen until the validation decides.
+**Alternatives**, kept as candidates for the validation:
 
-**All four are linear glue.** A stack's stretch and shrink are closed-form sums over its gaps, so the adjustment ratio `r` is O(1) per segment from prefix sums of natural width, stretch and shrink; badness and demerits follow from `r` in O(1), and the DP stays exact. Under all four, `r` is calibrated as under the baseline ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)): `r = −1` is the limit of shrinking, feasibility is `r ≥ −1`, and it is O(1) per segment.
+1. **Proportional, normalised by the tightest gap** (the baseline before this revision). Stretch `σ × w_j`, shrink `(1 − max ρ) × w_j` with `ρ = max_j(b_j / w_j)` over the segment, carried as a running extremum, and feasibility `r ≥ −1`. One scale factor per system, so ratios between ideal widths are kept under compression as well as under stretching. It requires `b_j ≤ w_j` for every gap, and one gap at its minimum blocks compression of its whole system.
+2. **Even**. Every gap has the same stretch and shrink. Under stretching, short values gain proportionally more and the hierarchy flattens; under compression, they lose proportionally more and it sharpens. Shrink is normalised by the gap with the least room, as in rule 1.
+3. **Duration-weighted shrink**. Shrink `κ × v(d_j) × w_j`, weighted by a function of the gap's duration so that, for example, shorter values compress first. Under springs no cap is needed: a gap that reaches its minimum blocks there and the others carry on. Gaps then block at different ratios, so the shrinking side acquires kinks of its own and is solved like the stretching side; `r = −1` needs a definition of its own, for example the ratio at which the last gap blocks. The weighting `v` and the scale `κ` are decided with the rule.
+4. **Air-only stretch**. Stretch proportional to the space between bare noteheads, `σ × (w_j − n)` with `n` a notehead's width, rather than to the whole ideal width, so that long values take most of any stretching. This is LilyPond's default (`Spacing_spanner::note_spacing` in `lily/spacing-basic.cc`).
 
-- **Shrinking, rules 3 and 4**: no gap's shrink exceeds its room above its minimum, so `r ≥ −1` keeps every gap at or above its minimum, and `r` needs no normalisation; it is taken from prefix sums. Under rule 3 the shrink is exactly that room, `ideal − min`, so `Σ shrink = Σ ideal − Σ min` and `r = −1` where `Σ min = available`. Under rule 4 `r = −1` falls where the capped weighted shrink is exhausted, which in general is not where `Σ min = available`.
-- **Shrinking, rules 1 and 2**: a gap can reach its minimum before the system as a whole does, so the shrink is normalised by the gap with the least room, and `r = −1` exactly when that gap reaches its minimum. Under the baseline the shrink is `(1 − max ρ_i) × natural`, with `max ρ_i` the largest column ratio ([Column-Level Feasibility](#column-level-feasibility)). Under even fitting every gap's shrink is the least room over the segment, `min_j (ideal_j − min_j)`, so `Σ shrink` is that least room times the number of gaps, taken from a prefix sum of gap counts. The extremum is carried as a running extremum while the segment grows, one comparison per step.
-- **Stretching**: `σ` is the stretchability per unit of natural width. Under rules 1 and 3 each gap's stretch is `σ × ideal`, so `r = (scale_factor − 1) / σ`. Under rule 4 it is `σ × w′(d) × ideal`, with the duration weighting normalised over the segment, so that `Σ stretch = σ × Σ ideal` and `σ` alone sets how far a system can stretch; the weighting sets only how the stretch is distributed. Under rule 2 every gap's stretch is `σ` times the segment's mean ideal gap, so `Σ stretch = σ × Σ ideal`, as under the baseline. In all four, `Σ stretch` depends only on the segment.
+Whether the hierarchy should sharpen or flatten under compression, and which values should take the stretch, are engraving questions, decided by the empirical validation rather than by the model. The baseline is the rule this ADR's formulas and code carry; none of the alternatives is chosen until the validation decides.
 
-Under any rule but the baseline, Stage 4 applies the system's adjustment ratio through each gap's own glue rather than one scale factor to every atom. The evaluation covers systems containing one dense or incompressible measure among sparse ones, the behaviour of the rhythmic hierarchy under stretch and under compression, consistency in complex rhythmic contexts, and the proportionality each rule gives up.
+**All of them keep the DP exact.** Each system's cost still depends on the segment alone, and `r` is the solution of a piecewise-linear equation built from prefix sums and the segment's kinks. Under the baseline and rules 1, 2 and 4 the shrinking side is one division; rule 3 makes it piecewise, solved exactly by the same walk as the stretching side. Under any rule, Stage 4 applies the system's adjustment ratio through each gap's own spring.
 
-### Column-Level Feasibility
+**Who pays.** The adjustment ratio is one value for the whole system, so when a bar needs more room than its proportions give it (a run of thirty-second notes between a half note and a quarter, say), the cost is shared by every gap in the system according to its elasticity, including gaps several bars away. An engraver might prefer the long notes of the same bar to pay. That is a choice between consistency, where the same duration is treated alike across the system, and locality, where each bar settles its own debts. Locality belongs to Stage 1, in how ideal widths are set within a bar before any fitting begins, and needs no change to Stage 3. The baseline is consistency; the validation decides whether locality is needed.
 
-Under the baseline, one scale factor is applied to every column gap within every stack. A column gap stays at or above its own minimum only if `scale ≥ min_gap / ideal_gap` for that gap, so the ratio the sufficient feasibility condition takes for a stack is the **largest column ratio within it**, `ρ_i = max_j(min_gap_j / ideal_gap_j)`, not the stack's `min / ideal`. The two coincide only when every column of a stack is equally compressible; otherwise a stack can pass a stack-level check while one of its columns collides.
+**The raster.** Gaps lie between columns of the stack's vertical raster, one column for each rhythmic position in any staff, and a gap's blocking width is the largest over the staves, so an accidental in one staff widens that column in every staff. Under compression the columns differ according to need; as the system loosens, columns held open by accidentals stop growing while the others catch up, until the grid is even again. No separate policy is specified; the validation decides whether one is needed.
 
-Each stack therefore carries `ρ_i` as `:min-ratio` ([Interface Contract](#interface-contract)), and the sufficient condition for a system is `scale ≥ max(ρ_i)` over its stacks. The same `max(ρ_i)` sets the system's shrinkability, so that under the calibrated adjustment ratio this condition is `r ≥ −1` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). `Σ min_i ≤ available` remains the necessary condition, with `min_i` the sum of the stack's minimum gaps. Grouping and width overrides carry the ratio through ([Editorial Control Mechanisms](#editorial-control-mechanisms)).
+The evaluation covers systems with one dense or incompressible measure among sparse ones, chromatic passages in short values, bars that mix long values with runs of very short ones, the behaviour of the rhythmic hierarchy under stretching and under compression, consistency in complex rhythmic contexts, and the proportionality each rule gives up.
+
+### Feasibility
+
+Under the baseline a system is feasible exactly when its gaps' blocking widths fit:
+
+```
+Σ min_i ≤ available          (equivalently, r ≥ −1)
+```
+
+The condition is necessary and sufficient. Every gap's shrink is its own room above its minimum, so at `r = −1` every gap is at its minimum and none reaches it sooner. It comes from prefix sums in O(1), and it is the same point as Knuth–Plass's limit on shrinking ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)).
+
+Under the former baseline (rule 1 of [Fitting Rules](#fitting-rules)), one scale factor applied to every gap, and the sufficient condition was the largest column ratio, `scale ≥ max_j(b_j / w_j)` over the segment. A stack could pass a stack-level check while one of its columns collided, so every stack had to carry that ratio. Under the springs no such ratio is needed.
 
 ### End-of-System Width
 
@@ -1073,18 +1135,72 @@ The following implementation performs **Stage 3: System Breaking** - distributin
    :line-penalty 10N          ;; l: added to every system; favours fewer systems
    :tolerance nil             ;; bound on badness beyond which a segment is infeasible;
                               ;; nil = no bound (plain TeX's \tolerance is 200)
-   :stretchability 1/2})      ;; σ: stretch per unit of natural width; r = 1 at
-                              ;; a scale factor of 1 + σ
+   :stretchability 1/2})      ;; σ: stretch per unit of ideal width; an ordinary
+                              ;; gap is at (1 + σ) × w at r = 1
 
-(defn adjustment-ratio
-  "Adjustment ratio of a system under the baseline, calibrated so that r = -1
-   at the system's collision limit (scale = max-ratio) and r = 1 at a scale
-   of 1 + σ. Called only for feasible segments, so max-ratio < 1 whenever
-   scale < 1."
-  [scale max-ratio {:keys [stretchability]}]
-  (if (>= scale 1N)
-    (/ (- scale 1N) stretchability)
-    (/ (- scale 1N) (- 1N max-ratio))))
+(defn gap-width
+  "Width of a gap with ideal width w and blocking width b at adjustment
+   ratio r, under the baseline springs: stretch σ × w, shrink max(0, w − b)."
+  [w b r sigma]
+  (if (neg? r)
+    (max b (+ w (* r (max 0N (- w b)))))
+    (max b (+ w (* r sigma w)))))
+
+(defn stack-summary
+  "Summarises a sequence of gaps {:w ideal, :b blocking} for Stage 3
+   (see Interface Contract)."
+  [gaps]
+  (reduce (fn [acc {:keys [w b]}]
+            (cond-> (-> acc
+                        (update :min + b)
+                        (update :natural + (max w b))
+                        (update :ideal + w))
+              (<= b w) (update :ordinary-ideal + w)
+              (> b w)  (update :prestretched conj [w b])))
+          {:min 0N :natural 0N :ideal 0N :ordinary-ideal 0N :prestretched []}
+          gaps))
+
+(defn add-kinks
+  "Adds prestretched gaps to a sorted map {kink Σw}, where a gap's kink is
+   (b − w) / (σ × w), the ratio at which it starts to stretch. A gap of zero
+   ideal width is fixed space: it never stretches and has no kink."
+  [kinks prestretched sigma]
+  (reduce (fn [m [w b]]
+            (if (zero? w)
+              m
+              (update m (/ (- b w) (* sigma w)) (fnil + 0N) w)))
+          kinks
+          prestretched))
+
+(defn solve-ratio
+  "The least adjustment ratio r at which a segment's gaps fill `available`,
+   or nil when they cannot (available < Σ min). min, natural and
+   ordinary-ideal are the segment's sums; kinks is its sorted map {kink Σw}.
+   Exact: rationals in, rational out."
+  [available min natural ordinary-ideal kinks sigma]
+  (cond
+    (< available min) nil
+
+    (= available natural) 0N
+
+    ;; Shrinking: every gap gives up the same share of its room above its
+    ;; minimum, and all reach their minimums together at r = -1. One division.
+    (< available natural)
+    (/ (- available natural) (- natural min))
+
+    ;; Stretching: ordinary gaps stretch from r = 0; each prestretched gap
+    ;; joins at its kink. The first piece is the fast path. A positive :ideal
+    ;; for every stack guarantees a positive slope once all kinks are passed.
+    :else
+    (loop [width natural
+           r0 0N
+           slope (* sigma ordinary-ideal)
+           ks (seq kinks)]
+      (let [[k w] (first ks)
+            reach (when k (+ width (* slope (- k r0))))]
+        (if (or (nil? k) (<= available reach))
+          (+ r0 (/ (- available width) slope))
+          (recur reach k (+ slope (* sigma w)) (next ks)))))))
 
 (defn badness
   "Badness of a system with adjustment ratio r: c × |r|^e, capped at b_max.
@@ -1106,117 +1222,121 @@ The following implementation performs **Stage 3: System Breaking** - distributin
 
 (defn find-optimal-breaks
   "Finds optimal system breaks for measure stacks using dynamic programming.
-   
+
    Input:
-   - stacks: Vector of {:min ratio, :min-ratio ratio, :ideal ratio, :gutter ratio,
-                        :measure-index int} maps
-   - system-width-fn: Function (fn [start-pos end-pos] -> ratio) 
+   - stacks: Vector of stack summaries {:min, :natural, :ideal, :ordinary-ideal,
+             :prestretched, :gutter, :measure-index} (see Interface Contract)
+   - system-width-fn: Function (fn [start-pos end-pos] -> ratio)
                       Returns available width for system containing stacks start-pos..end-pos-1
    - break-penalty-fn: Optional. Function (fn [stacks s t] -> ratio)
                        Returns the penalty p for selecting segment s..t-1 as a system;
                        it enters the demerits as +p² or -p²
                        Default: (constantly 0N) - no editorial preferences
    - params: Optional. Segment cost parameters; default knuth-plass-parameters
-   
+
    Output:
-   - {:breaks [break-positions], :cost total-demerits-ratio}"
-  
+   - {:breaks [break-positions], :ratios [adjustment ratio per system],
+      :cost total-demerits-ratio}"
+
   ([stacks system-width-fn]
    (find-optimal-breaks stacks system-width-fn (constantly 0N)))
-  
+
   ([stacks system-width-fn break-penalty-fn]
    (find-optimal-breaks stacks system-width-fn break-penalty-fn knuth-plass-parameters))
-  
+
   ([stacks system-width-fn break-penalty-fn params]
    (let [n (count stacks)
          tolerance (:tolerance params)
-         
+         sigma (:stretchability params)
+
          ;; Precompute prefix sums for O(1) range queries
          ;; CRITICAL: Use 0N to maintain ratio domain
          min-prefix (vec (reductions + 0N (map :min stacks)))
-         ideal-prefix (vec (reductions + 0N (map :ideal stacks)))
-         
+         natural-prefix (vec (reductions + 0N (map :natural stacks)))
+         ordinary-prefix (vec (reductions + 0N (map :ordinary-ideal stacks)))
+
          ;; Tie-break terms: element t is 2^-t, the secondary cost of a
          ;; segment ending at breakpoint t
          tie-term (vec (reductions (fn [x _] (/ x 2)) 1N (range n)))
-         
+
          ;; State arrays: nil = unreachable, [cost tie] = best pair for the prefix
          ;; Length n+1 where index t represents prefix of length t
          best (transient (vec (repeat (inc n) nil)))
-         prev (transient (vec (repeat (inc n) nil)))]
-     
+         prev (transient (vec (repeat (inc n) nil)))
+         ratio (transient (vec (repeat (inc n) nil)))]
+
      ;; Base case: empty prefix reachable with zero cost
      (assoc! best 0 [0N 0N])
-     
+
      ;; For each prefix length t (represents stacks 0..t-1)
      (doseq [t (range 1 (inc n))]
-       
+
        ;; Reserve postamble space for the system ending at t: cautionaries for
        ;; changes taking effect at stack t, and the extra width of a double,
        ;; final or repeat barline at t in its system-end form (0N when t = n).
        ;; It depends only on t, so it is fixed for the whole inner loop
        (let [postamble (get-postamble-width stacks t)]
-         
+
          ;; Try previous break at prefix length s (represents stacks 0..s-1)
          ;; System contains stacks s..t-1
          ;; Each step leftwards extends the segment by exactly one stack (stack s),
-         ;; so max(ρ_i) over the segment is carried forward in O(1)
-         ;; rather than rescanned
+         ;; so its prestretched gaps are added to the segment's kinks in
+         ;; O(P_s log P) rather than the segment being rebuilt
          (loop [s (dec t)
-                max-ratio 0N]
+                kinks (sorted-map)]
            (when (>= s 0)
-             (let [max-ratio (max max-ratio (get-in stacks [s :min-ratio]))
+             (let [kinks (add-kinks kinks (get-in stacks [s :prestretched]) sigma)
                    system-width (system-width-fn s t)
                    ;; Reserve preamble and gutter space for system-start stack
                    preamble (get-preamble-width stacks s)  ;; On-demand, cached by clef/keysig combo
                    gutter (get-in stacks [s :gutter] 0N)
                    available (- system-width preamble gutter postamble)
-                   ;; Check if measures can fit in remaining space
                    total-min (- (nth min-prefix t) (nth min-prefix s))]
-               
+
                ;; Early termination: stop once the minimums exceed the full system width.
                ;; This bound only grows harder to meet as s moves left; `available` does
                ;; not, because preamble[s] and gutter[s] vary with s
                (when (<= total-min system-width)
-                 
-                 (let [total-ideal (- (nth ideal-prefix t) (nth ideal-prefix s))
-                       scale-factor (/ available total-ideal)]
-                   
-                   ;; Necessary: minimums fit after reserving preamble, gutter and postamble
-                   ;; Sufficient: the scale factor keeps every column gap at or above
-                   ;; its minimum — equivalently, the calibrated r is at least -1
-                   (when (and (<= total-min available)
-                              (>= scale-factor max-ratio)
-                              (some? (nth best s)))
-                     
-                     ;; Calibrated adjustment ratio: shrink measured against the room above
-                     ;; the tightest column, stretch against σ
-                     (let [r (adjustment-ratio scale-factor max-ratio params)
-                           b (badness r params)]
-                       
-                       ;; Tolerance: badness within the optional bound
-                       (when (or (nil? tolerance) (<= b tolerance))
-                         ;; Demerits from badness, the per-system penalty and the break's
-                         ;; penalty. Preamble, gutter and postamble enter only through
-                         ;; available, and so through r
-                         (let [d (demerits b (break-penalty-fn stacks s t) params)
-                               [prefix-cost prefix-tie] (nth best s)
-                               candidate [(+ prefix-cost d)
-                                          (+ prefix-tie (nth tie-term t))]
-                               current-best (nth best t)]
-                           
-                           ;; Update if the candidate pair is lexicographically smaller
-                           ;; (nil = infinity); ties in cost are resolved by the secondary term
-                           (when (or (nil? current-best)
-                                     (pair< candidate current-best))
-                             (assoc! best t candidate)
-                             (assoc! prev t s)))))))
-                 
-                 (recur (dec s) max-ratio)))))))
-     
-     ;; Return results
-     {:breaks (reconstruct-breaks (persistent! prev) n)
-      :cost (first (nth best n))})))
+
+                 ;; The adjustment ratio, or nil when the minimums do not fit after
+                 ;; reserving preamble, gutter and postamble: r >= -1 is feasibility
+                 (when-let [r (and (some? (nth best s))
+                                   (solve-ratio available
+                                                total-min
+                                                (- (nth natural-prefix t) (nth natural-prefix s))
+                                                (- (nth ordinary-prefix t) (nth ordinary-prefix s))
+                                                kinks
+                                                sigma))]
+                   (let [b (badness r params)]
+
+                     ;; Tolerance: badness within the optional bound
+                     (when (or (nil? tolerance) (<= b tolerance))
+                       ;; Demerits from badness, the per-system penalty and the break's
+                       ;; penalty. Preamble, gutter and postamble enter only through
+                       ;; available, and so through r
+                       (let [d (demerits b (break-penalty-fn stacks s t) params)
+                             [prefix-cost prefix-tie] (nth best s)
+                             candidate [(+ prefix-cost d)
+                                        (+ prefix-tie (nth tie-term t))]
+                             current-best (nth best t)]
+
+                         ;; Update if the candidate pair is lexicographically smaller
+                         ;; (nil = infinity); ties in cost are resolved by the secondary term
+                         (when (or (nil? current-best)
+                                   (pair< candidate current-best))
+                           (assoc! best t candidate)
+                           (assoc! prev t s)
+                           (assoc! ratio t r))))))
+
+                 (recur (dec s) kinks)))))))
+
+     ;; Return results: breaks, and the ratio of each system, indexed by where it ends
+     (let [prev (persistent! prev)
+           ratio (persistent! ratio)
+           breaks (reconstruct-breaks prev n)]
+       {:breaks breaks
+        :ratios (mapv #(nth ratio %) (rest (conj breaks n)))
+        :cost (first (nth best n))}))))
 ```
 
 **System reservations explained:**
@@ -1226,21 +1346,15 @@ For each candidate segment [s, t):
 2. Get `gutter = gutter[s]` (only first stack in system contributes)
 3. Get `postamble = postamble[t]` (system-end cautionaries and barline; fixed for a given `t`)
 4. Compute `available = system_width - preamble - gutter - postamble`
-5. Check feasibility: `Σ min_i ≤ available`, and `scale ≥ max(ρ_i)`
-6. Compute scale factor: `available / Σ ideal_i`
-7. Compute the calibrated adjustment ratio — `(scale − 1) / σ` when stretching, `(scale − 1) / (1 − max ρ_i)` when shrinking — its badness, and, within the tolerance, the system's demerits; preamble, gutter and postamble are fixed overhead and enter only through `available`
+5. Check feasibility: `Σ min_i ≤ available`
+6. Solve for the adjustment ratio `r`: one division when shrinking, and when stretching until the segment's first kink; beyond it, the kinks in order
+7. Compute its badness and, within the tolerance, the system's demerits; preamble, gutter and postamble are fixed overhead and enter only through `available`
 
-The preamble, gutter and postamble are reserved space that does not participate in scaling or cost computation.
+The preamble, gutter and postamble are reserved space outside the springs; they do not participate in cost computation.
 
 **Feasibility condition:**
 
-The check `Σ min_i ≤ available` is **necessary but not sufficient**. The **sufficient condition** requires:
-```
-scale_factor = available / Σ ideal_i
-scale_factor ≥ max(ρ_i) over the stacks of the system,  ρ_i = max_j(min_gap_j / ideal_gap_j)
-```
-
-This ensures proportional scaling keeps every column gap at or above its minimum, and so produces `actual_i ≥ min_i` for all stacks.
+Under the baseline, `Σ min_i ≤ available` is **necessary and sufficient**: every gap's shrink is its own room above its minimum, so every gap reaches its minimum at `r = −1` and none sooner ([Feasibility](#feasibility)). `solve-ratio` returns nil exactly when it fails.
 
 **Width Policy Function Examples**:
 
@@ -1260,21 +1374,29 @@ The `system-width-fn` accepts `(start-pos, end-pos)` and returns the total avail
 (fn [s t] (lookup-explicit-width s t))
 ```
 
-The DP algorithm subtracts preamble, gutter and postamble from the policy-provided width to determine space for scaling.
+The DP algorithm subtracts preamble, gutter and postamble from the policy-provided width to determine the space the springs fill.
+
+### Solving for the Adjustment Ratio
+
+`solve-ratio` finds the least `r` at which a segment's gaps fill the available width ([Gaps as Springs](#gaps-as-springs)):
+
+- **Infeasible**: `available < Σ min`, so no `r ≥ −1` fits.
+- **Shrinking**: `r = (available − Σ natural) / (Σ natural − Σ min)`, one division. Under the baseline every gap's shrink is its room above its minimum, so `Σ g_j(r)` is linear on `[−1, 0]`.
+- **Stretching**: from `r = 0` the segment grows at `σ × Σ ordinary ideal` per unit of `r`. At each kink, in increasing order, the slope grows by `σ × w` for the prestretched gaps that start to stretch there. The walk stops on the piece that contains `available`, and `r` is one division on it. When `available` is reached before the first kink, which is the common case, this is the fast path and costs what the former baseline did.
+
+The walk visits only the kinks below `r`. A balanced tree over the kinks carrying running sums of `w` would find the piece in O(log P) for `P` prestretched gaps in the segment; the linear walk is specified for clarity, since a segment holds few prestretched gaps and `r` passes few of them within any reasonable tolerance.
+
+Every quantity is a rational, so `r` is exact and identical on every platform. The same function serves Stage 2, which uses it to reduce [constraints spanning several columns](#constraints-spanning-several-columns).
 
 ### Segment Cost Computation
 
-Under the feasibility contract (`scale ≥ max(ρ_i)`), proportional scaling produces `actual_i = ideal_i × scale` with no clamping required, so every stack in the system is stretched or compressed by the same factor, and the system has one calibrated adjustment ratio ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)):
+Once `r` is known, the system's cost follows ([Optimization Characterization](#optimization-characterization)):
 
 ```
-scale = available / Σ ideal_i
-r = (scale − 1) / σ                 when scale ≥ 1   (stretching)
-r = (scale − 1) / (1 − max ρ_i)     when scale <  1   (shrinking)
+r = least r with Σ g_j(r) = available
 b = min(b_max, c × |r|^e)
 d = (l + b)² ± p²
 ```
-
-With precomputed prefix sums of `Σ ideal_i` (and, under the other [fitting rules](#fitting-rules), of `Σ stretch_i` and `Σ shrink_i`) and the running `max ρ_i`, `r` and therefore the demerits are O(1) per segment:
 
 ```clojure
 ;; Segment cost (inline in DP loop, for a feasible segment)
@@ -1282,84 +1404,69 @@ With precomputed prefix sums of `Σ ideal_i` (and, under the other [fitting rule
       gutter (get-in stacks [s :gutter] 0N)
       postamble (get-postamble-width stacks t)
       available (- system-width preamble gutter postamble)
-      total-ideal (- (nth ideal-prefix t) (nth ideal-prefix s))
-      scale-factor (/ available total-ideal)
-      r (adjustment-ratio scale-factor max-ratio params)
+      r (solve-ratio available total-min total-natural total-ordinary kinks sigma)
       b (badness r params)
       d (demerits b (break-penalty-fn stacks s t) params)]
   ...)
 ```
 
-This is the canonical cost definition under the ADR's contract, not an optimisation of a more complex one. The feasibility check guarantees no clamping, so the `r` computed from the sums is the ratio every stack actually receives.
+This is the canonical cost definition under the ADR's contract, not an optimisation of a more complex one. The `r` it uses is the ratio every gap of the system actually receives in Stage 4.
 
 ### Width Allocation Implementation
 
 ```clojure
 (defn allocate-widths
-  "Allocates actual widths using proportional scaling (normalisation).
-   
+  "Allocates actual gap widths for one system from its adjustment ratio r.
+
    Used after break selection to compute final positions for rendering.
-   Under the feasibility contract, every column gap stays at or above its
-   minimum, so all stacks satisfy actual_i ≥ min_i without clamping.
-   
-   preamble and postamble are the system's preamble[s] and postamble[t].
-   The first stack (index 0) contributes :gutter. All three are reserved
-   space that does not scale; all measures scale within the remaining space.
-   
+   system-gaps is a vector, per stack, of that stack's gaps {:w ideal, :b blocking}.
+   preamble and postamble are the system's preamble[s] and postamble[t]; the
+   first stack contributes :gutter. All three are reserved space outside the
+   springs.
+
    Returns map with:
    - :preamble, :gutter, :postamble - reserved widths
-   - :actuals - vector of actual widths for each measure"
-  [system-stacks system-width preamble postamble]
-  
-  (let [;; Reserve gutter space for first stack
-        gutter (get (first system-stacks) :gutter 0N)
-        available (- system-width preamble gutter postamble)
-        total-ideal (reduce + 0N (map :ideal system-stacks))
-        scale-factor (/ available total-ideal)]
-    
+   - :gaps - per stack, the vector of its gap widths
+   - :actuals - per stack, its total width"
+  [system-stacks system-gaps preamble postamble r sigma]
+  (let [gutter (get (first system-stacks) :gutter 0N)
+        gaps (mapv (fn [stack-gaps]
+                     (mapv (fn [{:keys [w b]}] (gap-width w b r sigma)) stack-gaps))
+                   system-gaps)]
     {:preamble preamble
      :gutter gutter
      :postamble postamble
-     :actuals (mapv (fn [stack]
-                      (let [scaled (* (:ideal stack) scale-factor)]
-                        ;; Defensive clamp: under feasibility contract, this never changes the value
-                        (max scaled (:min stack))))
-                    system-stacks)}))
+     :gaps gaps
+     :actuals (mapv #(reduce + 0N %) gaps)}))
 ```
 
 **Why this approach**:
 
-1. **Normalisation, not optimisation**: No degrees of freedom, no iteration, no convergence concerns
-2. **Preserves proportionality by construction**: `actual_i / actual_j = ideal_i / ideal_j` for all i,j
+1. **Derivation, not optimisation**: `r` is already known; each gap's width is one formula
+2. **Collision-safe by construction**: no gap falls below its blocking width, so there is no clamp to trust
 3. **Reservation correctness**: System-start decorations and system-end cautionaries and barlines have exactly their required space
 4. **Deterministic**: Same input always produces same output with no floating-point variation
-5. **Fast**: O(K) where K ≈ 10-20, essentially zero cost
-6. **Predictable**: Users can mentally predict allocation behavior
-7. **Contained**: Within a fixed break configuration, a change to one stack alters only its own system's allocation
+5. **Fast**: O(gaps) per system
+6. **Contained**: Within a fixed break configuration, a change to one stack alters only its own system's ratio and widths
 
 **Verification**:
 ```clojure
+;; r is the ratio Stage 3 solved for this system's available width
 (let [{:keys [preamble gutter postamble actuals]}
-      (allocate-widths stacks width preamble postamble)]
-  (assert (= width (+ preamble gutter (reduce + 0N actuals) postamble))))
+      (allocate-widths stacks gaps preamble postamble r sigma)]
+  (assert (= system-width (+ preamble gutter (reduce + 0N actuals) postamble))))
 ```
 
-**Defensive clamp**:
-
-The `max` clamp is purely defensive programming:
-- The DP feasibility check ensures `scale_factor ≥ max(ρ_i)`, the largest column ratio over the system's stacks
-- This keeps every column gap at or above its minimum, and so guarantees `scaled = ideal_i × scale_factor ≥ min_i` for all stacks
-- Under the feasibility contract, the clamp never changes any value
-- Debug builds may assert this invariant: `(assert (>= scaled (:min stack)))`
+The equality is exact, not approximate: `r` solves the system's equation exactly, and the summaries Stage 3 used are consistent with the gaps Stage 4 applies it to ([Interface Contract](#interface-contract)).
 
 ### Break Reconstruction
 
 ```clojure
 (defn reconstruct-breaks [prev n]
   "Walks backward through prev array to build break positions.
-   
+
    Returns vector of break positions (indices where systems start)."
-  
+
   (loop [breaks []
          pos n]
     (if (<= pos 0)
@@ -1373,24 +1480,22 @@ The `max` clamp is purely defensive programming:
 **Preamble, Gutter and Postamble Handling**:
 
 Each stack carries `:gutter` (default 0N). Preamble width is computed on-demand and cached by (clef, keysig) combination. Only the first stack in a system contributes its gutter and determines the preamble; the postamble is determined by the breakpoint at which the system ends. All three:
-- Are reserved from system width before scaling: `available = system_width - preamble - gutter - postamble`
+- Are reserved from system width before the springs are fitted: `available = system_width - preamble - gutter - postamble`
 - Do not scale—they are fixed space for clefs and key signatures, graphical decorations, and system-end cautionaries and barlines
 - Do not participate in cost computation
 - Are returned separately from `allocate-widths` for rendering coordination
 
-**Baseline: Proportional Scaling (Normalisation)**:
+**Baseline: Springs**:
 
-The implementation uses proportional scaling as the primary width allocation strategy. This is normalisation (deterministic formula), not optimisation (iterative solver):
+The implementation fits each system by its gaps' springs. This is derivation (the exact solution of a piecewise-linear equation), not optimisation (an iterative solver):
 
-- **Formula**: `actual_i = ideal_i × (available / Σ ideal_i)`
-- **Preamble, gutter and postamble reservation**: `available = system_width - preamble[s] - gutter[s] - postamble[t]`
-- **Preserves proportionality**: All measures scale by same factor
-- **No degrees of freedom**: Allocation is purely derived from break choice
-- **Fast**: O(K) per system, essentially zero cost
-- **Predictable**: Mental model matches implementation
-- **Contained**: Within a fixed break configuration, a change to one stack alters only its own system's allocation
+- **Ratio**: `r` is the least value with `Σ g_j(r) = available`: one division when shrinking, and when stretching until a prestretched gap starts to stretch
+- **Reservation**: `available = system_width - preamble[s] - gutter[s] - postamble[t]`
+- **No clamp**: `g_j(r) = max(b_j, w_j + r × k_j)` never falls below the blocking width
+- **Fast**: O(gaps) per system to apply, essentially zero cost
+- **Contained**: Within a fixed break configuration, a change to one stack alters only its own system's ratio and widths
 
-This approach may prove entirely adequate. If empirical testing reveals systematic visual problems, asymmetric optimisation can be considered, but complexity should not be added speculatively.
+Whether an alternative fitting rule is needed is decided by the validation, not speculatively ([Fitting Rules](#fitting-rules)).
 
 **Extension Point: break-penalty-fn**:
 
@@ -1398,28 +1503,28 @@ The algorithm accepts an optional `break-penalty-fn` parameter with signature `(
 
 **Feasibility Check**:
 
-The DP uses a two-part feasibility check:
-1. **Necessary**: `Σ min_i ≤ available` (minimums must fit after reserving preamble, gutter and postamble) - O(1) via prefix sums
-2. **Sufficient for proportional scaling**: `scale_factor ≥ max(ρ_i)`, the largest column ratio over the segment's stacks - O(1) per segment, using a running maximum
+`Σ min_i ≤ available` (the minimums must fit after reserving preamble, gutter and postamble), O(1) via prefix sums. Under the baseline it is necessary and sufficient ([Feasibility](#feasibility)); `solve-ratio` returns nil exactly when it fails.
 
-The second condition ensures the scale factor is large enough that no column gap falls below its minimum, so no stack requires clamping. Without it, proportional scaling could produce allocations below minimums.
+**Kinks**:
 
-The running maximum works because the inner loop visits segments in a fixed order: for fixed `t`, `s` decreases from `t-1`, so each candidate segment `[s, t)` is the previous one extended by the single stack `s`. The maximum over the new segment is therefore `max(previous maximum, ρ_s)`, one comparison per step. Rescanning the segment instead would cost O(K) per segment and O(N×K²) in total.
+The inner loop visits segments in a fixed order: for fixed `t`, `s` decreases from `t-1`, so each candidate segment `[s, t)` is the previous one extended by the single stack `s`. Its prestretched gaps are added to a persistent sorted map of kinks, O(P_s log P) for `P_s` gaps in stack `s` and `P` in the segment; the map's first key decides whether a stretching segment takes the fast path. Rebuilding the map for each segment instead would cost O(P log P) per segment.
 
 **Segment Evaluation**:
 
 Each candidate segment (s, t) requires:
 1. **Reservation lookups**: O(1) to get `preamble[s]` and `gutter[s]`; `postamble[t]` is fixed for the inner loop
-2. **Feasibility**: O(1) to extend the running `max(ρ_i)` by stack `s`
-3. **Cost**: O(1) — the adjustment ratio from prefix sums and the running `max(ρ_i)`, then badness and demerits from it
+2. **Feasibility**: O(1) from prefix sums
+3. **Kinks**: stack `s`'s prestretched gaps added to the segment's sorted map, O(P_s log P)
+4. **Cost**: the adjustment ratio, O(1) when shrinking and on the fast path when stretching, otherwise one step per kink passed; then badness and demerits from it
 
-Every per-segment step is O(1). Cost computation uses the `ideal-prefix` sums, and, when the system is shrinking, the running maximum carried by the inner loop; feasibility uses the same running maximum.
+Every per-segment step is O(1) except where prestretched gaps take part.
 
 **Rational Arithmetic Throughout**:
 - All numeric literals use `N` suffix: `0N`
 - Preserves exact arithmetic, no floating-point contamination
 - Ensures deterministic outcomes across platforms
 - Ratio growth managed through Clojure's automatic normalization (gcd)
+- Kinks are rationals, so the sorted map orders them exactly
 - Demerits are rationals of degree six in `r` with the documented exponent, so their numerators and denominators grow faster than the widths'; evaluation remains O(1) arithmetic per segment
 - The badness exponent is an integer, so badness is computed exactly; any approximation, such as for a non-integer exponent, must be deterministic
 
@@ -1436,9 +1541,9 @@ Every per-segment step is O(1). Cost computation uses the `ideal-prefix` sums, a
 - Converted to persistent at end
 
 **Prefix Sums for O(1) Queries**:
-- Precomputed once: O(N) time for `min-prefix` and `ideal-prefix` — and, under fitting rules other than the baseline, prefix sums of stretch and shrink
+- Precomputed once: O(N) time for `min-prefix`, `natural-prefix` and `ordinary-prefix`
 - Range sum in O(1): `(- (nth prefix t) (nth prefix s))`
-- Enables O(1) computation of the adjustment ratio, and from it the badness and demerits
+- Enables O(1) feasibility, and the adjustment ratio in O(1) when shrinking and on the fast path when stretching
 - Must use `0N` in reductions to maintain ratio domain
 - Note: preamble and gutter are O(1) per-segment lookups, and postamble one lookup per outer iteration; none is prefix-summed (each depends on one end of the segment)
 - The tie-break terms `2^−t` are precomputed once, one per breakpoint
@@ -1455,75 +1560,75 @@ Every per-segment step is O(1). Cost computation uses the `ideal-prefix` sums, a
 
 | Operation | Complexity | Notes |
 |-----------|------------|-------|
-| Precomputation | O(N) | Prefix sums for min and ideal; tie-break terms |
+| Precomputation | O(N) | Prefix sums for min, natural and ordinary ideal; tie-break terms |
 | Outer loop | O(N) | Each position once |
 | Inner loop | O(K) typical | Early termination once minimums exceed the full system width |
 | Reservation lookups | O(1) | Preamble and gutter per segment; postamble per outer iteration |
-| Feasibility check | O(1) | Running max(ρ_i), extended by one stack per step |
-| Cost computation | O(1) | Adjustment ratio from prefix sums and the running max(ρ_i); badness and demerits from it |
+| Feasibility check | O(1) | Prefix sums of minimum widths |
+| Kinks | O(P_s log P) | Stack s's prestretched gaps added to the segment's sorted map |
+| Cost computation | O(1) fast path | Adjustment ratio from prefix sums; one step per kink passed when a prestretched gap starts to stretch; badness and demerits from it |
 | **Total (worst case)** | O(N²) | Without early termination |
 | **Total (typical)** | O(N×K) | With monotone width policy, K ≈ 15 |
 | Page breaking | O(S²) | S = number of systems |
 
-At N=800 measures, K=15: ~12,000 segment evaluations, each O(1) for both feasibility and cost.
+At N=800 measures, K=15: ~12,000 segment evaluations, each O(1) for feasibility and, on the fast path, for cost.
 
 ## Relationship to Knuth-Plass
 
 This section defines the relationship once. Elsewhere in this ADR, "Knuth-Plass" is shorthand for it.
 
-**Classification**: Stage 3's baseline is an optimal-segmentation dynamic program in the Knuth–Plass family (Knuth and Plass, 1981; see [Prior Art](#prior-art)). Its cost is Knuth–Plass's: the badness of each system's adjustment ratio, combined with a per-system penalty and the breakpoint penalty into demerits, each O(1) per segment from prefix sums (see [Optimization Characterization](#optimization-characterization) and [Segment Cost Computation](#segment-cost-computation)).
+**Classification**: Stage 3's baseline is an optimal-segmentation dynamic program in the Knuth–Plass family (Knuth and Plass, 1981; see [Prior Art](#prior-art)). Its cost is Knuth–Plass's: the badness of each system's adjustment ratio, combined with a per-system penalty and the breakpoint penalty into demerits. Its glue is Hegazy and Gourlay's: springs with a blocking width (Hegazy and Gourlay, 1987; see [The Spring Model](#the-spring-model)).
 
 **Mapping onto the Knuth–Plass primitives**:
 
 | Knuth–Plass | Stage 3 |
 |-------------|---------|
 | Box | Atom |
-| Natural width of glue | Ideal distance between atom origins |
-| Stretchability of glue | `σ × ideal` in the baseline, with `σ` a parameter |
-| Shrinkability of glue | `(1 − max ρ_i) × ideal` in the baseline, the system's room above its tightest column; at most `ideal − min` under [fitting rules](#fitting-rules) 3 and 4 |
+| Natural width of glue | Ideal distance between atom origins, `w_j` |
+| (none) | Blocking width `b_j`, the distance at which the atoms on either side collide |
+| Stretchability of glue | `σ × w_j` in the baseline, with `σ` a parameter |
+| Shrinkability of glue | `max(0, w_j − b_j)` in the baseline, the gap's room above its minimum |
 | Legal breakpoint | Legal break position, normally a barline |
+| Discretionary break: pre-break, post-break and no-break material | `postamble[t]`; `preamble[s]` and `gutter[s]`; the barline's mid-system width |
 | Line length | System width less preamble, gutter and postamble |
-| Adjustment ratio of a line | Adjustment ratio `r` of a system; in the baseline `(scale_factor − 1) / σ` when stretching and `(scale_factor − 1) / (1 − max ρ_i)` when shrinking (below) |
+| Adjustment ratio of a line | Adjustment ratio `r` of a system: the least `r` with `Σ g_j(r) = available`, Hegazy and Gourlay's fitting force |
 | Badness, about `100 × \|r\|³`, capped | Badness `b(r) = min(b_max, c × \|r\|^e)`, starting from `c = 100`, `e = 3` |
 | Demerits `(l + b)² ± p²` | Demerits `(l + b)² ± p²`, with `p` from `break-penalty-fn` |
 | Line penalty `l` | Per-system penalty `l` |
 | Tolerance | Optional bound on badness |
 
-**Proportional scaling as a special case**: Proportional scaling is the case in which every glue's stretchability and shrinkability are proportional to its natural width, by factors common to the whole system: `σ` for stretch and `1 − max ρ_i` for shrink. The Knuth–Plass adjustment ratio then gives one uniform scale factor per system: a system of adjustment ratio `r` sets every gap to `natural × (1 + σ × r)` when stretching and `natural × (1 + (1 − max ρ_i) × r)` when shrinking, which is `ideal_i × scale_factor` in both cases. The gaps' minimums enter through the shrink factor: `max ρ_i`, the largest column ratio, is where the first column gap reaches its minimum, so `r = −1` is the system's collision limit and Knuth–Plass's condition `r ≥ −1` is the feasibility condition `scale_factor ≥ max(ρ_i)` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)).
+**The springs as an extension of glue**: a spring is glue with a blocking width. Where no gap is blocked or prestretched, `Σ g_j(r)` is linear in `r` and the adjustment ratio is Knuth–Plass's single division. A prestretched gap, `b_j > w_j`, adds a kink where it starts to stretch. Under the baseline's shrink every gap blocks exactly at `r = −1`, so the shrinking side has no kinks. `r = −1` is the system's collision limit, so Knuth–Plass's condition `r ≥ −1` is the feasibility condition `Σ min ≤ available` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)).
 
 **In the baseline**: the adjustment ratio, cubic badness, demerits with the per-system penalty, breakpoint penalties through `break-penalty-fn`, and the tolerance are Knuth–Plass's own, with parameters to be settled by validation.
 
 **Extensions available**: The remaining Knuth–Plass features are available extensions of the baseline, not departures from it:
 
-- Separate stretch and shrink, with `ideal − min` as each gap's shrinkability ([Fitting Rules](#fitting-rules); see also [Alternative: Asymmetric Cost Optimization](#alternative-asymmetric-cost-optimization))
-- Fitness classes, including classes for different kinds of system endings
+- Fitness classes, including classes for different kinds of system endings (the evenness forms are not adopted; see [Consistency Between Adjacent Systems](#consistency-between-adjacent-systems))
 - Looseness
 
-**The scalar reduction is preserved**: Summing each stack's glue keeps the reduction to one scalar tuple per stack. Prefix sums of natural width, stretch and shrink give the adjustment ratio, and so the demerits, in O(1) per segment, and feasibility stays O(1) per segment — from prefix sums where no gap can shrink past its minimum, and from a running extremum otherwise, as in the baseline (see [Fitting Rules](#fitting-rules)).
+**The reduction is preserved**: each stack is summarised by three sums and its prestretched gaps. Prefix sums of the sums give feasibility in O(1), and the adjustment ratio in O(1) when shrinking and, when stretching, up to the segment's first kink; beyond it the segment's sorted kinks are walked in order. Each system's cost still depends on the segment alone.
 
-**Exactness and DP state**: The baseline's cost has no term linking adjacent systems, so one DP node per breakpoint is enough for the result to be exact. Separate stretch and shrink keeps that. Two extensions need more state:
+**Exactness and DP state**: The baseline's cost has no term linking adjacent systems, so one DP node per breakpoint is enough for the result to be exact. The springs keep that. Two extensions need more state:
 
 - **Fitness classes**: a cost that depends on the class of the preceding system is exact only if the DP keeps one node per (breakpoint, fitness class), which multiplies the work by the number of classes. Keeping a single node per breakpoint with such a term makes the result an approximation.
 - **Looseness**: aiming for a number of systems other than the optimal one requires the number of systems so far to be part of the state, one node per (breakpoint, system count).
 
-**Adoption**: Whether any extension is adopted is decided during implementation, by the empirical validation this ADR specifies under [Future Considerations](#consequences) (simple scores, then complex ones, then Elektra). The extensions are specified, with their costs and evaluation criteria, under [Stability and Quality Extensions](#stability-and-quality-extensions); none is enabled by this ADR.
+**Adoption**: Whether looseness or ending classes are adopted is decided during implementation, by the empirical validation this ADR specifies under [Future Considerations](#consequences) (simple scores, then complex ones, then Elektra). The extensions are specified, with their costs and evaluation criteria, under [Stability and Quality Extensions](#stability-and-quality-extensions); none is enabled by this ADR, and the evenness forms are not adopted.
 
 Both problems share the mathematical structure enabling polynomial-time exact optimization of the reduced subproblem:
-- 1-dimensional sequence with scalar preferences
+- 1-dimensional sequence with a summary per element
 - Capacity-constrained segmentation
 - Separable cost function with optimal substructure
-- Convex cost model for within-segment allocation
+- A continuous, non-decreasing, piecewise-linear width function within each segment
 
 **Explicit non-claim**:
 This approach does **not** solve "general music engraving" or "optimal notation layout for all musical structures." It solves the **measure distribution subproblem** after architectural reduction has transformed it into tractable form.
 
-The reduction is what matters: by solving vertical coordination, symbol collision, and semantic determinism in earlier stages, the distribution problem becomes structurally similar to paragraph breaking. This is not algorithmic cleverness finding a better heuristic—it is architectural separation creating a problem formulation where exact optimization applies.
+The reduction is what matters: by solving vertical coordination, symbol collision, and semantic determinism in earlier stages, the distribution problem becomes structurally similar to paragraph breaking. This is not algorithmic cleverness finding a better heuristic; it is architectural separation creating a problem formulation where exact optimization applies.
 
-**What the natural widths mean**:
+**What the widths mean**:
 
-`ideal_width` encodes rhythmic proportionality, which has musical meaning. Choosing the proportional special case is what preserves it: all measures in a system share one scale factor, so their ratios hold by construction. Graphical decorations (gutter content), the preamble and the postamble are fixed overhead, outside the scaled glue.
-
-Under the separate-stretch-and-shrink extension, compression toward `min_width` would cost proportionality, and the choice of shrinkability would express how much. Whether that extension is needed remains subject to the empirical validation described above.
+`ideal_width` encodes rhythmic proportionality, which has musical meaning, and `min_width` encodes collision, which has physical meaning. The springs keep both. Gaps free to stretch keep their proportions under stretching, and a gap the music needs wider than its proportion gets exactly the room its collision requires. Under compression proportionality is given up, gap by gap, in proportion to each gap's room above its minimum; the choice of shrink expresses how ([Fitting Rules](#fitting-rules)). Graphical decorations (gutter content), the preamble and the postamble are fixed overhead, outside the springs.
 
 **Architectural prerequisites**:
 
@@ -1534,10 +1639,11 @@ Ooloi's pipeline architecture transforms the problem. By the time Stage 3 execut
 - Collision boundaries are determined (Stage 1)
 - Semantic decisions (accidentals, beaming) are resolved (ADR-0035)
 - Gutter requirements are computed (Stage 1)
+- Constraints spanning several columns are reduced to blocking widths (Stage 2)
 - Preamble and postamble widths are known for every candidate system start and end
 - Connecting elements are deferred (Stage 5)
 
-What remains is the Knuth-Plass problem formulation, over measure-stack scalars.
+What remains is the Knuth-Plass problem formulation, over measure-stack summaries.
 
 **Why the DP runs once per pass**:
 
@@ -1553,13 +1659,21 @@ The pipeline stages, immutable data structures and rational arithmetic provide b
 
 ## Prior Art
 
-Stage 3 draws on two lineages: optimal breaking by dynamic programming, and a model of horizontal space that separates fixed width from scalable width.
+Stage 3 draws on three lineages: optimal breaking by dynamic programming, a model of horizontal space that separates fixed width from scalable width, and a model of the gaps between notes as springs that can block.
 
 ### Optimal Breaking by Dynamic Programming
 
 - **Knuth and Plass**, "Breaking Paragraphs into Lines", *Software—Practice and Experience* 11 (1981), pp. 1119–1184. Optimal line breaking of paragraphs by dynamic programming over legal breakpoints; the family Stage 3 belongs to.
 
-- **Hegazy and Gourlay**, "Optimal line breaking in music", Technical Report OSU-CISRC-8/87-TR33, Department of Computer and Information Science, The Ohio State University (1987); also in *Proceedings of the International Conference on Electronic Publishing, Document Manipulation and Typography*, Nice, April 1988, ed. J. C. van Vliet, Cambridge University Press. It is cited here for its existence and its place in this lineage: it is the report that LilyPond's first line breaker names as its source. This ADR describes nothing of its contents.
+- **Hegazy and Gourlay**, "Optimal line breaking in music", Technical Report OSU-CISRC-8/87-TR33, Department of Computer and Information Science, The Ohio State University (1987); also in *Proceedings of the International Conference on Electronic Publishing, Document Manipulation and Typography*, Nice, April 1988, ed. J. C. van Vliet, Cambridge University Press. Described here from a scan of the report version (15 pages; NSF grant IST-8514308), a product of the MusiCopy project at Ohio State; that copy does not carry the report number.
+  - **The problem.** Four ways music differs from text: the last system of a piece is always full, so early breaks must be revisable; long works should fill their last page, which can mean forcing a number of systems; clefs and key signatures repeat at every system start and change in content and width; and notes do not move linearly when a line is stretched or shrunk. The report notes that Byrd's 1984 program did first-fit (greedy) breaking and left breaks to the user, and that "there appears to be no published algorithm" that deals with these problems.
+  - **The claim.** Knuth's model already handles the first three. A paragraph without fill glue has a full last line; penalties encourage or discourage breaks; TeX can force a number of lines, and Plass's method breaks pages; TeX's discretionary breaks can change the material at the end of one line and the start of the next. Only the fourth needs new theory.
+  - **The model.** Springs pass through the boxes and attach to the left edges of noteheads; boxes cannot pass through each other. Each spring has an ideal width, a stretchability, a shrinkability and a blocking width at which the boxes it connects collide; a spring whose blocking width exceeds its ideal width is "prestretched". The force needed to fit a line is a piecewise-linear function of the required stretch, the line's "characteristic function", whose segments end where a spring blocks or a prestretched spring starts to stretch. This is the model of [Gaps as Springs](#gaps-as-springs).
+  - **The search.** TeX's active-list dynamic program, which the report says "does not differ in any significant way" from TeX's: one best predecessor per feasible breakpoint, lines whose force falls outside a window `[f_min, f_max]` discarded, breaks only at barlines, at most (measures × maximum measures per line) evaluations. TeX's fitness classes are not mentioned. The cost is derived from the fitting force in TeX's manner; no formula is given.
+  - **Efficiency.** The report places the cost in computing each line's force, never in the DP. It uses a cheap lower bound on the force, from running totals subtracted between breakpoints (prefix sums), designed never to reject a feasible line, and a fast path for forces within the first linear segment, tested with minima precomputed per measure. It observes that for `|f| < 1` most feasible lines fall in the first segment.
+  - **Validation.** One 48-bar single-staff piece, Dean K. Roush's 'Lacrimosa': the breaks matched those chosen by a professional musician, who had taken a few hours over it; the program took a few seconds on a personal computer.
+  - **Exactness.** The cost is separable per line, the pruning is monotone and the bound conservative, so the result is the exact optimum of its cost within the force window. The pruning is valid only because the model has no width that depends on where a line starts or ends: with a start-dependent preamble or an end-dependent postamble, a line rejected as too long can be followed by a feasible one. That is why this ADR's early termination is against the full system width ([Key Implementation Notes](#key-implementation-notes)).
+  - **Relation to Stage 3.** Stage 3 was specified from Knuth and Plass before the report had been read, and its search coincides with the report's: one node per breakpoint without fitness classes, prefix sums between breakpoints, values precomputed per stack for the fast test, monotone termination. The baseline before this revision, proportional fitting normalised by the tightest gap, was the report's model restricted to its first linear segment and rescaled so that the first collision fell at `r = −1`. This revision adopts the full model.
 
 - **LilyPond**:
   - `lily/gourlay-breaking.cc`, by Han-Wen Nienhuys, is present from release 0.1.1 (August 1997) until September 2006. From release 1.1.32 (February 1999) its comment reads: "This algorithms is adapted from the OSU Tech report on breaking lines." What follows describes LilyPond's code, not the report, which may differ from it.
@@ -1568,6 +1682,12 @@ Stage 3 draws on two lineages: optimal breaking by dynamic programming, and a mo
     - In its 2006 form it solves the spacing problem for every candidate line, with no measure or energy bound. A line's demerits are |force| + |previous force − force| + break penalty, with a large penalty for a line that cannot satisfy its spacing constraints. The middle term depends on the previous line, and is evaluated against the single predecessor stored for the line's starting breakpoint; the result is therefore not guaranteed to minimise total demerits.
   - `lily/constrained-breaking.cc`, by Joe Neeman, is added in February 2006 and replaces it; `gourlay-breaking.cc` is removed in September 2006. It runs a dynamic program over (number of systems, breakpoint), with demerits force² + (previous force − force)² + break penalty, and solves a spring-and-rod spacing problem for every candidate line (`get_line_forces` in `lily/simple-spacer.cc`). It keeps one node per (number of systems, breakpoint), so the adjacency term is again evaluated against a single stored predecessor; with ragged-right lines the demerits reduce to force² plus break penalty, which is separable, and the result is then the exact optimum of that cost.
   - It works together with an optimal page breaker (`lily/optimal-page-breaking.cc`) and a page-turn breaker (`lily/page-turn-page-breaking.cc`). Page decisions use "pure" heights (`lily/constrained-breaking.cc`), which LilyPond's Contributor's Guide describes as estimates made before line breaking.
+
+- **Dorico**, from its developers' published statements, not from its source. Daniel Spreadbury wrote on the Steinberg forum (December 2016) that the team had evaluated the Gourlay method and found its performance characteristics unsuitable for real-time use, that Dorico's algorithm runs one way, from the start of the layout to the end, and that tested against Gourlay's it produced very similar results much of the time. In April 2026 he wrote that the paper informed Dorico's casting off, which is greedy, with a separate remainder-distribution step at the end of each flow. The design goal stated in 2015 was to do only the minimal amount of recalculation in response to an edit.
+
+- **MuseScore**, from its source (`SystemLayout::collectSystem` in `src/engraving/rendering/score/systemlayout.cpp`, main branch, October 2026) and its handbook: measures are added to a system until the next one no longer fits at its natural width, and the system is then justified. Greedy.
+
+- **PriMus** and **Neanes**, from their authors' statements, not verified at source: Christof Schardt wrote in 2015 (in a comment on Dorico's development diary) that PriMus uses TeX's total-fit algorithm modified for scores, interactively, with collisions handled by an equivalent linear operation; Basil Crow wrote in April 2026 (Steinberg forum) that his open-source Neanes editor does optimal line breaking for Byzantine neume notation.
 
 ### The Space Model
 
@@ -1578,8 +1698,18 @@ Stage 3 draws on two lineages: optimal breaking by dynamic programming, and a mo
 - **MusiXTeX**: Daniel Taupin, Ross Mitchell and Andreas Egler, "MusiXTeX : L'écriture de la musique polyphonique ou instrumentale avec TeX", *Cahiers GUTenberg* 21 (1995), pp. 107–113.
   - The MusiXTeX manual, §1.3.1, explains why TeX glue fails for music: a line holds far fewer bars than a line of text holds words, so treating each bar as a word leaves gaps before the bar rules.
   - It divides horizontal space into *hard* space (bar rules, clefs, key signatures), which is fixed, and *scalable* space, defined in multiples of one spacing unit, `\elemskip`. One value of `\elemskip` is computed per line, so that the scalable space fills what the hard space leaves.
-  - This corresponds to ADR-0037's split: the preamble, gutter and postamble are hard space, ideal widths are scalable space, and `\elemskip` per line is the scale factor per system. ADR-0037 treats only system-start and system-end material as hard; bar rules within a system scale with the measures.
+  - This corresponds to ADR-0037's split: the preamble, gutter and postamble are hard space, and the gaps are scalable space; `\elemskip` per line corresponds to the adjustment ratio per system, which the springs apply through each gap's elasticity rather than as one multiplier. ADR-0037 treats only system-start and system-end material as hard; bar rules within a system scale with the measures.
   - Its breaking pass, `musixflx` (Ross Mitchell, 1992–1997), sets a target number of lines from the total width divided by the line width, then fills lines one at a time, adding bars until a line overflows. It is greedy, not optimal.
+
+- **TeX's discretionary breaks**: a discretionary has three parts, the material printed before a break, after it, and when no break occurs. The preamble, gutter and postamble are the same construct at every barline: the postamble is the pre-break material, the preamble and gutter the post-break material, and the barline's mid-system width the no-break material. Hegazy and Gourlay pointed to discretionaries for the clefs and keys at each system start without working them out.
+
+### The Spring Model
+
+- **Hegazy and Gourlay** (1987), above: springs through boxes, blocking widths, prestretched springs, and the force of a line as a piecewise-linear function.
+
+- **LilyPond**: `lily/spring.cc` (Joe Neeman, from 2007) defines a spring by its ideal distance, its minimum distance and its inverse stretch and compression strengths. Its length under a force is the larger of the minimum and the ideal plus force times flexibility, with a blocking force below which the length is constant, including the case in which the minimum exceeds the ideal: Hegazy and Gourlay's spring. By default a spring compresses by its room above its minimum (`Spring::set_default_compress_strength`), as in this ADR's baseline, and a note's spring stretches in proportion to the space between bare noteheads (`Spacing_spanner::note_spacing` in `lily/spacing-basic.cc`). Minimum distances spanning several columns, its "rods", are reduced to blocking forces on the springs they span (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`): the reduction of [Constraints Spanning Several Columns](#constraints-spanning-several-columns). LilyPond solves the spacing afresh for every candidate line.
+
+- **MuseScore**: when a system is justified (`HorizontalSpacing::justifySystem` and `stretchSegmentsToWidth` in `src/engraving/rendering/score/horizontalspacing.cpp`), each segment is a spring whose stiffness comes from its duration, and a segment already wider than its duration warrants, from a collision, does not stretch until the force reaches it: the stretching half of the model. Compression is handled separately, by re-spacing with reduced paddings and duration spacing in steps.
 
 ### Comparison
 
@@ -1587,24 +1717,29 @@ Each breaker is described against its own cost: whether the result it returns is
 
 | Breaker | Search | Cost | Exact for its own cost |
 |---------|--------|------|------------------------|
+| Hegazy and Gourlay, 1987 | DP, one node per breakpoint | Derived from each line's fitting force under blocking springs; no formula given | Yes, within its force window; its pruning assumes no width that depends on where a line starts or ends |
 | `musixflx` (MusiXTeX) | Target line count, then lines filled one at a time | None; `\elemskip` is set to fill each line | No: greedy |
 | LilyPond `gourlay-breaking.cc`, 1997 | DP, one node per breakpoint | Sum of line energies (separable) | Where its measure limit, energy bound and approximate screening do not exclude the optimal line |
 | LilyPond `gourlay-breaking.cc`, 2006 | DP, one node per breakpoint | \|force\| + \|previous force − force\| + penalty | No: the adjacency term is evaluated against one stored predecessor |
 | LilyPond `constrained-breaking.cc` | DP, one node per (system count, breakpoint) | force² + (previous force − force)² + penalty | Justified lines: no, for the same reason. Ragged-right lines: yes |
 | LilyPond page breaking | DP over fixed lines; search over system counts | force² per page plus penalties | Page DP over fixed lines: yes. Search over system counts: no, bounded by heuristics and using estimated heights |
-| Stage 3 | DP, one node per breakpoint | Knuth–Plass demerits (l + b(r))² ± p², from each system's adjustment ratio | Yes |
+| Dorico (by its developers' account) | One pass from start to end, with remainder distribution at the end of each flow | Not published | No: greedy |
+| MuseScore | Measures added while they fit at natural width | None | No: greedy |
+| Stage 3 | DP, one node per breakpoint | Knuth–Plass demerits (l + b(r))² ± p², from each system's adjustment ratio under blocking springs | Yes |
 | Stage 6 | DP over systems | Not yet specified | Not established |
 
-**Why Stage 3 is exact**: its cost has no term linking adjacent systems, so one node per breakpoint loses nothing; every other input — `system-width-fn`, `preamble[s]`, `gutter[s]`, `postamble[t]`, the column ratios, `break-penalty-fn` — depends only on the candidate segment; forced breaks partition the problem into independent subproblems; prevented breaks only reduce the set of breakpoints; and the early-termination bound excludes only infeasible segments (see [Key Implementation Notes](#key-implementation-notes)). In this sense Stage 3 is an exact Knuth–Plass computation. Its cost is the baseline, not the full Knuth–Plass cost model; which extensions keep exactness at which cost in state is stated under [Relationship to Knuth-Plass](#relationship-to-knuth-plass).
+**Why Stage 3 is exact**: its cost has no term linking adjacent systems, so one node per breakpoint loses nothing; every other input (`system-width-fn`, `preamble[s]`, `gutter[s]`, `postamble[t]`, the stack summaries and their kinks, `break-penalty-fn`) depends only on the candidate segment; each system's adjustment ratio is the exact solution of the segment's own piecewise-linear equation; forced breaks partition the problem into independent subproblems; prevented breaks only reduce the set of breakpoints; and the early-termination bound excludes only infeasible segments (see [Key Implementation Notes](#key-implementation-notes)). In this sense Stage 3 is an exact Knuth–Plass computation over Hegazy and Gourlay's springs. Its cost is the baseline, not the full Knuth–Plass cost model; which extensions keep exactness at which cost in state is stated under [Relationship to Knuth-Plass](#relationship-to-knuth-plass).
 
-**Why Stage 6 is not established**: its cost function is not specified, and page heights that depend on the page — a first page carrying a title, running headers — require the page number, or at least its parity, in the DP state. Both are open.
+**Why Stage 6 is not established**: its cost function is not specified, and page heights that depend on the page (a first page carrying a title, running headers) require the page number, or at least its parity, in the DP state. Both are open.
 
 ### What Is Specific to Ooloi
 
-- The combination of the two lineages over measure-stack scalars, structured so that full Knuth–Plass remains available
-- The preamble, gutter and postamble as fixed widths, known to the DP before it chooses breaks, that depend on where a system starts or ends
-- Exact rational arithmetic, giving identical results on every platform
-- Use inside an interactive, collaborative editor
+- The combination of the three lineages over measure-stack summaries, structured so that full Knuth–Plass remains available
+- The preamble, gutter and postamble as fixed widths, known to the DP before it chooses breaks, that depend on where a system starts or ends. This is TeX's discretionary at every barline, which Hegazy and Gourlay pointed to for music without working it out; what is specific is the formulation, and an early termination that stays exact in its presence
+- Blocking springs summarised so that feasibility is O(1), and the adjustment ratio O(1) except where prestretched gaps take part, with constraints spanning several columns reduced before breaking
+- Exact rational arithmetic and a tie-break that depends only on the configuration, giving identical results on every platform and after any editing history
+- Exact re-optimisation after an edit, from forward and backward tables (the technique has precedent in text layout)
+- Use inside a collaborative editor, where every client must see the same layout (PriMus's author reports interactive total-fit breaking; the collaborative determinism is specific)
 
 ## Consequences
 
@@ -1621,14 +1756,14 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 **Positive:**
 
 1. **Exact optimization** - Polynomial-time algorithm finds the break configuration of least cost under the stated cost function, given its inputs
-2. **Proportionality preservation** - Rhythmic relationships maintained across systems by construction
+2. **Rhythm and collision together** - Gaps free to stretch keep their proportions; a gap the music needs wider gets exactly the room its collision requires, and no more
 3. **Complete information** - Gutter deltas enable optimal decisions without feedback
 4. **Closed semantic model** - Rendering decorations cannot affect musical semantics
 5. **Deterministic output** - Identical input produces identical layout across platforms
 6. **Cheap recomputation** - An edit re-runs Stage 3 over cached scalar metrics, without repeating upstream work for unchanged stacks
 7. **Variable system widths** - Natural handling of final systems, editorial overrides, margins and layout settings
 8. **Clean stage separation** - No feedback loops with connecting elements or decorations
-9. **Performance** - O(N×K) complexity handles large scores efficiently
+9. **Performance** - O(N×K) segment evaluations, each O(1) except where prestretched gaps take part
 10. **Rational arithmetic** - No floating-point drift across platforms
 11. **Predictability** - Users can mentally model system behavior
 
@@ -1640,14 +1775,15 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 4. **Policy-free core** - Algorithm is purely geometric by default; editorial preferences can be added via optional `break-penalty-fn` without modifying the core
 5. **Gutter storage** - Each stack carries `gutter` (typically 0N); overhead is minimal
 6. **Global breaks** - The break configuration is a global optimum, so an edit can change system breaks anywhere in the score; stability comes from the mechanisms under [Stability and Quality Extensions](#stability-and-quality-extensions), not from the DP itself
+7. **Springs, not one scale factor** - Stage 4 applies each system's adjustment ratio gap by gap, and each stack's input to Stage 3 includes a short list of its prestretched gaps besides its sums
 
 **Future Considerations:**
 
-The proportional scaling approach should be validated empirically on real scores:
-1. Implement baseline proportional scaling as specified
-2. Test on real scores: simple → complex → Elektra
-3. Document visual quality, performance characteristics, edge cases
-4. Only if systematic problems emerge, consider asymmetric optimization refinements
+The spring baseline should be validated empirically on real scores, against printed engravings:
+1. Implement the spring baseline as specified
+2. Test on real scores: simple → complex → Elektra, with material chosen for where the difficulty lies ([Evaluation Criteria](#evaluation-criteria))
+3. Document visual quality, performance characteristics (including the cost of the slow path on chromatic material), edge cases
+4. Only if systematic problems emerge, consider the alternative fitting rules or the general asymmetric formulation
 
 The formal validation will determine whether the baseline approach is sufficient or whether additional complexity is justified. The specific visual issues encountered will guide cost function design rather than speculative theory.
 
@@ -1655,13 +1791,15 @@ The formal validation will determine whether the baseline approach is sufficient
 
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) (pipeline architecture, Stage 3 system breaking position, gutter model, closed semantic model)
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (accidental algorithm that closes the semantic model; tied-note bypass rules inform gutter requirements)
-- **ADR-00XX: Horizontal Spacing** — forthcoming: upstream computation of min/ideal/gutter widths and column ratios
+- **ADR-00XX: Horizontal Spacing** — forthcoming: upstream computation of each gap's ideal and blocking widths, the gutter, and the reduction of constraints spanning several columns
 - [ADR-0014: Timewalk](0014-Timewalk.md) (temporal traversal providing measure discovery)
 - [ADR-0029: Global Hash-Consing](0029-Global-Hash-Consing.md) (immutable data structures enabling stage separation)
 - [Knuth–Plass line-breaking algorithm](https://en.wikipedia.org/wiki/Knuth%E2%80%93Plass_line-breaking_algorithm) - Wikipedia overview
 - Knuth, D.E. and Plass, M.F. "Breaking Paragraphs into Lines", *Software—Practice and Experience* 11 (1981), pp. 1119–1184 - foundational algorithm
 - Hegazy, W.A. and Gourlay, J.S. "Optimal line breaking in music", Technical Report OSU-CISRC-8/87-TR33, The Ohio State University (1987); also in *Proceedings of the International Conference on Electronic Publishing, Document Manipulation and Typography*, Nice, 1988, ed. J.C. van Vliet, Cambridge University Press
-- LilyPond source: `lily/gourlay-breaking.cc` (1997–2006), `lily/constrained-breaking.cc`, `lily/simple-spacer.cc`, `lily/optimal-page-breaking.cc`, `lily/page-turn-page-breaking.cc`
+- LilyPond source: `lily/gourlay-breaking.cc` (1997–2006), `lily/constrained-breaking.cc`, `lily/simple-spacer.cc`, `lily/spring.cc`, `lily/spacing-basic.cc`, `lily/optimal-page-breaking.cc`, `lily/page-turn-page-breaking.cc`
+- MuseScore source (main branch, October 2026): `src/engraving/rendering/score/horizontalspacing.cpp`, `src/engraving/rendering/score/systemlayout.cpp`; MuseScore Handbook 4, "Score size and spacing"
+- Spreadbury, D., Dorico development diary, part 11 (June 2015), https://blog.dorico.com/2015/06/development-diary-part-11/ (including the comments by Han-Wen Nienhuys and Christof Schardt); Steinberg forum, "Casting Off" (December 2016), https://forums.steinberg.net/t/casting-off/670560; "Optimal line breaking algorithm" (April 2026), https://forums.steinberg.net/t/optimal-line-breaking-algorithm/1028999
 - Taupin, D., Mitchell, R. and Egler, A. "MusiXTeX : L'écriture de la musique polyphonique ou instrumentale avec TeX", *Cahiers GUTenberg* 21 (1995), pp. 107–113
 - The MusiXTeX manual, §1.3.1 "The three pass system: Introduction"; `musixflx` (Ross Mitchell, 1992–1997)
 - Steinbach, A. and Schofer, A. *Automatisierter Notensatz mit TeX*, master's thesis, Rheinische Friedrich-Wilhelms Universität, Bonn (1987)
