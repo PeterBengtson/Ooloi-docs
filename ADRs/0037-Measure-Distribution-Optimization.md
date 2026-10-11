@@ -171,7 +171,7 @@ Ooloi's pipeline architecture **decouples these concerns through staged computat
 **Stage 1-2: Vertical Coordination**
 Parallel collision detection produces measure stack metrics. Each of N stacks emerges with its column gaps as springs, an ideal and a blocking width for each, summarised for Stage 3 as a few sums and a short list of prestretched gaps ([Interface Contract](#interface-contract)), plus `gutter_width` for additional system-start space.
 
-**Stage 1 is width-complete**: It computes all horizontal space requirements for atoms, including lyrics, dynamics, articulations, and fixed-size anchors for spanners (e.g., "sffzpp<" letters, minimum crescendo wedge width). Stage 1 cannot compute full spanner geometry (that depends on final positions from Stage 4), but it must include all horizontal space the atom requires, including spanner attachment points.
+**Stage 1 is width-complete**: It computes all horizontal space requirements for atoms, including lyrics, dynamics, articulations, and fixed-size anchors for spanners (e.g., "sffzpp<" letters, minimum crescendo wedge width). Stage 1 cannot compute full spanner geometry (that depends on final positions from Stage 4), but it must include all horizontal space the atom requires, including spanner attachment points. It supplies these requirements as geometry, contours and declared constraints; Stage 2 forms the widths from them ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2)).
 
 **Stage 5 is height-complete**: After Stage 4 positions atoms, Stage 5 computes connecting element geometry and determines final vertical extent. System heights are definitive after Stage 5.
 
@@ -321,7 +321,7 @@ The algorithm implements **capacity-constrained segmentation with spring-based w
 ### Interface Contract
 
 ```clojure
-;; Input from Stages 1-2 (computed by ADR-00XX, forthcoming):
+;; Input from Stages 1-2 (specified by ADR-0055):
 stacks ;; Vector of stack maps
 
 ;; Each stack map summarises the stack's column gaps, each gap j a spring
@@ -361,7 +361,7 @@ The gutter is *additional* to the measure's width, not part of it. When a measur
 - `:gutter` must be non-negative (default 0N)
 - At least one feasible segmentation must exist (the entire sequence fits on some number of systems)
 
-The computation of these values is handled by upstream stages, and will be specified in a forthcoming ADR on horizontal spacing (ADR-00XX). If preconditions are violated, behavior is undefined.
+The computation of these values by Stages 1 and 2 is specified by [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md). If preconditions are violated, behavior is undefined.
 
 ### Gaps as Springs
 
@@ -435,7 +435,7 @@ Because `r_D` depends only on the springs inside the span, the reduction is inde
 - Musical meaning, not arbitrary aesthetic preference
 
 **What `min_width` represents**:
-- Hard feasibility floor from Stage 1 collision detection
+- Hard feasibility floor from collision detection: contours from Stage 1, blocking widths from Stage 2
 - Below this: atoms would overlap on at least one staff (unacceptable)
 - At this: collision-free across all staves, but visual characteristics vary by staff
 
@@ -483,9 +483,9 @@ System layout for a system of stacks `[s, t)`:
 - Tie continuation arcs (visual portion of ties broken at system boundaries)
 - A start repeat that moves, at a break, to the system's start — the start part of a combined repeat, or a start repeat at the boundary — for the extra width it needs there beyond its mid-system form
 
-**Critical architectural property:** The gutter width is computed in Stage 1 from complete information about the measure's layout, including all semantic accidentals at position 0. If existing accidentals already provide sufficient space for the courtesy accidental, the gutter width is 0N—only the additional space needed beyond the measure's existing layout is reserved. Stage 3 knows exactly how much additional space each measure requires *before* making any distribution decisions. This lets Stage 3 find the distribution that is optimal for its cost function, given these inputs, without heuristics or iteration.
+**Critical architectural property:** The gutter width is computed before Stage 3, by Stage 2 from the geometry Stage 1 supplies ([ADR-0055](0055-Horizontal-Spacing.md#variants-at-a-break)), with complete information about the measure's layout, including all semantic accidentals at position 0. If existing accidentals already provide sufficient space for the courtesy accidental, the gutter width is 0N—only the additional space needed beyond the measure's existing layout is reserved. Stage 3 knows exactly how much additional space each measure requires *before* making any distribution decisions. This lets Stage 3 find the distribution that is optimal for its cost function, given these inputs, without heuristics or iteration.
 
-**What is NOT in the gutter:** All semantic accidentals are computed and positioned by [ADR-0035](0035-Remembered-Alterations.md) and are included in the measure's `min_width` and `ideal_width`. The gutter contains only graphical decorations added by Stage 5 for visual clarity at system boundaries.
+**What is NOT in the gutter:** All semantic accidentals are computed and positioned by [ADR-0035](0035-Remembered-Alterations.md). They are part of the atoms' contours, and so of the blocking widths that make up `min_width`; they never change an ideal width ([ADR-0055](0055-Horizontal-Spacing.md#ideal-widths)). The gutter contains only graphical decorations added by Stage 5 for visual clarity at system boundaries.
 
 **User control:** Users can configure when courtesy accidentals appear (`:system`, `:page`, or `:none`). This setting affects Stage 5 rendering, not Stage 3 distribution—the gutter is always reserved; the decorations are optionally rendered. See [ADR-0028](0028-Hierarchical-Rendering-Pipeline.md) for details.
 
@@ -520,7 +520,7 @@ preamble_width = max over all staves of (clef_width + keysig_width + spacing)
 
 **Why uniform width**: All staves in a stack must have the same preamble width to maintain vertical alignment. Even if one staff has a simpler clef/keysig combination, it receives the same left margin as the most complex staff.
 
-**On-demand computation**: Unlike gutter (precomputed in Stage 1), preamble width is computed during Stage 3 when evaluating candidate system breaks:
+**On-demand computation**: Unlike the gutter (computed in Stage 2, before breaking), preamble width is computed during Stage 3 when evaluating candidate system breaks:
 1. Query ChangeSets for active clef at the candidate measure's temporal position (per staff)
 2. Query ChangeSets for active key signature at the same position (per staff)
 3. Compute width for each staff: clef width + keysig width + spacing (before, between, after)
@@ -528,9 +528,11 @@ preamble_width = max over all staves of (clef_width + keysig_width + spacing)
 
 **Caching**: The (clef, keysig) combinations are highly repetitive across a score—a symphony might have only 3-4 distinct combinations across hundreds of measures. Caching by the combination tuple across staves provides near-instant lookup after the first computation. The cached value includes both the computed maximum width and the paintlists for rendering.
 
+**Not yet accounted for**: a clef, key or time signature change at a barline exists in its mid-system form only when that barline is not a break; at a break, the postamble and the preamble replace it. This mid-system material belongs to the boundary, not to either stack, and must be counted only where a segment does not break. The preamble above also omits the time signature a system shows at the start of the piece and wherever a change takes effect at its first stack, and its spacing after the key signature duplicates the stack's leading gap. How these are settled is [ADR-0055 H10](0055-Horizontal-Spacing.md#h10-no-break-material-and-the-system-start); until then, this ADR's formulas account for none of them.
+
 **Preamble, Gutter and Postamble**:
 - **Preamble**: Structural (always present at system start), computed on-demand
-- **Gutter**: Contingent (present only when tied-to notes require courtesy accidentals, or a start repeat moves to the system's start), precomputed in Stage 1
+- **Gutter**: Contingent (present only when tied-to notes require courtesy accidentals, or a start repeat moves to the system's start), computed in Stage 2, before breaking
 - **Postamble**: Contingent (present only when a change takes effect at the start of the next system, or a double, final or repeat barline ends the system), at system end, computed on-demand — see [The Postamble](#the-postamble-system-end-width)
 
 All three are fixed overhead subtracted before the springs are fitted. None participates in cost computation.
@@ -555,7 +557,7 @@ Where neither applies, `postamble[t] = 0N`. At the end of the piece `postamble[N
 
 **The start of the next system**: a start repeat that moves, at a break, to the start of the next system is reserved there by that system's gutter (see [The Gutter](#the-gutter-system-start-width-delta)).
 
-**On-demand computation**: like the preamble, the postamble is computed during Stage 3 when evaluating candidate system breaks, not precomputed in Stage 1:
+**On-demand computation**: like the preamble, the postamble is computed during Stage 3 when evaluating candidate system breaks, not precomputed in Stages 1–2:
 1. Query ChangeSets for the clef, key signature and time signature changes taking effect at stack `t` (per staff), and read the barline at boundary `t`
 2. Compute, for each staff, the width of the corresponding cautionaries and the barline's extra width in its system-end form
 3. Take the maximum across all staves
@@ -849,7 +851,7 @@ This approach has fundamental problems:
 
 The gutter model eliminates feedback through **complete information**:
 
-1. **Stage 1** computes exact measure content (each gap's ideal and blocking width) + exact gutter delta
+1. **Stages 1–2** compute exact measure content (each gap's ideal and blocking width) + exact gutter delta ([ADR-0055](0055-Horizontal-Spacing.md))
 2. **Stage 3** has *complete knowledge* of every scenario (mid-system, system-start and system-end) for every measure
 3. **Stage 3** computes the system breaks that are optimal for its cost function, given these inputs - not heuristic, not iterative
 4. **Stage 4** positions atoms using each system's adjustment ratio from Stage 3
@@ -1058,7 +1060,7 @@ Keeping one node per breakpoint while adding an adjacency term makes the result 
 
 ### Fitting Rules
 
-Two steps are kept apart. **Ideal spacing** is derived within each measure from the durations of its notes and tuplets, in Stage 1. **Fitting** puts measures onto systems and makes their widths fill each system; Stage 3 decides it and Stage 4 applies it. The breaking decision depends on the fitting rule, because the DP judges each candidate system by its feasibility and cost under that rule.
+Two steps are kept apart. **Ideal spacing** is derived within each stack from the durations of its notes and tuplets, in Stage 2 from the rhythm Stage 1 records ([ADR-0055](0055-Horizontal-Spacing.md#ideal-widths)). **Fitting** puts measures onto systems and makes their widths fill each system; Stage 3 decides it and Stage 4 applies it. The breaking decision depends on the fitting rule, because the DP judges each candidate system by its feasibility and cost under that rule.
 
 Each column gap is a spring with three kinds of parameter ([Gaps as Springs](#gaps-as-springs)):
 
@@ -1081,7 +1083,7 @@ Whether the hierarchy should sharpen or flatten under compression, and which val
 
 **All of them keep the DP exact.** Each system's cost still depends on the segment alone, and `r` is the solution of a piecewise-linear equation built from prefix sums and the segment's kinks. Under the baseline and rules 1, 2 and 4 the shrinking side is one division; rule 3 makes it piecewise, solved exactly by the same walk as the stretching side. Under any rule, Stage 4 applies the system's adjustment ratio through each gap's own spring.
 
-**Who pays.** The adjustment ratio is one value for the whole system, so when a bar needs more room than its proportions give it (a run of thirty-second notes between a half note and a quarter, say), the cost is shared by every gap in the system according to its elasticity, including gaps several bars away. An engraver might prefer the long notes of the same bar to pay. That is a choice between consistency, where the same duration is treated alike across the system, and locality, where each bar settles its own debts. Locality belongs to Stage 1, in how ideal widths are set within a bar before any fitting begins, and needs no change to Stage 3. The baseline is consistency; the validation decides whether locality is needed.
+**Who pays.** The adjustment ratio is one value for the whole system, so when a bar needs more room than its proportions give it (a run of thirty-second notes between a half note and a quarter, say), the cost is shared by every gap in the system according to its elasticity, including gaps several bars away. An engraver might prefer the long notes of the same bar to pay. That is a choice between consistency, where the same duration is treated alike across the system, and locality, where each bar settles its own debts. Locality belongs where ideal widths are formed, in Stage 2, before any fitting begins ([ADR-0055](0055-Horizontal-Spacing.md#h18-locality-within-a-bar)), and needs no change to Stage 3. The baseline is consistency; the validation decides whether locality is needed.
 
 **The raster.** Gaps lie between columns of the stack's vertical raster, one column for each rhythmic position in any staff, and a gap's blocking width is the largest over the staves, so an accidental in one staff widens that column in every staff. Under compression the columns differ according to need; as the system loosens, columns held open by accidentals stop growing while the others catch up, until the grid is even again. No separate policy is specified; the validation decides whether one is needed.
 
@@ -1637,9 +1639,9 @@ The Knuth-Plass algorithm solves a specific problem formulation: capacity-constr
 
 Ooloi's pipeline architecture transforms the problem. By the time Stage 3 executes:
 - Vertical coordination is complete (Stages 1-2)
-- Collision boundaries are determined (Stage 1)
+- Collision boundaries are determined (Stages 1–2)
 - Semantic decisions (accidentals, beaming) are resolved (ADR-0035)
-- Gutter requirements are computed (Stage 1)
+- Gutter requirements are computed (Stages 1–2)
 - Constraints spanning several columns are reduced to blocking widths (Stage 2)
 - Preamble and postamble widths are known for every candidate system start and end
 - Connecting elements are deferred (Stage 5)
@@ -1797,13 +1799,13 @@ Stages 3 and 4 are mathematics over springs; they contain no engraving rules. Ev
 - a **constraint spanning several columns**: lyrics, text, and neighbouring atoms in one staff that other staves separate by further columns, reduced to blocking widths before breaking ([Constraints Spanning Several Columns](#constraints-spanning-several-columns));
 - a **variant at a break**: the preamble, gutter and postamble, known before breaking.
 
-A horizontal rule that cannot be expressed in one of these forms is a design problem to be resolved, not a pass to be added. It follows that no column moves after fitting (Stage 5 places and adjusts elements within the space the columns leave); that settings which would choose between heuristics have nothing to choose between, leaving parameters of the model (`σ`, the elasticity) that express taste; and that user interventions enter as inputs, constraints or modified springs, so they survive every recomputation: a dragged column, for example, is a transfer of ideal width between its two gaps, which moves that column alone and, unless it takes a gap's ideal width below its blocking width, leaves the system's adjustment ratio and breaks unchanged. When the validation shows the baseline to be wrong, the fix is a new input or a new term in the cost or the elasticity, never a correction applied after the fact. The forthcoming Horizontal Spacing ADR (ADR-00XX) organises the rules by the form each takes and the stage that produces it.
+A horizontal rule that cannot be expressed in one of these forms is a design problem to be resolved, not a pass to be added. It follows that no column moves after fitting (Stage 5 places and adjusts elements within the space the columns leave); that settings which would choose between heuristics have nothing to choose between, leaving parameters of the model (`σ`, the elasticity) that express taste; and that user interventions enter as inputs, constraints or modified springs, so they survive every recomputation: a dragged column, for example, is a transfer of ideal width between its two gaps, which moves that column alone and, unless it takes a gap's ideal width below its blocking width, leaves the system's adjustment ratio and breaks unchanged. When the validation shows the baseline to be wrong, the fix is a new input or a new term in the cost or the elasticity, never a correction applied after the fact. [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) organises the rules by the form each takes and the stage that produces it.
 
 ## References
 
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) (pipeline architecture, Stage 3 system breaking position, gutter model, closed semantic model)
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (accidental algorithm that closes the semantic model; tied-note bypass rules inform gutter requirements)
-- **ADR-00XX: Horizontal Spacing** — forthcoming: upstream computation of each gap's ideal and blocking widths, the gutter, and the reduction of constraints spanning several columns
+- [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) (upstream computation of each gap's ideal and blocking widths, the gutter, and the reduction of constraints spanning several columns)
 - [ADR-0014: Timewalk](0014-Timewalk.md) (temporal traversal providing measure discovery)
 - [ADR-0029: Global Hash-Consing](0029-Global-Hash-Consing.md) (immutable data structures enabling stage separation)
 - [Knuth–Plass line-breaking algorithm](https://en.wikipedia.org/wiki/Knuth%E2%80%93Plass_line-breaking_algorithm) - Wikipedia overview

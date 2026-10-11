@@ -84,15 +84,15 @@ flowchart LR
     F --> G["Stage 6<br/>Page Breaking<br/>(Single)"]
 
     B1[Rhythmic Content<br/>Musical Elements<br/>Accidental Decisions] --> B
-    B --> B2[Atoms with Extents<br/>Min, Ideal, Gutter<br/>Cached Paintlists]
+    B --> B2[Atoms with Contours<br/>Rhythm, Declared Constraints<br/>Cached Paintlists]
 
-    C1[Per-Measure Metrics<br/>Rhythmical Rasters] --> C
-    C --> C2[Unified Raster<br/>MeasureStackFormatters]
+    C1[Atoms and Contours<br/>Per-Staff Rhythm] --> C
+    C --> C2[Unified Raster<br/>Gaps as Springs<br/>Stack Summaries]
 
-    D1[Min/Ideal/Gutter<br/>System Width] --> D
-    D --> D2[Break Decisions<br/>Scale Factors]
+    D1[Stack Summaries, Gutters<br/>System Width] --> D
+    D --> D2[Break Decisions<br/>Adjustment Ratios]
 
-    E1[Scale Factors<br/>Unified Raster] --> E
+    E1[Adjustment Ratios<br/>Gaps as Springs] --> E
     E --> E2[Positioned Atoms<br/>Absolute Coordinates]
 
     F1[Final Atom Positions] --> F
@@ -111,23 +111,23 @@ flowchart LR
 
 ### Pipeline Stage 1: Atom Formation and Extent Calculation (Fan-Out per Measure)
 
-Stage 1 processes individual measures in parallel (fan-out per measure), with each measure independently calculating its rhythmic content, spatial extents, and cached visual representations. Each rhythmic position forms an "engraving atom" - noteheads, stems, accidentals, articulations positioned relative to each other as an indivisible unit. All glyph positions within an atom are relative to the atom's origin point (see [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)), enabling atoms to be repositioned without internal recomputation.
+Stage 1 processes individual measures in parallel (fan-out per measure), with each measure independently calculating its rhythmic content, the geometry of its atoms, and cached visual representations. Each rhythmic position forms an "engraving atom" - noteheads, stems, accidentals, articulations positioned relative to each other as an indivisible unit. All glyph positions within an atom are relative to the atom's origin point (see [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)), enabling atoms to be repositioned without internal recomputation.
 
-Each atom calculates four-directional extents from its center (left, right, up, down), establishing both minimum spacing (where adjacent extents touch) and ideal spacing (proportional rhythmic values). Plugin atom hooks fire for each notational element, producing atoms with extents and cached paintlists. Each measure also computes a `gutter_width` delta - additional space needed when appearing first on a system for graphical decorations (typically 0N, see [ADR-0037](0037-Measure-Distribution-Optimization.md#the-gutter-system-start-width-delta) for detailed algorithm). Once calculated, atoms remain immutable until measure content changes.
+Each atom has a left and a right contour: for every band of height, its leftmost and rightmost ink relative to its origin, the left edge of its principal notehead column ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). Stage 1 also records each staff's rhythm, declares as geometry the constraints spanning several columns that the measure implies, and supplies the geometry of the decorations the measure needs when it starts a system. It computes no widths: each gap's ideal and blocking width, and the `gutter_width` delta (additional space needed when the measure appears first on a system, typically 0N, see [ADR-0037](0037-Measure-Distribution-Optimization.md#the-gutter-system-start-width-delta)), are formed in Stage 2. Plugin atom hooks fire for each notational element, producing atoms with contours and cached paintlists, and may declare constraints. Once calculated, atoms remain immutable until measure content changes.
 
-**Stage 1 is width-complete**: It computes all horizontal space requirements including spanner anchors, ensuring Stage 3 has complete information for optimal distribution.
+**Stage 1 is width-complete**: It supplies all horizontal space requirements, including spanner anchors, as geometry and declared constraints, from which Stage 2 forms the complete width information Stage 3 needs for optimal distribution.
 
 ### Pipeline Stage 2: Raster Creation (Fan-In across Measure Stack)
 
-Stage 2 creates a unified rhythmic raster across the vertical measure stack (fan-in), collecting minimum, ideal, and gutter widths from all measures at this temporal position. When measures have different rhythmic content, reconciliation produces synchronized vertical alignment with rational rhythmic positions (including tuplet divisions like 1/3, 2/3). The resulting MeasureStackFormatter stores the width components (min, ideal, gutter) and the stack's largest column ratio — the largest ratio of minimum to ideal width among its column gaps, which bounds how far the stack can be scaled ([ADR-0037 §Column-Level Feasibility](0037-Measure-Distribution-Optimization.md#column-level-feasibility)) — establishing the solution space between physical feasibility (minimum) and musical intent (ideal). This unified raster with complete width metrics becomes the input for Stage 3 system breaking.
+Stage 2 creates a unified rhythmic raster across the vertical measure stack (fan-in) from all measures at this temporal position. When measures have different rhythmic content, reconciliation produces synchronized vertical alignment with rational rhythmic positions (including tuplet divisions like 1/3, 2/3). Each gap between neighbouring columns becomes a spring: its ideal width from the durations sounding at its left column, its blocking width from the contours on either side, the largest across the staves. Constraints spanning several columns are reduced to blocking widths, those that cross a barline in a second step across neighbouring stacks, and the gutter is computed ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2)). The resulting MeasureStackFormatter keeps every gap's springs and the stack's summary for Stage 3 ([ADR-0037 §Interface Contract](0037-Measure-Distribution-Optimization.md#interface-contract)), establishing the solution space between physical feasibility (blocking widths) and musical intent (ideal widths). This unified raster with complete width metrics becomes the input for Stage 3 system breaking.
 
 ### Pipeline Stage 3: System Breaking (Single)
 
-Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (exact min/ideal/gutter widths and column ratios for every measure stack), the algorithm evaluates candidate systems by subtracting from the available system width the preamble width (clef + key signature, computed on-demand) and gutter width at the system's start, and the postamble width (cautionaries for a change taking effect at the start of the next system, and the system-end form of a double, final or repeat barline) at its end, then computing scale factors. The objective function uses proportional scaling, with Knuth–Plass demerits computed from each system's adjustment ratio (ADR-0037), producing breaks that are globally optimal for that cost function, given its inputs, while preserving rhythmic proportionality. Output: system break decisions and scale factors per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
+Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (each measure stack's summary of its springs, and its gutter), the algorithm evaluates candidate systems by subtracting from the available system width the preamble width (clef + key signature, computed on-demand) and gutter width at the system's start, and the postamble width (cautionaries for a change taking effect at the start of the next system, and the system-end form of a double, final or repeat barline) at its end, then solving exactly for each system's adjustment ratio. Each system's cost is the Knuth–Plass demerits of its adjustment ratio (ADR-0037), producing breaks that are globally optimal for that cost function, given its inputs. Output: system break decisions and an adjustment ratio per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
 
 ### Pipeline Stage 4: Atom Positioning (Fan-Out per Measure)
 
-Stage 4 applies scale factors from Stage 3 to position atoms at their actual coordinates (fan-out per measure, parallel processing). Each measure uses its system's scale factor and the unified raster from Stage 2 to compute actual widths (`actual[i] = ideal[i] × scale_factor`) and assign final x,y coordinates. Cached paintlists from Stage 1 are positioned at absolute coordinates. Atoms are repositioned, not recreated - their internal geometry remains immutable. Output: positioned atoms ready for Stage 5 spanners.
+Stage 4 applies each system's adjustment ratio from Stage 3 to position atoms at their actual coordinates (fan-out per measure, parallel processing). Each gap takes the width its spring gives at that ratio (`g_j(r)`, [ADR-0037 §Gaps as Springs](0037-Measure-Distribution-Optimization.md#gaps-as-springs)), and atoms are assigned final x,y coordinates from the resulting column positions. Cached paintlists from Stage 1 are positioned at absolute coordinates. Atoms are repositioned, not recreated - their internal geometry remains immutable. Output: positioned atoms ready for Stage 5 spanners.
 
 ### Pipeline Stage 5: Spanners and Margins (Fan-Out per Musician)
 
@@ -202,9 +202,9 @@ flowchart LR
 #### Atom Hook (Stage 1)
 Plugins produce atoms with cached paintlists for non-connecting elements:
 - **Input**: Musical element data and contextual information
-- **Output**: Atom containing extent (width/height/bounds) and cached paintlist (rendering instructions)
+- **Output**: Atom containing its contours and bounds and cached paintlist (rendering instructions), and any constraints spanning several columns the element implies ([ADR-0055](0055-Horizontal-Spacing.md#formatter-conditions-and-plugins))
 - **Participation**: Required for all elements with visual representation
-- **Purpose**: Single-pass atom formation - extent calculation and paintlist generation happen together
+- **Purpose**: Single-pass atom formation - contour calculation and paintlist generation happen together
 - **Caching**: Paintlists are immutable and cached with the atom, positioned later by Stage 4
 
 #### Spanner Hook (Stage 5)
@@ -219,7 +219,7 @@ Plugins generate connecting elements using finalized atom positions:
 ;; Non-connecting element plugin
 (defrecord ArticulationPlugin []
   (atom-hook [_ art ctx]
-    ;; Stage 1: Produce atom with extent and cached paintlist
+    ;; Stage 1: Produce atom with contours and cached paintlist
     (let [bounds (calculate-bounds art ctx)
           paintlist (render-glyph art)]
       (create-atom bounds paintlist)))
@@ -283,7 +283,7 @@ Cello:       [measure 5 content]  ←
 
 **Caching Strategy:**
 
-- Measure minimum/ideal/gutter width measurements are cached and only recomputed when measure content changes
+- Atom geometry and contours (Stage 1) are cached and only recomputed when measure content changes; each stack's springs, summary and gutter (Stage 2) are recomputed when content in the stack or a spacing parameter changes ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2))
 - Result rasters are cached and reused until invalidated
 - MeasureStackFormatter data persists across optimization iterations in Stage 3
 
@@ -320,9 +320,9 @@ sequenceDiagram
     Note over U,C2: Phase 3: Asynchronous Pipeline Processing (100ms batch)
     B->>P: Queue affected elements for raster
     P->>P: Stage 1: Engraving atom formation<br/>(plugin atom hooks fire)
-    P->>P: Stage 2: Measure stack minimum calculation<br/>(parallel collision boundary computation)
+    P->>P: Stage 2: Raster and springs per stack<br/>(ideal and blocking widths, constraints, gutter)
     P->>P: Stage 3: System breaking<br/>(Knuth-Plass optimal distribution)
-    P->>P: Stage 4: Atom positioning<br/>(apply scale factors to atoms)
+    P->>P: Stage 4: Atom positioning<br/>(apply adjustment ratios to gaps)
     P->>P: Stage 5: Spanners and margins<br/>(per-musician connecting elements + gutter decorations)
     P->>P: Stage 6: Page breaking<br/>(if system heights changed)
     P->>B: Updated MeasureView{glyphs, curves}
@@ -731,7 +731,7 @@ This architecture breaks the circular dependencies that collapse traditional not
 
 **System and page breaking are optimised separately**: Stage 3 chooses system breaks and Stage 6 chooses page breaks; the two are not optimised jointly. The number of systems is therefore chosen without the pages in view. Stage 6 can only choose which of the system boundaries Stage 3 produced become page boundaries: it cannot move a system break, for instance to place a rest at a page turn. Optimising both together would require the heights of systems that Stage 5 has not built, and so would have to work from estimates of those heights.
 
-**Gutter width accounting**: Stage 1 computes `gutter_width` for every measure, even though only system-start measures will use it. This is minimal overhead (typically only tied-to notes at position 0) but represents computation that may not be used.
+**Gutter width accounting**: `gutter_width` is computed for every stack, Stage 1 supplying the geometry and Stage 2 the width, even though only system-start stacks will use it. This is minimal overhead (typically only tied-to notes at position 0) but represents computation that may not be used.
 
 **Cancellation semantics required**: Responsive editing under long-running calculations demands cooperative cancellation throughout the pipeline. This is additional coordination surface that must remain disciplined.
 
@@ -794,6 +794,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) - Accidental decision algorithm; semantic model that is closed before rendering
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) - GPU-accelerated terminal frontend execution of paintlists produced by this rendering pipeline
 - [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) - Stage 3 algorithm computing preamble on-demand and consuming gutter_width values for system breaking
+- [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) - How Stages 1 and 2 produce the springs Stage 3 fits: atoms and contours, the raster, ideal and blocking widths, constraints spanning several columns, and variants at a break
 - [ADR-0052: Change Detection and Event Generation](0052-Change-Detection-and-Event-Generation.md) - The other half of the notification division: changes to the containers of the music announce themselves structurally and never reach this pipeline, while musical changes notify solely through the invalidations it produces
 
 ### Technical Dependencies
