@@ -114,8 +114,9 @@ Computing visual layout and engraving decisions from semantic musical data.
 
 - **[0013-Slur-Formatting](0013-Slur-Formatting.md)**: Convex half-hull slur shape with copper plate aesthetics (rounded endpoints, variable thickness); foundational algorithms for point collection and hull calculation
 - **[0028-Hierarchical-Rendering-Pipeline](0028-Hierarchical-Rendering-Pipeline.md)**: Six-stage rendering pipeline with plugin-based formatters for professional music engraving
-- **[0037-Measure-Distribution-Optimization](0037-Measure-Distribution-Optimization.md)**: Capacity-constrained optimal segmentation in the Knuth–Plass family, with proportional fitting as baseline and exact optimisation of the stated cost
+- **[0037-Measure-Distribution-Optimization](0037-Measure-Distribution-Optimization.md)**: Capacity-constrained optimal segmentation in the Knuth–Plass family, fitting each system by blocking springs (Hegazy and Gourlay), with exact optimisation of the stated cost
 - **[0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**: Backend-authoritative rendering with terminal frontend execution and GPU-accelerated vector rendering
+- **[0055-Horizontal-Spacing](0055-Horizontal-Spacing.md)**: How Stages 1 and 2 produce ADR-0037's springs — every horizontal rule in one of four forms (ideal width, blocking width, constraint spanning several columns, variant at a break); atoms with origins and contours built from SMuFL bounding boxes and cut-outs; the raster of columns and its gap classes; ideal widths from an exact interpolated duration table, an anchoring duration and the controlling duration; blocking widths from contours and a clearance table; column drags stored as transfers of ideal width; generative property tests for the invariants, with values settled by measuring printed engravings
 
 ## Frontend: Execution & UI
 
