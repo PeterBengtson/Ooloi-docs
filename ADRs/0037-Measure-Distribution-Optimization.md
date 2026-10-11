@@ -366,7 +366,7 @@ The computation of these values is handled by upstream stages, and will be speci
 
 Every column gap in a measure stack is a spring in the sense of Hegazy and Gourlay (see [The Spring Model](#the-spring-model)). The springs attach to the origins of the atoms on either side, not to their outer edges, because what the eye measures is the distance from one note to the next; the atoms themselves are boxes that cannot pass through each other. A gap `j` has:
 
-- an **ideal width** `w_j`, the distance between atom origins that the durations call for (Stage 1);
+- an **ideal width** `w_j`, the distance between atom origins that the durations call for (Stages 1–2);
 - a **blocking width** `b_j`, the distance at which the atoms on either side would collide, the largest such distance over the stack's staves (Stages 1–2);
 - a **stretch** `σ × w_j` and a **shrink** `max(0, w_j − b_j)`, the baseline elasticity ([Fitting Rules](#fitting-rules)).
 
@@ -395,7 +395,7 @@ So each stack carries `:min`, `:natural`, `:ordinary-ideal` and its `:prestretch
 
 ### Constraints Spanning Several Columns
 
-Some minimum distances span more than one gap: a long syllable sung across a melisma, a dynamic or a word of text that must not run into the next, material crossing between staves. A blocking width belongs to one gap, so such a constraint is reduced to blocking widths before Stage 3 sees it, in Stage 2, in the way LilyPond's spacer reduces its rods (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`):
+Some minimum distances span more than one gap: a long syllable sung across a melisma, a dynamic or a word of text that must not run into the next, material crossing between staves, and two neighbouring atoms in one staff whenever other staves place columns between them. A blocking width belongs to one gap, so such a constraint is reduced to blocking widths before Stage 3 sees it, in Stage 2, in the way LilyPond's spacer reduces its rods (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`):
 
 1. For a constraint of distance `D` over gaps `j..k`, find the least `r_D` at which `Σ g_i(r)` over those gaps reaches `D`, using their springs alone and the same exact solver as Stage 3 ([Solving for the Adjustment Ratio](#solving-for-the-adjustment-ratio)). If `Σ b_i ≥ D` already, the constraint is met and nothing changes.
 2. Raise each spanned gap's blocking width to its width at that ratio, `b_i ← g_i(r_D)`; its shrink follows from the new blocking width.
@@ -450,7 +450,7 @@ Therefore, compression effects are **staff-local**, not stack-global:
 This reinforces **stack atomicity** as the correct abstraction boundary. The distribution algorithm operates on stacks without needing staff-aware redistribution or corrective optimization. Visual degradation under compression affects specific staves within stacks, not the system as a whole.
 
 **Key architectural achievement**:
-Collisions are resolved upstream (Stage 1), so the distribution never has to discover one. Where the music needs more room than proportion allows, the blocking width says exactly how much, and the springs give it that room and no more ([Gaps as Springs](#gaps-as-springs)).
+Collisions are resolved upstream (Stages 1–2), so the distribution never has to discover one. Where the music needs more room than proportion allows, the blocking width says exactly how much, and the springs give it that room and no more ([Gaps as Springs](#gaps-as-springs)).
 
 **Constraint structure**:
 - **Hard constraint**: every gap at or above its blocking width, so `actual_width ≥ min_width` (collision prevention)

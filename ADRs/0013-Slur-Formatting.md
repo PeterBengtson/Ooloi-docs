@@ -56,15 +56,15 @@ By the time stage 5 executes, the following are determined and authoritative ([A
 - accidental positions after collision resolution
 - articulation stacking side and order
 - beam group membership and beam break markers on the participating items
-- system breaks and per-system scale factors
+- system breaks and per-system adjustment ratios ([ADR-0037](0037-Measure-Distribution-Optimization.md))
 
 What stages 1–4 deliberately do **not** determine is geometry that depends on the spatial relationships between positioned noteheads: slur curves, tie arcs, beam slants, hairpin wedges. The *structure* is fully known; the *geometry* is stage 5's work. Put from the engraver's side: connecting elements are drawn in response to established spacing. **They adapt to geometry; they do not determine it.**
 
-**Stage 5 does not propagate upstream.** It sends no parameters back for re-computation, triggers no re-run of an earlier stage, and closes no feedback loop. What it *may* do is modify the geometric artifacts earlier stages produced — a stem length, an articulation's vertical offset, a local spacing value — within declared tolerances, as a single deterministic downstream act. The same inputs always produce the same modification, and the modification and the spanner geometry are both outputs of the same forward pass.
+**Stage 5 does not propagate upstream.** It sends no parameters back for re-computation, triggers no re-run of an earlier stage, and closes no feedback loop. What it *may* do is adjust the geometric artifacts earlier stages produced to the concrete space Stage 4 has given — a stem length, an articulation's vertical offset, an element's offset from its atom — within declared tolerances, as a single deterministic downstream act. It never changes note spacing: the rhythmic positioning raster is fixed once Stage 4 has applied the system's adjustment ratio, and any horizontal room an element needs is declared before Stage 3, as a constraint spanning several columns ([ADR-0037](0037-Measure-Distribution-Optimization.md)). The same inputs always produce the same modification, and the modification and the spanner geometry are both outputs of the same forward pass.
 
 This is not a limitation but the precondition. The whitespace available to a slur is computed from stage-4 geometry; stage 5's authority to adjust that geometry is what lets it enlarge the whitespace when a slur needs it, without reopening anything upstream. Shortening a stem and enlarging the space above it are the same act described two ways.
 
-The permitted modifications, their ranges, and the cost function that decides when to apply one belong to the Slur and Tie Geometry ADR. Two constraints on them are fixed here: every modification is **bounded** by an engraving-acceptable range, and none is **recursive**.
+The permitted modifications, their ranges, and the cost function that decides when to apply one belong to the Slur and Tie Geometry ADR. Three constraints on them are fixed here: every modification is **bounded** by an engraving-acceptable range, none is **recursive**, and none moves the **rhythmic positioning raster**.
 
 ## Musical Slur Characteristics (Based on Traditional Engraving)
 
