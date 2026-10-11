@@ -1753,6 +1753,15 @@ This ADR demonstrates the same architectural property as [ADR-0035: Remembered A
 
 For remembered alterations, the timewalk provides temporal ordering independent of visual layout. For measure distribution, the pipeline provides collision-free metrics (plus gutter deltas) independent of system assignment. Both reduce coupled problems to sequential ones.
 
+**Design principle: no engraving rules after Stage 2.** Stages 3 and 4 are mathematics over springs; they contain no engraving rules. Every rule about horizontal space reaches them in one of four forms, produced upstream:
+
+- an **ideal width**: duration, with optical corrections such as stem direction (Stages 1–2);
+- a **blocking width**: the contour distance between neighbouring atoms, the largest across the staves (Stages 1–2);
+- a **constraint spanning several columns**: lyrics, text, and neighbouring atoms in one staff that other staves separate by further columns, reduced to blocking widths before breaking ([Constraints Spanning Several Columns](#constraints-spanning-several-columns));
+- a **variant at a break**: the preamble, gutter and postamble, known before breaking.
+
+A horizontal rule that cannot be expressed in one of these forms is a design problem to be resolved, not a pass to be added. It follows that no column moves after fitting (Stage 5 places and adjusts elements within the space the columns leave); that settings which would choose between heuristics have nothing to choose between, leaving parameters of the model (`σ`, the elasticity) that express taste; and that user interventions enter as inputs, constraints or modified springs, so they survive every recomputation: a dragged column, for example, is a transfer of ideal width between its two gaps, which moves that column alone and, unless it takes a gap's ideal width below its blocking width, leaves the system's adjustment ratio and breaks unchanged. When the validation shows the baseline to be wrong, the fix is a new input or a new term in the cost or the elasticity, never a correction applied after the fact. The forthcoming Horizontal Spacing ADR (ADR-00XX) organises the rules by the form each takes and the stage that produces it.
+
 **Positive:**
 
 1. **Exact optimization** - Polynomial-time algorithm finds the break configuration of least cost under the stated cost function, given its inputs
