@@ -4,7 +4,7 @@
 
 Accepted
 
-Revised October 2026: a ledger line's length is among the adjustments stage 5 may make; the declared ranges of those adjustments must be available to stage 1, whose contours reserve them; and an open question records how stage 5's discrete decisions behave while a drag moves noteheads.
+Revised October 2026: a ledger line's length is among the adjustments stage 5 may make; the declared ranges of those adjustments must be available to stage 1, whose contours reserve them; and an open question records how stage 5's discrete decisions behave while any drag runs.
 
 ## Table of Contents
 
@@ -303,7 +303,7 @@ These are reconcilable, and the reconciliation needs stating rather than assumin
 
 ### Discrete stage-5 decisions during a drag
 
-Some stage-5 decisions are discrete: a beam's slant is quantised, a stem length is chosen within its range, a ledger line is drawn short or long. A drag moves noteheads, whether it moves a column or changes a system's adjustment ratio, and every update of it is an edit that stage 5 sees ([ADR-0055](0055-Horizontal-Spacing.md#user-inputs)), so such a decision can change from one update to the next. Whether stage 5 updates these decisions during a drag, or holds them and settles them when the drag ends, is open. Holding them would make what is drawn depend on whether a drag is in progress, which would then have to be one of stage 5's inputs, since the same inputs must give the same result. There is no beaming ADR; the question binds beaming as well as the Slur and Tie Geometry ADR.
+Some stage-5 decisions are discrete: a beam's slant is quantised, a stem length is chosen within its range, a ledger line is drawn short or long. Any drag triggers them while it runs, not only one that moves noteheads. A column or barline drag moves noteheads, directly or by changing a system's adjustment ratio; a drag of a slur's control point or of an element's offset changes the geometry stage 5 fits the surrounding elements to. Every update of a drag is an edit that stage 5 sees ([ADR-0055](0055-Horizontal-Spacing.md#user-inputs)), though the whole drag is one undo step ([ADR-0015](0015-Undo-and-Redo.md#continuous-gestures-one-undo-step)), so such a decision can change from one update to the next. Whether stage 5 updates these decisions during a drag, or holds them and settles them when the drag ends, is open. Holding them would make what is drawn depend on whether a drag is in progress, which would then have to be one of stage 5's inputs, since the same inputs must give the same result. There is no beaming ADR; the question binds beaming as well as the Slur and Tie Geometry ADR.
 
 ## Rationale
 
@@ -356,6 +356,7 @@ Some stage-5 decisions are discrete: a beam's slant is quantised, a stem length 
 - **[ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md)** — Slur formatting is part of pipeline stage 5 (Spanners and Margins)
 - **[ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md)** — Stage 1's contours reserve the envelope of every adjustment stage 5 makes inside an atom; ledger lines enter spacing at their shortest acceptable length
 - **[ADR-0038: Backend-Authoritative Rendering](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)** — Rendering boundary constraints: the slur algorithm consumes resolved semantics and layout decisions without introducing new semantic state or backward causality
+- **[ADR-0015: Undo and Redo](0015-Undo-and-Redo.md)** — A drag is one undo step however many updates stage 5 sees during it
 - **[ADR-0014: Timewalk](0014-Timewalk.md)** — Timewalking provides the point collection algorithm
 - **[ADR-0011: Shared Structure](0011-Shared-Structure.md)** — Shared structure concepts that slur formatting builds upon
 - **[ADR-0008: VPDs](0008-VPDs.md)** — VPD addressing system used for navigation

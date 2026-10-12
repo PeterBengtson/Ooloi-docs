@@ -4,7 +4,7 @@
 
 Accepted
 
-Revised October 2026: the plugin examples follow [ADR-0055](0055-Horizontal-Spacing.md) and [ADR-0013](0013-Slur-Formatting.md), with Stage 1 declaring contours and constraints and beamed stems drawn in Stage 5, and the [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant) points to ADR-0013's open question on Stage 5's adjustments. A measure's Stage 1 output includes a clef change the next measure begins with, which it draws before its closing barline, and the postamble holds only cautionary key and time signatures.
+Revised October 2026: the plugin examples follow [ADR-0055](0055-Horizontal-Spacing.md) and [ADR-0013](0013-Slur-Formatting.md), with Stage 1 declaring contours and constraints and beamed stems drawn in Stage 5, and the [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant) points to ADR-0013's open question on Stage 5's adjustments. A measure's Stage 1 output includes a clef change the next measure begins with, which it draws before its closing barline, so a change of that clef reruns Stage 1 for the measure; the postamble holds only cautionary key and time signatures; and Stage 3 also subtracts what a repeat barline adds at a boundary inside a system, its no-break width ([ADR-0037](0037-Measure-Distribution-Optimization.md#interface-contract)).
 
 ## Table of Contents
 
@@ -121,11 +121,11 @@ Each atom has a left and a right contour: for every band of height, its leftmost
 
 ### Pipeline Stage 2: Raster Creation (Fan-In across Measure Stack)
 
-Stage 2 creates a unified rhythmic raster across the vertical measure stack (fan-in) from all measures at this temporal position. When measures have different rhythmic content, reconciliation produces synchronized vertical alignment with rational rhythmic positions (including tuplet divisions like 1/3, 2/3). Each gap between neighbouring columns becomes a spring: its ideal width from the durations sounding at its left column, its blocking width from the contours on either side, the largest across the staves. Constraints spanning several columns are reduced to blocking widths, those that cross a barline in a second step across neighbouring stacks, and the gutter is computed ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2)). The resulting MeasureStackFormatter keeps every gap's springs and the stack's summary for Stage 3 ([ADR-0037 §Interface Contract](0037-Measure-Distribution-Optimization.md#interface-contract)), establishing the solution space between physical feasibility (blocking widths) and musical intent (ideal widths). This unified raster with complete width metrics becomes the input for Stage 3 system breaking.
+Stage 2 creates a unified rhythmic raster across the vertical measure stack (fan-in) from all measures at this temporal position. When measures have different rhythmic content, reconciliation produces synchronized vertical alignment with rational rhythmic positions (including tuplet divisions like 1/3, 2/3). Each gap between neighbouring columns becomes a spring: its ideal width from the durations sounding at its left column, its blocking width from the contours on either side, the largest across the staves. Constraints spanning several columns are reduced to blocking widths, those that cross a barline in a second step across neighbouring stacks, and the gutter and the no-break width of each stack's closing boundary are computed ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2)). The resulting MeasureStackFormatter keeps every gap's springs and the stack's summary for Stage 3 ([ADR-0037 §Interface Contract](0037-Measure-Distribution-Optimization.md#interface-contract)), establishing the solution space between physical feasibility (blocking widths) and musical intent (ideal widths). This unified raster with complete width metrics becomes the input for Stage 3 system breaking.
 
 ### Pipeline Stage 3: System Breaking (Single)
 
-Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (each measure stack's summary of its springs, and its gutter), the algorithm evaluates candidate systems by subtracting from the available system width the preamble width (clef + key signature, computed on-demand) and gutter width at the system's start, and the postamble width (cautionaries for a change taking effect at the start of the next system) at its end, then solving exactly for each system's adjustment ratio. Each system's cost is the Knuth–Plass demerits of its adjustment ratio (ADR-0037), producing breaks that are globally optimal for that cost function, given its inputs. Output: system break decisions and an adjustment ratio per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
+Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (each measure stack's summary of its springs, its gutter, and the no-break width of its closing boundary), the algorithm evaluates candidate systems by subtracting from the available system width the preamble width (clef + key signature, computed on-demand) and gutter width at the system's start, the postamble width (cautionaries for a change taking effect at the start of the next system) at its end, and the no-break width at each boundary inside it (what a repeat barline adds there beyond its system-end form), then solving exactly for each system's adjustment ratio. Each system's cost is the Knuth–Plass demerits of its adjustment ratio (ADR-0037), producing breaks that are globally optimal for that cost function, given its inputs. Output: system break decisions and an adjustment ratio per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
 
 ### Pipeline Stage 4: Atom Positioning (Fan-Out per Measure)
 
@@ -162,17 +162,19 @@ Stage 6 determines page break points by a dynamic programme over the system sequ
 
 1. **Translation without recomputation**: Moving an atom horizontally or vertically requires only updating its origin coordinate. No internal geometry recalculation occurs.
 
-2. **Trivial cache invalidation**: Stage 1 reruns only when measure content changes. Layout changes (system width, page height, style spacing adjustments) never trigger Stage 1 recomputation.
+2. **Trivial cache invalidation**: Stage 1 reruns for a measure only when its content changes, or the clef the next measure begins with, which it draws before its closing barline ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)): a clef change taking effect at the start of measure M changes M−1's Stage 1 output, and with it M−1's width. Layout changes (system width, page height, style spacing adjustments) never trigger Stage 1 recomputation.
 
 3. **Rendering becomes pure projection**: At paintlist generation time, atoms are translated to their final positions. No structural decisions remain - only coordinate transformation.
 
 | Change Type | Stage 1 | Stage 2 | Stage 3 | Stage 4 | Stage 5 | Stage 6 |
 |-------------|---------|---------|---------|---------|---------|---------|
-| Edit measure M | Recompute M only | Reconcile M's stack | Redistribute systems | Position atoms | Reconnect spans | May rebreak pages |
+| Edit measure M | Recompute M, with the exceptions below | Reconcile M's stack | Redistribute systems | Position atoms | Reconnect spans | May rebreak pages |
 | System width change | Nothing | Nothing | Redistribute systems | Position atoms | Reconnect + gutter | Nothing |
 | Page height change | Nothing | Nothing | Nothing | Nothing | Nothing | Rebreak pages |
 | Style change (spacing) | Nothing | Reconcile | Redistribute systems | Position atoms | Reconnect + gutter | May rebreak pages |
 | Add/remove instrument | Recompute affected | Reconcile all | Redistribute systems | Position atoms | Reconnect | Rebreak pages |
+
+An edit to measure M recomputes Stage 1 for M alone, with two exceptions: a clef or key signature change also recomputes every later measure it governs, and a clef change at M's start recomputes M−1, which draws it before its closing barline ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)).
 
 **Invariant enforcement**: Atoms are immutable data structures. Once Stage 1 produces an atom, its internal geometry cannot be modified. Stages 4 and 5 consume atoms; they do not mutate them. Stage 5's authority to adjust geometry the earlier stages produced, within declared ranges, is recorded in [ADR-0013](0013-Slur-Formatting.md#the-pipeline-is-one-way-and-what-stage-5-may-change); how that authority reconciles with this invariant is [open there](0013-Slur-Formatting.md#whether-stage-5-modification-touches-atom-internal-geometry).
 
@@ -721,7 +723,7 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 10. **Closed Semantic Model**: Rendering cannot affect musical semantics. Complete information enables optimal distribution without feedback loops or heuristics.
 
-11. **Optimal Distribution for the Stated Cost Function**: Stage 3 has complete knowledge (measure widths, system-start deltas for preamble and gutter, and system-end postamble widths) enabling, in one pass, system breaking that is globally optimal for its cost function ([ADR-0037](0037-Measure-Distribution-Optimization.md)), given those inputs; Stage 6 has complete system heights for its page breaking, whose cost function is not yet specified.
+11. **Optimal Distribution for the Stated Cost Function**: Stage 3 has complete knowledge (measure widths, system-start deltas for preamble and gutter, system-end postamble widths, and the no-break width of every boundary) enabling, in one pass, system breaking that is globally optimal for its cost function ([ADR-0037](0037-Measure-Distribution-Optimization.md)), given those inputs; Stage 6 has complete system heights for its page breaking, whose cost function is not yet specified.
 
 ## Trade-offs
 

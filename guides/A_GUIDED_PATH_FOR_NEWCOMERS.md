@@ -222,10 +222,10 @@ The earlier post, ["The Rendering Pipeline: Ooloi's Core Architecture"](https://
 
 Six stages:
 
-- **Stage 1** (fan-out): Atom formation and collision detection. Each measure independently computes its spatial requirements. Results are immutable and persist until content changes.
-- **Stage 2** (fan-in): Vertical reconciliation. The MeasureStackFormatter collects widths and generates result rasters with minimum, ideal, and gutter widths per measure stack.
-- **Stage 3** (single): System breaking. Dynamic programming over the measure sequence. Determines optimal system breaks and scale factors.
-- **Stage 4** (fan-out): Atom positioning. Applies scale factors from Stage 3; computes absolute coordinates.
+- **Stage 1** (fan-out): Atom formation. Each measure forms its atoms and their contours, the outlines Stage 2 measures. Results are immutable and persist until content changes.
+- **Stage 2** (fan-in): Raster and springs. The staves' rhythms are merged into one raster of columns, every gap between columns becomes a spring with an ideal and a blocking width, and each measure stack is summarised for Stage 3, with its gutter.
+- **Stage 3** (single): System breaking. Dynamic programming over the measure sequence. Determines optimal system breaks and each system's adjustment ratio.
+- **Stage 4** (fan-out): Atom positioning. Applies each system's adjustment ratio to its gaps; computes absolute coordinates.
 - **Stage 5** (fan-out per musician): Spanners and margins. Ties, slurs, beams, hairpins, and glissandi are drawn once final positions are known. Gutter decorations (courtesy accidentals, tie continuations) are added here. System heights become definitive at this stage.
 - **Stage 6** (single): Page breaking. Dynamic programming over the system sequence using actual heights from Stage 5.
 

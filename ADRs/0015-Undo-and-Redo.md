@@ -4,6 +4,8 @@
 
 Implemented
 
+Revised October 2026: a continuous gesture, anything moved with the pointer and committed as it moves, is one undo step however many transactions it takes ([Continuous Gestures: One Undo Step](#continuous-gestures-one-undo-step)). The gesture identifier the rule relies on is not yet carried by the protocol [ADR-0018](0018-API-gRPC-Interface-and-Events.md) specifies.
+
 ## Table of Contents
 
 - [Context](#context)
@@ -25,6 +27,7 @@ Implemented
     - [The Backend Undo Manager API](#the-backend-undo-manager-api)
     - [Stack Semantics](#stack-semantics)
     - [Mutation Sites — How Resources Register Undo Steps](#mutation-sites--how-resources-register-undo-steps)
+    - [Continuous Gestures: One Undo Step](#continuous-gestures-one-undo-step)
     - [Automatic Capture and Deliberate Registration](#automatic-capture-and-deliberate-registration)
     - [IL Description Inference](#il-description-inference)
     - [Push-Based State Notification](#push-based-state-notification)
@@ -367,6 +370,7 @@ the public operations described in [gRPC Extensions](#grpc-extensions) below.
 ;;    :description-params {:names ["Flute" "Oboe"]}  ;; interpolation params
 ;;    :timestamp       1711023456789012               ;; epoch microseconds
 ;;    :originator-id   "client-42"                    ;; gRPC client-id at push time, or nil
+;;    :gesture-id      "g-17"                         ;; the continuous gesture it records, or nil
 ;;    :undo-fn         (fn [] ...)                    ;; restores previous state
 ;;    :redo-fn         (fn [] ...)                    ;; re-applies mutation
 ;;    ...plus whatever the caller's trailing map carried (see below)}
@@ -376,6 +380,12 @@ the public operations described in [gRPC Extensions](#grpc-extensions) below.
 ;; Pushes an undo entry. Clears the redo stack for this resource (standard undo semantics:
 ;; a new forward mutation invalidates any redo history). Emits :undo-state-changed to the
 ;; resource's audience (see Push-Based State Notification).
+;;
+;; When the call belongs to a continuous gesture and the top entry records the same gesture
+;; by the same originator, it amends that entry instead of pushing: the entry keeps its
+;; undo-fn, takes the new redo-fn, its trailing facts are OR-ed with the new ones, and its
+;; timestamp advances. The redo stack is cleared and :undo-state-changed emitted as for a
+;; push (see Continuous Gestures: One Undo Step).
 ;;
 ;; The optional trailing map is merged into the entry. It exists for facts about the
 ;; mutation that are settled while its transaction runs and are unrecoverable afterwards,
@@ -423,7 +433,9 @@ mechanism — not a Clojure dynamic var). Any code reached from the gRPC handler
 including the mutation site and `push-undo!` — can read the client-id by calling
 `get-client-id-from-context`. No new dynamic var, no new binding wrapper, and no
 duplication of authentication logic. The signature of `push-undo!` is unchanged —
-mutation sites do not pass the originator explicitly.
+mutation sites do not pass the originator explicitly. A continuous gesture's identifier
+reaches `push-undo!` the same way, from the call's context, so mutation sites pass that
+neither ([Continuous Gestures: One Undo Step](#continuous-gestures-one-undo-step)).
 
 For mutations not initiated by a client call (server-side housekeeping, scheduled
 tasks), `get-client-id-from-context` returns `nil` and the entry's `:originator-id` is
@@ -447,7 +459,8 @@ surface — the frontend reaches undo functionality only through `SRV/undo-resou
 #### Stack Semantics
 
 - **Depth cap**: 50 entries per resource (matching Tier 2). Oldest entries are silently
-  dropped when the cap is exceeded.
+  dropped when the cap is exceeded. The cap counts entries, so a continuous gesture, one
+  entry however many transactions it took, counts once.
 - **Redo invalidation**: `push-undo!` clears the redo stack for that resource. If the user
   undoes A→B→C back to state A, then performs a new mutation D, the redo history (B, C) is
   gone. This is standard undo/redo behaviour in every editor.
@@ -501,19 +514,21 @@ resource's mutation surface:
 ;; VPD funnel — so a piece registers once, at the backend gRPC boundary that owns the
 ;; transaction: execute-atomic-operations for an SRV/atomic batch, and the single-method
 ;; handler (wrapped as a batch of one) for a lone call. This is the same outermost-transaction
-;; boundary ADR-0052 §4 coalesces to a single :piece-structure-changed event, so one gesture
-;; is one transaction, one event, and one undo step. This automatic capture is taken only on
-;; the client-facing SRV/ surface: a mutation issued backend-internally through api/ records no
-;; step automatically, because undo tracks user interaction, not every state change. Backend
-;; code that wants a step registers one deliberately — see "Automatic Capture and Deliberate
-;; Registration" below.
+;; boundary ADR-0052 §4 coalesces to a single :piece-structure-changed event, so a discrete
+;; gesture is one transaction, one event, and one undo step. A continuous gesture is one
+;; transaction and one event per update, and still one undo step: push-undo! amends the
+;; entry its first update pushed (see Continuous Gestures: One Undo Step). This automatic
+;; capture is taken only on the client-facing SRV/ surface: a mutation issued
+;; backend-internally through api/ records no step automatically, because undo tracks user
+;; interaction, not every state change. Backend code that wants a step registers one
+;; deliberately — see "Automatic Capture and Deliberate Registration" below.
 (let [[before after]
       (with-coalesced-structural-change             ; the outermost-transaction boundary
         (let [before @piece-ref]                    ; captured at the transaction's start
           (run-the-transaction!)                    ; the SRV/atomic batch, or the lone call
           [before @piece-ref]))]                    ; after = the committed value
   (when-not (identical? before after)               ; register only a real change
-    (undo/push-undo! undo-mgr piece-id
+    (undo/push-undo! undo-mgr piece-id              ; amends instead, for the same gesture
       undo-key undo-params
       (fn [] (apply-piece-state! piece-component before))
       (fn [] (apply-piece-state! piece-component after)))))
@@ -585,6 +600,66 @@ In both cases, `before` and `after` are immutable Clojure values captured by the
 They share structure via persistent data structures. The undo manager never inspects them,
 never serialises them, never knows what they contain. It calls the closure; the closure
 restores the state.
+
+#### Continuous Gestures: One Undo Step
+
+A continuous gesture is anything moved with the pointer and committed as it moves: a slur's
+control point, an element's offset, a column, a barline, the spacing of staves. Every update
+of it is an edit, followed by a fetch of what that edit invalidated
+([ADR-0055](0055-Horizontal-Spacing.md#user-inputs)), and every update is a transaction of
+its own. The gesture is nonetheless one undo step, however many transactions it takes. A
+discrete gesture, a single call or one `SRV/atomic` batch, stays as above: one transaction,
+one event and one undo step.
+
+- **The gesture carries an identifier.** The client gives each continuous gesture an
+  identifier and sends it with every call the gesture makes, as it sends its own client-id,
+  and `push-undo!` reads it from the call's gRPC Context as it reads the originator. A
+  discrete gesture carries none, and an entry without one is never amended. The in-process
+  transport keeps gRPC's interceptors and Context
+  ([ADR-0046](0046-Reference-Passing-In-Process-Transport.md)), so the identifier travels the
+  same way on both transports. It is not yet part of the protocol
+  [ADR-0018](0018-API-gRPC-Interface-and-Events.md) specifies.
+- **A transaction of the same gesture amends the top entry.** When the entry on top of the
+  piece's stack has the same originator and the same gesture, the transaction amends that
+  entry instead of pushing a new one. The before-state stays the snapshot from the gesture's
+  start, so the entry keeps its undo closure; the after-state, and with it the redo closure,
+  become the latest. The facts the entry's trailing map records, `:structural?` and
+  `:content?`, are OR-ed across the gesture's transactions, as across a composed batch,
+  since undoing the entry reverses them all. The entry's timestamp advances, the redo stack
+  is cleared, since the update is a forward mutation like any other, and
+  `:undo-state-changed` is emitted.
+- **Another client's entry starts a new step.** If another client's entry is on top, the
+  next transaction pushes a new entry. Undo restores whole-piece snapshots, so one step
+  spanning the other client's edit would erase that edit when undone
+  ([Collaborative Undo](#collaborative-undo--multi-client-sequence)). This is the only case
+  in which a gesture yields more than one step, so long as its own client issues nothing else
+  while it lasts; an edit of that client's own in mid-gesture would split it in the same way,
+  for the same reason.
+- **Cancelling a gesture is one undo** of its entry; where another client's entry has split
+  the gesture, that undo reverts the part after the split. A disconnect in mid-gesture leaves
+  one entry, correct for what was committed.
+- **Events are unchanged.** Every transaction still emits its own invalidation, and that is
+  what keeps a drag visible while it lasts.
+- **Updates carry absolute values, one at a time.** Each update carries the value for the
+  pointer's current position, never an increment, and a client has one update of a gesture
+  in flight at a time. The server runs a client's requests concurrently
+  ([ADR-0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md#api-request-concurrency-flow-control-not-needed)),
+  so two updates in flight could commit in the wrong order and leave the gesture at an
+  intermediate value.
+- **A gesture that ends where it began leaves no step.** What it changed is then back as it
+  was, equal by value though not identical, so the identity guard above does not catch it;
+  the entry is removed instead. Compared as whole pieces, the before-state and after-state
+  would seldom be equal: every update leaves stale marks in the piece, and a formatting pass
+  may have run during the gesture
+  ([ADR-0028 §Staleness](0028-Hierarchical-Rendering-Pipeline.md#staleness-the-state-that-drives-incremental-formatting)).
+  The comparison therefore leaves out what the pipeline derives. Not yet specified: which
+  slots it reads; where it is made, since the undo manager never inspects the states its
+  closures hold; and whether removing the entry also re-derives the dirty flag against the
+  saved baseline, as a restore does
+  ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §5).
+
+What stage 5 does with its discrete decisions while a gesture runs is a separate question,
+open in [ADR-0013](0013-Slur-Formatting.md#discrete-stage-5-decisions-during-a-drag).
 
 #### Automatic Capture and Deliberate Registration
 
@@ -833,7 +908,7 @@ have gone clean and then dirty again a formatting interval later.
                          ▼
   ┌──────────────────────────────────────────────────────┐
   │  Backend Undo Manager                                 │
-  │  1. Push entry to undo stack                          │
+  │  1. Push entry, or amend the top one (same gesture)   │
   │  2. Clear redo stack for this resource                │
   │  3. Emit :undo-state-changed to the resource's        │
   │     audience (piece → its subscribers, IL → all)      │
@@ -950,6 +1025,13 @@ sequenceDiagram
     E->>B: Refetch IL → sees Flute restored
     E->>A: Refetch IL → sees Flute restored
 ```
+
+**A continuous gesture split by another client's edit.** If another client's entry comes on
+top of a continuous gesture's entry while the gesture is still running, the gesture's next
+transaction pushes a new entry instead of amending its own. Amending would make one step span
+the other client's edit, and undoing it would restore a snapshot from before that edit,
+erasing it. The gesture is then two steps, one on either side of the other client's edit
+([Continuous Gestures: One Undo Step](#continuous-gestures-one-undo-step)).
 
 ### gRPC Extensions
 
@@ -1836,12 +1918,18 @@ machinery that requires operation rebasing are permanently off the table.
 - [ADR-0002: gRPC Communication](0002-gRPC.md) - Event streaming for `:undo-state-changed` push notifications
 - [ADR-0004: STM for Concurrency](0004-STM-for-concurrency.md) - Concurrency model for piece undo/redo closures
 - [ADR-0009: Collaboration](0009-Collaboration.md) - Collaborative editing context requiring shared undo stacks
+- [ADR-0013: Slur Formatting](0013-Slur-Formatting.md) - The open question of what stage 5 does with its discrete decisions while a continuous gesture runs
 - [ADR-0016: Settings](0016-Settings.md) - Settings architecture implementing piece-specific configuration identified in this analysis
+- [ADR-0018: API-gRPC Interface and Events](0018-API-gRPC-Interface-and-Events.md) - The protocol that carries the client identity `push-undo!` reads, and would carry a continuous gesture's identifier beside it
+- [ADR-0024: gRPC Concurrency and Flow Control Architecture](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) - A client's requests run concurrently, which is why a continuous gesture has one update in flight at a time
+- [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) - Staleness marks live in the piece, and so in every snapshot
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Event bus routing `:undo-state-changed` to frontend cache; `:app-settings` category for Tier 2
 - [ADR-0039: Localisation Architecture](0039-Localisation-Architecture.md) - Translation key resolution for undo description display
 - [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) - `set-app-setting!` and the `:setting-changed` event that Tier 2 accumulates
 - [ADR-0045: Instrument Library](0045-Instrument-Library.md) - First consumer of Tier 1 undo manager
+- [ADR-0046: Reference-Passing In-Process Transport](0046-Reference-Passing-In-Process-Transport.md) - Keeps gRPC's interceptors and Context in process, so a call's context reaches `push-undo!` on both transports
 - [ADR-0052: Change Detection and Event Generation](0052-Change-Detection-and-Event-Generation.md) - The detection/emission a piece mutation site relies on: the transaction scope that names the undo step also coalesces the structure event, and the dirty flag restored by undo/redo lives outside the piece
+- [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) - Drags as edits: the continuous gestures whose updates make one undo step
 
 ## Notes
 
