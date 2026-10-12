@@ -4,6 +4,8 @@
 
 Accepted
 
+Revised October 2026: the plugin examples follow [ADR-0055](0055-Horizontal-Spacing.md) and [ADR-0013](0013-Slur-Formatting.md), with Stage 1 declaring contours and constraints and beamed stems drawn in Stage 5, and the [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant) points to ADR-0013's open question on Stage 5's adjustments. A measure's Stage 1 output includes a clef change the next measure begins with, which it draws before its closing barline, and the postamble holds only cautionary key and time signatures.
+
 ## Table of Contents
 
 - [Context](#context)
@@ -113,7 +115,7 @@ flowchart LR
 
 Stage 1 processes individual measures in parallel (fan-out per measure), with each measure independently calculating its rhythmic content, the geometry of its atoms, and cached visual representations. Each rhythmic position forms an "engraving atom" - noteheads, stems, accidentals, articulations positioned relative to each other as an indivisible unit. All glyph positions within an atom are relative to the atom's origin point (see [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)), enabling atoms to be repositioned without internal recomputation.
 
-Each atom has a left and a right contour: for every band of height, its leftmost and rightmost ink relative to its origin, the left edge of its principal notehead column ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). Stage 1 also records each staff's rhythm, declares as geometry the constraints spanning several columns that the measure implies, and supplies the geometry of the decorations the measure needs when it starts a system. It computes no widths: each gap's ideal and blocking width, and the `gutter_width` delta (additional space needed when the measure appears first on a system, typically 0N, see [ADR-0037](0037-Measure-Distribution-Optimization.md#the-gutter-system-start-width-delta)), are formed in Stage 2. Plugin atom hooks fire for each notational element, producing atoms with contours and cached paintlists, and may declare constraints. Once calculated, atoms remain immutable until measure content changes.
+Each atom has a left and a right contour: for every band of height, its leftmost and rightmost ink relative to its origin, the left edge of its principal notehead column ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). Stage 1 also records each staff's rhythm, declares as geometry the constraints spanning several columns that the measure implies, and supplies the geometry of the decorations the measure needs when it starts a system. It computes no widths: each gap's ideal and blocking width, and the `gutter_width` delta (additional space needed when the measure appears first on a system, typically 0N, see [ADR-0037](0037-Measure-Distribution-Optimization.md#the-gutter-system-start-width-delta)), are formed in Stage 2. Plugin atom hooks fire for each notational element, producing atoms with contours and cached paintlists, and may declare constraints. A measure draws, before its closing barline, a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)). Once calculated, atoms remain immutable until measure content, or that clef, changes.
 
 **Stage 1 is width-complete**: It supplies all horizontal space requirements, including spanner anchors, as geometry and declared constraints, from which Stage 2 forms the complete width information Stage 3 needs for optimal distribution.
 
@@ -123,7 +125,7 @@ Stage 2 creates a unified rhythmic raster across the vertical measure stack (fan
 
 ### Pipeline Stage 3: System Breaking (Single)
 
-Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (each measure stack's summary of its springs, and its gutter), the algorithm evaluates candidate systems by subtracting from the available system width the preamble width (clef + key signature, computed on-demand) and gutter width at the system's start, and the postamble width (cautionaries for a change taking effect at the start of the next system, and the system-end form of a double, final or repeat barline) at its end, then solving exactly for each system's adjustment ratio. Each system's cost is the Knuth–Plass demerits of its adjustment ratio (ADR-0037), producing breaks that are globally optimal for that cost function, given its inputs. Output: system break decisions and an adjustment ratio per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
+Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (each measure stack's summary of its springs, and its gutter), the algorithm evaluates candidate systems by subtracting from the available system width the preamble width (clef + key signature, computed on-demand) and gutter width at the system's start, and the postamble width (cautionaries for a change taking effect at the start of the next system) at its end, then solving exactly for each system's adjustment ratio. Each system's cost is the Knuth–Plass demerits of its adjustment ratio (ADR-0037), producing breaks that are globally optimal for that cost function, given its inputs. Output: system break decisions and an adjustment ratio per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
 
 ### Pipeline Stage 4: Atom Positioning (Fan-Out per Measure)
 
@@ -172,7 +174,7 @@ Stage 6 determines page break points by a dynamic programme over the system sequ
 | Style change (spacing) | Nothing | Reconcile | Redistribute systems | Position atoms | Reconnect + gutter | May rebreak pages |
 | Add/remove instrument | Recompute affected | Reconcile all | Redistribute systems | Position atoms | Reconnect | Rebreak pages |
 
-**Invariant enforcement**: Atoms are immutable data structures. Once Stage 1 produces an atom, its internal geometry cannot be modified. Stages 4 and 5 consume atoms; they do not mutate them.
+**Invariant enforcement**: Atoms are immutable data structures. Once Stage 1 produces an atom, its internal geometry cannot be modified. Stages 4 and 5 consume atoms; they do not mutate them. Stage 5's authority to adjust geometry the earlier stages produced, within declared ranges, is recorded in [ADR-0013](0013-Slur-Formatting.md#the-pipeline-is-one-way-and-what-stage-5-may-change); how that authority reconciles with this invariant is [open there](0013-Slur-Formatting.md#whether-stage-5-modification-touches-atom-internal-geometry).
 
 ### Plugin Architecture Integration
 
@@ -202,7 +204,7 @@ flowchart LR
 #### Atom Hook (Stage 1)
 Plugins produce atoms with cached paintlists for non-connecting elements:
 - **Input**: Musical element data and contextual information
-- **Output**: Atom containing its contours and bounds and cached paintlist (rendering instructions), and any constraints spanning several columns the element implies ([ADR-0055](0055-Horizontal-Spacing.md#formatter-conditions-and-plugins))
+- **Output**: Atom containing its contours and cached paintlist (rendering instructions), and any constraints spanning several columns the element implies ([ADR-0055](0055-Horizontal-Spacing.md#formatter-conditions-and-plugins))
 - **Participation**: Required for all elements with visual representation
 - **Purpose**: Single-pass atom formation - contour calculation and paintlist generation happen together
 - **Caching**: Paintlists are immutable and cached with the atom, positioned later by Stage 4
@@ -220,17 +222,17 @@ Plugins generate connecting elements using finalized atom positions:
 (defrecord ArticulationPlugin []
   (atom-hook [_ art ctx]
     ;; Stage 1: Produce atom with contours and cached paintlist
-    (let [bounds (calculate-bounds art ctx)
+    (let [contours (calculate-contours art ctx)
           paintlist (render-glyph art)]
-      (create-atom bounds paintlist)))
+      (create-atom contours paintlist)))
   (spanner-hook [_ _ _] nil))
 
 ;; Connecting element plugin
 (defrecord TiePlugin []
   (atom-hook [_ tie ctx]
-    ;; Stage 1: Calculate clearance space needed
-    (let [clearance (calculate-clearance tie ctx)]
-      (create-atom clearance nil)))
+    ;; Stage 1: declare the tie as a constraint between its two notes;
+    ;; Stage 2 forms the distance from the minimum tie length
+    (declare-constraint :tie (tied-notes tie ctx)))
   (spanner-hook [_ tie positions]
     ;; Stage 5: Generate tie curve using final positions
     (generate-tie-curve tie positions)))
@@ -238,13 +240,13 @@ Plugins generate connecting elements using finalized atom positions:
 ;; Hybrid plugin - both atom and spanner
 (defrecord BeamPlugin []
   (atom-hook [_ beam ctx]
-    ;; Stage 1: Spacing requirements and stem paintlists
-    (let [spacing (calculate-spacing beam ctx)
-          stems (render-stems beam)]
-      (create-atom spacing stems)))
+    ;; Stage 1: contours reserving every stem length the beam may give,
+    ;; within its declared range; no stem is drawn yet
+    (let [contours (stem-envelopes beam ctx)]
+      (create-atom contours nil)))
   (spanner-hook [_ beam positions]
-    ;; Stage 5: Generate beam line connecting stems
-    (generate-beam-line beam positions)))
+    ;; Stage 5: beam slant, stem lengths and beam line, from final positions
+    (generate-beam-and-stems beam positions)))
 ```
 
 **Registry-Based Discovery**: The plugin registry maintains mappings between musical elements and their formatters, enabling runtime composition and replacement of notational elements with flexible stage participation.
@@ -793,7 +795,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Frontend event routing consuming paintlists generated by this rendering pipeline
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) - Accidental decision algorithm; semantic model that is closed before rendering
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) - GPU-accelerated terminal frontend execution of paintlists produced by this rendering pipeline
-- [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) - Stage 3 algorithm computing preamble on-demand and consuming gutter_width values for system breaking
+- [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) - Stage 3 algorithm computing the preamble and postamble on demand and consuming gutter_width values for system breaking
 - [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) - How Stages 1 and 2 produce the springs Stage 3 fits: atoms and contours, the raster, ideal and blocking widths, constraints spanning several columns, and variants at a break
 - [ADR-0052: Change Detection and Event Generation](0052-Change-Detection-and-Event-Generation.md) - The other half of the notification division: changes to the containers of the music announce themselves structurally and never reach this pipeline, while musical changes notify solely through the invalidations it produces
 
@@ -822,4 +824,4 @@ The six-stage approach recognises that atom formation with extent calculation, v
 
 The atom-relative geometry invariant ensures that the expensive Stage 1 computation runs only when musical content changes. Layout adjustments - however dramatic - require only repositioning of pre-computed atoms, enabling responsive editing even during extensive reformatting operations.
 
-The gutter model ensures that system-start decorations (courtesy accidentals, tie continuations) are accommodated with complete information, enabling distribution that is optimal for the stated cost function without feedback loops, heuristics, or iteration. The semantic model remains closed after ADR-0035; Stage 5 adds only graphical decorations that do not affect musical meaning.
+The gutter model ensures that system-start decorations (courtesy accidentals, tie continuations) are accommodated with complete information, as the preamble and postamble do for the clefs and key signatures that start a system and the cautionaries that end one, enabling distribution that is optimal for the stated cost function without feedback loops, heuristics, or iteration. The semantic model remains closed after ADR-0035; Stage 5 adds only graphical decorations that do not affect musical meaning.

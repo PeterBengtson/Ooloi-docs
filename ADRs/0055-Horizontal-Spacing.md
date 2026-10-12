@@ -4,7 +4,9 @@
 
 Accepted
 
-The architecture is decided: the forms in which horizontal engraving rules reach Stage 3, what Stages 1 and 2 compute and in which form, and the invariants that hold between them. Values and several policies are open. Each is an entry in [Open Items](#open-items), which is amended in place as [the exploration](#the-exploration) settles it. One open item reaches beyond values: how material at a barline that exists only mid-system is counted ([H10](#h10-no-break-material-and-the-system-start)) changes ADR-0037's interface when it is settled.
+The architecture is decided: the forms in which horizontal engraving rules reach Stage 3, what Stages 1 and 2 compute and in which form, and the invariants that hold between them. Values and several policies are open. Each is an entry in [Open Items](#open-items), which is amended in place as [the exploration](#the-exploration) settles it. One open item may reach beyond values: if house style omits a key change's cancellation naturals at a system start, what then exists only mid-system changes ADR-0037's interface ([H10](#h10-no-break-material-and-the-system-start)).
+
+Revised October 2026: everything at a barline belongs to a measure, the barline and any clef, key or time signature change included, so the postamble holds only cautionary key and time signatures ([The Bar Boundary](#the-bar-boundary)). Stage 2 records provenance, and spacing can be inspected ([Inspection](#inspection)). [H7](#h7-grace-notes) has a starting point for grace notes, and [H19](#h19-order-of-kinds-at-one-onset) and [H20](#h20-drags-as-edits) are added.
 
 ## Table of Contents
 
@@ -26,6 +28,7 @@ The architecture is decided: the forms in which horizontal engraving rules reach
   - [Variants at a Break](#variants-at-a-break)
   - [Elasticity by Gap Class](#elasticity-by-gap-class)
   - [User Inputs](#user-inputs)
+  - [Inspection](#inspection)
   - [Invariants and Property Tests](#invariants-and-property-tests)
 - [The Exploration](#the-exploration)
 - [Open Items](#open-items)
@@ -109,14 +112,14 @@ Elasticity is not a fifth form: it is a parameter of ADR-0037's model, which may
 - declares, as geometry, the constraints spanning several columns that its own content implies: which atoms or glyphs, and of what kind (ties, lyrics, elements that reserve room, plugin reservations);
 - supplies the geometry of the decorations a measure needs when it starts a system: courtesy accidentals for tied-to notes, tie continuations, a start repeat that may move there.
 
-Stage 1's results depend on the measure's content, the active font and the settings that change glyph geometry. They never depend on the duration table, the anchoring duration, the clearance table, spacing distances such as the minimum tie length, `σ`, or anything in another measure. That is what keeps Stage 1 parallel, and its caches valid when any spacing parameter changes.
+Stage 1's results depend on the measure's content, the active font and the settings that change glyph geometry. They never depend on the duration table, the anchoring duration, the clearance table, spacing distances such as the minimum tie length, `σ`, or anything in another measure, with one exception: a measure draws before its closing barline a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with, and that clef is part of its cache key ([The Bar Boundary](#the-bar-boundary)). That is what keeps Stage 1 parallel, and its caches valid when any spacing parameter changes.
 
 **Stage 2** runs per measure stack, in two steps. First, for each stack, it:
 
 1. merges the staves' onsets into the raster of columns and forms the gaps ([The Raster and Gap Classes](#the-raster-and-gap-classes));
 2. computes each gap's ideal width ([Ideal Widths](#ideal-widths));
 3. computes each gap's blocking width, forms the constraints between atoms of one staff that are not neighbours, and turns the constraints Stage 1 declared into distances ([Blocking Widths](#blocking-widths), [Constraints Spanning Several Columns](#constraints-spanning-several-columns));
-4. applies measure-width overrides ([ADR-0037](0037-Measure-Distribution-Optimization.md#editorial-control-mechanisms));
+4. applies measure-width overrides, barline drags among them ([ADR-0037](0037-Measure-Distribution-Optimization.md#editorial-control-mechanisms), [User Inputs](#user-inputs));
 5. reduces the constraints that lie within the stack, by ADR-0037's procedure.
 
 Then, across neighbouring stacks, it:
@@ -124,7 +127,9 @@ Then, across neighbouring stacks, it:
 6. reduces the constraints that cross a barline, over the gaps of every stack they span;
 7. computes each stack's gutter from Stage 1's geometry ([Variants at a Break](#variants-at-a-break));
 8. applies the user's column transfers ([User Inputs](#user-inputs));
-9. produces ADR-0037's stack summaries, and keeps every gap's `w` and `b` for Stage 4.
+9. produces ADR-0037's stack summaries, and keeps every gap's `w` and `b`, with their provenance, for Stage 4 and for [inspection](#inspection).
+
+**Provenance.** For every blocking width, Stage 2 records what set it: the staff or row of text and the pair of glyph classes that meet, or the constraint spanning several columns that raised it, with its `r_D`. For every ideal width it records how it was formed: the table entries it lies between, the controlling duration, each optical correction, and any transfer. Nothing in the pipeline reads provenance, so it changes no width (Invariant 9).
 
 Beyond its own stack, Stage 2 reads only finished output of earlier work: the anchoring duration, where it is derived from the music ([H2](#h2-the-anchoring-duration)); the previous stack's closing barline, where the leading gap begins ([The Bar Boundary](#the-bar-boundary)); and, in its second step, the first step's gaps of the stacks a constraint spans. All three are forward dependencies; nothing flows back.
 
@@ -161,11 +166,13 @@ Contours replace ADR-0028's four-directional extents. A box overstates the block
 
 **Ledger lines** are part of the atom and its contours. SMuFL's `legerLineExtension` sets how far a ledger line projects beyond its notehead: in Bravura 0.4 staff spaces on each side, so a ledger line under a black notehead 1.18 staff spaces wide is 1.98 wide. At close spacing the ledger lines of neighbouring notes would touch, and engravers shorten them. The blocking width is therefore computed with the shortest acceptable ledger line, and how long each is drawn is a Stage 5 adjustment to the space Stage 4 gives ([H6](#h6-ledger-lines)).
 
-**Immutability.** Atoms are cached with their contours. Stage 4 positions them; Stage 5 adjusts elements to the space Stage 4 gives and never moves an atom or a column ([ADR-0013](0013-Slur-Formatting.md)). Whether Stage 5 may change an atom's internal geometry, such as a stem length, is ADR-0013's open question. Such a change does not affect spacing as long as it stays within the atom's contours.
+**Immutability.** Atoms are cached with their contours. Stage 4 positions them; Stage 5 adjusts elements to the space Stage 4 gives and never moves an atom or a column. It may adjust geometry the earlier stages produced, such as a stem length or an articulation's offset, within declared ranges, in one bounded pass that is not recursive and never moves the rhythmic raster ([ADR-0013](0013-Slur-Formatting.md#the-pipeline-is-one-way-and-what-stage-5-may-change)). What ADR-0013 leaves open is how that reconciles with ADR-0028's immutability of atoms. Its account is that a beamed note's stem length is a Stage 5 output rather than a property of the atom; whether that is exactly right, and where the boundary falls for unbeamed stems, is not settled ([ADR-0013](0013-Slur-Formatting.md#whether-stage-5-modification-touches-atom-internal-geometry)).
+
+**Adjustments stay within the contours.** No column moves after Stage 4, so anything Stage 5 adjusts inside an atom must stay, band by band, within the horizontal extent Stage 1's contours reserved for it. Every adjustment is bounded by a declared range, so the contour reserves the envelope of that range: for a stem, every height its tip and any flag can reach; for an articulation, every position it can take ([Formatter Conditions and Plugins](#formatter-conditions-and-plugins)). A ledger line is the exception: its contour holds the shortest acceptable length, and Stage 5 lengthens it only into space Stage 4 has given ([H6](#h6-ledger-lines)). Stage 1 can reserve these envelopes only if the declared ranges are available to it, which is a requirement on the Slur and Tie Geometry ADR and on beaming.
 
 ### The Raster and Gap Classes
 
-**Columns.** Stage 2 merges every staff's onsets into one ordered sequence of rational positions; each distinct onset is a column, tuplets exact. Material without duration that occupies horizontal space also forms columns: barlines; clef, key and time signature changes; breath marks and caesuras. Such a column may share an onset with a note column, as a clef change does with the note it precedes; it then comes first. Whether grace notes form columns of their own is [H7](#h7-grace-notes).
+**Columns.** Stage 2 merges every staff's onsets into one ordered sequence of rational positions; each distinct onset is a column, tuplets exact. Material without duration that occupies horizontal space also forms columns: barlines; clef, key and time signature changes; breath marks and caesuras. Such a column may share an onset with a note column, as a clef change does with the note it precedes; it then comes first. Where several share an onset they come in a fixed order, provisionally a breath mark or caesura, then a clef change, then a key and a time signature change, then any grace notes, then the note column ([H19](#h19-order-of-kinds-at-one-onset)). Whether grace notes form columns of their own is [H7](#h7-grace-notes).
 
 **Gaps** run from one column's right attachment point (for an atom, its origin) to the next column's origin or left attachment point. Each gap has a **class**, given by the columns at its ends, which decides how its widths are derived:
 
@@ -180,14 +187,14 @@ Contours replace ADR-0028's four-directional extents. A box overstates the block
 
 ### The Bar Boundary
 
-Material at a barline has up to three forms, as a discretionary break in TeX has: what is printed mid-system, what ends a system there, and what starts the next. ADR-0037 maps the end of a system to the postamble, the start to the preamble and gutter, and the mid-system form to the barline's width within its measure ([ADR-0037](0037-Measure-Distribution-Optimization.md#prior-art)). This ADR assigns the material at a boundary to those forms:
+Material at a barline has up to three forms, as a discretionary break in TeX has: what is printed mid-system, what ends a system there, and what starts the next. ADR-0037 maps the end of a system to the postamble and the start to the preamble and gutter ([ADR-0037](0037-Measure-Distribution-Optimization.md#prior-art)). Everything else at a barline belongs to a measure in every form:
 
-- **A stack owns its closing barline** in mid-system form: the gap from its last column to the barline, and the barline's own width as fixed space. As ADR-0037 states, the postamble reserves only what the barline's system-end form adds.
+- **A stack owns its closing barline**, of whatever kind: the gap from its last column to the barline, and the barline's own width as fixed space. Every measure has one, and it is part of the measure's width wherever the measure falls, so the postamble reserves nothing for it.
 - **A stack owns its leading gap**, from the previous stack's closing barline (its right attachment point) to the stack's first column. Stage 2 reads that barline's type and contour from the previous stack's Stage 1 output.
-- **Changes at a boundary are no-break material.** A clef change, drawn before the barline, and key and time signature changes, drawn after it, together with the space that separates them from the barline, exist in their mid-system form only when the boundary is not a break. At a break they are replaced: by the cautionaries at the end of the system, in the postamble, and by the clef, key and time signature at the start of the next, in the preamble. They belong to the boundary, not to either stack.
+- **Changes at a boundary belong to measures.** A clef change that takes effect at the start of a measure is drawn before the barline by the measure before it, which includes it on examining the next measure; at a system's end it is the cautionary clef, the same glyph. A key or time signature change is drawn after the barline by the measure it begins, as a column before its first note, just as a change within a measure is a column of it. Each is part of its measure's width in every position, together with the space that separates it from the barline. At a break, the postamble adds cautionary key and time signatures after the barline, and the next system's preamble shows the clef and the key in force, omitting a key or time signature change that the system's first measure draws itself.
 - **At a system start there is no barline before the stack.** The preamble and gutter stand in its place, and the leading gap begins where they end.
 
-How no-break material is counted only at boundaries that are not breaks, and how the space at a system start is divided between the preamble, the gutter and the leading gap, is [H10](#h10-no-break-material-and-the-system-start). Until it is settled, ADR-0037 has no place for no-break material, and the bar boundary cannot be implemented.
+Two things remain open, both [H10](#h10-no-break-material-and-the-system-start): a key change that starts a system without the cancellation naturals it shows mid-system, which makes its measure narrower there, and how the space at a system start is divided between the preamble, the gutter and the leading gap.
 
 ### Ideal Widths
 
@@ -211,7 +218,7 @@ An entry at the dotted value removes the difference wherever measurement shows i
 - It may be derived from a reduction over Stage 1's output across a section or a piece, a forward dependency.
 - Where it changes, every stack that uses it is re-spaced, and ADR-0037's [re-optimisation after an edit](0037-Measure-Distribution-Optimization.md#exact-re-optimisation-after-an-edit) falls back to a full pass. The user may pin it, and may begin a new section with a value of its own.
 
-**The controlling duration.** For a gap leaving a column `c` with duration, the controlling duration `d_ctrl` is the shortest duration among the notes and rests, in any staff of the stack, that sound at `c`: those beginning at or before `c` and ending after it. With `c′` the next column with a later onset:
+**The controlling duration.** For a gap leaving a column `c` with duration, the controlling duration `d_ctrl` is the shortest duration among the notes and rests, in any staff of the stack, that sound at `c`: those beginning at or before `c` and ending after it. Grace notes are never among them, since their metric duration is zero; if they form columns of their own, those columns take their widths from a grace table ([H7](#h7-grace-notes)). With `c′` the next column with a later onset:
 
 ```
 w = space(d_ctrl) × (t(c′) − t(c)) / d_ctrl  +  optical corrections
@@ -320,8 +327,8 @@ ADR-0028's Stage 1 [atom hook](0028-Hierarchical-Rendering-Pipeline.md) produces
 
 ADR-0037 specifies their structure: the preamble and postamble computed on demand and cached by combination, and the gutter known before breaking. Their widths are computed from the same contours and clearances as everything else:
 
-- **Preamble**: the clef and key signature, with the clearances between them, as the largest across the staves. Whether it includes a time signature that takes effect at the system's first stack, and whether it carries space after its ink, is [H10](#h10-no-break-material-and-the-system-start).
-- **Postamble**: the cautionaries, the cautionary clef before the closing barline and the key and time signatures after it, and what the barline's system-end form adds.
+- **Preamble**: the clef and the key signature in force, with the clearances between them, as the largest across the staves. A key or time signature change the system's first measure begins with is that measure's, and the preamble omits it ([The Bar Boundary](#the-bar-boundary)). Whether the preamble carries space after its ink is [H10](#h10-no-break-material-and-the-system-start).
+- **Postamble**: the cautionary key and time signatures, after the closing barline. The barline, and a cautionary clef before it, belong to the last measure ([The Bar Boundary](#the-bar-boundary)), so the postamble holds nothing for them.
 - **Gutter**: computed by Stage 2 from Stage 1's geometry: courtesy accidentals for tied-to notes, tie continuation arcs, and a start repeat that moves to the system's start, each for the room it needs beyond what the stack already holds, as ADR-0037 specifies.
 
 ### Elasticity by Gap Class
@@ -336,9 +343,9 @@ ADR-0037's baseline elasticity applies to every gap: stretch `σ × w`, shrink `
 - **The clamp.** A drag is clamped at the current ratio, so that neither gap becomes narrower than its blocking width. At `r = −1` every gap is at its blocking width and no column can move.
 - **What changes.** While both gaps' ideal widths stay at or above their blocking widths, the stack's summary is unchanged: a transfer leaves `Σ w`, `Σ` shrink and `Σ` stretch where they were. Every candidate system's ratio, and so the breaks, stay as they were, and only the dragged column moves.
 - **When the summary changes.** Under stretching, the clamp can let the losing gap's ideal width fall below its blocking width, while its width at the current ratio stays above it. This system's ratio is still unchanged, but the gap is now prestretched and the stack's summary changes, so the breaks may change. It is a real request for more room.
-- **Barlines.** Dragging a barline moves width between two stacks. It is a measure-width change, and may change the breaks.
+- **Barlines.** A barline belongs to the measure it closes ([The Bar Boundary](#the-bar-boundary)), so dragging it changes that measure's width by the distance dragged, as a measure-width override ([ADR-0037](0037-Measure-Distribution-Optimization.md#editorial-control-mechanisms)). The system refits, so its other gaps give or take room through their springs, and the breaks may change; the next measure is not edited. At a system's end, where the measure's end cannot move, the measure grows or shrinks at its start. While the drag lasts its system is frozen; whether the freeze remains afterwards is a setting ([ADR-0037](0037-Measure-Distribution-Optimization.md#frozen-systems)).
 
-Each transfer is attached to its column, identified by measure, rhythmic position and kind, since a clef change can share an onset with a note. Stage 2 applies it after the reductions, and clamps it there so that no ideal width falls below zero, ADR-0037's precondition: the gaps it was made against may have changed since. A reduction raises blocking widths only, so every constraint holds whatever the ideal widths, and a transfer can neither break one nor change what a reduction reserved. A transfer persists until the user removes it, or the engine does: when its column no longer exists, or when its measure is reformatted ([H14](#h14-removal-of-column-transfers)).
+Each transfer is attached to its column, identified by measure, rhythmic position and kind, since a clef change can share an onset with a note, and for a grace column by its offset as well, since a grace group has several columns at one onset ([H19](#h19-order-of-kinds-at-one-onset)). Stage 2 applies it after the reductions, and clamps it there so that no ideal width falls below zero, ADR-0037's precondition: the gaps it was made against may have changed since. A reduction raises blocking widths only, so every constraint holds whatever the ideal widths, and a transfer can neither break one nor change what a reduction reserved. A transfer persists until the user removes it, or the engine does: when its column no longer exists, or when its measure is reformatted ([H14](#h14-removal-of-column-transfers)).
 
 ```clojure
 (defn drag->transfer
@@ -357,18 +364,31 @@ Each transfer is attached to its column, identified by measure, rhythmic positio
 
 **Measure-width overrides**, such as "stretch this measure", are specified by ADR-0037's [Width Overrides](0037-Measure-Distribution-Optimization.md#editorial-control-mechanisms). **The anchoring duration** may be pinned, and a new section begun with a value of its own ([H2](#h2-the-anchoring-duration)). **Element offsets**, such as dragging a dynamic or a text, are Stage 5 placements relative to the element's anchor. They are not spacing inputs.
 
+**Drags are edits.** Every update of a drag is a backend edit, followed by a fetch of the paintlists it invalidates, as every visible change is under [ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md); no frontend draws a preview of a drag. Updates therefore arrive at the cadence of the pipeline's batched formatting ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md#client-server-event-coordination)) and of invalidation delivery ([ADR-0031](0031-Frontend-Event-Driven-Architecture.md)), not at the pointer's, and each update is a transaction, and so an undo step ([ADR-0015](0015-Undo-and-Redo.md#mutation-sites--how-resources-register-undo-steps)). The rate a drag needs, and how its updates become one undo step, are [H20](#h20-drags-as-edits).
+
+### Inspection
+
+Inspection shows the springs and why each has its widths. Its overlays are drawn from the cached results of Stages 2 to 4, with Stage 2's provenance ([Stages 1 and 2](#stages-1-and-2)). The backend generates them as paintlists, as it does everything that is drawn ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)); the frontend only requests and draws them.
+
+- **The raster lane** shows each gap's spring, free or held; what holds a held one, from provenance; the ratio at which it is released, its kink; and each gap's share of the system's adjustment.
+- **A lane per staff and per row of text** shows, for each pair of consecutive atoms, the distance given, the least distance needed and the ideal the pair would have alone, marked slack, tight or violated. Invariant 1 excludes a violation; the mark exists so that a failure is seen.
+- **The system's width as a function of `r`**, with its kinks and the tolerance.
+
+In a full score, lanes are shown only for the staves that bind, or on demand. A layer for engravers states the same things in engraving terms, without `r`: how much room a gap has given up or gained, what holds it, and at what looseness it would be released. Line style distinguishes the gap classes: duration springs, clearance springs, fixed space, and grace springs if grace notes form columns ([H7](#h7-grace-notes)). Inspection never offers to disable the reduction of constraints spanning several columns ([ADR-0037](0037-Measure-Distribution-Optimization.md#constraints-spanning-several-columns)).
+
 ### Invariants and Property Tests
 
 The boundary between Stages 1–2 and Stage 3 is specified by properties, tested generatively over random measures and random stacks. They are what lets the exploration change values without changing the architecture.
 
-1. **No collision at any feasible ratio.** For any rational `r ≥ −1`, placing the columns by ADR-0037's `g_j(r)` leaves no two contours of one staff or row of text overlapping with their minimum clearances, whether or not their atoms are neighbours, and no two columns at different onsets closer than the minimum separation.
-2. **Attachments never change duration space.** With durations and stem directions fixed, adding or removing accidentals, articulations or ledger lines, or displacing noteheads, changes no controlling duration and no ideal width of a gap leaving a column with duration.
+1. **No collision at any feasible ratio, before or after Stage 5.** For any rational `r ≥ −1`, placing the columns by ADR-0037's `g_j(r)` leaves no two contours of one staff or row of text overlapping with their minimum clearances, whether or not their atoms are neighbours, and no two columns at different onsets closer than the minimum separation. The same holds for what Stage 5 draws: an adjustment within its declared range keeps an atom's ink inside its contours, and a ledger line Stage 5 lengthens stays within the space Stage 4 gave ([Atoms and Contours](#atoms-and-contours)). The test draws the adjustments from their declared ranges.
+2. **Attachments never change duration space.** With durations and stem directions fixed, adding or removing accidentals, articulations or ledger lines, or displacing noteheads, changes no controlling duration and no ideal width of a gap leaving a column with duration. A grace group, if grace notes form columns ([H7](#h7-grace-notes)), may divide the duration space before its main note among its own gaps, but never changes its total.
 3. **The duration table is monotone and sub-linear.** Its width never decreases as the duration grows, and its width divided by duration never increases.
 4. **Stage 1 is independent of spacing parameters.** Changing the duration table, the anchoring duration, the clearance table, a spacing distance or `σ` changes no Stage 1 output.
 5. **Determinism.** Identical content gives identical contours, summaries and gap lists, whatever the order in which staves, measures and stacks are processed.
 6. **Scale invariance.** Widths are in staff spaces at the system's staff size; changing that size changes none of them. A staff drawn at reduced size contributes contours scaled by its ratio, and text sized in absolute units is converted at the system's size.
 7. **Drag neutrality.** A transfer that keeps both gaps' ideal widths at or above their blocking widths leaves the stack's `:min`, `:natural`, `:ideal`, `:ordinary-ideal` and `:prestretched` unchanged.
 8. **Sound reduction.** After Stage 2, every constraint spanning several columns holds at every `r ≥ −1`.
+9. **Provenance is inert.** Recording provenance or not changes no width, summary, ratio or break.
 
 ## The Exploration
 
@@ -390,7 +410,7 @@ What it decides is listed in [Open Items](#open-items). Several items share evid
 | [H4](#h4-clearances) | Clearances | Blocking width, ideal width | 2 | Literature and measurement |
 | [H5](#h5-column-assembly) | Column assembly | Contour | 1 | Literature |
 | [H6](#h6-ledger-lines) | Ledger lines | Contour | 1, 5 | Literature and measurement |
-| [H7](#h7-grace-notes) | Grace notes | Ideal width, contour | 1–2 | Measurement |
+| [H7](#h7-grace-notes) | Grace notes | Raster, ideal width, contour | 1–2 | Measurement |
 | [H8](#h8-very-short-values-under-stretching) | Very short values under stretching | Ideal width | 2 | Measurement |
 | [H9](#h9-the-last-note-before-a-barline) | The last note before a barline | Gap class | 2 | Measurement |
 | [H10](#h10-no-break-material-and-the-system-start) | No-break material and the system start | Variant at a break | 2–3 | Design, with ADR-0037 |
@@ -402,6 +422,8 @@ What it decides is listed in [Open Items](#open-items). Several items share evid
 | [H16](#h16-distance-or-white-space) | Distance or white space | ADR-0037 fitting rule | 3–4 | Measurement |
 | [H17](#h17-the-controlling-duration-rule) | The controlling-duration rule | Ideal width | 2 | Reasoning and measurement |
 | [H18](#h18-locality-within-a-bar) | Locality within a bar | Ideal width | 2 | Measurement |
+| [H19](#h19-order-of-kinds-at-one-onset) | Order of kinds at one onset | Raster | 2 | Literature |
+| [H20](#h20-drags-as-edits) | Drags as edits | User input | — | Design, with ADR-0015, ADR-0028 and ADR-0038 |
 
 ### H1: The duration table
 
@@ -456,11 +478,23 @@ The shortest acceptable ledger line, from which blocking widths are computed, an
 
 ### H7: Grace notes
 
-Whether grace notes are part of the main note's atom or form columns of their own, and their spacing. LilyPond gives them columns of their own, with values of their own: 1.6 and 0.8 in place of 2.0 and 1.2.
+Whether grace notes are part of the main note's atom or form columns of their own, and their spacing. The starting point:
+
+- **Columns of their own, timed backwards from the main note.** A grace note's offset is its position within its group as the timewalk gives it, counted from zero by written durations ([ADR-0014](0014-Timewalk.md) §5), minus the group's total written duration: minus its own written duration and those of the grace notes after it, so that the group ends at its main note. Inside a tuplet the timewalk scales those positions by the tuplet's ratio, and the total is taken on the same scale. Stage 1 derives the offsets, and they order raster columns and nothing else. The positions [ADR-0035](0035-Remembered-Alterations.md) gives grace notes for accidentals and playback depend on tempo, and are never used for spacing.
+- **Width from the preceding gap.** The group's ideal width is taken out of the duration space of the gap before its main note, at most all of it, so that the total does not change (Invariant 2) and the bar lengthens only where blocking widths require it. A group last in its measure takes it from the bar's last gap, which runs to the barline ([H9](#h9-the-last-note-before-a-barline)).
+- **At the start of a measure.** A group at position 0 of a measure after the first is displayed after the barline, though it sounds at the end of the previous measure ([ADR-0035](0035-Remembered-Alterations.md)). What precedes it is a clearance, after the barline or after a change at the start of the measure, or the preamble and gutter at a system start, so the stack holds no duration space before it, and the group adds its width as material without duration does. Taking the width from the previous measure's last gap would cross the stack boundary, against [The Bar Boundary](#the-bar-boundary) and H9's starting point.
+- **Elasticity.** Grace gaps have no stretchability, so a group keeps its spacing as the system loosens. That changes ADR-0037's interface, and belongs to [H11](#h11-elasticity-by-gap-class).
+- **Widths.** Grace notes take no part in the controlling duration ([Ideal Widths](#ideal-widths)); grace columns take their widths from a grace table, starting from LilyPond's values, 1.6 and 0.8 in place of 2.0 and 1.2.
+- **After-graces.** A grace group always precedes an item, so after-graces attach to the following column rather than to a fixed fraction of the previous note's duration. Where engravers place them is a question for the plates.
+- **Across staves**, grace columns merge by offset, so groups with different written durations share no columns, and their last notes need not align. This too is a question for the plates.
+
+This keeps what LilyPond's `strict-grace-spacing` intends, that grace notes do not lengthen the bar, while keeping their columns in the raster, so that their accidentals count and their room is checked ([Prior Art](#prior-art)).
 
 ### H8: Very short values under stretching
 
 Values whose ideal width lies below their blocking width are prestretched. They stay at their blocking width as the system stretches, until their kink, while everything else gains space. Whether a run of thirty-seconds should stay packed in this way, or the table should keep very short values above their blocking widths, is a matter of the table ([H1](#h1-the-duration-table)), settled by measurement.
+
+The tolerance bounds how far a system stretches. At tolerance 200, ADR-0037's documented starting point, no accepted system has `r` above about 1.26, so a gap whose kink lies above that is never released ([ADR-0037](0037-Measure-Distribution-Optimization.md#calibrating-the-adjustment-ratio)). With an eighth as the anchoring duration and LilyPond's table, beamed thirty-seconds have an ideal width of 1.5. Before a note carrying a double flat the kink is about 1.77 even with no clearance, and with provisional clearances of 0.2 the gaps before flats (1.31) and sharps (1.44) are held too. The anchoring duration moves this ([H2](#h2-the-anchoring-duration)): with a sixteenth, a thirty-second is 1.8 and the double flat's kink lies between 1.14 and 1.58, so the gap is held unless its two clearances come to less than about 0.11; with a thirty-second, it is 2.4, and every such gap is released.
 
 ### H9: The last note before a barline
 
@@ -473,15 +507,10 @@ The recorded observation that a whole note alone in its bar is spaced like a hal
 
 ### H10: No-break material and the system start
 
-How no-break material at a boundary is counted only when the boundary is not a break, and how the space at a system start is divided between the preamble, the gutter and the leading gap. ADR-0037 adds space at a system start but cannot remove any. Its preamble includes the space after the key signature, which the leading gap also provides, and it omits time signatures.
+Everything at a barline belongs to a measure in every form ([The Bar Boundary](#the-bar-boundary)): the barline, a clef change drawn before it, and a key or time signature change drawn after it. The time signature at the start of the piece is the first measure's in the same way. Two things remain:
 
-Starting point:
-
-- **Fixed space.** No-break material is fixed space whose width depends only on its boundary. The DP subtracts its sum over a segment's interior boundaries from the available width, a prefix sum, so the DP stays exact and each evaluation O(1).
-- **The preamble.** It ends at its ink, and the leading gap supplies the space after it. The gutter reserves any difference between the leading gap's system-start and mid-system forms.
-- **The time signature.** The preamble includes a time signature that takes effect at the system's first stack, and the time signature at the start of the piece.
-
-The alternative is a second, system-start summary for every stack. It keeps the gaps around a boundary elastic, at the cost of a larger change to ADR-0037's interface. Either way ADR-0037 changes.
+- **Cancellation naturals.** A key change shows cancellation naturals mid-system. At a system start, house style may omit them, since the previous system's cautionary has shown them; the measure is then narrower at a system start than mid-system, and ADR-0037 adds space at a system start but cannot remove any. What exists only mid-system is no-break material in TeX's sense. Starting point: it is fixed space whose width depends only on its boundary, and the DP subtracts its sum over a segment's interior boundaries from the available width, a prefix sum, so the DP stays exact and each evaluation O(1). The alternative is a second, system-start summary for such a stack, a larger change to ADR-0037's interface. Either way ADR-0037 changes, unless house style keeps the naturals at a system start.
+- **The space at a system start**, and how it is divided between the preamble, the gutter and the leading gap. ADR-0037's preamble includes the space after the key signature, which the leading gap also provides. Starting point: the preamble ends at its ink, and the leading gap supplies the space after it; the gutter reserves any difference between the leading gap's system-start and mid-system forms.
 
 ### H11: Elasticity by gap class
 
@@ -490,6 +519,13 @@ Whether any class of gap, the barline gap first, needs elasticity of its own:
 - **On the shrinking side**, a weight per class depends on ADR-0037's alternative 3.
 - **On the stretching side**, a stretchability per class changes ADR-0037's interface.
 - **Drags.** A column dragged between gaps of different classes no longer leaves the stack's stretch unchanged.
+
+Two further candidates:
+
+- **The clearance gap after material without duration.** Under the baseline it stretches by `σ` times its ideal clearance and shrinks with everything else, so the space after a barline or a clef change grows as a system loosens. A measure-width override scales it too ([ADR-0037](0037-Measure-Distribution-Optimization.md#editorial-control-mechanisms)).
+- **The grace class**, with no stretchability ([H7](#h7-grace-notes)). A gap with `σ = 0` has no kink, so a held grace gap is never released, and ADR-0037's `add-kinks` would have to pass over it as it passes over a gap of zero ideal width. Under stretching, the span from the note before a grace group to its main note then grows by `σ` times the group's ideal width less than the same span without the group, unless the rest of the preceding gap takes over the group's stretch.
+
+The share bars of the inspection view, each gap's share of the system's adjustment ([Inspection](#inspection)), are the instrument for judging them.
 
 ### H12: Elements that reserve room
 
@@ -536,6 +572,23 @@ ADR-0037 asks who pays when a bar needs more room than its proportions give, suc
 
 Locality would have the long values of the same bar give room to the short ones before any fitting. That is a rule on ideal widths within a bar, formed in Stage 2. Whether it is needed is settled by measurement. The anchoring duration ([H2](#h2-the-anchoring-duration)) is a different matter: an anchor per bar would widen the whole bar, long values included.
 
+### H19: Order of kinds at one onset
+
+Columns that share an onset come in a fixed order, so that a column transfer can name its column ([User Inputs](#user-inputs)). The provisional order is a breath mark or caesura, then a clef change, then a key signature change, then the grace notes by offset, if they form columns ([H7](#h7-grace-notes)), then the note column. A time signature changes only at the start of a measure ([ADR-0033](0033-Time-Signature-Architecture.md)), where it follows the key signature; a clef change there is drawn before the barline ([The Bar Boundary](#the-bar-boundary)).
+
+What the literature reached so far says:
+
+- **A breath mark first.** Gould places it just before the following note or barline (p. 436, read in an excerpt), Dorico's documentation at the end of the note it follows, and LilyPond's horizontal order before a clef (`break-align-orders` in `scm/define-grobs.scm`).
+- **A clef before a key signature**, as at a barline: Gould (p. 93, read in an excerpt), Dorico's documentation and LilyPond's order agree.
+- **A clef before grace notes** is the convention Dorico's documentation states, and its default; it is also the default of the MNX format. Dorico can place a single clef after the grace notes instead, and MNX records a clef after the grace notes, and a clef within a run of them, as cases of their own. One engraved example in Gould (p. 7) places a grace note before a clef change.
+- **Not found**: where a key signature goes relative to grace notes, and the order of a breath mark and a caesura at one point. Gould has been read only in parts.
+
+These are starting points; the literature and printed engravings decide ([Sources of Truth](#sources-of-truth)).
+
+### H20: Drags as edits
+
+Every update of a drag is a backend edit ([User Inputs](#user-inputs)), so a drag updates at the cadence of the pipeline's batched formatting, about 100 ms ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md#client-server-event-coordination)), and of invalidation delivery, about 50 to 100 ms ([ADR-0031](0031-Frontend-Event-Driven-Architecture.md)), not at the pointer's. Each update is also a transaction, and so an undo step ([ADR-0015](0015-Undo-and-Redo.md#mutation-sites--how-resources-register-undo-steps)). The documented latency target for a visible edit, under 150 ms at the 95th percentile ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)), sets no rate. Open: the update rate a drag needs and how it is reached, and how a drag's updates become one undo step. Both are design, with ADR-0015, ADR-0028 and ADR-0038.
+
 ## Consequences
 
 **Positive:**
@@ -547,6 +600,7 @@ Locality would have the long values of the same bar give room to the short ones 
 5. **Determinism.** Tables of rationals and linear interpolation replace logarithms and floating point.
 6. **Drags rarely reflow.** A dragged column moves alone, and the breaks hold, unless a gap's ideal width falls below its blocking width.
 7. **Plugins are first-class in both phases.** They reserve room in Stage 1 and place within it in Stage 5.
+8. **Spacing can be inspected.** Provenance and the overlays show why every gap has its widths, and change none of them.
 
 **Negative:**
 
@@ -555,7 +609,8 @@ Locality would have the long values of the same bar give room to the short ones 
 3. **Constraints across barlines couple every stack they span** in Stage 2's second step.
 4. **Interpolation is approximate.** Linear interpolation approximates a logarithmic shape between entries, by about 0.10 staff spaces at the starting values. More entries reduce it.
 5. **Nothing is validated yet.** The values are unvalidated until the exploration. This ADR fixes forms, not appearance.
-6. **The bar boundary waits on H10**, which changes ADR-0037's interface ([H10](#h10-no-break-material-and-the-system-start)).
+6. **Cancellation naturals at a system start wait on H10**, which may change ADR-0037's interface ([H10](#h10-no-break-material-and-the-system-start)).
+7. **Drags follow the pipeline, not the pointer.** Every update is an edit, so a drag updates at the cadence of batched formatting and invalidation delivery, and each update is an undo step until [H20](#h20-drags-as-edits) is settled.
 
 **Changes to other decisions:**
 
@@ -568,8 +623,10 @@ Locality would have the long values of the same bar give room to the short ones 
   - Its `ADR-00XX` references point here.
   - Where it places ideal widths, blocking widths or the gutter in Stage 1, they become Stages 1–2: Stage 1 supplies the geometry, Stage 2 the widths. This affects Ideal Width Semantics, The Gutter, The Preamble, Fitting Rules (including its note on who pays) and How Complete Information Enables Optimality.
   - Semantic accidentals enter its widths through the atoms' contours, and so through blocking widths, not through ideal widths.
-  - [H10](#h10-no-break-material-and-the-system-start) changes its available width and its preamble when it is settled.
-- **ADR-0013:** Stage 5 places elements within the space Stage 4 gives, as ADR-0013 now states. Whether it may change an atom's internal geometry remains ADR-0013's open question.
+  - A measure's closing barline, and a clef change drawn before it, are part of the measure's width, so its postamble holds cautionary key and time signatures only.
+  - Its preamble shows the clef and the key in force, and omits a key or time signature change the system's first measure draws itself.
+  - [H10](#h10-no-break-material-and-the-system-start) may change its available width when it is settled.
+- **ADR-0013:** Stage 5 places elements within the space Stage 4 gives ([ADR-0013](0013-Slur-Formatting.md#the-pipeline-is-one-way-and-what-stage-5-may-change)), and every adjustment it makes inside an atom stays within the envelope the atom's contours reserved, so the declared ranges of those adjustments must be available to Stage 1 ([Atoms and Contours](#atoms-and-contours)). How the adjustments reconcile with ADR-0028's immutability of atoms is [open in ADR-0013](0013-Slur-Formatting.md#whether-stage-5-modification-touches-atom-internal-geometry).
 
 ## Alternatives Considered
 
@@ -603,7 +660,11 @@ Locality would have the long values of the same bar give room to the short ones 
     - the default `same-direction-correction` is 0.25.
   - `merge_springs` in `lily/spring.cc` combines the staves' springs by averaging their ideal distances, taking the largest minimum, and keeping the ideal at least 0.3 above it.
   - `Separation_item::set_distance` in `lily/separation-item.cc` turns the distance between neighbouring skylines into a minimum distance between columns.
-  - Grace notes are spaced by `GraceSpacing`, with values of 1.6 and 0.8 in place of 2.0 and 1.2.
+  - Grace notes:
+    - `Moment` has a main part and a grace part (`lily/include/moment.hh`). Grace music starts at minus its own length in the grace part and runs forward to the main note's moment (`lily/grace-music.cc`, `lily/grace-iterator.cc`).
+    - By default each grace time step has a musical column of its own in the main spacing. The springs between grace columns come from `GraceSpacing`, with values of 1.6 and 0.8 in place of 2.0 and 1.2, under a source comment that grace notes should not stretch much (`lily/spacing-basic.cc`). Grace notes are ignored when the shortest duration is found (`lily/spacing-spanner.cc`).
+    - `strict-grace-spacing` makes grace columns float: the main notes are spaced first, and the grace notes are placed to the left of their main notes (`lily/spacing-loose-columns.cc`). The snippet that documents it, from version 2.25.81, records two open issues: that accidentals are then ignored (issue 6876), and that LilyPond does not check whether the grace notes have room (issue 2630, which reports collisions with what precedes them).
+    - `\afterGrace` places grace notes after a fraction of the main note's duration, 3/4 by default (`afterGraceFraction` in `ly/music-functions-init.ly`).
 - **Hegazy and Gourlay** (1987): springs that pass through boxes and attach to the left edges of noteheads, blocking widths, and prestretched springs ([ADR-0037](0037-Measure-Distribution-Optimization.md#the-spring-model)). Their example is a pair of flats that stops a spring from shrinking as the measure is compressed.
 - **Gourlay, "Spacing a Line of Music"** (1987): cited by Hegazy and Gourlay for the logarithmic dependence of ideal spacing on duration, and by LilyPond's source. Not consulted directly.
 - **Wanske, *Musiknotation*** (1988): cited by LilyPond's source for the stem-direction correction. Not consulted directly.
@@ -613,13 +674,16 @@ Locality would have the long values of the same bar give room to the short ones 
 
 - [ADR-0006: SMuFL](0006-SMuFL.md)
 - [ADR-0013: Slur Formatting](0013-Slur-Formatting.md) (what Stage 5 may adjust)
-- [ADR-0014: Timewalk](0014-Timewalk.md)
+- [ADR-0014: Timewalk](0014-Timewalk.md) (grace note positions within a group)
+- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) (an edit as an undo step)
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md)
 - [ADR-0029: Global Hash-Consing](0029-Global-Hash-Consing.md)
+- [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) (invalidation delivery)
 - [ADR-0033: Time Signature Architecture](0033-Time-Signature-Architecture.md)
 - [ADR-0034: Key Signature Architecture](0034-Key-Signature-Architecture.md)
-- [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (which accidentals Stage 1 draws)
+- [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (which accidentals Stage 1 draws; grace notes at the start of a measure)
 - [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md)
+- [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) (drags as edits; inspection as paintlists)
 - [ADR-0047: Font Management](0047-Font-Management.md)
 - [ADR-0048: SMuFL Glyph Selection Architecture](0048-SMuFL-Glyph-Selection-Architecture.md)
 - Gould, E. *Behind Bars: The Definitive Guide to Music Notation*, Faber Music (2011)
@@ -628,4 +692,7 @@ Locality would have the long values of the same bar give room to the short ones 
 - Gourlay, J.S. "Spacing a Line of Music", Technical Report OSU-CISRC-10/87-TR35, The Ohio State University (1987)
 - Wanske, H. *Musiknotation: Von der Syntax des Notenstichs zum EDV-gesteuerten Notensatz*, Schott (1988)
 - SMuFL specification, W3C Music Notation Community Group: https://www.w3.org/2021/03/smufl14/
-- LilyPond source: `lily/spacing-options.cc`, `lily/spacing-spanner.cc`, `lily/spacing-basic.cc`, `lily/note-spacing.cc`, `lily/spring.cc`, `lily/separation-item.cc`, `scm/define-grobs.scm`
+- LilyPond source: `lily/spacing-options.cc`, `lily/spacing-spanner.cc`, `lily/spacing-basic.cc`, `lily/note-spacing.cc`, `lily/spring.cc`, `lily/separation-item.cc`, `lily/spacing-loose-columns.cc`, `lily/include/moment.hh`, `lily/grace-music.cc`, `lily/grace-iterator.cc`, `ly/music-functions-init.ly`, `scm/define-grobs.scm`
+- LilyPond Snippets, "Positioning grace notes with floating space" (2.25.81 and later), https://lilypond.org/doc/v2.27/Documentation/snippets/rhythms-_002d-positioning-grace-notes-with-floating-space; LilyPond issues 6876, https://gitlab.com/lilypond/lilypond/-/issues/6876, and 2630, https://gitlab.com/lilypond/lilypond/-/issues/2630
+- MNX, W3C Music Notation Community Group, rhythmic position object: https://w3c-cg.github.io/mnx/docs/mnx-reference/objects/rhythmic-position/
+- Dorico Pro 3.1.10 manual: "Showing clefs after grace notes", https://archive.steinberg.help/dorico/v3/en/dorico/topics/notation_reference/notation_reference_clefs/notation_reference_clefs_placement_relative_grace_notes_changing_t.html; "Positions of holds and pauses", https://archive.steinberg.help/dorico/v3/en/dorico/topics/notation_reference/notation_reference_holds_pauses/notation_reference_holds_pauses_positions_c.html; "Positions of key signatures", https://archive.steinberg.help/dorico/v3/en/dorico/topics/notation_reference/notation_reference_key_signatures/notation_reference_key_signatures_positions_c.html

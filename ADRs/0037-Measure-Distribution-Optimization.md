@@ -6,6 +6,8 @@ Accepted
 
 Revised October 2026: Hegazy and Gourlay's spring model is adopted as the baseline fitting rule. Each column gap is a spring with an ideal width and a blocking width, which may exceed it; the former baseline, one scale factor per system, is kept as an alternative. See [Gaps as Springs](#gaps-as-springs) and [The Spring Model](#the-spring-model).
 
+Revised October 2026: a measure's closing barline is part of the measure's width wherever the measure falls, so the postamble holds only cautionaries ([The Postamble](#the-postamble-system-end-width)). Dragging a barline sets that measure's width override and freezes its system while the drag lasts ([Editorial Control Mechanisms](#editorial-control-mechanisms), [Frozen Systems](#frozen-systems)). The reduction of constraints spanning several columns is mandatory ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)).
+
 ## Table of Contents
 - [Context](#context)
   - [Problem Statement](#problem-statement)
@@ -303,6 +305,8 @@ The calibration gives `r` its meaning at both ends, and TeX's constants (`c`, `e
 - **Shrinking**: each gap's shrink is its room above its minimum, `max(0, w_j − b_j)`, so `r = −1` is where every gap reaches its minimum together: the system's collision limit. Knuth–Plass's limit on shrinking and this ADR's feasibility condition are then the same point.
 - **Stretching**: stretch has no collision limit, so its scale is a parameter, the stretchability `σ`: each ordinary gap's stretch is `σ × w_j`. The documented starting point is `σ = 1/2`. A system whose gaps are all free to stretch then reaches `r = 1`, with badness 100, at one and a half times its ideal width: the same badness as a system at its collision limit. Tolerance 200 admits stretch up to about 63%. A prestretched gap contributes to the stretch only once `r` has passed its kink. No engraving source fixes the value of `σ`: it is where the documented constants start, and the empirical validation decides it ([Evaluation Criteria](#evaluation-criteria)).
 
+**Kinks beyond the tolerance.** At tolerance 200, the documented starting point, no accepted system has `r` above about 1.26, so a prestretched gap is released in some accepted layout only if its kink lies below that: with `σ = 1/2`, only if its blocking width is less than about 1.63 times its ideal width. Take a run of beamed thirty-seconds at about one height, with an eighth as the anchoring duration and the duration table at LilyPond's values ([ADR-0055 H1](0055-Horizontal-Spacing.md#h1-the-duration-table)), which give a thirty-second an ideal width of 1.5. Before a note carrying a double flat, Bravura's widths (black notehead 1.18, double flat 1.644) give a blocking width of 2.824 plus two clearances: between the notehead and the accidental, and between the accidental and its own notehead. The kink is then about 1.77 with no clearance and 2.30 with clearances of 0.2, a provisional value, so such a gap is never released. With the same provisional clearances the gaps before a flat (1.31) and a sharp (1.44) are not released either; only the gap before a natural (1.00) is. Which gaps stay packed depends on the anchoring duration and the table ([ADR-0055 H2](0055-Horizontal-Spacing.md#h2-the-anchoring-duration), [H8](0055-Horizontal-Spacing.md#h8-very-short-values-under-stretching)).
+
 How the calibration applies under the alternative fitting rules is stated under [Fitting Rules](#fitting-rules).
 
 ## Decision
@@ -362,6 +366,8 @@ The gutter is *additional* to the measure's width, not part of it. When a measur
 - At least one feasible segmentation must exist (the entire sequence fits on some number of systems)
 
 The computation of these values by Stages 1 and 2 is specified by [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md). If preconditions are violated, behavior is undefined.
+
+Every gap has the same stretchability `σ`. A stretchability per class of gap, which [ADR-0055 H11](0055-Horizontal-Spacing.md#h11-elasticity-by-gap-class) leaves open, would change this interface: each prestretched pair would carry its own `σ`, and `:ordinary-ideal` would become `Σ σ_j × w_j` over the ordinary gaps.
 
 ### Gaps as Springs
 
@@ -423,6 +429,8 @@ Overlapping constraints are applied in a fixed order (by first gap, then by last
 ```
 
 Because `r_D` depends only on the springs inside the span, the reduction is independent of where systems break, and Stage 3's inputs stay fixed before it starts. A constraint that crosses a barline is reduced over the gaps of both stacks: exact within a system and conservative at a break, where the constraint may need less (a lyric extender, say) or be carried by the postamble and gutter. An edit that changes such a constraint changes both stacks, which is a range edit for [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit).
+
+The reduction is mandatory and is not a setting: [ADR-0055](0055-Horizontal-Spacing.md#invariants-and-property-tests)'s Invariants 1 and 8, that no contours collide at any feasible ratio and that every constraint holds after Stage 2, depend on it. How much room it over-reserves is measured in the validation ([Evaluation Criteria](#evaluation-criteria)).
 
 ### Ideal Width Semantics
 
@@ -495,7 +503,7 @@ For a system containing stacks [s, t):
 ```
 preamble = preamble[s]                       ;; Clef + keysig width (max across staves)
 gutter = gutter[s]                           ;; Only first stack contributes
-postamble = postamble[t]                     ;; System-end cautionaries and barline; 0N when t = N
+postamble = postamble[t]                     ;; System-end cautionaries; 0N when t = N
 available = system_width - preamble - gutter - postamble
 r = least r with Σ g_j(r) = available       ;; One ratio for every gap in the system
 
@@ -508,7 +516,7 @@ preamble + gutter + Σ actual_i + postamble
   = preamble + gutter + available + postamble = system_width ✓
 ```
 
-The preamble, gutter and postamble are not added to any measure's width—they are separate space: the preamble and gutter precede the first measure's content, and the postamble follows the last. Stage 5 renders clefs/keysigs in preamble space, gutter decorations and any start repeat in gutter space when the measure appears at system start, and system-end cautionaries and the closing barline's system-end form at the system's end, in the last measure's own barline space extended by the postamble.
+The preamble, gutter and postamble are not added to any measure's width—they are separate space: the preamble and gutter precede the first measure's content, and the postamble follows the last. Stage 5 renders clefs/keysigs in preamble space, gutter decorations and any start repeat in gutter space when the measure appears at system start, and system-end cautionaries in postamble space at the system's end. The closing barline is the last measure's own, part of that measure's width wherever the measure falls.
 
 ### The Preamble: System-Start Clef and Key Signature Width
 
@@ -528,20 +536,22 @@ preamble_width = max over all staves of (clef_width + keysig_width + spacing)
 
 **Caching**: The (clef, keysig) combinations are highly repetitive across a score—a symphony might have only 3-4 distinct combinations across hundreds of measures. Caching by the combination tuple across staves provides near-instant lookup after the first computation. The cached value includes both the computed maximum width and the paintlists for rendering.
 
-**Not yet accounted for**: a clef, key or time signature change at a barline exists in its mid-system form only when that barline is not a break; at a break, the postamble and the preamble replace it. This mid-system material belongs to the boundary, not to either stack, and must be counted only where a segment does not break. The preamble above also omits the time signature a system shows at the start of the piece and wherever a change takes effect at its first stack, and its spacing after the key signature duplicates the stack's leading gap. How these are settled is [ADR-0055 H10](0055-Horizontal-Spacing.md#h10-no-break-material-and-the-system-start); until then, this ADR's formulas account for none of them.
+**Changes at a barline belong to measures.** A clef change that takes effect at the start of a measure is drawn before the barline by the measure before it, and a key or time signature change by the measure it begins; each is part of that measure's width in every position ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)). When a key signature change takes effect at a system's first stack, that measure draws it, and the preamble shows the clef alone.
+
+**Not yet accounted for**: a key change that starts a system may omit the cancellation naturals the previous system's cautionary has shown, which makes its measure narrower there than mid-system, while the gutter can only add space; and the preamble's spacing after the key signature duplicates the stack's leading gap. How these are settled is [ADR-0055 H10](0055-Horizontal-Spacing.md#h10-no-break-material-and-the-system-start); until then, this ADR's formulas account for neither.
 
 **Preamble, Gutter and Postamble**:
 - **Preamble**: Structural (always present at system start), computed on-demand
 - **Gutter**: Contingent (present only when tied-to notes require courtesy accidentals, or a start repeat moves to the system's start), computed in Stage 2, before breaking
-- **Postamble**: Contingent (present only when a change takes effect at the start of the next system, or a double, final or repeat barline ends the system), at system end, computed on-demand — see [The Postamble](#the-postamble-system-end-width)
+- **Postamble**: Contingent (present only when a key or time signature change takes effect at the start of the next system), at system end, computed on-demand — see [The Postamble](#the-postamble-system-end-width)
 
 All three are fixed overhead subtracted before the springs are fitted. None participates in cost computation.
 
 ### The Postamble: System-End Width
 
-A system's end can need space that the same measures do not need mid-system. When a change takes effect at the first stack of the next system — a key signature or time signature change, for example — the system ends with a cautionary announcing it. When the barline at the break is a double, final or repeat barline, it takes its system-end form there: a combined repeat splits, its end repeat closing this system and its start repeat opening the next. The **postamble** is the fixed space these need at the end of a system, the counterpart of the system-start reservations.
+A system's end can need space that the same measures do not need mid-system. When a key or time signature change takes effect at the first stack of the next system, the system ends with a cautionary announcing it. The **postamble** is the fixed space the cautionaries need at the end of a system, the counterpart of the system-start reservations. Every measure ends with a barline of some kind, which is part of the measure's own width wherever the measure falls, and a clef change taking effect at the next measure is drawn before that barline by the same measure, which includes it on examining the next one ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)). The postamble holds nothing for either.
 
-For a system `[s, t)`, the postamble is `postamble[t]`: it depends only on where the system ends — on the changes taking effect at stack `t`, the first stack of the next system, and on the barline at the boundary before it. Like the preamble and gutter it does not scale and does not enter the cost; it reduces the space available for scaling:
+For a system `[s, t)`, the postamble is `postamble[t]`: it depends only on where the system ends, on the changes taking effect at stack `t`, the first stack of the next system. Like the preamble and gutter it does not scale and does not enter the cost; it reduces the space available for scaling:
 
 ```
 available = system_width - preamble[s] - gutter[s] - postamble[t]
@@ -549,26 +559,24 @@ available = system_width - preamble[s] - gutter[s] - postamble[t]
 
 Because it depends only on the candidate segment, the DP stays exact. Because it is fixed for a given `t`, it is constant across the inner loop, leaves early termination unaffected, and costs one lookup per outer iteration.
 
-**Contents**:
-- **Cautionaries**: the cautionary clef, key signature and time signature for the changes taking effect at stack `t`. A key signature cautionary includes any cancellation naturals the change requires, and its width includes theirs.
-- **Barline**: when the barline at boundary `t` is a double, final or repeat barline, the extra width its system-end form needs beyond its mid-system form, which is already part of the last measure's widths. A single barline contributes nothing. This part is never negative: where the system-end form is narrower than the mid-system one, the difference is not reclaimed.
+**Contents**: the cautionary key signature and time signature for the changes taking effect at stack `t`. A key signature cautionary includes any cancellation naturals the change requires, and its width includes theirs.
 
-Where neither applies, `postamble[t] = 0N`. At the end of the piece `postamble[N] = 0N`: no change follows, and the closing barline there has no mid-system form, so the last measure's widths already include it.
+Where no change takes effect at stack `t`, `postamble[t] = 0N`. At the end of the piece `postamble[N] = 0N`: no change follows.
 
 **The start of the next system**: a start repeat that moves, at a break, to the start of the next system is reserved there by that system's gutter (see [The Gutter](#the-gutter-system-start-width-delta)).
 
 **On-demand computation**: like the preamble, the postamble is computed during Stage 3 when evaluating candidate system breaks, not precomputed in Stages 1–2:
-1. Query ChangeSets for the clef, key signature and time signature changes taking effect at stack `t` (per staff), and read the barline at boundary `t`
-2. Compute, for each staff, the width of the corresponding cautionaries and the barline's extra width in its system-end form
+1. Query ChangeSets for the key signature and time signature changes taking effect at stack `t` (per staff)
+2. Compute, for each staff, the width of the corresponding cautionaries
 3. Take the maximum across all staves
 
-**Caching**: the combinations of changes and barline types are highly repetitive across a score, so the postamble is cached by that combination across staves, as the preamble is. The cached value includes both the computed maximum width and the paintlists for rendering.
+**Caching**: the combinations of changes are highly repetitive across a score, so the postamble is cached by that combination across staves, as the preamble is. The cached value includes both the computed maximum width and the paintlists for rendering.
 
-**Why uniform width**: as with the preamble, all staves receive the same postamble width, the maximum across staves, so that the systems' closing barlines stay aligned. What is drawn in it may differ from staff to staff.
+**Why uniform width**: as with the preamble, all staves receive the same postamble width, the maximum across staves, so that every staff's system ends at the same point. What is drawn in it may differ from staff to staff.
 
-**Placement**: a cautionary clef sits before the system's closing barline; cautionary key and time signatures sit after it.
+**Placement**: cautionary key and time signatures sit after the system's closing barline. A cautionary clef sits before it, as part of the last measure.
 
-**User control**: a setting suppresses system-end cautionaries. When it is set, the cautionary part of `postamble[t]` is 0N and Stage 3 sees the change; the barline part remains, since the barline is drawn whatever the setting. Unlike the gutter, which is always reserved, the cautionary part can depend on the setting only because the setting has no page-dependent option: whether a system ends a page is decided in Stage 6, after Stage 3 has used the postamble, so a reservation that depended on page position could not know which systems need it (the reason the gutter is always reserved; see [Enabling User Control](#enabling-user-control)).
+**User control**: a setting suppresses system-end cautionaries. When it is set, `postamble[t]` is 0N and Stage 3 sees the change. A cautionary clef is part of the last measure, so its space stays reserved whatever the setting, as the gutter's does; the setting decides only whether it is drawn. Unlike the gutter, which is always reserved, the postamble can depend on the setting only because the setting has no page-dependent option: whether a system ends a page is decided in Stage 6, after Stage 3 has used the postamble, so a reservation that depended on page position could not know which systems need it (the reason the gutter is always reserved; see [Enabling User Control](#enabling-user-control)).
 
 ### Width Allocation: Applying the Adjustment Ratio
 
@@ -788,6 +796,12 @@ User adjustments to individual measure widths ("stretch this measure," "compress
 
 **Key principle**: The collision-derived `min_width` is a hard floor. User overrides can raise it but not lower it—atoms cannot overlap regardless of editorial intent. The `ideal_width` can be freely overridden since it represents preference, not physics. The `gutter` is not user-adjustable—it reflects SMuFL glyph metrics for system-start decorations.
 
+An `:ideal-override` scales every gap, clearances after material without duration included; whether those should take part is [ADR-0055 H11](0055-Horizontal-Spacing.md#h11-elasticity-by-gap-class).
+
+**Barline Drags**
+
+A measure's closing barline is part of that measure ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)), so dragging it changes that measure's width: the drag sets the measure's `:ideal-override`, so that its width, once the system has refitted, changes by the distance dragged. The next measure is not edited. The system refits, so every other gap in it gives or takes room through its spring, and since the stack's summary changes, the breaks may change. At a system's end, where the measure's end cannot move, the measure grows or shrinks at its start. While the drag lasts its system is frozen, so that the measure cannot move to another system in mid-gesture ([Frozen Systems](#frozen-systems)).
+
 **Soft Preferences: The break-penalty-fn Hook**
 
 The optional `break-penalty-fn` parameter handles soft preferences that influence but do not constrain break selection. It returns the penalty `p` for selecting segment `s..t-1` as a system — in Knuth–Plass terms, the penalty of its break — which enters the demerits as `+p²` when positive and `−p²` when negative:
@@ -849,10 +863,10 @@ This approach has fundamental problems:
 
 ### How Complete Information Enables Optimality
 
-The gutter model eliminates feedback through **complete information**:
+The gutter, with the preamble and postamble, eliminates feedback through **complete information**:
 
 1. **Stages 1–2** compute exact measure content (each gap's ideal and blocking width) + exact gutter delta ([ADR-0055](0055-Horizontal-Spacing.md))
-2. **Stage 3** has *complete knowledge* of every scenario (mid-system, system-start and system-end) for every measure
+2. **Stage 3** has *complete knowledge* of every scenario for every measure: mid-system, system-start (preamble and gutter) and system-end (postamble)
 3. **Stage 3** computes the system breaks that are optimal for its cost function, given these inputs - not heuristic, not iterative
 4. **Stage 4** positions atoms using each system's adjustment ratio from Stage 3
 5. **Stage 5** adds graphical decorations based on actual positions and computes system heights
@@ -1007,9 +1021,10 @@ Visual judgement, together with measurements taken on the same scores:
 - The number of systems
 - How many breaks an edit changes (stability)
 - Running time
+- How much room the reduction of constraints spanning several columns over-reserves: the same systems solved offline with those constraints imposed exactly, system by system, compared with the reduced springs ([Constraints Spanning Several Columns](#constraints-spanning-several-columns))
 - The number of manual interventions (forced breaks, width overrides) needed to reach the layout of a reference engraving: the measure that matters most to an engraver
 
-The test material is chosen for where the difficulty lies: chromatic passages in short values, bars that mix long values with runs of very short ones, vocal scores with dense lyrics, tight orchestral pages, music of gradually changing density, and parts with page turns. The references are printed engravings, not the output of other programs.
+The test material is chosen for where the difficulty lies: chromatic passages in short values, bars that mix long values with runs of very short ones, vocal scores with dense lyrics, tight orchestral pages, music of gradually changing density, and parts with page turns. Parts with page turns evaluate Stage 6 and the separation of system breaking from page breaking ([Joint System and Page Breaking](#joint-system-and-page-breaking)), not Stage 3 alone. The references are printed engravings, not the output of other programs.
 
 These measurements also decide the **badness exponent and the constants** of the segment cost model — the coefficient, exponent, cap, per-system penalty `l` and tolerance, starting from TeX's values ([Optimization Characterization](#optimization-characterization)) — and the **stretchability `σ`**, starting from `1/2` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). The constants and `σ` are judged together: TeX's constants are meaningful only under the calibration, and `σ` sets the stretch at which a system counts as badly as one at its collision limit.
 
@@ -1040,7 +1055,13 @@ min over feasible [s, t) with s ≤ m < t of   F(s) + cost′(s, t) + G(t)
 
 ### Frozen Systems
 
-A system the user locks keeps its breaks: its start and end become forced breaks and the breakpoints inside it are prevented, using the pre-segmentation and grouping of [Editorial Control Mechanisms](#editorial-control-mechanisms). A freeze is a constraint, so the result is exact over the configurations that respect it, and it reduces work by partitioning the problem; each partition keeps its own `F` and `G`. Freezes are anchored to measure identity. What happens when an edit inside a frozen system makes it infeasible — refusing the edit, releasing the freeze, or accepting an overfull system — is not yet specified.
+A system the user locks keeps its breaks: its start and end become forced breaks and the breakpoints inside it are prevented, using the pre-segmentation and grouping of [Editorial Control Mechanisms](#editorial-control-mechanisms). A freeze is a constraint, so the result is exact over the configurations that respect it, and it reduces work by partitioning the problem; each partition keeps its own `F` and `G`. Freezes are anchored to measure identity.
+
+**The tolerance.** A frozen system has exactly one segmentation, so the tolerance does not apply to it: it is accepted at the badness its adjustment ratio gives.
+
+**Drags.** A drag inside a frozen system is clamped at `r = −1`, as [ADR-0055](0055-Horizontal-Spacing.md#user-inputs) clamps column drags. A drag changes ideal widths only, so it leaves `Σ min` as it was and can never make the system infeasible; at `r = −1` no gap has room left to give. A barline drag freezes its system while the drag lasts, since it changes its measure's width and with it the stack's summary ([Editorial Control Mechanisms](#editorial-control-mechanisms)). Whether the freeze remains after the drag is a setting, off by default. Off, the breaks are recomputed when the drag ends, and the measure keeps its new width in whichever system it then falls. On, the freeze remains until the user removes it; Dorico inserts system breaks in the same way around each system whose note spacing is adjusted with its handles ([Prior Art](#prior-art)).
+
+**An edit that makes a frozen system infeasible.** What then happens is not yet specified, but two possibilities are excluded. Refusing the edit would need formatting inside the edit's transaction, whereas formatting runs after an edit has committed ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md#computational-scaling-characteristics)), and it would let the layout veto a musical edit ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)). Deleting the freeze would have formatting discard layout the user set. Two remain: suspending the freeze while it cannot be honoured, keeping it so that it applies again once it can, or accepting an overfull system, whose widths then exceed what is available.
 
 ### Consistency Between Adjacent Systems
 
@@ -1275,9 +1296,8 @@ The following implementation performs **Stage 3: System Breaking** - distributin
      (doseq [t (range 1 (inc n))]
 
        ;; Reserve postamble space for the system ending at t: cautionaries for
-       ;; changes taking effect at stack t, and the extra width of a double,
-       ;; final or repeat barline at t in its system-end form (0N when t = n).
-       ;; It depends only on t, so it is fixed for the whole inner loop
+       ;; changes taking effect at stack t (0N when t = n). It depends only
+       ;; on t, so it is fixed for the whole inner loop
        (let [postamble (get-postamble-width stacks t)]
 
          ;; Try previous break at prefix length s (represents stacks 0..s-1)
@@ -1347,7 +1367,7 @@ The following implementation performs **Stage 3: System Breaking** - distributin
 For each candidate segment [s, t):
 1. Get `preamble = preamble[s]` (max clef+keysig width across all staves, computed on-demand and cached)
 2. Get `gutter = gutter[s]` (only first stack in system contributes)
-3. Get `postamble = postamble[t]` (system-end cautionaries and barline; fixed for a given `t`)
+3. Get `postamble = postamble[t]` (system-end cautionaries; fixed for a given `t`)
 4. Compute `available = system_width - preamble - gutter - postamble`
 5. Check feasibility: `Σ min_i ≤ available`
 6. Solve for the adjustment ratio `r`: one division when shrinking, and when stretching until the segment's first kink; beyond it, the kinks in order
@@ -1447,7 +1467,7 @@ This is the canonical cost definition under the ADR's contract, not an optimisat
 
 1. **Derivation, not optimisation**: `r` is already known; each gap's width is one formula
 2. **Collision-safe by construction**: no gap falls below its blocking width, so there is no clamp to trust
-3. **Reservation correctness**: System-start decorations and system-end cautionaries and barlines have exactly their required space
+3. **Reservation correctness**: System-start decorations and system-end cautionaries have exactly their required space
 4. **Deterministic**: Same input always produces same output with no floating-point variation
 5. **Fast**: O(gaps) per system
 6. **Contained**: Within a fixed break configuration, a change to one stack alters only its own system's ratio and widths
@@ -1484,7 +1504,7 @@ The equality is exact, not approximate: `r` solves the system's equation exactly
 
 Each stack carries `:gutter` (default 0N). Preamble width is computed on-demand and cached by (clef, keysig) combination. Only the first stack in a system contributes its gutter and determines the preamble; the postamble is determined by the breakpoint at which the system ends. All three:
 - Are reserved from system width before the springs are fitted: `available = system_width - preamble - gutter - postamble`
-- Do not scale—they are fixed space for clefs and key signatures, graphical decorations, and system-end cautionaries and barlines
+- Do not scale—they are fixed space for clefs and key signatures, graphical decorations, and system-end cautionaries
 - Do not participate in cost computation
 - Are returned separately from `allocate-widths` for rendering coordination
 
@@ -1592,7 +1612,7 @@ This section defines the relationship once. Elsewhere in this ADR, "Knuth-Plass"
 | Stretchability of glue | `σ × w_j` in the baseline, with `σ` a parameter |
 | Shrinkability of glue | `max(0, w_j − b_j)` in the baseline, the gap's room above its minimum |
 | Legal breakpoint | Legal break position, normally a barline |
-| Discretionary break: pre-break, post-break and no-break material | `postamble[t]`; `preamble[s]` and `gutter[s]`; the barline's mid-system width |
+| Discretionary break: pre-break, post-break and no-break material | `postamble[t]`; `preamble[s]` and `gutter[s]`; cancellation naturals a key change shows only mid-system, not yet accounted for ([ADR-0055 H10](0055-Horizontal-Spacing.md#h10-no-break-material-and-the-system-start)) |
 | Line length | System width less preamble, gutter and postamble |
 | Adjustment ratio of a line | Adjustment ratio `r` of a system: the least `r` with `Σ g_j(r) = available`, Hegazy and Gourlay's fitting force |
 | Badness, about `100 × \|r\|³`, capped | Badness `b(r) = min(b_max, c × \|r\|^e)`, starting from `c = 100`, `e = 3` |
@@ -1686,7 +1706,7 @@ Stage 3 draws on three lineages: optimal breaking by dynamic programming, a mode
   - `lily/constrained-breaking.cc`, by Joe Neeman, is added in February 2006 and replaces it; `gourlay-breaking.cc` is removed in September 2006. It runs a dynamic program over (number of systems, breakpoint), with demerits force² + (previous force − force)² + break penalty, and solves a spring-and-rod spacing problem for every candidate line (`get_line_forces` in `lily/simple-spacer.cc`). It keeps one node per (number of systems, breakpoint), so the adjacency term is again evaluated against a single stored predecessor; with ragged-right lines the demerits reduce to force² plus break penalty, which is separable, and the result is then the exact optimum of that cost.
   - It works together with an optimal page breaker (`lily/optimal-page-breaking.cc`) and a page-turn breaker (`lily/page-turn-page-breaking.cc`). Page decisions use "pure" heights (`lily/constrained-breaking.cc`), which LilyPond's Contributor's Guide describes as estimates made before line breaking.
 
-- **Dorico**, from its developers' published statements, not from its source. Daniel Spreadbury wrote on the Steinberg forum (December 2016) that the team had evaluated the Gourlay method and found its performance characteristics unsuitable for real-time use, that Dorico's algorithm runs one way, from the start of the layout to the end, and that tested against Gourlay's it produced very similar results much of the time. In April 2026 he wrote that the paper informed Dorico's casting off, which is greedy, with a separate remainder-distribution step at the end of each flow. The design goal stated in 2015 was to do only the minimal amount of recalculation in response to an edit.
+- **Dorico**, from its developers' published statements, not from its source. Daniel Spreadbury wrote on the Steinberg forum (December 2016) that the team had evaluated the Gourlay method and found its performance characteristics unsuitable for real-time use, that Dorico's algorithm runs one way, from the start of the layout to the end, and that tested against Gourlay's it produced very similar results much of the time. In April 2026 he wrote that the paper informed Dorico's casting off, which is greedy, with a separate remainder-distribution step at the end of each flow. The design goal stated in 2015 was to do only the minimal amount of recalculation in response to an edit. In January 2020 he wrote that note spacing cannot be adjusted with the mouse, for mostly technical reasons: Dorico would have to respace at least the system being edited, and possibly the systems after it, as the mouse moved, and could not guarantee good enough redraw performance; staves dragged vertically are drawn as an overlay standing in for them, with the music updated when the drag ends. The Dorico Pro 6.2 manual states that note spacing handles can be moved only with the keyboard, and that system breaks are inserted automatically at the start and end of each system whose note spacing is adjusted with them; it gives no reason for the breaks.
 
 - **MuseScore**, from its source (`SystemLayout::collectSystem` in `src/engraving/rendering/score/systemlayout.cpp`, main branch, October 2026) and its handbook: measures are added to a system until the next one no longer fits at its natural width, and the system is then justified. Greedy.
 
@@ -1701,10 +1721,10 @@ Stage 3 draws on three lineages: optimal breaking by dynamic programming, a mode
 - **MusiXTeX**: Daniel Taupin, Ross Mitchell and Andreas Egler, "MusiXTeX : L'écriture de la musique polyphonique ou instrumentale avec TeX", *Cahiers GUTenberg* 21 (1995), pp. 107–113.
   - The MusiXTeX manual, §1.3.1, explains why TeX glue fails for music: a line holds far fewer bars than a line of text holds words, so treating each bar as a word leaves gaps before the bar rules.
   - It divides horizontal space into *hard* space (bar rules, clefs, key signatures), which is fixed, and *scalable* space, defined in multiples of one spacing unit, `\elemskip`. One value of `\elemskip` is computed per line, so that the scalable space fills what the hard space leaves.
-  - This corresponds to ADR-0037's split: the preamble, gutter and postamble are hard space, and the gaps are scalable space; `\elemskip` per line corresponds to the adjustment ratio per system, which the springs apply through each gap's elasticity rather than as one multiplier. ADR-0037 treats only system-start and system-end material as hard; bar rules within a system scale with the measures.
+  - This corresponds to ADR-0037's split: the preamble, gutter and postamble are hard space, and the gaps are scalable space; `\elemskip` per line corresponds to the adjustment ratio per system, which the springs apply through each gap's elasticity rather than as one multiplier. ADR-0037 treats only system-start and system-end material as hard; a bar rule belongs to its measure, as fixed space within it.
   - Its breaking pass, `musixflx` (Ross Mitchell, 1992–1997), sets a target number of lines from the total width divided by the line width, then fills lines one at a time, adding bars until a line overflows. It is greedy, not optimal.
 
-- **TeX's discretionary breaks**: a discretionary has three parts, the material printed before a break, after it, and when no break occurs. The preamble, gutter and postamble are the same construct at every barline: the postamble is the pre-break material, the preamble and gutter the post-break material, and the barline's mid-system width the no-break material. Hegazy and Gourlay pointed to discretionaries for the clefs and keys at each system start without working them out.
+- **TeX's discretionary breaks**: a discretionary has three parts, the material printed before a break, after it, and when no break occurs. The preamble, gutter and postamble are the same construct at every barline: the postamble is the pre-break material, and the preamble and gutter the post-break material. Everything else at a barline, the barline itself and any clef, key or time signature change, belongs to a measure in every form, so the no-break material reduces to cancellation naturals a key change shows only mid-system, which this ADR does not yet account for ([ADR-0055 H10](0055-Horizontal-Spacing.md#h10-no-break-material-and-the-system-start)). Hegazy and Gourlay pointed to discretionaries for the clefs and keys at each system start without working them out.
 
 ### The Spring Model
 
@@ -1738,7 +1758,7 @@ Each breaker is described against its own cost: whether the result it returns is
 ### What Is Specific to Ooloi
 
 - The combination of the three lineages over measure-stack summaries, structured so that full Knuth–Plass remains available
-- The preamble, gutter and postamble as fixed widths, known to the DP before it chooses breaks, that depend on where a system starts or ends. This is TeX's discretionary at every barline, which Hegazy and Gourlay pointed to for music without working it out; what is specific is the formulation, and an early termination that stays exact in its presence
+- The preamble, gutter and postamble as fixed widths, known to the DP before it chooses breaks, that depend on where a system starts or ends. This is TeX's discretionary at every barline, which Hegazy and Gourlay pointed to for music without working it out, its no-break part not yet accounted for ([ADR-0055 H10](0055-Horizontal-Spacing.md#h10-no-break-material-and-the-system-start)); what is specific is the formulation, and an early termination that stays exact in its presence
 - Blocking springs summarised so that feasibility is O(1), and the adjustment ratio O(1) except where prestretched gaps take part, with constraints spanning several columns reduced before breaking
 - Exact rational arithmetic and a tie-break that depends only on the configuration, giving identical results on every platform and after any editing history
 - Exact re-optimisation after an edit, from forward and backward tables (the technique has precedent in text layout)
@@ -1754,13 +1774,13 @@ This ADR demonstrates the same architectural property as [ADR-0035: Remembered A
 - Explicit stage boundaries preventing feedback loops
 - Rational arithmetic eliminating accumulation errors
 
-For remembered alterations, the timewalk provides temporal ordering independent of visual layout. For measure distribution, the pipeline provides collision-free metrics (plus gutter deltas) independent of system assignment. Both reduce coupled problems to sequential ones.
+For remembered alterations, the timewalk provides temporal ordering independent of visual layout. For measure distribution, the pipeline provides collision-free metrics (plus gutter deltas) independent of system assignment, and the preamble and postamble of every candidate system before breaking. Both reduce coupled problems to sequential ones.
 
 **Positive:**
 
 1. **Exact optimization** - Polynomial-time algorithm finds the break configuration of least cost under the stated cost function, given its inputs
 2. **Rhythm and collision together** - Gaps free to stretch keep their proportions; a gap the music needs wider gets exactly the room its collision requires, and no more
-3. **Complete information** - Gutter deltas enable optimal decisions without feedback
+3. **Complete information** - Gutter deltas, and the preamble and postamble of every candidate system, enable optimal decisions without feedback
 4. **Closed semantic model** - Rendering decorations cannot affect musical semantics
 5. **Deterministic output** - Identical input produces identical layout across platforms
 6. **Cheap recomputation** - An edit re-runs Stage 3 over cached scalar metrics, without repeating upstream work for unchanged stacks
@@ -1806,6 +1826,7 @@ A horizontal rule that cannot be expressed in one of these forms is a design pro
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) (pipeline architecture, Stage 3 system breaking position, gutter model, closed semantic model)
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (accidental algorithm that closes the semantic model; tied-note bypass rules inform gutter requirements)
 - [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) (upstream computation of each gap's ideal and blocking widths, the gutter, and the reduction of constraints spanning several columns)
+- [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) (the layout never feeds back into a musical edit; frozen systems)
 - [ADR-0014: Timewalk](0014-Timewalk.md) (temporal traversal providing measure discovery)
 - [ADR-0029: Global Hash-Consing](0029-Global-Hash-Consing.md) (immutable data structures enabling stage separation)
 - [Knuth–Plass line-breaking algorithm](https://en.wikipedia.org/wiki/Knuth%E2%80%93Plass_line-breaking_algorithm) - Wikipedia overview
@@ -1813,7 +1834,8 @@ A horizontal rule that cannot be expressed in one of these forms is a design pro
 - Hegazy, W.A. and Gourlay, J.S. "Optimal line breaking in music", Technical Report OSU-CISRC-8/87-TR33, The Ohio State University (1987); also in *Proceedings of the International Conference on Electronic Publishing, Document Manipulation and Typography*, Nice, 1988, ed. J.C. van Vliet, Cambridge University Press
 - LilyPond source: `lily/gourlay-breaking.cc` (1997–2006), `lily/constrained-breaking.cc`, `lily/simple-spacer.cc`, `lily/spring.cc`, `lily/spacing-basic.cc`, `lily/optimal-page-breaking.cc`, `lily/page-turn-page-breaking.cc`
 - MuseScore source (main branch, October 2026): `src/engraving/rendering/score/horizontalspacing.cpp`, `src/engraving/rendering/score/systemlayout.cpp`; MuseScore Handbook 4, "Score size and spacing"
-- Spreadbury, D., Dorico development diary, part 11 (June 2015), https://blog.dorico.com/2015/06/development-diary-part-11/ (including the comments by Han-Wen Nienhuys and Christof Schardt); Steinberg forum, "Casting Off" (December 2016), https://forums.steinberg.net/t/casting-off/670560; "Optimal line breaking algorithm" (April 2026), https://forums.steinberg.net/t/optimal-line-breaking-algorithm/1028999
+- Spreadbury, D., Dorico development diary, part 11 (June 2015), https://blog.dorico.com/2015/06/development-diary-part-11/ (including the comments by Han-Wen Nienhuys and Christof Schardt); Steinberg forum, "Casting Off" (December 2016), https://forums.steinberg.net/t/casting-off/670560; "Optimal line breaking algorithm" (April 2026), https://forums.steinberg.net/t/optimal-line-breaking-algorithm/1028999; "Dragging horizontally with mouse" (January 2020), https://forums.steinberg.net/t/dragging-horizontally-with-mouse/140219/2
+- Steinberg, Dorico Pro 6.2 manual, "Adjusting note spacing at individual rhythmic positions", https://www.steinberg.help/r/dorico-pro/6.2/en/dorico/topics/engrave_mode/engrave_mode_note_spacing_individual_rhythmic_positions_t.html
 - Taupin, D., Mitchell, R. and Egler, A. "MusiXTeX : L'écriture de la musique polyphonique ou instrumentale avec TeX", *Cahiers GUTenberg* 21 (1995), pp. 107–113
 - The MusiXTeX manual, §1.3.1 "The three pass system: Introduction"; `musixflx` (Ross Mitchell, 1992–1997)
 - Steinbach, A. and Schofer, A. *Automatisierter Notensatz mit TeX*, master's thesis, Rheinische Friedrich-Wilhelms Universität, Bonn (1987)
