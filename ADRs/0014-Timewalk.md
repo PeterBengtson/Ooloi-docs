@@ -4,6 +4,8 @@
 
 Implemented
 
+Revised October 2026: [§5](#5-grace-note-position-semantics) states that grace positions inside tuplets are scaled by the ratios of the tuplets that contain them, as the walker computes them.
+
 ## Table of Contents
 
 - [Context](#context)
@@ -455,10 +457,12 @@ Grace notes receive special position handling in timewalk to cleanly separate ex
 [:F5 1/16]     ; Third pitch at 1/16 (relative to container)
 ```
 
+**Inside tuplets** the relative positions are scaled, as every position inside a tuplet is: by the product of the ratios of the tuplets that contain the grace container (`walk-item!` in `ooloi.shared.ops.timewalk`). Inside a triplet, whose ratio is 2/3, the same three grace pitches lie at 0, 1/48 and 1/24. The container itself is at its target position on the same scale.
+
 **Design Rationale:**
 1. **Clean separation** - External position (1/4) lives only in the container, internal positions (0, 1/32, 1/16) are truly relative
 2. **No semantic mixing** - Avoids confusion between target position (external) and duration-based increments (internal)
-3. **Preserves spacing information** - Relative positions maintain notated duration proportions for potential formatting use
+3. **Preserves spacing information** - Relative positions maintain notated duration proportions for potential formatting use, such as the raster offsets [ADR-0055 H7](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0055-Horizontal-Spacing.md#h7-grace-notes) takes as its starting point
 4. **Correct scoping** - Internal positions can't be misinterpreted as absolute positions
 
 **Rhythmic vs. Structural:**
@@ -656,6 +660,7 @@ The benchmarks confirm that the push-based transducer architecture delivers genu
 - [ADR-0011: Shared Structure](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0011-Shared-Structure.md) - Shared structure algorithms use timewalk for element collection and processing
 - [ADR-0013: Slur Formatting](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0013-Slur-Formatting.md) - Slur formatting demonstrates timewalk application for point collection
 - [ADR-0032: Flow Mode](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0032-Flow-Mode.md) - Flow Mode's three-stage workflow (position → select → create) uses timewalk for cursor positioning and element resolution
+- [ADR-0055: Horizontal Spacing](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0055-Horizontal-Spacing.md) - H7's starting point derives grace notes' raster offsets from the positions of §5
 
 ## Documentation
 

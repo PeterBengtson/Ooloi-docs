@@ -223,13 +223,13 @@ The earlier post, ["The Rendering Pipeline: Ooloi's Core Architecture"](https://
 Six stages:
 
 - **Stage 1** (fan-out): Atom formation. Each measure forms its atoms and their contours, the outlines Stage 2 measures. Results are immutable and persist until content changes.
-- **Stage 2** (fan-in): Raster and springs. The staves' rhythms are merged into one raster of columns, every gap between columns becomes a spring with an ideal and a blocking width, and each measure stack is summarised for Stage 3, with its gutter.
+- **Stage 2** (fan-in): Raster and springs. The staves' rhythms are merged into one raster of columns, every gap between columns becomes a spring with an ideal and a blocking width, and each measure stack is summarised for Stage 3, with its gutter and its no-break width, what its closing barline adds only mid-system.
 - **Stage 3** (single): System breaking. Dynamic programming over the measure sequence. Determines optimal system breaks and each system's adjustment ratio.
 - **Stage 4** (fan-out): Atom positioning. Applies each system's adjustment ratio to its gaps; computes absolute coordinates.
 - **Stage 5** (fan-out per musician): Spanners and margins. Ties, slurs, beams, hairpins, and glissandi are drawn once final positions are known. Gutter decorations (courtesy accidentals, tie continuations) are added here. System heights become definitive at this stage.
 - **Stage 6** (single): Page breaking. Dynamic programming over the system sequence using actual heights from Stage 5.
 
-The gutter model is the detail that enables Stage 3's breaks to be provably optimal for its cost function, given its inputs: every measure carries both its normal width and the additional space it needs when appearing at system start, and the preamble and postamble of every candidate system are known before breaking, so Stage 3 has complete information when making break decisions.
+The gutter model is the detail that enables Stage 3's breaks to be provably optimal for its cost function, given its inputs: every measure carries its normal width, the additional space it needs when appearing at system start, and the space its closing barline adds only mid-system, and the preamble and postamble of every candidate system are known before breaking, so Stage 3 has complete information when making break decisions.
 
 Plugins participate at two points: the atom hook in Stage 1, which produces an atom's extent and cached paintlist, and the spanner hook in Stage 5, which generates connecting elements from final atom positions. Core notation elements and plugin-defined elements use identical interfaces.
 
