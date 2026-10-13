@@ -45,11 +45,17 @@ The backend has its own `system.clj` and can run as a standalone gRPC server. It
 ```
 backend/src/main/clojure/ooloi/backend/system.clj
 backend/src/main/clojure/ooloi/backend/components/
-  piece_manager.clj
-  grpc_server.clj
-  http_server.clj
+  backend_undo_manager.clj
   cache_daemon.clj
+  connection_registry.clj
+  grpc_server.clj
+  health_manager.clj
+  http_server.clj
   instrument_library.clj
+  network_grpc_server.clj
+  piece_manager.clj
+  save_queue.clj
+  server_statistics.clj
 ```
 
 ### Frontend — components only, not deployed as an application
@@ -59,13 +65,14 @@ The frontend defines Integrant components but is **never deployed standalone**. 
 ```
 frontend/src/main/clojure/ooloi/frontend/components/
   event_bus.clj
-  ui_manager.clj
-  grpc_clients.clj
   event_router.clj
   fetch_coordinator.clj
+  frontend_undo_manager.clj
+  grpc_clients.clj
+  ui_manager.clj
 ```
 
-**`frontend/system.clj` exists as a test harness only.** It assembles the same frontend components the combined system uses (mirror of the frontend portion of `combined-config`) so the frontend project's own test suite can exercise component lifecycle in isolation without booting the full combined application. Production runs go through `shared/system.clj`.
+**`frontend/system.clj` is the frontend-only system, used for tests.** It assembles `thread-pool`, `grpc-clients`, `event-bus`, `ui-manager`, `event-router` and `fetch-coordinator`, so the frontend project's own test suite can exercise component lifecycle without booting the combined application. It has no backend and no `frontend-undo-manager`, and it wires no action handlers or UI lifecycle. Production runs go through `shared/system.clj`.
 
 ### Shared — the combined application
 
@@ -127,7 +134,7 @@ In practice, Ooloi never calls `ig/init` directly — it uses `ig/build` for the
 
 ## 4. The Backend System
 
-The standalone backend runs the same backend components as the combined app — it simply omits the frontend layer. It starts ten components:
+The standalone backend runs the same backend components as the combined app — it simply omits the frontend layer. It starts eleven components:
 
 ```
 thread-pool          (no dependencies, lives in shared/)
@@ -139,11 +146,13 @@ server-statistics    ← shared state   (no dependencies)
 health-manager       ← shared state   (no dependencies)
 grpc-server          [piece-manager, instrument-library, backend-undo-manager,
                       connection-registry, server-statistics, health-manager]
-http-server          [connection-registry, server-statistics, health-manager]
-cache-daemon         [piece-manager]
+cache-daemon         [piece-manager, server-statistics]
+http-server          [connection-registry, server-statistics, health-manager,
+                      cache-daemon]
+save-queue           [piece-manager]   ← for halt order only
 ```
 
-**The ten components:**
+**The eleven components:**
 
 | Component | Purpose |
 |---|---|
@@ -157,8 +166,9 @@ cache-daemon         [piece-manager]
 | `grpc-server` | The backend's gRPC server (network transport). |
 | `http-server` | HTTP health / statistics endpoint (multi-format monitoring). |
 | `cache-daemon` | Background cache-optimisation daemon. |
+| `save-queue` | The single-thread executor piece writes are submitted to: one write at a time, in the order asked. |
 
-The three shared-state components — `connection-registry`, `server-statistics`, `health-manager` — are their own Integrant components, depended on by `grpc-server` and `http-server` via refs. `http-server` reads health and statistics from those components directly and holds no dependency on `grpc-server`; `cache-daemon` depends only on `piece-manager`. The same wiring holds in the combined app (§5), which adds only the frontend layer and, for splash ordering, a `ui-manager` dependency on each backend component (a `combined-config`-only concern — the standalone backend has no frontend). A component is wired one way; only the *set* of components present differs between the two deployments.
+The three shared-state components — `connection-registry`, `server-statistics`, `health-manager` — are their own Integrant components, depended on by `grpc-server` and `http-server` via refs. `http-server` reads health and statistics from those components directly and holds no dependency on `grpc-server`; its one further ref is `cache-daemon`, whose sweep interval the `/health/server` endpoint reports. `cache-daemon` depends on `piece-manager`, whose pieces it sweeps, and on `server-statistics`, which holds its counters. `save-queue` refs `piece-manager` for halt order alone (§5). The same wiring holds in the combined app (§5), which adds the frontend layer and refs that start each backend component after the UI Manager (a `combined-config`-only concern — the standalone backend has no frontend). A component is wired one way; only the *set* of components present differs between the two deployments.
 
 **Entry point:** `ooloi.backend.system/start-with-config`
 
@@ -176,7 +186,7 @@ The three shared-state components — `connection-registry`, `server-statistics`
 
 ## 5. The Combined Application System
 
-The combined app's baseline `combined-config` initialises 16 components, plus an on-demand 17th (the network gRPC server) that the application adds at runtime when the host enables collaboration. The baseline divides into four initialisation groups that must run in order:
+The combined app's baseline `combined-config` initialises 17 components, plus an on-demand 18th (the network gRPC server) that the application adds at runtime when the host enables collaboration. The baseline divides into four initialisation groups that must run in order:
 
 ```
 SHARED FOUNDATION
@@ -196,9 +206,11 @@ BACKEND
   grpc-server         ← in-process only    [piece-manager, instrument-library,
                                             backend-undo-manager, connection-registry,
                                             server-statistics, health-manager]
+  cache-daemon                             [piece-manager, ui-manager,
+                                            server-statistics]
   http-server                              [connection-registry, server-statistics,
-                                            health-manager]
-  cache-daemon                             [piece-manager]
+                                            health-manager, cache-daemon]
+  save-queue                               [piece-manager]
 
 FRONTEND LATE  — connect to backend after it is running
   grpc-clients                             [ui-manager, grpc-server]
@@ -207,7 +219,7 @@ FRONTEND LATE  — connect to backend after it is running
   frontend-undo-manager                    [ui-manager, thread-pool, grpc-clients]
 ```
 
-**The 16 baseline components, plus the on-demand network server:**
+**The 17 baseline components, plus the on-demand network server:**
 
 | Component | Layer | Purpose |
 |---|---|---|
@@ -222,16 +234,23 @@ FRONTEND LATE  — connect to backend after it is running
 | `health-manager` | backend | Shared cross-transport gRPC `HealthStatusManager`. |
 | `grpc-server` | backend | In-process gRPC server — the combined app's local backend transport. |
 | `http-server` | backend | HTTP health / statistics endpoint (multi-format monitoring). |
-| `cache-daemon` | backend | Background cache-optimisation daemon. |
+| `cache-daemon` | backend | Background cache-optimisation daemon. Its `ui-manager` ref is for halt order: the daemon's error handler calls into the UI Manager, so the daemon must halt first. |
+| `save-queue` | backend | The single-thread executor piece writes are submitted to: one write at a time, in the order asked. Its `piece-manager` ref is for halt order (below). |
 | `grpc-clients` | frontend | The frontend's gRPC client(s) to the backend (in-process transport in the combined app). |
 | `event-router` | frontend | Routes backend events onto the frontend event bus. |
 | `fetch-coordinator` | frontend | Priority-based paintlist fetching via the shared Claypoole pool. |
 | `frontend-undo-manager` | frontend | Owns the frontend's undo/redo state: the Tier 2 local stacks, the Tier 1 cache of backend descriptions, and the menu-refresh callback (ADR-0015 Tier 2). Its `grpc-clients` dependency is for halt order — the callback dispatches through `SRV/`, so it must be torn down before the client it dispatches through. |
 | `network-grpc-server` *(on-demand)* | backend | Second gRPC transport surface, added at runtime when the host enables collaboration (ADR-0036). |
 
-Backend components' dependency on `ui-manager` is the load-bearing design in `combined-config`: it forces them to start *after* the UI manager (and thus after the splash screen is showing and i18n is loaded). Without it, a backend component might init before i18n is ready and crash when it calls `tr`. This dependency exists **only** in `combined-config` — in the standalone backend config (§4), the same components have no frontend dependencies. The shared-state components (`connection-registry`, `server-statistics`, `health-manager`) carry the dependency uniformly with every other backend component even though their `init-key` does no `tr`-touching work; the rule is uniform precisely so the topological invariant is not contingent on what each component happens to do today.
+The load-bearing property of `combined-config` is that **every backend component starts after the UI Manager** — and so after the splash screen is showing and i18n is loaded. Most backend components hold a direct `ui-manager` ref; `grpc-server`, `http-server` and `save-queue` start after it through their dependencies, since `piece-manager`, the shared-state components and `cache-daemon` all ref it directly. Without that ordering, a component that calls `tr` at init could start before i18n is ready and fail with a NullPointerException carrying "target is null". The ordering exists **only** in `combined-config` — in the standalone backend config (§4), the same components have no frontend dependencies. The shared-state components (`connection-registry`, `server-statistics`, `health-manager`) carry a direct ref like every other backend component even though their `init-key` does no `tr`-touching work; the rule is uniform precisely so the topological invariant is not contingent on what each component happens to do at init.
 
-**Shared backend state has its own components.** `connection-registry` (the single map of registered clients), `server-statistics` (the single set of counters reported via the HTTP statistics endpoint), and `health-manager` (the gRPC `HealthStatusManager`) live in their own Integrant components, depended on by both gRPC servers and by `http-server` via refs. In `combined-config`, `http-server` holds **no** ref to `grpc-server` — it reads the three shared components directly (see §6 "Worked example: extracting shared state from grpc-server"). This is the spec ADR-0036 §Hybrid Transport Architecture commits to: shared state with lifecycle is its own component, depended on by every consumer; no server owns it. The on-demand network gRPC server documented below depends on the same refs, which is what guarantees broadcasts triggered on either transport reach all registered clients and statistics counters report system totality across all transports.
+**Some refs exist for halt order rather than for init.** Integrant halts a component before the components it depends on, so a ref no `init-key` reads still decides teardown. Three refs in `combined-config` are there for that reason:
+
+- `cache-daemon`'s `ui-manager` ref — the daemon calls no `tr` at init, but its error handler is replaced at startup with one that calls into the UI Manager, so a sweep still running at halt must not outlive the manager.
+- `frontend-undo-manager`'s `grpc-clients` ref — its menu-refresh callback dispatches through `SRV/`, so it is torn down before the client it dispatches through.
+- `save-queue`'s `piece-manager` ref, declared in `backend-config` as well. The queue's `halt-key!` drains: a write still running when the system halts is given up to `drain-timeout-ms` (30 seconds) to finish. That write's completion calls into the piece manager — recording the file's provenance, comparing the piece with the snapshot it wrote, recording the saved baseline and clearing the dirty flag (`shared/ops/filesystem.clj`) — so the queue halts first and the piece manager is still there when it does. Through the same ref, the queue starts after the UI Manager in `combined-config`. It has no splash line: it calls no `tr` at init, and the splash has no need to advertise it.
+
+**Shared backend state has its own components.** `connection-registry` (the single map of registered clients), `server-statistics` (the single set of counters reported via the HTTP statistics endpoint), and `health-manager` (the gRPC `HealthStatusManager`) live in their own Integrant components, depended on by both gRPC servers and by `http-server` via refs. In `combined-config`, `http-server` holds **no** ref to `grpc-server` — it reads the three shared components directly, and `cache-daemon` for the sweep interval it reports (see §6 "Worked example: extracting shared state from grpc-server"). This is the spec ADR-0036 §Hybrid Transport Architecture commits to: shared state with lifecycle is its own component, depended on by every consumer; no server owns it. The on-demand network gRPC server documented below depends on the same refs, which is what guarantees broadcasts triggered on either transport reach all registered clients and statistics counters report system totality across all transports.
 
 **The complete dependency graph as declared in `combined-config`:**
 
@@ -282,9 +301,22 @@ Backend components' dependency on `ui-manager` is the load-bearing design in `co
    :ooloi.backend.components/http-server
    {:connection-registry (ig/ref :ooloi.backend.components/connection-registry)
     :server-statistics   (ig/ref :ooloi.backend.components/server-statistics)
-    :health-manager      (ig/ref :ooloi.backend.components/health-manager)}
+    :health-manager      (ig/ref :ooloi.backend.components/health-manager)
+    ;; The daemon, for its sweep interval alone: /health/server reports the
+    ;; interval the running daemon scheduled.
+    :cache-daemon        (ig/ref :ooloi.backend.components/cache-daemon)}
 
+   ;; The ui-manager ref is for halt order: the daemon's error handler is replaced
+   ;; at startup with one that calls into the UI manager, so the daemon halts first.
    :ooloi.backend.components/cache-daemon
+   {:piece-manager     (ig/ref :ooloi.backend.components/piece-manager)
+    :ui-manager        (ig/ref :ooloi.frontend.components/ui-manager)
+    :server-statistics (ig/ref :ooloi.backend.components/server-statistics)}
+
+   ;; The queue piece writes are submitted to. Not used by init-key — declared for
+   ;; halt ORDER: a write still draining at halt completes into the piece manager,
+   ;; so the queue halts before it.
+   :ooloi.backend.components/save-queue
    {:piece-manager (ig/ref :ooloi.backend.components/piece-manager)}
 
    ;; Frontend late
@@ -327,7 +359,7 @@ The pattern for dynamic components:
 - **It also registers the component in the system's `::origin` metadata**, declaring its dependencies there as `ig/ref`s rather than as the live components threaded into its config. This is what allows a system-wide `ig/halt!` to reach it, and what orders it correctly against the state it depends on.
 - `ig/halt-key!` removes the component when its lifecycle ends; the next reference to the system map omits the entry.
 - The `:status :running` invariant applies while the component is running; the system-health functions (§10) walk every key in the system map uniformly — they need no special handling for dynamic components.
-- The §30 conformance test enforces the invariant on whatever is present in the running system: components added dynamically during the test must comply too.
+- The `:status :running` conformance fact in `shared/test/app/clojure/ooloi/shared/system_test.clj` enforces the invariant on whatever is present in the running system: components added dynamically during the test must comply too.
 
 **The `::origin` registration is the step that is easy to omit, and omitting it fails silently.** `ig/halt!` does not walk the system map. It walks the `::origin` config in the map's metadata, filtered by the map's keys — so a component that was only `assoc`ed in is not part of what halt considers. Nothing raises; `halt-key!` is simply never called, and whatever the component holds — a bound port, an open channel, a running thread — it keeps holding.
 
@@ -375,7 +407,7 @@ A focused component has:
 
 ### Worked example: extracting shared state from `grpc-server`
 
-`grpc-server`'s `init-key` originally created and returned:
+The god-component shape for `grpc-server` is an `init-key` that creates and returns:
 - `:server` (the gRPC server instance)
 - `:health-manager` (gRPC HealthStatusManager)
 - `:connection-registry` (atom of client connections)
@@ -383,20 +415,20 @@ A focused component has:
 - `:started-at-ns` / `:started-at-ms` (uptime)
 - `:status`
 
-`http-server` then drilled into all of these to build its handlers. Two architectural problems:
+with `http-server` drilling into all of these to build its handlers. That shape has two architectural problems:
 
-1. **Dual-server impossibility.** Adding a second gRPC server (Phase 1 network server) made every drilled field ambiguous: which server's health-manager? which startup time? Their values are now contested between two consumers.
-2. **Coupling that wasn't in the config.** `http-server` declared a single `(ig/ref :grpc-server)` dependency, but actually consumed four pieces of state from inside it. The config understated the coupling by a factor of four.
+1. **Dual-server impossibility.** With a second gRPC server — the on-demand network server — every drilled field is ambiguous: which server's health-manager? which startup time? Their values are contested between two consumers.
+2. **Coupling that is not in the config.** `http-server` would declare a single `(ig/ref :grpc-server)` dependency while consuming four pieces of state from inside it. The config would understate the coupling by a factor of four.
 
-The fix:
+Ooloi's wiring avoids both:
 
-- Extract `connection-registry`, `server-statistics`, and `health-manager` into their own tiny Integrant components.
-- `grpc-server` consumes them via `ig/ref` instead of constructing them internally.
-- `http-server` drops its `:grpc-server` ref entirely and declares direct refs on the three shared components.
+- `connection-registry`, `server-statistics`, and `health-manager` are their own tiny Integrant components.
+- `grpc-server` consumes them via `ig/ref` rather than constructing them internally.
+- `http-server` holds no `:grpc-server` ref and declares direct refs on the three shared components.
 
-After the refactor:
-- The config visibly shows `http-server → {connection-registry, server-statistics, health-manager}`. No more hidden coupling.
-- Two gRPC servers can coexist, both depending on the shared state, with no ambiguity about ownership.
+The consequences:
+- The config visibly shows `http-server → {connection-registry, server-statistics, health-manager}`. There is no hidden coupling.
+- Two gRPC servers coexist, both depending on the shared state, with no ambiguity about ownership.
 - Halting one gRPC server doesn't touch `http-server` — they share state, but not lifecycle.
 
 This is "extract a component" applied to the same code three times. The result is what Integrant was built to produce.
@@ -516,9 +548,9 @@ Every new backend component added to `combined-config` requires all of the follo
 
 This requirement applies **only in `combined-config`** (§5), not in the backend standalone config (§4). In the standalone backend there is no UI manager, no splash screen, and no i18n loaded at init time — backend components start with no frontend dependencies at all.
 
-In the combined application, the UI manager loads i18n and shows the splash screen. Backend components that call `tr` during init will crash if they start before the UI manager is running. Integrant sorts by the declared dependency graph, so **every backend component in `combined-config` must declare a `ui-manager` dependency** to guarantee it starts after i18n is ready — even if the component itself has nothing to do with the UI. Without this dependency, Integrant may place the component before the UI manager in the topological sort, producing a NullPointerException with "target is null" deep in the translation machinery. Nothing in the stack trace points to a missing dependency.
+In the combined application, the UI manager loads i18n and shows the splash screen. Backend components that call `tr` during init will crash if they start before the UI manager is running. Integrant sorts by the declared dependency graph, so **every backend component in `combined-config` must start after the UI Manager** to guarantee it starts after i18n is ready — even if the component itself has nothing to do with the UI. It does so through a direct `ui-manager` ref, or through one of its dependencies: `grpc-server`, `http-server` and `save-queue` start after the UI Manager because `piece-manager`, the shared-state components and `cache-daemon` ref it directly (§5). The rule holds whether or not the component calls `tr` at init, so the ordering is never contingent on what a component happens to do. Without it, Integrant may place the component before the UI manager in the topological sort, producing a NullPointerException with "target is null" deep in the translation machinery. Nothing in the stack trace points to a missing dependency.
 
-Note the asymmetry: in `backend-config` the same component may have `{}` (no dependencies), while in `combined-config` it must have `{:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}`. The `init-key` implementation is shared — it is the *config entry* that differs between the two systems.
+Note the asymmetry: in `backend-config` the same component may have `{}` (no dependencies), while in `combined-config` it carries `{:ui-manager (ig/ref :ooloi.frontend.components/ui-manager)}` unless a dependency already orders it after the UI Manager. The `init-key` implementation is shared — it is the *config entry* that differs between the two systems.
 
 ```clojure
 ;; In combined-config (shared/system.clj) — ui-manager dependency required:
@@ -545,21 +577,21 @@ A component that returns a map without `:status :running` is silently reported a
    :status   :running})     ; required
 ```
 
-**This invariant is test-enforced** for the combined system by the conformance test in `shared/test/app/clojure/ooloi/shared/system_test.clj` Section 30. Any future component added to `combined-config` that violates the invariant will fail the conformance test with the offending component name in the failure output. No per-component workarounds are permitted in `get-combined-system-health`.
+**This invariant is test-enforced** for the combined system by the `:status :running` conformance fact in `shared/test/app/clojure/ooloi/shared/system_test.clj`, which starts `with-combined-system` and asserts that `get-combined-system-health` reports no unhealthy component. Any future component added to `combined-config` that violates the invariant will fail the conformance test with the offending component name in the failure output. No per-component workarounds are permitted in `get-combined-system-health`.
 
 ### 3–7. The full checklist
 
-3. Entry in `splash-message-keys` in `shared/system.clj`
-4. Entry in `tr-declare` in `shared/system.clj`
+3. Entry in `splash-message-keys` in `ooloi.shared.splash` (`shared/src/app/clojure/ooloi/shared/splash.clj`). A component that calls no `tr` at init and that the splash need not advertise may have none — `save-queue` has none
+4. Entry in the `tr-declare` in `ooloi.shared.splash`, for the new splash key
 5. Run `lein i18n` in `shared/` — adds the new key to `en_GB.po`
 6. Copy and translate the new PO entry into all other locale files — `lein i18n` only touches `en_GB.po`
-7. Use dynamic counts in tests — `(count (keys (system/combined-config)))` and `(count (system/splash-message-keys))`, never hardcoded integers
+7. Use dynamic counts in tests — `(count (keys (system/combined-config)))` and `(count (splash/splash-message-keys))`, never hardcoded integers
 
 ### 8. gRPC-accessible backend component: carry the dep through *every* site
 
 If the new component is reached from a `shared/ops/` impl during a gRPC request (i.e. it's exposed via an `^{:api true}` multimethod and called via `SRV/*`), its Integrant dep must be carried through **all four** of these sites. Missing any one routes the component as `nil` at the impl, and the SRV call silently returns `{:result nil}` with no error visible to the caller.
 
-**First consider a protocol.** If the component's state can be reached without the running server's per-request context — most can (a piece store, a registry) — the structurally-decoupled alternative is to declare the operation as a **protocol** in `shared` and implement it in `backend` (dependency inversion; `PieceResolver` is the existing example, `PieceManagerOps` another). That needs **none** of the four sites below, no `*server-component*`, and no runtime `resolve`. Use the wiring below to extend the existing `undo`/`instrument_library`/`event_subscription` seam, or where an op genuinely needs the per-request server context (`:transport`, `:server-id`).
+**First consider a protocol.** If the component's state can be reached without the running server's per-request context — most can (a piece store, a registry) — the structurally-decoupled alternative is to declare the operation as a **protocol** in `shared` and implement it in `backend` (dependency inversion; `PieceResolver` is the existing example, `PieceManagerOps` another). That needs **none** of the four sites below, no `*server-component*`, and no runtime `resolve`. Use the wiring below to extend the existing `undo`/`instrument_library`/`event_subscription`/`filesystem` seam, or where an op genuinely needs the per-request server context (`:transport`, `:server-id`).
 
 | # | Site | What to add |
 |---|---|---|
@@ -576,7 +608,7 @@ If the new component is reached from a `shared/ops/` impl during a gRPC request 
 
 ### Test utility namespaces
 
-Ooloi's test utilities are split into six namespaces, each in its own source root under `shared/test/util/`. The split is enforced by the classpath: backend tests load only what their test profile maps in, so backend-only tests cannot accidentally load frontend-coupled helpers.
+Ooloi's test utilities are split into eight namespaces across three source roots under `shared/test/util/`. The split is enforced by the classpath: backend tests load only what their test profile maps in, so backend-only tests cannot accidentally load frontend-coupled helpers.
 
 | Namespace | File location | Source root | Auto-discovered by Midje in |
 |---|---|---|---|
@@ -584,16 +616,18 @@ Ooloi's test utilities are split into six namespaces, each in its own source roo
 | `util.server` | `shared/test/util/backend/util/server.clj` | `util/backend` | shared; reachable from backend via :resource-paths (no auto-discover) |
 | `util.client` | `shared/test/util/backend/util/client.clj` | `util/backend` | shared only — `util.client` requires both backend and frontend code, so it can only load in the shared project (which has both on its classpath) |
 | `util.frontend` | `shared/test/util/frontend/util/frontend.clj` | `util/frontend` | shared, frontend |
+| `util.robot` | `shared/test/util/frontend/util/robot.clj` | `util/frontend` | shared, frontend — `javafx.scene.robot.Robot` helpers for real OS input (focus, clicks, drags) |
+| `util.macos-windows` | `shared/test/util/frontend/util/macos_windows.clj` | `util/frontend` | shared, frontend — reads true window stacking order from macOS; required lazily, never at top level (see its namespace docstring) |
 | `util.instrument-library` | `shared/test/util/backend/util/instrument_library.clj` | `util/backend` | shared; reachable from backend via :resource-paths |
 | `util.filesystem` | `shared/test/util/backend/util/filesystem.clj` | `util/backend` | shared; reachable from backend via :resource-paths |
 
-**Why the split?** `util.server` previously also contained client-side helpers (`register-client`, `with-clients`, `with-combined-system`). Those reference `ooloi.frontend.grpc.event-client` and `ooloi.shared.system` (which transitively pulls in the frontend), making the combined file unloadable from backend-only tests. Splitting the client-side helpers into a separate `util.client` namespace lets the backend's test profile pull `util/backend` in via `:resource-paths` (classpath access without Midje auto-discovery) while leaving anything frontend-coupled out of the backend's loadable surface. The frontend project never references `util.client` (servers and clients are integration concerns and integration tests live in the shared project), so `util.client` sits under `util/backend/` alongside `util.server`: shared has `util/backend` on `:test-paths` and auto-loads it; backend has it on `:resource-paths` (reachable but not auto-loaded; backend tests don't require it); frontend doesn't have `util/backend` on its classpath at all.
+**Why the split?** The client-side helpers (`register-client`, `with-clients`, `with-combined-system`) reference `ooloi.frontend.grpc.event-client` and `ooloi.shared.system` (which transitively pulls in the frontend), so a file holding both them and the server helpers would be unloadable from backend-only tests. Keeping the client-side helpers in a separate `util.client` namespace lets the backend's test profile pull `util/backend` in via `:resource-paths` (classpath access without Midje auto-discovery) while leaving anything frontend-coupled out of the backend's loadable surface. The frontend project never references `util.client` (servers and clients are integration concerns and integration tests live in the shared project), so `util.client` sits under `util/backend/` alongside `util.server`: shared has `util/backend` on `:test-paths` and auto-loads it; backend has it on `:resource-paths` (reachable but not auto-loaded; backend tests don't require it); frontend doesn't have `util/backend` on its classpath at all.
 
 #### A test helper may never live in a production file
 
 Test helpers belong in these namespaces and nowhere else. Not in a `src/` namespace, not even beside machinery they share with production, and a docstring reading "Test-only" in `src/` is the smell rather than a mitigation.
 
-Production code is what ships. A test-only function sitting in it is dead weight at best, and at worst it gets *reached for* by later production code precisely because it is there. `run-on-fx-thread-sync!` — a blocking JAT bridge whose ten-second timeout exists so a deadlocked JAT fails a test run rather than hanging it — was promoted from a test utility into production `fx.clj` so that one caller could block and the suite could drop four flush calls. That caller was later reverted; the function stayed; and the dirty-close work eventually used it to raise a modal dialog, turning a test's deadlock guard into a deadline on the user's thinking time in front of "do you want to save the changes?". Four separate docstring prohibitions did not prevent any of that. Returning the function to `util.frontend` did, because production then has no var to call.
+Production code is what ships. A test-only function sitting in it is dead weight at best, and at worst it gets *reached for* by later production code precisely because it is there. `run-on-fx-thread-sync!` is the standing example: a blocking JAT bridge whose ten-second timeout exists so a deadlocked JAT fails a test run rather than hanging it. In a production namespace it is available to production callers, and one that uses it to raise a modal dialog turns a test's deadlock guard into a deadline on the user's thinking time in front of "do you want to save the changes?". Docstring prohibitions do not prevent this. Keeping the function in `util.frontend` does, because production then has no var to call.
 
 **When a helper needs something private from a production namespace, make it public.** Widening a namespace's own surface costs far less than housing test code in it, and nothing is hard to relocate in Clojure. Do not duplicate the private helper, and do not invent a third namespace to share it — both are heavier than dropping a hyphen. `util.filesystem/make-alias!` writes a macOS Finder alias for the `[:alias t]` fixture entry; the CFURL primitives it needs (`cf-fn`, `cfurl-from-path`, `release!`) are public in `ooloi.shared.platform.macos-alias`, which itself keeps only the alias *resolution* production actually calls.
 
@@ -603,9 +637,9 @@ The helper's own tests move with it: `make-alias!` is tested in `util.filesystem
 
 The rule above runs one way only, and its converse is not "so keep everything test-shaped in the test namespaces". **Where the same helper is wanted on both sides of the `src/`–`test/` line, there is one implementation and it lives in production.** Tests can require production code; production cannot require tests. Anything else means two implementations of one idea, and two implementations drift.
 
-They drift silently, because both work. `wait-for-state` and `wait-for-event` were test-only in `util.common` while the combined application hand-rolled the same `add-watch`/promise pattern separately, in the wait a piece window's close performs for its own in-flight refetches. Neither was wrong. But only the test copy had the pre-watch race written into it — that a watcher installed after its value has already arrived never fires for it, so the current value must be tested *after* installation — and a second production consumer was about to make it three copies.
+They drift silently, because both work. `wait-for-state` and `wait-for-event` are the example: tests wait on atoms reaching a state, and so does the combined application, in the wait a piece window's close performs for its own in-flight refetches. The part of that pattern that is easy to get wrong is the pre-watch race — a watcher installed after its value has already arrived never fires for it, so the current value must be tested *after* installation — and with two copies, one of them can carry the fix while the other does not, with nothing failing.
 
-The implementation now lives in `ooloi.shared.async`, which every project can reach: `shared/src/main/clojure` is on both the backend's and the frontend's `:source-paths`, so `ooloi.shared.*` is available to all three projects and all their tests. `util.common` **re-exports** the two names rather than defining them, so several hundred existing call sites keep the name they know. A re-export is one implementation, not a duplicate.
+So the implementation lives in `ooloi.shared.async`, which every project can reach: `shared/src/main/clojure` is on both the backend's and the frontend's `:source-paths`, so `ooloi.shared.*` is available to all three projects and all their tests. `util.common` **re-exports** the two names rather than defining them, so test call sites keep the name they know. A re-export is one implementation, not a duplicate.
 
 **The test is who uses it, and it is worth applying deliberately rather than by feel:**
 
@@ -625,7 +659,7 @@ The reason is not tidiness. A hand-rolled copy of a lifecycle cannot be correcte
 Two functions in particular get hand-rolled and should not be:
 
 - **`util.client/halt-app!`** is the teardown for any test that starts an application. It waits for the shared pool to fall idle and then halts, with the halt in a `finally` so that a drain which times out still tears the system down rather than leaking it. A test that halts a started application itself goes through this rather than writing its own flush-and-halt sequence.
-- **`util.client/create-client-preserving-root`** is for a client created *beside a running application*. `grpc-clients`' `init-key` unconditionally claims the `*srv-client*` root binding — correct and wanted when no application is running, and wrong when one is, because it points the application's own pool-dispatched startup work at the new client. That work then fails against a client that has not registered (a nil connection pool), has been disconnected (dead channels), or is unknown to the server — on a pool thread, with no assertion involved, while the suite reports green. The 26 app-less creations correctly keep the plain `create-client-component`.
+- **`util.client/create-client-preserving-root`** is for a client created *beside a running application*. `grpc-clients`' `init-key` unconditionally claims the `*srv-client*` root binding — correct and wanted when no application is running, and wrong when one is, because it points the application's own pool-dispatched startup work at the new client. That work then fails against a client that has not registered (a nil connection pool), has been disconnected (dead channels), or is unknown to the server — on a pool thread, with no assertion involved, while the suite reports green. A client created with no application running correctly uses the plain `create-client-component`.
 
 **Awkwardness is evidence, not an obstacle.** Where replacing an older form with the macro makes the resulting code *worse*, that is information about the macro rather than about the site: the older form is fulfilling a purpose the macro does not cover. It stays, and the reason is recorded. It may instead mean the macro should grow an option, or that two macros should merge — and **dropping a macro outright is a legitimate outcome**, not a failure. What is not legitimate is bending a test out of shape to satisfy a tidiness rule. The point of one idiom per lifecycle is that cognitive load drops; a contorted call site raises it.
 
@@ -665,10 +699,10 @@ Ooloi provides five primary test macros covering distinct test scopes. Pick the 
 
 | What you're testing | Macro to use | Scope started |
 |---|---|---|
-| gRPC client-server API calls — wire protocol, headers, interceptors, event streaming, security | `with-server` + `with-clients` + `with-srv-client` | `grpc-server` + `http-server` + `piece-manager` (store via the ops namespace handle); `instrument-library` / `backend-undo-manager` passed as `nil` |
-| Full backend Integrant system — multi-client integration with real piece/IL/undo state | `with-system` | All backend components (piece-manager, instrument-library, backend-undo-manager, grpc-server, http-server, cache-daemon) |
+| gRPC client-server API calls — wire protocol, headers, interceptors, event streaming, security | `with-server` + `with-clients` + `with-srv-client` | `grpc-server` + `http-server` + `piece-manager` (store via the ops namespace handle) + `save-queue`, and the three shared-state components; `instrument-library` / `backend-undo-manager` passed as `nil` |
+| Full backend Integrant system — multi-client integration with real piece/IL/undo state | `with-system` | Every component in `backend-config` (§4) |
 | The running **application** — startup sequence, menu bar, windows, anything reached through a real launch | `with-started-app` | Everything `start-app!` starts, plus the startup window-set; headless unless `{:graphical? true}` |
-| Full combined application — frontend → backend pipeline, JAT callbacks, UI manager state | `with-combined-system` | All 16 baseline components (every backend + every frontend), headless UI by default |
+| Full combined application — frontend → backend pipeline, JAT callbacks, UI manager state | `with-combined-system` | Every component in `combined-config` (every backend + every frontend), headless UI by default |
 | Frontend UI manager and individual frontend components | `with-ui-manager` | Just thread-pool, event-bus, ui-manager |
 
 `with-started-app` and `with-combined-system` both give a whole application, and the difference is what starts it: `with-combined-system` initialises the component graph directly, while `with-started-app` goes through `start-app!` — the production launch, splash and all — so it is the one to use when the *startup* is part of what the test is about. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model).
@@ -681,9 +715,9 @@ The three system-level macros differ in *which components actually start*. Pick 
 
 | Macro | Backend components initialised | Frontend components initialised | Use when |
 |---|---|---|---|
-| `with-server` | `grpc-server` + `http-server`, plus a **`piece-manager`** — lightweight (its `init-store!` only creates the store ref on the ops namespace handle), so `with-server` tests get a real piece store, mirroring production where the gRPC server always runs alongside one. `instrument-library` and `backend-undo-manager` are **not** initialised — they're passed to the gRPC server as `nil`. | None | gRPC mechanism tests (TLS handshake, header propagation, event streaming, security interceptors, client registration) and tests that store/read pieces directly. The test must not invoke an SRV call that reaches `instrument-library` or `backend-undo-manager` state. |
-| `with-system` | Full backend: `piece-manager`, `instrument-library`, `backend-undo-manager`, `grpc-server`, `http-server`, `cache-daemon`. | None | Multi-client integration tests that need real backend state (IL, pieces, undo stacks) but no frontend pipeline. SRV calls that touch IL or pieces are safe here. |
-| `with-combined-system` | All backend components (same as `with-system`). | All five frontend components: `event-bus`, `ui-manager`, `grpc-clients`, `event-router`, `fetch-coordinator`. | Tests that need the frontend → backend event pipeline, JAT-scheduled callbacks, or UI manager state. Heaviest macro. |
+| `with-server` | `grpc-server` + `http-server`, plus a **`piece-manager`** — lightweight (its `init-store!` only creates the store ref on the ops namespace handle), so `with-server` tests get a real piece store, mirroring production where the gRPC server always runs alongside one — and a **`save-queue`**, so piece writes have a queue to go to. It also starts the three shared-state components. `instrument-library` and `backend-undo-manager` are **not** initialised — they're passed to the gRPC server as `nil`. | None | gRPC mechanism tests (TLS handshake, header propagation, event streaming, security interceptors, client registration) and tests that store/read pieces directly. The test must not invoke an SRV call that reaches `instrument-library` or `backend-undo-manager` state. |
+| `with-system` | Full backend — every component in `backend-config`: `thread-pool`, `instrument-library`, `backend-undo-manager`, `piece-manager`, `connection-registry`, `server-statistics`, `health-manager`, `grpc-server`, `cache-daemon`, `http-server`, `save-queue`. | None | Multi-client integration tests that need real backend state (IL, pieces, undo stacks) but no frontend pipeline. SRV calls that touch IL or pieces are safe here. |
+| `with-combined-system` | All backend components (same as `with-system`). | All six frontend components: `event-bus`, `ui-manager`, `grpc-clients`, `event-router`, `fetch-coordinator`, `frontend-undo-manager`. | Tests that need the frontend → backend event pipeline, JAT-scheduled callbacks, or UI manager state. Heaviest macro. |
 
 #### `with-server` with nil backend dependencies: `Future.get` NPE pitfall
 
@@ -697,11 +731,11 @@ The error message is misleading — there's nothing wrong with futures, with pro
 
 **Fix.** If the test needs `instrument-library` or `backend-undo-manager` state, switch from `with-server` to `with-system` (full backend) or `with-combined-system` (full backend + frontend, if the test also needs the frontend pipeline). Piece state needs no switch — `with-server` already provides it.
 
-> **Why `with-server` starts a piece-manager (and IL/undo don't).** Earlier, the piece store was a JVM-global `defonce` — ambient under any `with-server`, so the piece-manager component didn't need starting here, and this section originally listed the piece-manager among the nil dependencies. Once the store became **component-owned** (created by `init-store!` at the component's `init-key`, released at `halt-key!`), that ambient store was gone, so `with-server` now starts a piece-manager to keep piece operations working — cheap, because it only creates a ref. `instrument-library` (loads its bundle from disk) and `backend-undo-manager` are heavier and reached via `*server-component*`, so they stay opt-in through `with-system`.
+> **Why `with-server` starts a piece-manager (and IL/undo don't).** The piece store is **component-owned** — created by `init-store!` at the piece-manager's `init-key`, released at `halt-key!` — so there is no ambient store for piece operations to fall back on, and `with-server` starts a piece-manager to keep them working. That is cheap, because it only creates a ref. A `save-queue` is started for the same reason: piece writes are enqueued on it, and with none published `enqueue-write!` throws. `instrument-library` (loads its bundle from disk) and `backend-undo-manager` are heavier and reached via `*server-component*`, so they stay opt-in through `with-system`.
 
 ### `with-server` / `with-clients` / `with-srv-client`
 
-The standard pattern for gRPC integration tests. `with-server` starts the gRPC server, the HTTP health server, and a piece-manager (plus the shared connection-registry / server-statistics / health-manager — see the init-scope table above), waits for startup (100ms default), then tears them down. `with-clients` creates client components, optionally registers them, then disconnects them. `with-srv-client` binds a client to the `SRV/*` dynamic context.
+The standard pattern for gRPC integration tests. `with-server` starts the gRPC server, the HTTP health server, a piece-manager and a save-queue (plus the shared connection-registry / server-statistics / health-manager — see the init-scope table above), runs the body, then tears them down. There is no startup wait, and none is needed: `start-server` returns only once every component has started, and both gRPC's `Server.start()` and `HttpServer/create` bind before returning. `with-clients` creates client components, optionally registers them, then disconnects them. `with-srv-client` binds a client to the `SRV/*` dynamic context.
 
 Every piece-manager-booting macro here — `with-server`, `with-system`, `with-combined-system`, and the narrower `with-piece-manager` / `with-shared-components` — redirects the platform directory (`~/.ooloi`) to a temporary directory for the duration of the test, via `util.common/with-test-platform-directory`. So no integration test touches the developer's real user directory: the persistent piece catalogue, the on-disk instrument library, and TLS certs all land in a temp directory that is deleted afterwards. A test that boots a persistent component *without* a piece-manager wraps `with-test-platform-directory` explicitly.
 
@@ -724,15 +758,13 @@ Every piece-manager-booting macro here — `with-server`, `with-system`, `with-c
     (with-srv-client client
       (SRV/create-rest :duration 1/4) => truthy)))
 
-;; Test TLS mismatch — explicit client override
+;; Test TLS mismatch — explicit client override, registered in the body so the
+;; failure is observable (registration otherwise runs before the body)
 (with-server [server {:transport :network :tls true}]
-  (with-clients server [[client "test-client" {:tls false}]]
-    (event-client/register-with-server client-config client)
-    => (throws io.grpc.StatusRuntimeException)))
-
-;; Skip startup delay for simple tests
-(with-server [server :sleep-ms 0]
-  ...)
+  (with-clients server [[client "test-client" :non-registered {:tls false}]]
+    (let [e (try (register-client-with-server client server)
+                 (catch clojure.lang.ExceptionInfo ex ex))]
+      (:type (ex-data e)) => :server-requires-tls)))
 
 ;; Deferred registration — when you need with-redefs before connecting
 (with-server [server]
@@ -740,7 +772,7 @@ Every piece-manager-booting macro here — `with-server`, `with-system`, `with-c
     (let [events (atom [])]
       (with-redefs [event-client/process-received-event
                     (fn [event _] (swap! events conj event))]
-        (register-client client)
+        (register-client-with-server client server)
         (server/send-server-event (:grpc server) {:type :test :message "hi"})
         (Thread/sleep 50)
         (some #(= (:message %) "hi") @events) => truthy))))
@@ -760,12 +792,12 @@ Every piece-manager-booting macro here — `with-server`, `with-system`, `with-c
                         (= client-id "client-a") (swap! events1 conj event)
                         (= client-id "client-b") (swap! events2 conj event)
                         (= client-id "client-c") (swap! events3 conj event)))]
-        (register-client c1)
-        (register-client c2)
+        (register-client-with-server c1 server)
+        (register-client-with-server c2 server)
         ;; c3 not yet registered — first event reaches only c1 and c2
         (server/send-server-event (:grpc server) {:type :first :message "first"})
         (Thread/sleep 50)
-        (register-client c3)
+        (register-client-with-server c3 server)
         ;; c3 now registered — second event reaches all three
         (server/send-server-event (:grpc server) {:type :second :message "second"})
         (Thread/sleep 50)
@@ -807,7 +839,7 @@ The frontend `grpc-clients` component's `init-key` unconditionally `alter-var-ro
 
 The symptom of getting this wrong is identity-dependent server responses (`:own?` flipping unexpectedly, event subscribers not seeing broadcasts) with no exception and no stack trace pointing at client identity — the SRV calls succeed but route through the wrong client.
 
-**`register-client-with-server` forwards the full component.** When a test uses `:non-registered` in `with-clients` and then registers later, the function call is `(uc/register-client-with-server client server)`. The helper passes the entire client component as the config argument to `event-client/register-with-server` — it does not `select-keys` a curated subset. The receiving side's destructure picks the keys it needs (`:client-id`, `:transport`, `:tls`, `:cert-path`, `:insecure-dev-mode`, `:deadline-ms`, etc.) and ignores everything else. This is deliberate: a `select-keys` form had to be patched once when TLS keys were added and would have needed another patch for `:deadline-ms`. Passing the whole component is harmless and future-proof.
+**`register-client-with-server` forwards the full component.** When a test uses `:non-registered` in `with-clients` and then registers later, the function call is `(uc/register-client-with-server client server)`. The helper passes the entire client component as the config argument to `event-client/register-with-server` — it does not `select-keys` a curated subset. The receiving side's destructure picks the keys it needs (`:client-id`, `:transport`, `:tls`, `:cert-path`, `:insecure-dev-mode`, `:deadline-ms`, etc.) and ignores everything else. This is deliberate: a curated `select-keys` has to be extended for every key the receiving side comes to need, and a key it omits fails at a distance rather than at the call — a missing TLS key as a handshake failure against a TLS server, a missing `:deadline-ms` as registration state leaking across reconnect cycles. Passing the whole component is harmless and needs no such upkeep.
 
 **Several gRPC servers in one test.** `http-server` holds no ref to any `grpc-server`; it depends on the shared `connection-registry`, `server-statistics` and `health-manager` components directly (§6 worked example). Each `with-server` invocation owns the full set of components it creates, so nesting two of them would start a second `http-server` on the same port. A test that needs several gRPC servers therefore drives `ig/init` / `ig/halt!` on a config of its own — one set of shared components, at most one `http-server`, and as many gRPC servers as the test requires. The shared components must outlive any single `grpc-server` (ADR-0036 §Hybrid Transport Architecture).
 
@@ -815,7 +847,7 @@ The symptom of getting this wrong is identity-dependent server responses (`:own?
 
 | Pattern | Why `with-server` doesn't fit |
 |---|---|
-| Binding-conflict tests | Need to assert that a second `ig/init-key` THROWS on port conflict; `with-server`'s startup-wait fires before the body can catch it |
+| Binding-conflict tests | Need to assert that a second `ig/init-key` THROWS on port conflict while the first server keeps running. `with-server` is a single started-server lifecycle: a conflict provoked through a second `with-server` throws from `start-server` in its `let`, before its body, where nothing in the body can catch it |
 | Double-halt shutdown tests | Need direct access to halt-key's return value for assertions; want to halt twice in sequence |
 | Concurrent multi-server stress | Spin up N servers in `future` blocks; `with-server` is a single-server wrapper |
 | Init-failure tests | Assert that init fails under specific conditions; bundle leak from `start-server`'s partial init isn't problematic but explicit `ig/init-key` is cleaner |
@@ -841,19 +873,19 @@ The system map contains all Integrant components as returned by `start-with-conf
 
 **Its config map is not `with-combined-system`'s `:extra-config`, and the difference decides some tests.** What `with-system` receives goes through `merge-env-config`, which writes only the keys `backend-injection-spec` names — ports, timeouts, TLS paths, thread-pool size, the cache daemon's sweep interval. It cannot reach an arbitrary component setting, where `:extra-config` overrides any component's config at component granularity.
 
-So the question for any test that needs a component configured a particular way is whether `backend-injection-spec` names the key. If it does — ports, timeouts, TLS paths, thread-pool size, the cache daemon's sweep interval — pass it in the config map and `with-system` reaches it. If it does not, the test stays on manual lifecycle: build the config with `get-backend-config`, `assoc-in` the one value, and `ig/init` it — the production config through the production init path, under `with-no-recorded-failures` and `with-test-platform-directory`, which is what the macro would have supplied. As with the `with-server` exceptions above, declare that in a comment at the fact.
+So the question for any test that needs a component configured a particular way is whether `backend-injection-spec` names the key. If it does — ports, timeouts, TLS paths, thread-pool size, the cache daemon's sweep interval — pass it in the config map and `with-system` reaches it. If it does not, the test stays on manual lifecycle: build the config with `get-backend-config`, `assoc-in` the one value, and `ig/init` it — the production config through the production init path, under `with-no-recorded-failures` (the failure guard — see §The failure guard below) and `with-test-platform-directory`, which is what the macro would have supplied. As with the `with-server` exceptions above, declare that in a comment at the fact.
 
 The distinction is about what an *operator* can set, not about test convenience. A key belongs in the injection spec because a deployment needs to vary it; that it then becomes reachable from a test is a consequence, never the reason. Adding one to make a test shorter is production shaped by test need.
 
 ### `with-combined-system`
 
-For testing the full combined application — all 16 baseline components, in-process transport, headless UI by default. This is the heaviest macro and the most faithful to production.
+For testing the full combined application — every component in `combined-config`, in-process transport, headless UI by default. This is the heaviest macro and the most faithful to production.
 
 **Macro signature**: `[[system-symbol opts] & body]`. The `opts` map is optional and accepts the following keys: `:transport` (`:in-process` default, or `:network` for real gRPC channels with header propagation), `:extra-config` (a map merged into the Integrant config at component granularity to override any component's settings — port, `:ui-mode`, TLS, etc.), `:on-progress` (called before each component inits), and `:on-ready` (called after each component inits). See §Options below for the full table.
 
 ```clojure
 (with-combined-system [sys]
-  ;; All 16 baseline components are running
+  ;; Every combined-config component is running
   (get-in sys [:ooloi.backend.components/grpc-server :status]) => :running
   (get-in sys [:ooloi.frontend.components/ui-manager :status]) => :running
 
@@ -863,7 +895,7 @@ For testing the full combined application — all 16 baseline components, in-pro
       (SRV/create-rest :duration 1/4) => truthy)))
 ```
 
-**Signature**: `[[system-symbol opts] & body]`. `opts` is an optional map; when omitted, the macro defaults to `:in-process` transport and `:headless` UI mode — the original single-argument behaviour. All existing call sites continue to work unchanged.
+**Signature**: `[[system-symbol opts] & body]`. `opts` is an optional map; when omitted, the macro defaults to `:in-process` transport and `:headless` UI mode.
 
 **Options**:
 
@@ -894,7 +926,7 @@ For testing the full combined application — all 16 baseline components, in-pro
     (count @started) => (count (system/combined-config))))
 ```
 
-**Defaults preserved**: With no opts, the macro forces `:in-process` and `:headless` exactly as before. This is the right choice for combined-desktop end-to-end tests where there is exactly one client and no JavaFX windows should appear.
+**Defaults**: With no opts, the macro uses `:in-process` and `:headless`. This is the right choice for combined-desktop end-to-end tests where there is exactly one client and no JavaFX windows should appear.
 
 **Domain event subscriptions are NOT wired by `with-combined-system`.** The macro calls `start-system!` (Integrant init only), not `start-app!` (which adds post-init wiring). Tests that need the full backend-event → frontend-handler pipeline — e.g. backend broadcasts `:instrument-library-changed` → event router → aggregator → event bus → `handle-library-changed!` → re-fetch — must call `wire-domain-subscriptions!` explicitly:
 
@@ -923,6 +955,24 @@ For testing the full combined application — all 16 baseline components, in-pro
 ```
 
 Two traps make this necessary. `cores-1` is `1` on a two-core CI runner, which **deadlocks** the blocked task — no thread is left to run anything else. And capping the pool *below* `cores-1` **starves** the other pool work: under a multi-namespace sweep the threads are busy with combined-system startup, so a `cp/future` dispatched at window-open queues behind them and loses its expected ordering to a later-dispatched refetch — a flake that never reproduces run alone, only under sweep contention. A fixed floor at or above the peak concurrent pool tasks (8 is ample) avoids both.
+
+### `with-quit-app` and `with-restored-app`
+
+Two shapes of application test cannot use `with-started-app`, and each has its own macro in `util.client`. Both start the application through `start-app!`, headless by default, under `with-frontend-test-config` and zero animation times, and both carry the failure guard (§The failure guard below).
+
+**`with-quit-app`** — `(with-quit-app platform [sys mgr pool] opts? & body)` — is the setup for a test whose gesture *is* a shutdown. It differs from `with-started-app` in two ways:
+
+- It halts on exit **only if the body left the system running**. `with-started-app` halts unconditionally, so a body that quits the application would be halted twice.
+- It pins `platform/macos?`, `windows?` and `linux?` to `platform` (`:macos`, `:windows` or `:linux`) around the **boot**, not merely the body, because the menu bar and the scene accelerators are built during startup.
+
+It binds the system map, the UI Manager and the shared pool, and awaits `:app-ready` before the body runs. The pool is bound because it is how a shutdown is observed: `(.awaitTermination pool ms unit)` returns true when the halt completed and false when a Quit was cancelled. Options: `{:graphical? true}` for real shown windows, needed by anything that depends on real OS focus; `{:pool-size n}`, a fixed thread count for a test that parks a pool thread, since a single-thread pool leaves the quit's own save pass nowhere to run; and `{:on-shutdown f}`, passed through to `start-app!` — omitted it is nil, and a supplied one must never actually exit, because the test JVM has to survive.
+
+**`with-restored-app`** — `(with-restored-app platform opts [sys mgr pool seeded] & body)` — tests session restore, which reads the window session and the persistent catalogue off disk at startup, before any window opens. A restore test needs a previous session on disk before the application under test boots, which `with-started-app` and `with-quit-app` cannot provide, so this macro boots the application twice inside one platform directory and one `with-tmp-filesystem` scope:
+
+1. A **seed** boot runs `(:seed opts)`, a `(fn [seed-mgr seed-pool root] …)` that leaves a session on disk through production paths only — `SRV/save-piece` and `persistence/save-window-session` — then halts. Its return value is bound to `seeded`.
+2. The boot **under test** starts in the same platform directory, with `(:extra-config opts)` merged into its config, awaits `:app-ready`, and runs the body. Restore fires from the real startup, never by direct call.
+
+Both boots are headless, and `platform` is pinned around both, as in `with-quit-app`.
 
 ### `with-ui-manager`
 
@@ -953,7 +1003,7 @@ For tests that need a UI manager without the full combined system. Creates a thr
   ...)
 ```
 
-Binding forms: `[mgr]`, `[mgr opts-map]`, `[mgr pool]`, or `[mgr pool opts-map]`. A symbol after the manager binds the manager's live pool — so a test can pass it to a `show-*` fn that fetches on the pool, with no nested `with-thread-pool`; a map is the options. Defaults: `:pool-size 2`, `:ui-mode :headless`. `:extra-config` is merged into the `ig/init-key` config map. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model) for the full frontend testing model.
+Binding forms: `[mgr]`, `[mgr opts-map]`, `[mgr pool]`, or `[mgr pool opts-map]`. A symbol after the manager binds the manager's live pool — so a test can pass it to a `show-*` fn that fetches on the pool, with no nested `with-thread-pool`; a map is the options. Defaults: `:pool-size 2`, `:ui-mode :headless`, `:halt? true`. `:extra-config` is merged into the `ig/init-key` config map. `{:halt? false}` leaves the UI Manager's own halt to the body, for a test whose subject is that halt — halting it in the macro as well would double-halt it or hide what the test came to observe. The event bus is still halted either way and waits on the `:ui-done` signal the manager's halt delivers, so a body that takes this option must perform the halt. See [Frontend Architecture Guide §12](FRONTEND_ARCHITECTURE_GUIDE.md#12-testing-model) for the full frontend testing model.
 
 **Visual inspection tests** — when a test needs to show a real window on screen (e.g. to verify layout, content, or appearance), pass `:ui-mode :graphical`. In headless mode (the default), `show-window!` builds and registers the Stage but never calls `window/show!`, so nothing appears on screen. Combine with `(visual-pause ms)` and the `OOLOI_UI_VISUAL=true` environment variable:
 
@@ -1009,7 +1059,7 @@ Headless suppresses only `window/show!`; registration, scene assembly, menu wiri
 
 ### Async helpers from `util.common`
 
-For tests that need to wait on asynchronous state changes (events arriving in an atom, a registry counting up or down, a flag flipping), `util.common` provides two helpers built on `promise` + `add-watch` + `(deref _ timeout-ms nil)`. They return as soon as the condition is satisfied, with a hard upper-bound timeout — replacing brittle `Thread/sleep N` waits.
+For tests that need to wait on asynchronous state changes (events arriving in an atom, a registry counting up or down, a flag flipping), `util.common` provides three helpers. `wait-for-event` and `wait-for-state` are re-exports of the implementations in `ooloi.shared.async`, built on `promise` + `add-watch` + `(deref _ timeout-ms nil)`; `wait-until` polls, for conditions with nothing to watch. All three return as soon as the condition is satisfied, with a hard upper-bound timeout — replacing brittle `Thread/sleep N` waits.
 
 #### `wait-for-event` — predicate per element
 
@@ -1075,13 +1125,13 @@ The last resort, and genuinely last. `wait-for-state` and `wait-for-event` are *
 
 **It is still better than a sleep, for the reason that governs this whole class:** it returns the moment the condition holds instead of always paying the full delay, and it fails at a deadline instead of proceeding silently to an assertion that was never going to hold.
 
-**Do not reach for it when an atom does express the condition.** Three separate suites had written *"the target is a JavaFX property, not a Clojure atom, so `wait-for-state` can't watch it"* — correct, and the wrong conclusion, because polling was available all along. The opposite error is commoner: polling a view when the model behind it is an atom, which samples a consequence instead of watching the cause.
+**Do not reach for it when an atom does express the condition — and do not rule it out when nothing does.** *"The target is a JavaFX property, not a Clojure atom, so `wait-for-state` can't watch it"* is correct, and the wrong conclusion when it ends in a sleep, because polling is available. The opposite error is commoner: polling a view when the model behind it is an atom, which samples a consequence instead of watching the cause.
 
 ### Teardown that provokes production behaviour must wait for it to finish
 
 A teardown step is not always inert. Halting a component can set real production work in motion, and if the test returns before that work completes, the rest of the teardown dismantles the system underneath it.
 
-The clearest case is the collaboration server. Halting a gRPC server completes its clients' observers, so the frontend sees a terminal event and begins an involuntary reversion to the local backend ([ADR-0036 §Involuntary Reversion](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md)). That reversion is asynchronous — it runs on the gRPC executor, not on the test thread — and it re-registers against the in-process backend. A test that returns the instant the server is halted abandons it mid-flight, and the enclosing `with-combined-system`'s `ig/halt!` then takes away the very backend it is re-registering against. The reversion fails; and since the frontend now records such failures rather than discarding them ([ADR-0017 §Surfacing Unexpected Runtime Failures](../ADRs/0017-System-Architecture.md)), the result is a stack trace printed inside a green run.
+The clearest case is the collaboration server. Halting a gRPC server completes its clients' observers, so the frontend sees a terminal event and begins an involuntary reversion to the local backend ([ADR-0036 §Involuntary Reversion](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md)). That reversion is asynchronous — it runs on the gRPC executor, not on the test thread — and it re-registers against the in-process backend. A test that returns the instant the server is halted abandons it mid-flight, and the enclosing `with-combined-system`'s `ig/halt!` then takes away the very backend it is re-registering against. The reversion fails; and since the frontend records such failures rather than discarding them ([ADR-0017 §Surfacing Unexpected Runtime Failures](../ADRs/0017-System-Architecture.md)), the result is a stack trace printed inside a green run.
 
 The running application never shows this, because nothing there cuts the reversion short. The defect is in the test, not in the code beneath it.
 
@@ -1094,7 +1144,7 @@ The running application never shows this, because nothing there cuts the reversi
                 5000)
 ```
 
-Waiting instead for the "host disconnected" notification looks equivalent and is not: the reversion posts that notification *before* it switches transports, so the wait returns while the switch is still in flight. The distinction is not cosmetic — with everything else identical, it was the difference between a namespace that printed stack traces and one that did not.
+Waiting instead for the "host disconnected" notification looks equivalent and is not: the reversion posts that notification *before* it switches transports, so the wait returns while the switch is still in flight. The distinction is not cosmetic: with everything else identical, waiting on the notification leaves the reversion to be cut short by teardown and the namespace prints stack traces, while waiting on the transport does not.
 
 The general shape: ask what a teardown step **causes**, not merely what it **stops**. Where it causes asynchronous work, wait for that work's own post-condition before letting the rest of the teardown proceed. The same reasoning applies to any halt that triggers a reaction — a component whose shutdown publishes an event, or whose closure prompts a reconnect elsewhere.
 
@@ -1143,7 +1193,9 @@ Worked examples:
 
 ### The failure guard — a body that records a failure fails
 
-The convention above is enforced rather than remembered. Every test macro that owns a pool, a server or an application — `with-thread-pool`, and through it `with-ui-manager` and `with-event-bus`; `with-server`; `with-system`; `with-started-app`; `with-combined-system` — captures `log-error` for the duration of its body and **fails the test if anything was recorded**. A deliberately-provoked record has to be declared; everything else surfaces.
+The convention above is enforced rather than remembered. Every test macro that owns a pool, a server or an application — `with-thread-pool`, and through it `with-ui-manager` and `with-event-bus`; `with-server`; `with-system`; `with-started-app`; `with-quit-app`; `with-restored-app`; `with-combined-system` — captures `log-error` for the duration of its body and **fails the test if anything was recorded**. A deliberately-provoked record has to be declared; everything else surfaces.
+
+**The mechanism is `util.common/with-no-recorded-failures`.** It rebinds `tp/log-error` to a capturer for the extent of its body and, on exit, throws an `ex-info` — *"Failures were recorded during this body: …"*, each throwable summarised — carrying the captured throwables under `:throwables`. Each guarded macro wraps its **whole** expansion in it, outside its own teardown, because work dispatched on the pool can outlive the body and write its record while the pool drains or the server stops; guarding the body alone would check before that and see nothing. A test on manual lifecycle — one of the named exceptions under `with-server` or `with-system` above — gets the same guard by wrapping itself in `with-no-recorded-failures`, as the macro would have.
 
 **`with-clients` deliberately does not carry it, and the reason generalises.** Every call site passes a server symbol, so every body it wraps already sits inside `with-server`'s guard: a second guard adds no coverage. It would subtract correctness, because being the *inner* net it captures records a fact declared at the natural place — around the whole scenario, outside the client block — leaving that fact's own atom empty and firing on a test that had done everything right. **The guard belongs on the macro that owns the lifecycle, not on one nested within it.** Where two guards would nest, the outer one is the only one that should exist.
 
@@ -1167,6 +1219,8 @@ That decides which of the two tools a fact wants, and it is not a matter of tast
 ```
 
 Placed outside, the guard's capture becomes the innermost binding: it takes the record the fact is trying to observe, the fact's atom stays empty, and the guard fires. The collaborator rule in [FRONTEND_ARCHITECTURE_GUIDE §6.5](FRONTEND_ARCHITECTURE_GUIDE.md) points the other way for a different reason — there the drain must run while the mock is still in place — and the two do not conflict, because the guard is itself the outer net. A record written during the drain reaches it, which is exactly what should happen to work that outlived the body.
+
+**The one exception is `with-restored-app`'s `:expect-recorded-failures` option.** The records a restore test provokes are written by the application's own startup, inside `start-app!`, before any body exists to hold a `with-redefs` — so the declaration cannot go inside the body, and is an option of the macro instead. `true` absorbs the records; a function `(fn [e] …)` is the fact's own capturer, for a fact that asserts on what was recorded. The macro applies it inside its guard, so the guard is untouched, and undeclared the option rebinds `log-error` to the guard's own capturer. Everywhere else the declaration belongs inside the body.
 
 **A declaration covers its own extent, not the whole fact.** One `(fn [_])` somewhere does not switch the guard off for the rest of the body; a record written after that form returns is undeclared and fails. And since the rebinding is a var root rather than a thread-local, a declaration absorbs records from *any* thread while it is in force — so keep it tight around the provocation.
 
@@ -1215,16 +1269,16 @@ Worked examples at three altitudes:
 ## 10. Invariants and Pitfalls
 
 **Every map-type component must return `:status :running`.**
-All three system-health functions (`get-backend-system-health`, `get-frontend-system-health`, `get-combined-system-health`) check this uniformly for every value in the system map. Omitting it produces silent `:unhealthy` status with no error. The combined system enforces this invariant via the Section 30 conformance test.
+All three system-health functions (`get-backend-system-health`, `get-frontend-system-health`, `get-combined-system-health`) check this uniformly for every value in the system map. Omitting it produces silent `:unhealthy` status with no error. The combined system enforces this invariant via the `:status :running` conformance fact in `system_test.clj`.
 
-**Backend components in `combined-config` must depend on `ui-manager`.**
-Without it, topological sort may place them before the UI manager, causing `tr` to fail before i18n is loaded. This does not apply to the standalone backend config (§4), which has no UI manager.
+**Every backend component in `combined-config` must start after the UI Manager.**
+Through a direct `ui-manager` ref, or through one of its dependencies. Without it, topological sort may place the component before the UI manager, causing `tr` to fail with "target is null" before i18n is loaded. This does not apply to the standalone backend config (§4), which has no UI manager.
 
 **`ig/build` does not auto-cleanup on partial failure.**
 If a component throws during init, the partial system (components that started successfully) is in `ex-data` under `:system`. `start-system!` handles this explicitly — it halts the partial system before re-throwing. If you call `ig/build` directly, you must do the same.
 
 **Use dynamic counts in tests, never hardcoded.**
-`(count (keys (system/combined-config)))` and `(count (system/splash-message-keys))` change whenever a component is added. Hardcoding the number breaks every test that depends on it.
+`(count (keys (system/combined-config)))` and `(count (splash/splash-message-keys))` change whenever a component is added. Hardcoding the number breaks every test that depends on it.
 
 **Tests run sequentially — fixed ports are safe.**
 All servers use default ports (gRPC: 10700, HTTP: 10701). There is no need for random port allocation. The `with-combined-system` macro defaults to in-process transport (no port binding); when called with `{:transport :network}`, it binds the default 10700/10701, same as `with-server`.
@@ -1238,11 +1292,7 @@ Client registration with `register-client` is synchronous. gRPC event delivery i
 `halt-key!` returns a new map; every closure created while the component ran still holds the original, whose `:status` says `:running` for ever. Where something outside the lifecycle can act on the component after its halt, express "halted" in something mutable both maps share, set it before the teardown, and consult it above any resource acquisition. See [§6 A halted component stays halted](#a-halted-component-stays-halted-halt-keys-return-value-cannot-tell-anyone).
 
 **Component keys in `combined-config` are namespaced keywords matching their `init-key` dispatch.**
-The frontend event-router and fetch-coordinator use fully-qualified namespace keys:
-- `:ooloi.frontend.components.event-router/event-router`
-- `:ooloi.frontend.components.fetch-coordinator/fetch-coordinator`
-
-This is intentional — it allows these components to coexist in a system with other components from the same project without key collision.
+Every key has the form `:ooloi.<project>.components/<name>` and is the keyword the component's `defmethod ig/init-key` dispatches on — `:ooloi.frontend.components/event-router` in `event_router.clj`, `:ooloi.frontend.components/fetch-coordinator` in `fetch_coordinator.clj`.
 
 ---
 
@@ -1250,7 +1300,7 @@ This is intentional — it allows these components to coexist in a system with o
 
 ### Manual `ig/init-key` / `ig/halt-key!` in test bodies
 
-The explicit `ig/init-key` / `ig/halt-key!` test pattern — creating and cleaning up components manually in `let` / `try` / `finally` blocks — is still valid Integrant but is no longer the recommended approach for new tests. The macros in §9 provide the same guarantees with far less boilerplate and no risk of missing cleanup on failure.
+The explicit `ig/init-key` / `ig/halt-key!` test pattern — creating and cleaning up components manually in `let` / `try` / `finally` blocks — is valid Integrant but is not the recommended approach for new tests. The macros in §9 provide the same guarantees with far less boilerplate and no risk of missing cleanup on failure.
 
 If you encounter existing tests that look like this:
 
@@ -1271,7 +1321,7 @@ The `start-server` / `stop-server` / `register-client` / `disconnect-client` fun
 
 ### `CountDownLatch` for async coordination
 
-`java.util.concurrent.CountDownLatch` is a legacy Java pattern and should appear nowhere in Ooloi — tests or production. There are none left in either. The canonical replacements:
+`java.util.concurrent.CountDownLatch` is a legacy Java pattern and should appear nowhere in Ooloi — tests or production. The canonical replacements:
 
 - For "wait until callback fires" (1 expected delivery): `(promise)` + `(deref p timeout-ms nil)`. The callback delivers the promise.
 - For "wait until N callbacks fire": an `atom` counting remaining deliveries plus a single `promise` delivered when the atom reaches zero.
@@ -1304,14 +1354,14 @@ The last category splits in two, and both are easy to mistake for laziness on a 
 
 Reaching another namespace's var at call time via `requiring-resolve` / `resolve` to avoid a compile-time `:require` is, in most cases, a smell — coupling solved by substandard means. It hides the real edge from the namespace graph and from tooling, and the next maintainer works around it instead of questioning it. When you find one (outside the two exceptions below), the fix is almost always structural, and which structure depends on *why* the direct call was avoided:
 
-- **A genuine cycle** (A depends on B which transitively depends on A) → break it with the **event bus**: the producer publishes a fact on a frontend event-bus category (ADR-0031), and the owner of the affected state subscribes and reacts. This is how the collaboration menu (`:collaboration-state-changed`) and the undo cache (`:backend-changed`) were decoupled from `switch-to!`.
+- **A genuine cycle** (A depends on B which transitively depends on A) → break it with the **event bus**: the producer publishes a fact on a frontend event-bus category (ADR-0031), and the owner of the affected state subscribes and reacts. This is how the collaboration menu (`:collaboration-state-changed`) and the undo cache (`:backend-changed`) stay decoupled from `switch-to!`.
 - **A misplaced function** → **relocate** it to a lower namespace both callers can `:require`. If a function has no dependency on the namespace it currently lives in, it does not belong there, and moving it removes the need for resolution entirely.
 - **A late-binding need** (the collaborator only exists at runtime, after this component inits) → **inject** it as an Integrant dependency at `init-key`, or share the underlying state component (e.g. inject the connection-registry rather than reaching the whole running server).
 
 **Legitimate exceptions — not smells:**
 
 - **By-name dispatch** where the symbol genuinely is not known at compile time: the gRPC method dispatcher (`ns-resolve 'ooloi.shared.api` by method-name string) and record deserialization (`map->Record`). These are exactly what make the API surface and the record set plugin-extensible. The two differ in one way that matters: the method dispatcher resolves against a **literal** namespace, whereas record deserialization must *derive* one from a Java class name — and that name is munged, so the package segment has to be demunged before it names a namespace. Get that wrong and `require` no longer recognises the namespace as loaded, loads its file a second time, and mints a duplicate class whose instances compare unequal to the originals under `=`. See [ADR-0003: Plugins §Namespace Naming Requirement for Plugin Defrecords](../ADRs/0003-Plugins.md#namespace-naming-requirement-for-plugin-defrecords). Any future by-name dispatch that derives a namespace from a string inherits the same trap; one that uses a literal namespace does not.
-- **The `*server-component*` late-binding seam**, documented in `ooloi.backend.grpc.server`: shared-tier op implementations reach injected backend components via `@(resolve '…*server-component*)` because the shared tier must not compile-depend on the backend tier; the rule there is *"never introduce a new per-component dynamic var."* This is a legitimate exception for the **existing** consumers (`undo`/`instrument_library`/`event_subscription`) — leave them be — but it is **not** the default for new shared→backend access. The same "shared can't compile-depend on backend" is satisfied by a **protocol** (declared in shared, implemented in backend, like `PieceResolver` or `PieceManagerOps`), which needs no `resolve` and no `*server-component*` wiring. The existing consumers reach only known, global state, so they are decouplable too. **Prefer a protocol for new work.**
+- **The `*server-component*` late-binding seam**, documented in `ooloi.backend.grpc.server`: shared-tier op implementations reach injected backend components via `@(resolve '…*server-component*)` because the shared tier must not compile-depend on the backend tier; the rule there is *"never introduce a new per-component dynamic var."* This is a legitimate exception for the **existing** consumers (`undo`/`instrument_library`/`event_subscription`/`filesystem`) — leave them be — but it is **not** the default for new shared→backend access. The same "shared can't compile-depend on backend" is satisfied by a **protocol** (declared in shared, implemented in backend, like `PieceResolver` or `PieceManagerOps`), which needs no `resolve` and no `*server-component*` wiring. The existing consumers reach only known, global state, so they are decouplable too. **Prefer a protocol for new work.**
 
 If a runtime resolution is not one of those two exceptions, treat it as debt to be removed structurally.
 
@@ -1324,4 +1374,4 @@ If a runtime resolution is not one of those two exceptions, treat it as debt to 
 - [ADR-0036: Collaborative Sessions and Hybrid Transport](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md) — how the combined app transitions between in-process and network transport
 - [Frontend Architecture Guide](FRONTEND_ARCHITECTURE_GUIDE.md) — frontend testing model, JAT boundary, `with-ui-manager` in depth
 - [gRPC Communication and Flow Control](GRPC_COMMUNICATION_AND_FLOW_CONTROL.md) — two-phase client connection architecture
-- [Combined Application Source README](../shared/src/app/README.md) — component wiring checklist with code examples
+- [Combined Application Source README](https://github.com/PeterBengtson/Ooloi/blob/main/shared/src/app/README.md) — component wiring checklist with code examples

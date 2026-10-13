@@ -60,7 +60,7 @@ The instrument library carries four score languages — 287 instruments in each 
 
 **The library belongs to the Ooloi that holds it, which is why you edit it in the window rather than in a file.** On an ordinary desktop that is your own copy, and your adjustments are yours: they layer over the names Ooloi ships with, while the ones you have not touched keep improving as Ooloi does. Nobody is waiting for you to send them in.
 
-Connected to someone else's Ooloi — a publisher's server, say — the library is *theirs*. It is shared by everyone who connects, and only the operator can change it, which is exactly how a publisher keeps their house naming across everyone working on their scores.
+Connected to someone else's Ooloi — a publisher's server, say — the library is *theirs*. It is shared by everyone who connects, and only the host, and anyone the host grants write access, can change it; everyone else connected is read-only. That is exactly how a publisher keeps their house naming across everyone working on their scores.
 
 Two consequences worth knowing before you start renaming things:
 
@@ -95,7 +95,7 @@ This is about *vocabulary*, not about surface forms. In an inflected language th
 
 When you do change a term, change it everywhere in the same pass.
 
-**Musical Italian stays Italian.** Dynamics — *pp*, *p*, *mp*, *mf*, *f*, *ff*, *sfz*, *fp* — are never translated in any language. Neither are traditional tempo markings: *Allegro*, *Andante*, *Adagio*. These are international, and a musician reading your language expects them exactly as they are. The labels *around* them are translated: the field called "Tempo marking" gets your language's words, and what a user types into it is their business.
+**Musical Italian stays Italian.** Dynamics — *pp*, *p*, *mp*, *mf*, *f*, *ff*, *sfz*, *fp* — are never translated in any language. Neither are traditional tempo markings: *Allegro*, *Andante*, *Adagio*. These are international, and a musician reading your language expects them exactly as they are. The labels *around* them are translated: a field that holds a tempo marking gets your language's words for its label, and what a user types into it is their business.
 
 **Follow your language's own capitalisation.** English capitalises interface text more than most languages do. Use whatever your language does in its own software, which for many languages means sentence case, and for German means capitalised nouns wherever they fall.
 
@@ -135,22 +135,29 @@ Three rules govern the relationship, and the last two surprise people:
 
 **Your copy replaces the bundled one entirely — it is not merged with it.** If you delete entries from your file, those strings are gone from your language and fall back to English, even though the bundled catalogue still has them. So edit entries; do not remove them. If you send in a catalogue with entries missing, the build will reject it — a submitted catalogue must hold the same set of keys as `en_GB.po`.
 
-**Your copy is never overwritten, which also means it is never updated.** Ooloi copies a catalogue into your folder only if it is not already there. This guarantees your work is never destroyed by an upgrade — the more important guarantee of the two — but it has a consequence: after upgrading Ooloi, your file is still the old one, and it wholly replaces the newer bundled version. Translation improvements shipped in that release will not appear, and any strings the release added will show English. **After upgrading, compare your file against the shipped one and take in what is new.** Keeping a copy of the file you started from makes that comparison straightforward. Merging newly added strings into an existing catalogue automatically is something Ooloi may grow later; until it does, the comparison is manual.
+**Your copy is never overwritten, which also means it is never updated.** Ooloi copies a catalogue into your folder only if it is not already there. This guarantees your work is never destroyed by an upgrade — the more important guarantee of the two — but it has a consequence: after upgrading Ooloi, your file is still the old one, and it wholly replaces the newer bundled version. Translation improvements shipped in that release will not appear, and any strings the release added will show English. **After upgrading, compare your file against the shipped one and take in what is new.** Keeping a copy of the file you started from makes that comparison straightforward. Ooloi does not merge newly added strings into an existing catalogue, so the comparison is manual.
 
-That last point is also why an unexpected English string has two possible explanations. If it appears in a phrase you have already translated, something is wrong and it is worth reporting. If it appears after you upgrade, in a part of Ooloi that is new, it is this: a string your catalogue does not have yet.
+**A file Ooloi cannot read is ignored.** If a syntax error stops your catalogue from parsing, Ooloi writes the error to its log and skips your file. For a language Ooloi ships, the bundled catalogue is then used instead, so none of your changes appear; a language you added yourself does not appear in the language list in Settings at all. Either symptom after an edit means the file needs checking before anything else.
+
+That point about upgrades is also why an unexpected English string has two possible explanations. If it appears in a phrase you have already translated, something is wrong and it is worth reporting. If it appears after you upgrade, in a part of Ooloi that is new, it is this: a string your catalogue does not have yet.
 
 ## Anatomy of an Entry
 
-A catalogue begins with a header describing the file. The line that matters to you is the last one:
+A catalogue begins with a header describing the file. This is the Swedish one, and the line that matters to you is the last:
 
 ```po
 msgid ""
 msgstr ""
 "Project-Id-Version: Ooloi 0.1.0\n"
-"Last-Translator: \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-02-16 00:00+0000\n"
+"PO-Revision-Date: 2026-02-16 00:00+0000\n"
+"Last-Translator: Peter Bengtson\n"
 "Language-Team: \n"
 "Language: sv-SE\n"
+"MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 ```
 
@@ -177,30 +184,34 @@ When you are correcting an existing catalogue, `msgstr` is the only thing you ev
 **Placeholders must survive.** Some strings contain `%{something}`, which the program replaces at runtime with a name, a number or a filename:
 
 ```po
-msgctxt "notification.open.file-missing"
-msgid "'%{name}' no longer exists."
-msgstr "»%{name}« finns inte längre."
+msgctxt "dialog.close.save-changes.windows"
+msgid "Do you want to save changes to '%{name}'?"
+msgstr "Vill du spara ändringar i '%{name}'?"
 ```
 
 The placeholder must appear in your translation, spelled exactly as in the `msgid` — but it may go **wherever your language puts it**. That freedom is the whole reason Ooloi uses named placeholders rather than numbered ones, and moving them is expected rather than merely tolerated. Dropping one, or renaming it, leaves a user looking at a gap where a filename should be.
 
 If moving a placeholder puts it at the **start** of a sentence, remember that what arrives there is a value Ooloi supplies, and Ooloi will not capitalise it for you. Where your language would capitalise a sentence-initial word, prefer a construction that does not begin with the placeholder.
 
-**Long strings are split across lines.** The parser joins them; the line breaks are not part of the text:
+**Long strings are split across lines.** The parser joins them; the line breaks are not part of the text. This is the opening of the About window's text, cut short:
 
 ```po
 msgctxt "about.text"
 msgid ""
-"Ooloi is a music notation program. "
-"It is free software."
+"[heading=1]About Ooloi[/heading]\n"
+"\n"
+"Ooloi is an open-source desktop system for professional music notation. It "
+"is currently under development.\n"
 msgstr ""
-"Ooloi är ett notskrivningsprogram. "
-"Det är fri programvara."
+"[heading=1]Om Ooloi[/heading]\n"
+"\n"
+"Ooloi är ett program med öppen källkod för professionell musiknotskrivning. "
+"Det är för närvarande under utveckling.\n"
 ```
 
-Note the trailing space inside the first fragment. Without it the joined string reads *programvara.Det*.
+Note the trailing space at the end of the third fragment in each. Without it the joined Swedish reads *musiknotskrivning.Det*. The bracketed markup, such as `[heading=1]`, formats the text and stays exactly as it is; only the words between the tags are translated.
 
-**Quotation marks and backslashes are escaped** as `\"` and `\\`. A newline inside a string is `\n`.
+**Quotation marks and backslashes are escaped** as `\"` and `\\`. A newline inside a string is `\n`, as in the lines above.
 
 ## Plurals
 
@@ -346,7 +357,7 @@ The third check takes a minute and is the one that matters. Any tool that passes
 
 ## Adding a Language Nobody Has Done Yet
 
-Ooloi's twenty-two locales are not a fixed list, and **adding a new one does not usually require a new version of Ooloi**. The exception is a language whose plural rule Ooloi does not yet recognise; step 2 explains how to tell.
+Ooloi's twenty-two locales are not a fixed list, and **adding a new one does not usually require a new version of Ooloi**. The exception is a language whose plural rule Ooloi does not recognise; step 2 explains how to tell.
 
 1. **Copy `en_GB.po`** in your language folder to a new file named for your locale — `nl_BE.po`, `ca_ES.po`, `et_EE.po`.
 2. **Set the header.** `Language:` to match your locale, and `Plural-Forms:` to your language's rule.
@@ -384,7 +395,7 @@ Ooloi's twenty-two locales are not a fixed list, and **adding a new one does not
 5. **Add plural forms where your language needs them and English does not.** This is the step that copying `en_GB.po` cannot do for you. English carries plural forms on some twenty entries, but your language may inflect with number where English does not — the phrase counting connected collaborators is one such, and in the three-form languages the derived score title is another. For any entry whose text changes with a count in your language, add a `msgid_plural` line (repeating the English) and replace the single `msgstr` with `msgstr[0]`, `msgstr[1]` and so on, one per form your header declares. **Nothing checks this for you**: an entry left with a single form is valid, and simply shows that one form for every count.
 6. **Restart Ooloi.** Your language appears in the language list in Settings, named in its own language.
 
-**One current limit.** Ooloi does not mirror its interface for right-to-left languages. The text of a translation displays correctly, but menus, dialogs and panels stay laid out left-to-right, so Hebrew, Arabic, Persian and Urdu are not yet properly supported. The catalogue you write would not be wasted, but the result will not look right until Ooloi handles direction.
+**One limit.** Ooloi does not mirror its interface for right-to-left languages. The text of a translation displays correctly, but menus, dialogs and panels stay laid out left-to-right, so Hebrew, Arabic, Persian and Urdu are not properly supported. A catalogue for one of them is not wasted work, but the result does not look right while the layout runs left-to-right.
 
 ## Sending Your Work Back
 
@@ -398,7 +409,7 @@ Open an issue on [Ooloi's repository](https://github.com/PeterBengtson/Ooloi) wi
 
 **Licence.** Contributions to Ooloi, translations included, are under the [Mozilla Public License 2.0](https://www.mozilla.org/MPL/2.0/), as described in [CONTRIBUTING.md](https://github.com/PeterBengtson/Ooloi/blob/main/CONTRIBUTING.md).
 
-**Credit.** Every catalogue has `Last-Translator` and `Language-Team` fields in its header. If you would like your work attributed, put your name there; it travels with the file.
+**Credit.** Every catalogue has `Last-Translator` and `Language-Team` fields in its header. If you would like your work attributed, replace the existing value of `Last-Translator` with your name; it travels with the file.
 
 Keep your own copy. As explained under [Where the Files Are](#where-the-files-are), an upgrade will not overwrite it, and you will want it for comparison.
 

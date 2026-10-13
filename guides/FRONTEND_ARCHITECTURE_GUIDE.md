@@ -15,6 +15,7 @@
 1. [The Frontend Is Not a Viewer](#1-the-frontend-is-not-a-viewer)
 2. [Opening a Window (Minimal Example)](#2-opening-a-window-minimal-example)
 3. [The Window Lifecycle Invariant](#3-the-window-lifecycle-invariant)
+   - [3.6 Piece-Owned Windows](#36-piece-owned-windows)
 4. [Pure Builders and Materialisation](#4-pure-builders-and-materialisation)
    - [4.1 Two-Level Abstraction](#41-two-level-abstraction)
    - [4.2 Why This Separation Exists](#42-why-this-separation-exists)
@@ -194,7 +195,7 @@ This shows the intended layering:
 3. The request goes through the `window-request` facade, which supplies the event `:type` itself and publishes to `:window-requests`; the UI Manager subscriber creates the Stage.
 4. User-facing strings are translation keys, resolved by `tr` **on each render pass** ([ADR‑0039](../ADRs/0039-Localisation-Architecture.md)) — which is what makes the window locale-reactive for free.
 
-**Why the spec function rather than a materialised node.** It would be possible to build the content once with `cljfx/create-component` + `cljfx/instance` and pass the resulting node as `:window/content`. Do not: content materialised once is never re-evaluated, so its strings keep whatever locale was active when the window opened and do not follow a language change (ADR‑0042, *All Window Content Must Live Inside the Renderer Spec*). One-time materialisation is correct only for `show-confirmation!`, which is transient and dismissed before a locale could change under it.
+**Why the spec function rather than a materialised node.** It would be possible to build the content once with `cljfx/create-component` + `cljfx/instance` and pass the resulting node as `:window/content`. Do not: content materialised once is never re-evaluated, so its strings keep whatever locale was active when the window opened and do not follow a language change (ADR‑0042, *All Window Content Must Live Inside the Renderer Spec*). One-time materialisation is correct only where nothing a language change touches is on screen: `show-confirmation!`, which is transient and dismissed before a locale could change under it; the splash screen, gone before the user could change one; and the collaboration palette, which declares its content as `:window/content-spec` and carries no translated text (§9.8).
 
 The pattern is consistent whether a window is simple or complex. For windows that need imperative wiring — an action handler on a specific button, a focus request after construction — the private spec function may use `ext-on-instance-lifecycle` to attach behaviour at node creation time ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). Section 4 covers this in full.
 
@@ -202,17 +203,19 @@ The pattern is consistent whether a window is simple or complex. For windows tha
 
 When `:window-open-requested` arrives at the UI Manager's `:window-requests` subscriber, it calls `show-window!` internally. That triggers a concrete, disciplined sequence:
 
-1. **Singleton behaviour**: if a matching window already exists (as defined by `window-id-match?`), the existing `Stage` is brought to the front and returned.
-2. **Geometry restoration**: if the window participates in persistence (`:window/persist?` not false), any persisted geometry is merged into the spec, overriding default `:x`, `:y`, `:width`, `:height`, and `:scale` when applicable (and also scroll position, if applicable).
-3. **Window construction**: `register-window!` builds the `Stage` from the spec.
-4. **macOS ownership**: on macOS, if a menu-bar host stage exists, the new window is owned by it so the system menu bar is inherited.
-5. **Lifecycle wiring**:
+1. **Singleton behaviour**: if a matching window already exists (as defined by `window-id-match?`), the existing `Stage` is brought to the front, `:window-focused` is published, and the Stage is returned.
+2. **First-open placement**: `place-window` treats the spec's `:x`, `:y`, `:width` and `:height` as a request — it fits the window to the screen and staggers it clear of windows already showing, so two windows asking for the same position do not open exactly on top of each other ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md) §First-open placement).
+3. **Geometry restoration**: if the window participates in persistence (`:window/persist?` not false), its persisted position overrides the placement, and so does its persisted size when the window is resizable — a non-resizable window's size belongs to the code that sized it for its content. That is the whole of what `show-window!` merges. Anything else a window kind remembers — a piece window's pane arrangement, a layout window's scale and scroll position — is the window's own to read from its record as it opens (§3.5).
+4. **Window construction**: `register-window!` builds the `Stage` from the spec.
+5. **macOS ownership**: on macOS, if a menu-bar host stage exists, the new window is owned by it so the system menu bar is inherited.
+6. **Lifecycle wiring**:
 
-   * Native close requests (the window “X”) are intercepted; a window may run its own `:window/on-close-request` hook first (a piece window prompts to save an unnamed piece — §3.3), otherwise the close routes straight through `close-window!`.
+   * Native close requests (the window “X”) are intercepted; a window may run its own `:window/on-close-request` hook first (a piece window asks *Save / Don't Save / Cancel* when its piece has unsaved changes — §3.3), otherwise the close routes straight through `close-window!`.
    * Geometry listeners are attached and debounced persistence is scheduled after move/resize.
    * The stage is registered under `:window/id`.
-6. **Showing**: unless `:ui-mode` is `:headless`, the stage is shown.
-7. **Event publication**: a `:window-opened` event is published to the `:window-lifecycle` category.
+7. **Showing**: unless `:ui-mode` is `:headless`, the stage is shown, and the recorded stacking order is then reasserted (`restore-stacking-order!`): showing a window restacks the windows already open — on macOS, where every managed window is a sibling under the menu-bar host, by creation order — so the order the user left them in has to be put back.
+8. **Open hook**: the window's `:window/on-open`, if declared, runs with `{:window/id :window/state :stage}`.
+9. **Event publication**: a `:window-opened` event is published to the `:window-lifecycle` category.
 
 Even this minimal path demonstrates three recurring principles:
 
@@ -226,9 +229,9 @@ From here, we can expand the example — adding interaction, backend calls, and 
 
 Windows are the general lifecycle mechanism. Three other pieces complete the common interaction vocabulary.
 
-**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.core.confirmation-dialog` is the blocking confirmation helper. It takes the UI Manager and a message, builds a message + button-bar spec, and shows it through the blocking entry point `show-modal!`; it blocks synchronously on the JAT via `.showAndWait` and returns `true` on OK or `false` on Cancel/Esc/close. The dialog is a transient application-modal `Stage` (not registered, no ongoing lifecycle); the former cljfx `:alert` / `Dialog` path is gone. An optional **third button** (`:third {:text-key … :value …}`) extends the binary answer for a *Save / Don't Save / Cancel* style decision: it returns a caller-supplied, non-boolean `:value` (a boolean throws — `true`/`false` stay reserved for OK/Cancel), while callers that pass none keep the unchanged binary contract. Each of the three buttons takes an optional label (`:text-key`) and `:style`, and the buttons are ordered by platform convention (`platform-order-buttons`: the affirmative last on macOS/GNOME, first on Windows, for both the two- and three-button shapes). The close gesture uses all of this — a Save / Don't Save / Cancel prompt with platform-resolved wording (`discard-label-key`, `save-changes-message-key`) and a warning-styled discard button.
+**Confirmation dialogs.** `show-confirmation!` in `ooloi.frontend.ui.core.confirmation-dialog` is the blocking confirmation helper. It takes the UI Manager and a message, builds a message + button-bar spec, and shows it through the blocking entry point `show-modal!`; it blocks synchronously on the JAT via `.showAndWait` and returns `true` on OK or `false` on Cancel/Esc/close. The dialog is a transient application-modal `Stage` — never a JavaFX `Dialog` or `Alert` — that is not registered and has no ongoing lifecycle. An optional **third button** (`:third {:text-key … :value …}`) extends the binary answer for a *Save / Don't Save / Cancel* style decision: it returns a caller-supplied, non-boolean `:value` (a boolean throws — `true`/`false` stay reserved for OK/Cancel), while callers that pass none keep the unchanged binary contract. Each of the three buttons takes an optional label (`:text-key`) and `:style`, and the buttons are ordered by platform convention (`platform-order-buttons`: the affirmative last on macOS/GNOME, first on Windows, for both the two- and three-button shapes). The close gesture uses all of this — a Save / Don't Save / Cancel prompt with platform-resolved wording (`discard-label-key`, `save-changes-message-key`) and a warning-styled discard button.
 
-**Modal dialogs in general.** A modal is a window with `:window/modality :application-modal`, built by the same core as any window. There are two entry points, distinguished by **control flow, not by modality**: `show-window!` for a registered, non-blocking modal (the normal path — e.g. the connect dialog), and `show-modal!` for a transient, blocking one (`.showAndWait`, synchronous return — used only by `show-confirmation!`). There is one modal node type, a `Stage`. Every modal is owned, on **every** platform, via `select-owner-stage` (focused managed window → macOS menu-bar-host → Windows/Linux showing non-always-on-top window); an ownerless `APPLICATION_MODAL` blocks input but loses stay-on-top-of-parent and iconify-with-parent and can render behind another window. Always-on-top decorations (the collaboration palette) never qualify as a modal's owner. *(Naming note: the operative axis is blocking-vs-async, not window-vs-modal — `show-window!` already shows modals — so `show-modal!` may be renamed to a blocking-dialog name in future.)* See [ADR‑0042](../ADRs/0042-UI-Specification-Format.md) §"Modal dialogs: one core, two entry points".
+**Modal dialogs in general.** A modal is a window with `:window/modality :application-modal`, built by the same core as any window. There are two entry points, distinguished by **control flow, not by modality**: `show-window!` for a registered, non-blocking modal (the normal path — e.g. the connect dialog), and `show-modal!` for a transient, blocking one (`.showAndWait`, synchronous return — used only by `show-confirmation!`). There is one modal node type, a `Stage`. Every modal is owned, on **every** platform, via `select-owner-stage` (focused managed window → macOS menu-bar-host → Windows/Linux showing non-always-on-top window); an ownerless `APPLICATION_MODAL` blocks input but loses stay-on-top-of-parent and iconify-with-parent and can render behind another window. Always-on-top decorations (the collaboration palette) never qualify as a modal's owner. *(Naming note: the operative axis is blocking-vs-async, not window-vs-modal — `show-window!` already shows modals — so `show-modal!` is named for the less important of its two properties.)* See [ADR‑0042](../ADRs/0042-UI-Specification-Format.md) §"Modal dialogs: one core, two entry points".
 
 **Modality is a per-window property, chosen per use — not a fixed dialog trait.** The clearest case is the piece picker (the Open / Save file dialog): it opens **non-modal in Open mode**, so the newly-opened piece window can take keyboard focus as the picker closes — a shown application-modal will not yield focus to a programmatic request, which would leave the just-opened piece not-current — and **application-modal in Save / Save As**, where blocking guards a destructive write against a piece edited or switched underneath the dialog (the reason file-save dialogs are conventionally modal). The same `show-window!` core builds both; only `:window/modality` differs.
 
@@ -255,7 +258,7 @@ The invariant can be stated precisely ([ADR‑0042](../ADRs/0042-UI-Specificatio
 
 This discipline exists so that:
 
-* Geometry persistence (position, size, scale) is merged and stored automatically.
+* Geometry persistence (position, and size for a resizable window) is merged and stored automatically.
 * Native close requests are intercepted and normalised.
 * Window lifecycle events (`:window-opened`, etc.) are published consistently.
 * On macOS, ownership is attached correctly so the system menu bar behaves as expected.
@@ -268,16 +271,19 @@ When lifecycle control is centralised, the rest of the system can reason about w
 
 This is not a full API reference, but the most commonly used frontend entry points are:
 
-**Window lifecycle** — application code asks the UI Manager to open or close a window through the `ooloi.frontend.ui.core.window-request` facade, which publishes to `:window-requests` on the frontend event bus (the UI Manager is the sole performer of the actual operation):
+**Window lifecycle** — application code asks the UI Manager to open, close or focus a window through the `ooloi.frontend.ui.core.window-request` facade, which publishes to `:window-requests` on the frontend event bus (the UI Manager is the sole performer of the actual operation):
 
 ```clojure
 (require '[ooloi.frontend.ui.core.window-request :as wr])
 
 (wr/request-window-open!  manager {:window/id :my-window :window/spec-fn … :window/state …})
 (wr/request-window-close! manager :my-window)
+(wr/request-window-focus! manager :my-window)
 ```
 
-The facade supplies the `:type` (`:window-open-requested` / `:window-close-requested`) itself — forced last, so a caller's spec can't override it — so call sites never hand-write the event map or the raw publish:
+`request-window-focus!` raises the window, gives it keyboard focus and publishes `:window-focused`. It exists to hand focus to a particular window deterministically rather than leave the choice to the operating system — after a modal closes, for instance, when JavaFX would otherwise return focus to the modal's owner. `close-window!` uses the same request to bring the next window forward when the foremost one closes (§3.2).
+
+The facade supplies the `:type` (`:window-open-requested` / `:window-close-requested` / `:window-focus-requested`) itself — forced last on an open, so a caller's spec can't override it — so call sites never hand-write the event map or the raw publish:
 
 ```clojure
 ;; equivalent raw form the facade wraps — prefer the facade
@@ -324,7 +330,7 @@ The `:window/*` keys most call sites use. This is a working subset, not the allo
 
 A piece window's title is **dynamic**, not the static `:window/title-key` above: it tracks the piece's display name — the raw `:title` when set (locale-independent), else the recorded **filename** with its `.ooloi`/`.ool` extension stripped, else the tr'd "Untitled" fallback (locale-reactive) — re-applied via `ui-manager/set-window-title!` on every structure refetch, so a first Save retitles the window from "Untitled" to the filename stem. See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §"Dynamic window titles".
 
-`:window/menu-bar` is **platform-split**: macOS has one global system menu bar shared by every window, so piece windows attach none; Windows/Linux have no global menu, so `open-piece-window!` builds a `MenuBar` per piece window and `refresh-menu-text!` fans out across all of them. See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §"Platform-split menus".
+`:window/menu-bar` is **platform-split**: macOS has one global system menu bar shared by every window, so piece windows attach none; Windows/Linux have no global menu, so `open-piece-window!` builds a `MenuBar` per piece window, `open-layout-window!` does the same for each layout window — whose File commands act on its piece — and `refresh-menu-text!` fans out across every open window that carries one. See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §"Platform-split menus".
 
 **Declarative window pipeline keys** — when `:window/spec-fn` is present, the UI Manager builds a cljfx renderer with full lifecycle management (see §4.5):
 
@@ -338,10 +344,10 @@ A piece window's title is **dynamic**, not the static `:window/title-key` above:
 | `:window/subscriptions` | Vector of `{:topic kw :handler fn}` — event bus subscriptions auto-subscribed on open, auto-unsubscribed on close |
 | `:window/watches` | Vector of `{:ref atom :key kw :fn watch-fn}` — atom watches auto-added on open, auto-removed on close |
 | `:window/stylesheets` | Vector of CSS resource path strings — auto-loaded on the scene after window opens |
-| `:window/on-open` | Lifecycle hook `(fn [ctx])` — invoked with `{:window/id :window/state :stage}` after the window is shown, registered, and wired (the last open step) |
+| `:window/on-open` | Lifecycle hook `(fn [ctx])` — invoked with `{:window/id :window/state :stage}` after the window is shown, registered, and wired (the last open step before `:window-opened` is published) |
 | `:window/on-close` | Lifecycle hook `(fn [ctx])` — invoked with `{:window/id :window/state :stage}` as the first close step, before unsubscribe/unwatch/unmount and before the Stage closes |
 
-Every renderer window uses this pipeline — currently About, Settings, the Instrument Library, the piece window, the piece picker and the connect dialog, with the Piece Preferences window to come. The complete lifecycle — renderer creation, mounting, registration, bus subscriptions, atom watches, stylesheet loading, and all cleanup — is fully automatic. No window module subscribes to `:window-lifecycle` directly or manages its own teardown.
+Every renderer window uses this pipeline: About, Settings, the Instrument Library, the piece window, the Layout window, the Piece Preferences window, the piece picker and the connect dialog. The complete lifecycle — renderer creation, mounting, registration, bus subscriptions, atom watches, stylesheet loading, and all cleanup — is fully automatic. No window module subscribes to `:window-lifecycle` directly or manages its own teardown.
 
 Unknown `:window/*` keys throw at construction time. Non-`:window/*` keys (`:width`, `:height`, etc.) pass through to the Stage directly.
 
@@ -355,7 +361,7 @@ The UI Manager tracks the **foremost window** — the one that most recently gai
 
 Every managed Stage carries a `focused-listener` on its `focusedProperty` (attached in `register-window!`); on focus-gain it resets `:active-window-id` and publishes `:window-focused`. Because focus-gain is a settled event, the atom always holds the last window the OS actually focused — never a mid-transition transient.
 
-`active-piece-id` (in `ui.core.active-window`) is one consumer: it resolves the **piece the foremost window belongs to** — a piece window's `:window/id`, a layout window's `:window/piece-id`, else `nil` — by reading the atom and looking the id up in the window registry (so a closed id self-corrects to `nil`). File-menu piece items read it: `File > Close` is enabled when the foremost window is piece-derivable, and the menu re-evaluates on `:window-focused`. Reading a *settled* value avoids the race a live-focus read hits when a *window* event (such as a close) triggers the refresh mid-transition.
+`active-piece-id` (in `ui.core.active-window`) is one consumer: it resolves the **piece the foremost window belongs to** — a piece window's `:window/id`, the `:window/piece-id` of a window a piece owns, else `nil` — by reading the atom and looking the id up in the window registry (so a closed id self-corrects to `nil`). Save and Save As read it, so with a layout or Preferences window in front they act on the owning piece. Close asks a different question, through `active-closable-window-id`: the foremost window itself, when it is a piece window or one a piece owns. Close follows the *window* rather than the piece, because with an owned window in front it closes that window and leaves the piece window open ([ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md) §7). Both the command and its enablement read the same query, and the menu re-evaluates on `:window-focused`. Reading a *settled* value avoids the race a live-focus read hits when a *window* event (such as a close) triggers the refresh mid-transition.
 
 Beside it the UI Manager keeps a second piece of windowing state: the **focus-order record**, a vector of window ids with the most recently focused at the front, maintained by the same listener. Where the active-window id names *the* window the user is in, the record orders the ones beneath it, and it answers the question a single id cannot — which window comes next. Closing the foremost window reads it to bring the next survivor forward and focus it, which is what stops a close from leaving the application with no focused window at all (on macOS, where every window is owned by the hidden menu-bar host, activation would otherwise return to a window the user cannot see). The Quit save pass reads it to ask about open pieces from the top down, and the session snapshot serialises it as z-order.
 
@@ -365,7 +371,7 @@ The Window menu's **open-window list** is another consumer. Below its static com
 
 ### 3.3 The Full Lifecycle in One View
 
-Open, focus, and close as a single flow. **Open** fans out — one request yields `:window-opened`, `:window-shown`, and `:window-focused`. A **focus switch** re-points the active-window atom and refreshes menu enablement. **Close** is the butterfly: `File > Close` (with its `Cmd-W` accelerator) and the native window "X" fan **in** to one shared `close-piece!` — a **clean** piece just closes; a **dirty** piece is asked *Save / Don't Save / Cancel*, where Save writes it (in place, or through the save-mode picker for an unnamed piece) then closes, Don't Save discards and closes, and Cancel keeps the window open — and the closes that proceed pass through the single real close (`request-window-close!` → `close-window!`) and fan **out** to teardown, geometry persistence, and `:window-closed`. The "X" reaches that shared path through the window's optional `:window/on-close-request` hook, so the menu item, the accelerator, and the "X" are identical. Stadium nodes are events; the diamonds are the close decision — a decision shared with the Quit save pass, which §3.4 takes up.
+Open, focus, and close as a single flow. **Open** fans out — one request yields `:window-opened`, `:window-shown`, and `:window-focused`. A **focus switch** re-points the active-window atom and refreshes menu enablement. **Close** is the butterfly. `File > Close` (with its `Cmd-W` accelerator) acts on the foremost window: a window a piece owns closes on its own, straight through `request-window-close!`, and its piece stays open, since it holds nothing unsaved of its own. For a piece window, `File > Close` and the native window "X" fan **in** to one shared `close-piece!` — a **clean** piece just closes; a **dirty** piece is asked *Save / Don't Save / Cancel*, where Save writes it (in place, or through the save-mode picker for an unnamed piece) then closes, Don't Save discards and closes, and Cancel keeps the window open — and the closes that proceed pass through the single real close (`request-window-close!` → `close-window!`) and fan **out** to teardown, geometry persistence, and `:window-closed`. The "X" reaches that shared path through the window's optional `:window/on-close-request` hook, so the menu item, the accelerator, and the "X" are identical. A piece window's `close-window!` also closes the windows the piece owns, alongside it (§3.6). Stadium nodes are events; the diamonds are the close decision — a decision shared with the Quit save pass, which §3.4 takes up.
 
 ```mermaid
 flowchart TD
@@ -385,8 +391,10 @@ flowchart TD
   fe1 --> f2["refresh-menu-text!"]
 
   %% ── CLOSE (butterfly: two entries in, teardown out) ──
-  c0a(["File > Close / Cmd-W (active-piece-id)"]) --> waist["close-piece! mgr pool piece-id"]
-  c0b(["X button: onCloseRequest then :window/on-close-request (own id)"]) --> waist
+  c0a(["File > Close / Cmd-W (active-closable-window-id)"]) --> kind{"piece window?"}
+  kind -- yes --> waist["close-piece! mgr pool piece-id"]
+  kind -- "no: a window the piece owns" --> rwc["request-window-close!"]
+  c0b(["X button on a piece window: onCloseRequest then :window/on-close-request (own id)"]) --> waist
   waist --> res["resolve-unsaved-piece! (shared with the Quit save pass)"]
   res --> dirty{"dirty?"}
   dirty -- "no (clean)" --> rwc["request-window-close!"]
@@ -402,6 +410,7 @@ flowchart TD
   rwc --> ce1([":window-close-requested"])
   ce1 --> cw["UI-Manager: close-window!"]
   cw --> c1[":window/on-close hook: teardown"]
+  cw --> cown["close-window! on each window the piece owns, alongside"]
   cw --> ce2([":window-state-persisted"])
   cw --> c2["window/close! (jfx): Stage closes"]
   cw --> ce3([":window-closed"])
@@ -493,6 +502,17 @@ Membership is decided by the same map that does the reopening. A window specific
 
 See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) for the full specification.
 
+### 3.6 Piece-Owned Windows
+
+Two kinds of window belong to exactly one piece and mean nothing without it: the piece's **Preferences** window (§10.2) and its **Layout** windows. A Layout window shows one layout — a score or a part — in a window of its own. It opens from the Layouts pane by double-clicking, by Enter or by File ▸ Open, each acting on the whole selection, so five selected parts open five windows. Its `:window/id` is the layout's own id, which makes it one window per layout: a second request for the same layout brings the existing window forward. Its title is the layout's name, its `●` and `⇄` are its piece's, and it closes by itself when its layout is deleted.
+
+Ownership is data rather than JavaFX parenting — a Stage has one owner, and on macOS that owner is already the menu-bar host — so an owned window declares `:window/piece-id`, and that one key carries every consequence below ([ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md) §7).
+
+- **A close cascades from the piece, never towards it.** `close-window!` on a piece window closes every window naming it, and starts doing so with its own close rather than after it: the piece window's `:window/on-close` runs, its owned windows are told to close, and its own fade begins, together. Its teardown waits for both its fade and every owned window's close to finish, so an owned window is dismantled while the piece window whose state it watches is still registered — an ordering expressed in completions, never in durations, so the piece and everything it owns fade out as one. The cascade hangs off the actual close, never `:window/on-close-request`, so a close the user cancels at the save prompt has closed nothing. Closing an owned window on its own leaves its piece open (§3.3).
+- **It comes back with its piece.** A piece window's persisted record (§3.5) also holds the ids of the windows it owned, front-most first, written by its `:window/on-close` before the cascade starts. Opening the piece by any route — session restore, File ▸ Open, the picker — reopens them. They are absent from the session list, because what comes back is the piece's workspace, wanted whenever the piece is opened, where a session list is read once at launch. How each owned window was arranged stays on its own record, under its own `:window/id` — position and size as for any window, and for a layout window its scale and scroll position — so a layout window closed and reopened while its piece stays open still comes back where it was left.
+- **It watches; it never subscribes.** An owned window declares a `:window/watches` entry on the piece window's state atom and reads the structural projection the piece window has already fetched. The piece's backend subscription is the piece window's alone, and its unsubscribe revokes the piece for the whole client. The watch is guarded to the projection, since the same atom carries the piece window's selection and expansion maps, which change at click speed.
+- **It carries a menu bar where its platform needs one.** On Windows and Linux a layout window has its own menu bar, as a piece window does (§3.1). Save and Save As with an owned window in front act on the owning piece; Close closes the owned window (§3.2).
+
 ---
 
 ## 4. Pure Builders and Materialisation
@@ -506,7 +526,7 @@ The architecture's essential abstraction is not “builder function versus inlin
 1. Declarative UI specification (pure data).
 2. Materialisation on the JavaFX Application Thread.
 
-Whether the specification is produced inline or by a dedicated private function is an implementation choice. In practice, the established convention is a private `*-spec` function that returns a cljfx description map, with a public `show-*!` function that materialises it via `cljfx/create-component` + `cljfx/instance` and hands the Node to `show-window!`. This convention enables testing in the majority of cases and keeps complex specifications manageable — but the architecture's invariant is the spec-to-materialisation boundary, not the presence of a function.
+Whether the specification is produced inline or by a dedicated private function is an implementation choice. In practice, the established convention is a private `*-spec` function that returns a cljfx description map, with a public `show-*!` function that declares it, as `:window/spec-fn` beside a `:window/state` atom, in an open request; the UI Manager's pipeline creates the renderer, mounts it on that atom, and hands the resulting Node to `show-window!`. This convention enables testing in the majority of cases and keeps complex specifications manageable — but the architecture's invariant is the spec-to-materialisation boundary, not the presence of a function.
 
 ### 4.2 Why This Separation Exists
 
@@ -518,7 +538,7 @@ At first glance it can look like a stylistic preference: describe UI as data, th
 When UI structure is expressed as pure data, most of it can be constructed and inspected without launching JavaFX at all. Builder functions can be evaluated in isolation. Specs can be validated. Structural invariants can be asserted. Around 80% of frontend logic becomes ordinary functional code, not thread‑bound widget manipulation. The JavaFX Application Thread (JAT) is only required at the final step: materialising nodes and attaching them to a scene.
 
 **JAT discipline.**
-JavaFX enforces a single UI thread. By keeping specification pure and deferring all object creation to clearly defined materialisation boundaries — `cljfx/create-component` + `cljfx/instance` for content, `show-window!` for lifecycle — the architecture makes the JAT boundary explicit. There is one production bridge (`fx/run-later!`, see Section 6), and it is visible. This clarity prevents accidental blocking, hidden cross‑thread mutation, and subtle race conditions.
+JavaFX enforces a single UI thread. By keeping specification pure and deferring all object creation to clearly defined materialisation boundaries — the renderer the UI Manager creates and mounts for content, `show-window!` for lifecycle — the architecture makes the JAT boundary explicit. There is one production bridge (`fx/run-later!`, see Section 6), and it is visible. This clarity prevents accidental blocking, hidden cross‑thread mutation, and subtle race conditions.
 
 **Backend‑authoritative rendering ([ADR‑0038](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)).**
 The backend produces authoritative paintlists. The frontend turns those into GPU pictures. Because UI description and rendering preparation are separated from semantic authority, the frontend can aggressively cache, batch, parallelise, and discard derived state without risking semantic drift. If all frontend state is dropped and reconstructed from backend data, the visible result must be identical. The spec → materialisation model reinforces that guarantee.
@@ -646,6 +666,9 @@ cljfx supports functions as `:fx/type` values. Each Ooloi custom component funct
 | `ooloi-instrument-editor` | Instrument editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors. Passes `(permissions/allowed? :edit-staff)` as `:editable?` to each staff editor. **Requires `:dispatch`** — asserted, so a window that omits it fails at first render (*Entity Editors*, below). Accepts `:instrument`, `:locale`, `:editable?`, `:selected-staves`, `:on-staff-clicked`, `:on-staff-drag-detected` (3-arity fn wrapped in per-staff closure), `:on-collapsed`, `:on-expanded-changed`. `:on-drag-over` marks a staff drag's target instrument whether expanded or collapsed; a collapsed instrument **spring-opens** after a hover dwell (*Spring-loading*, under §The Piece Window's Panes) so the drop lands inside, rather than rejecting |
 | `ooloi-staff-editor` | Staff editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic with staff name and translated written default-clef. Content VBox with name/short-name text fields, num-lines spinner, written-clef (with aux-ranges), sounding-clef (when transposing). All controls respect `:editable?`. **Requires `:dispatch`** (*Entity Editors*, below). Accepts `:staff`, `:locale`, `:editable?`, `:transposing?`, `:instrument-id`, `:selected`, `:on-mouse-clicked`. `:on-drag-over` sets `:target-instrument-id` and `:target-staff-id` (the latter used by copy; the reorder position comes from the shared drop-target scan) |
 | `ooloi-layout-editor` | Layout editor built on `ooloi-openable-pane` — the Layouts pane's peer of `ooloi-musician-editor`, built to the same pattern so a reader who has understood one entity editor finds nothing new. `:graphic` the composed layout title with its doubling annotation; content the layout's own field rows followed by the musicians it lists, each an openable-but-**empty** pane (the Layouts pane shows musicians, never their staves). `:name` is the layout's only editable field, and blanking it returns the header to its derived form — a name *override* rather than a stored title. Selection is context-scoped to `[:layout id]`, so the same musician selected in the Musicians pane or another layout does not light up here. **Requires `:dispatch`**. Accepts `:layout`, `:musicians`, `:numeral-settings`, `:selection`, `:expanded`, `:locale`, and the window-local drag callbacks `:on-layout-drag-detected`, `:on-layout-musician-drag-detected`, `:on-drag-over` |
+| `ooloi-setting-row` | One row of a generated settings form: an `ooloi-openable-pane` tile titled by the setting's label, with its wrapped, muted description, its control and a per-field reset shown only when the value differs from the default. The control follows the declaration — a `:checkbox` control hint gives a checkbox, `:choices` a combo box, a numeric default a numeric field, anything else a text field — and `:validate` refuses a commit before it is dispatched. The entity-editor contract: the setting arrives as values (`:setting-key`, `:current`, `:default`), and **`:dispatch` is required**, a commit or reset being a dispatched event whose meaning the mounting window decides. Shared by the App Settings and Piece Preferences windows (§10.2) |
+| `ooloi-setting-tabs` | The tabbed surface holding the rows, one tab per category, ordered by translated label so a new category needs no ordering decision; the rows within a tab keep their declared order. Reports the tab gained (never the tab lost) and takes `:selected-category` back in. Accepts `:tabs`, `:selected-category`, `:locale`; **requires `:dispatch`**. Shared by both settings windows |
+| `ooloi-setting-button-bar` | The bar beneath the App Settings form: Reset All Defaults and OK, both reporting through `:dispatch` rather than acting. Accepts `:reset-all-key`, `:locale`; **requires `:dispatch`**. The Piece Preferences window has no bar (§10.2) |
 
 These ensure consistent spatial rhythm throughout the application without repeating layout logic in every module.
 
@@ -691,8 +714,9 @@ record in hand and applies the result with object-form setters. The Piece Window
 operation instead — one granular `SRV/<setter>` on the entity's own VPD, resolved from the event's
 `:id` against the live projection, dispatched off the JavaFX thread and never read back. Field
 granularity is kept rather than accumulating a form and submitting it whole, which is what lets the
-gRPC boundary name each undo step from the operation itself: the Edit menu reads *Set Name* with
-nothing composed for the purpose. A handler that recognises no such field raises rather than falling
+gRPC boundary name each undo step from the operation itself
+([ADR-0015](../ADRs/0015-Undo-and-Redo.md#mutation-sites--how-resources-register-undo-steps) §Mutation
+Sites): the Edit menu reads *Set Name* with nothing composed for the purpose. A handler that recognises no such field raises rather than falling
 through silently, naming the level and the field, so an untaught arm surfaces as a notification.
 
 **Where the write computation lives.** Fields that are parts of a larger value — a range half, a
@@ -781,7 +805,7 @@ pass, applying again here.
 
 ### 4.5 Per-Window Reactive Renderer
 
-Every application window uses a **per-window reactive renderer** ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). The renderer manages the content Node reactively; the UI Manager manages the Stage. These two responsibilities are absolute and never overlap. One-time `cljfx/create-component` + `cljfx/instance` materialisation without a renderer is reserved exclusively for `show-confirmation!`, which materialises a message + OK/Cancel button-bar spec, shows it through the blocking `show-modal!`, and returns a boolean synchronously via `.showAndWait`. Confirmation dialogs are transient (not registered) and have no lifecycle after dismissal. All other windows use `cljfx/mount-renderer`.
+Every application window uses a **per-window reactive renderer** ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). The renderer manages the content Node reactively; the UI Manager manages the Stage. These two responsibilities are absolute and never overlap. One-time `cljfx/create-component` + `cljfx/instance` materialisation without a renderer is reserved for three windows that a re-render could not change. `show-confirmation!` materialises a message + OK/Cancel button-bar spec, shows it through the blocking `show-modal!`, and returns a boolean synchronously via `.showAndWait`; confirmation dialogs are transient (not registered) and have no lifecycle after dismissal. The splash screen is built before the theme is loaded and gone before the user could change anything. The collaboration palette declares `:window/content-spec`, which the UI Manager materialises once, and carries no translated text. All other windows use `cljfx/mount-renderer`.
 
 The architecture divides responsibility clearly:
 
@@ -791,20 +815,18 @@ The architecture divides responsibility clearly:
 These two responsibilities never overlap.
 
 ```
-  fresh state atom (allocated per call)
-       │
-       │  cljfx/mount-renderer watches
-       ▼
-  cljfx renderer
-       │  :middleware — wrap-map-desc (atom value → spec)
-       │  :fx.opt/map-event-handler — dispatch-fn
-       │
-       │  cljfx/instance
-       ▼
-  JavaFX Node
-       │  :window/content in :window-open-requested event
+  show-*! (window module)
+       │  :window-open-requested, through the window-request facade:
+       │  :window/spec-fn, :window/handler, a fresh :window/state atom
        ▼
   UI Manager (:window-requests subscriber)
+       │  cljfx/create-renderer
+       │    :middleware — wrap-map-desc (atom value → spec)
+       │    :fx.opt/map-event-handler — the window's handler
+       │  cljfx/mount-renderer — the renderer watches the state atom
+       │  cljfx/instance — the JavaFX Node, as :window/content
+       ▼
+  show-window!
   Stage → window-registry
 ```
 
@@ -815,7 +837,7 @@ The renderer is created with two configurations:
 * **`:middleware`** — `cljfx/wrap-map-desc` transforms each new atom value into a cljfx description by calling the window's spec function with the current state.
 * **`:fx.opt/map-event-handler`** — routes all map-form `:on-action` events through a single dispatcher. When a cljfx element carries `{:on-action {:ooloi/event :some-command}}` (a map, not a function), cljfx appends the JavaFX event object and calls this handler on the JAT.
 
-After initialisation, `cljfx/mount-renderer` keeps the renderer watching the atom. `cljfx/instance` extracts the JavaFX Node, which is published as `:window/content` in a `:window-open-requested` event. From that point, `swap!`ing the state atom causes the renderer to diff and patch the live scene graph without recreating the Stage.
+Inside the UI Manager's subscriber, `cljfx/mount-renderer` sets the renderer watching the atom, and `cljfx/instance` extracts the JavaFX Node, which becomes the window's `:window/content` as the request is passed on to `show-window!`. From that point, `swap!`ing the state atom causes the renderer to diff and patch the live scene graph without recreating the Stage.
 
 **Two-tier event routing.** Map-form events are pure data — serialisable, inspectable, loggable. The `:fx.opt/map-event-handler` dispatcher routes them:
 
@@ -840,7 +862,7 @@ The UI Manager provides a **declarative event dispatch pipeline** for interactiv
 
 The UI Manager composes the handler with `cljfx/wrap-co-effects` and `cljfx/wrap-effects`, creates the renderer, mounts it on the state atom, and extracts the JavaFX Node for `show-window!`. The handler is pure: receives an event map with co-effect values merged in, returns an effects map. No side effects in the handler body.
 
-This is the standard path for all interactive windows going forward. The manual approach (creating the renderer within the window module) remains available for windows that need custom lifecycle management. See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §Event Dispatch Pipeline for the full specification.
+See [ADR-0042](../ADRs/0042-UI-Specification-Format.md) §Event Dispatch Pipeline for the full specification.
 
 #### Declarative Convergence
 
@@ -848,11 +870,11 @@ Every window type in Ooloi converges on the same fully declarative pattern: a si
 
 **A declared `:window/watches` entry is delivered the ref's current value when it is installed**, not only on subsequent changes ([ADR-0042 §Declared atom watches](../ADRs/0042-UI-Specification-Format.md#declared-atom-watches-windowwatches)). The open request is published to the bus and dispatched on the shared pool, so a window that both declares a watch and starts a fetch answering its own open would otherwise lose the result: the fetch lands before the watch exists. The practical consequence for a window module is that it must **not** also seed its state atom from the ref at request time — that write is the same one, only staler, and it hides the gap rather than closing it.
 
-`ooloi-openable-pane` provides two properties that carry forward to all future window types: opt-in lazy content (`:lazy-content`) and built-in drag-and-drop support (`:on-drag-over` event filter). The Piece window is the next consumer: instruments dragged from the Instrument Library window create Musicians and auxiliary instruments in the piece; Musicians dragged within the Piece window assign to Layouts, creating scores and parts for musicians playing instruments. The same `ooloi-openable-pane` with `:arrow-only-expand`, `:on-drag-over`, and `:on-expanded-changed` serves the Musicians and Layouts panels without new infrastructure. The Piece window as a whole — its two panes, drag-and-drop gestures, title, piece settings, and undo — is specified in [ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md).
+`ooloi-openable-pane` provides two properties every consumer can draw on: opt-in lazy content (`:lazy-content`) and built-in drag-and-drop support (`:on-drag-over` event filter). The Piece window's panes use the second throughout: instruments dragged from the Instrument Library window create Musicians and doublings in the piece; Musicians dragged onto the Layouts pane are assigned to Layouts, which is how scores and parts are made. The same `ooloi-openable-pane` with `:arrow-only-expand`, `:on-drag-over`, and `:on-expanded-changed` serves the Musicians and Layouts panels without new infrastructure. The Piece window as a whole — its two panes, drag-and-drop gestures, title, piece settings, and undo — is specified in [ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md).
 
-Lazy content is **opt-in** (`:lazy-content true`, default off), because it carries two constraints the default avoids. First, it defers node *materialisation*, not description *construction*: the pane substitutes an empty VBox for `:content` after the caller has already built the content description, so cljfx never materialises the real nodes — but the description was still constructed. Content that is expensive to *construct* (the Instrument Library's family panes build one spec per instrument) must therefore guard construction at the call site — `:children (if expanded (specs) [])` — not via `:lazy-content`, which would build and discard every spec on each render. This is deliberate two-tier laziness: a spec-level guard for the large-list tier, `:lazy-content` for the moderate tier. Second, lazy content carries a re-render obligation: a collapsed pane shows its content only once the description is rebuilt with `:expanded true`, which only the renderer's state owner can trigger, so a `:lazy-content` consumer must bump its render state in `:on-expanded-changed` or the pane expands to an empty body. The default (`:lazy-content false`) builds content always and lets the TitledPane show/hide it — safe for naive consumers (settings tiles, and the future Piece and piece-settings panes). **Future direction:** a single always-efficient mechanism — deferring both construction and materialisation behind one opt-in and folding in the re-render trigger, likely by passing content as a thunk evaluated only on expand — would remove the consumer's choice between a spec-level guard and `:lazy-content` and the hand-rolled re-render wiring; it is deliberately deferred until a consumer makes the cost concrete.
+Lazy content is **opt-in** (`:lazy-content true`, default off), because it carries two constraints the default avoids. First, it defers node *materialisation*, not description *construction*: the pane substitutes an empty VBox for `:content` after the caller has already built the content description, so cljfx never materialises the real nodes — but the description was still constructed. Content that is expensive to *construct* (the Instrument Library's family panes build one spec per instrument) must therefore guard construction at the call site — `:children (if expanded (specs) [])` — not via `:lazy-content`, which would build and discard every spec on each render. This is deliberate two-tier laziness: a spec-level guard for the large-list tier, `:lazy-content` for the moderate tier. Second, lazy content carries a re-render obligation: a collapsed pane shows its content only once the description is rebuilt with `:expanded true`, which only the renderer's state owner can trigger, so a `:lazy-content` consumer must bump its render state in `:on-expanded-changed` or the pane expands to an empty body. The default (`:lazy-content false`) builds content always and lets the TitledPane show/hide it — safe for naive consumers (the settings tiles of both settings windows, and the Piece window's panes). **Not provided:** a single always-efficient mechanism — deferring both construction and materialisation behind one opt-in and folding in the re-render trigger, likely by passing content as a thunk evaluated only on expand — would remove the consumer's choice between a spec-level guard and `:lazy-content` and the hand-rolled re-render wiring; it is withheld until a consumer makes the cost concrete.
 
-New windows follow a single step: publish a `:window-open-requested` event with a data map declaring `:window/spec-fn`, `:window/handler`, `:window/state`, and optionally `:window/subscriptions`, `:window/watches`, `:window/stylesheets`, and the lifecycle hooks `:window/on-open` / `:window/on-close`. The pipeline builds the renderer, mounts it, registers it, wires all declared subscriptions and watches, loads stylesheets on the scene, runs `:window/on-open` last, and handles all cleanup on close (running `:window/on-close` first). Locale reactivity, theme reactivity, geometry persistence, and lifecycle management are automatic.
+New windows follow a single step: publish a `:window-open-requested` event with a data map declaring `:window/spec-fn`, `:window/handler`, `:window/state`, and optionally `:window/subscriptions`, `:window/watches`, `:window/stylesheets`, and the lifecycle hooks `:window/on-open` / `:window/on-close`. The pipeline builds the renderer, mounts it, registers it, wires all declared subscriptions and watches, loads stylesheets on the scene, runs `:window/on-open` as the last step before `:window-opened` is published, and handles all cleanup on close (running `:window/on-close` first). Locale reactivity, theme reactivity, geometry persistence, and lifecycle management are automatic.
 
 #### A window opens empty, and is right only after being closed and reopened
 
@@ -880,13 +902,13 @@ per-consumer mechanics live in the sections below. `✓` present · `◻` planne
 | Selection survives the refetch (keyed by structural id) | ✓ | ✓ | ✓ |
 | Selection-on-drag (a drag on an unselected item selects it first) | ✓ | ✓ | ✓ |
 | Reorder within a parent — drag (`reorder-<elem>`, shared drop-target scan) | ✓ — instrument level: own scan | ✓ | ✓ |
-| Copy within a parent (`SRV/atomic [copy-<elem>]` — a structural copy clones) | ✓ | ◻ clone | ◻ clone |
-| Copy cross-parent (staff→instrument; instrument→musician) | ✓ | ◻ clone | ◻ clone |
+| Copy within a parent (`SRV/atomic [copy-<elem>]` — a structural copy clones) | ✓ | ✓ | ✓ layouts |
+| Copy cross-parent (staff→instrument; instrument→musician) | ✓ | ✓ | —² |
 | Cross-parent *move* — deliberately **rejected**, use copy | — | — | — |
-| Collapsed-container drop-reject (only an expanded container accepts) | ✓ | ◻ | — |
+| Spring-loading (a collapsed container opens under a hovering drag it would accept) | ✓ instrument | ✓ musician, instrument | ✓ layout |
 | Multi-item drag (one `SRV/atomic` for the whole selection) | ✓ | ✓ | ✓ |
 | Guarded delete — one shared guard, a single neutral confirmation iff it contains music | —¹ | ✓ | ✓ |
-| Inline field-edit (field-commit → `SRV/set-*` on the entity's address) | ✓ | ◻ | ◻ layout name |
+| Inline field-edit (field-commit → `SRV/set-*` on the entity's address) | ✓ | ✓ | ✓ layout name |
 | Double-click to open / navigate | — (`>` opens) | — (`>` opens) | ✓ musician → Musicians pane |
 | **Backend submission** | **en-bloc** `set-instrument-library` (full-replace + conflict-retry) | **per-gesture** `SRV/atomic` granular operations | **per-gesture** `SRV/atomic` granular operations |
 
@@ -897,13 +919,18 @@ and `add-<elem>` / `add-item` accepts that VPD as its item and resolves it to th
 server-side (content never crosses the wire, resolved from the client-side structural projection the
 window already holds — see [Polymorphic API Guide](POLYMORPHIC_API_GUIDE.md#the-item-can-be-a-reference-too--a-vpd-as-the-thing-to-add)) and their deletes are guarded.
 
+² A layout lists its musicians by reference and each at most once, so there is nothing to copy from one layout
+into another: `copy-musician` on a layout is refused, and a musician dragged out of one layout onto another does
+nothing ([ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md) §4). A musician reaches a second layout
+by being dragged there from the Musicians pane.
+
 **The one load-bearing difference is the last row.** The library submits the whole (small, content-free)
 catalogue en bloc; the panes compose one `SRV/atomic` batch of granular operations per gesture against the
 large, music-bearing piece. Everything else is intended to match.
 
 #### The Piece Window's Panes — the shared model, second incarnation
 
-The Instrument Library window was the first consumer of Ooloi's shared selection / expansion / drag-and-drop core; the **Piece window's Musicians pane is the second**, and its Layouts pane is the third. All three are the *same* small model in different clothes — a new pane is a re-parameterisation, not new infrastructure. The window holds its state in a per-window `*piece-state` atom, the same atom the invalidation/refetch cycle writes the piece's structural projection into; every gesture is either an internal state mutation or a composed backend call.
+The Instrument Library window, the **Piece window's Musicians pane** and its Layouts pane are the three consumers of Ooloi's shared selection / expansion / drag-and-drop core. All three are the *same* small model in different clothes — a new pane is a re-parameterisation, not new infrastructure. The window holds its state in a per-window `*piece-state` atom, the same atom the invalidation/refetch cycle writes the piece's structural projection into; every gesture is either an internal state mutation or a composed backend call.
 
 - **One internal dispatcher.** The window installs a single event handler as its `:window/handler`; cljfx routes every spec-emitted map event through it. It is a *self-contained dispatch world* ([ADR-0042](../ADRs/0042-UI-Specification-Format.md)): piece-internal events — a click that selects, an arrow that toggles a pane open, a key that moves the selection — mutate `*piece-state` in place; only an application-level command bubbles out to the injected dispatch function. A pane never reaches past the window.
 
@@ -911,9 +938,9 @@ The Instrument Library window was the first consumer of Ooloi's shared selection
 
 - **Expansion is one flat map, and every level rests closed until the user opens it** — musicians, instruments and staves in the Musicians pane, layouts and their musicians in the Layouts pane. The map is keyed by each entity's stable structural id, so a toggle survives the projection refetch, and it holds only the ids the user has touched rather than being seeded with every id on each refetch. Why a container does not open merely because it has just been created — and why a closed row still says what it holds — is [ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md) §3. That same map of explicit toggles is what the window **remembers across sessions**: on close, both panes' expansion maps and the split-divider position are written to the window's own persisted record (keyed by the piece's UUID, alongside its geometry); on reopen they are restored, so a piece comes back arranged as it was left, while a pane the user never touched rests closed. It is a *map* rather than a set because an entry records a toggle in either direction and the whole map is persisted and restored as it stands.
 
-- **A drag-and-drop gesture composes one backend transaction.** A drop reads what was dragged and where it landed, composes the corresponding backend calls, submits them as one atomic batch, and trusts the invalidation/refetch cycle to redraw — never an optimistic local mutation. Every *copy* — a clone, held with the platform's copy modifier — is an ordinary insert followed by a re-identify step in the same transaction, so the copy stops sharing identity with its source before anything observes it: a duplicate-in-place then a fresh-id pass when source and copy share a container, an insert-by-reference then a fresh-id pass when the copy lands in a different one. And a gesture may be *refused*: dropping a musician onto a layout that already lists it composes nothing — the first refused drop in the workspace, because no musician appears twice in one score or part. The refusal is meant to be signalled with the operating system's no-drop cursor; on macOS that cursor does not yet appear during the refused drag-over, though the drop is refused regardless.
+- **A drag-and-drop gesture composes one backend transaction.** A drop reads what was dragged and where it landed, composes the corresponding backend calls, submits them as one atomic batch, and trusts the invalidation/refetch cycle to redraw — never an optimistic local mutation. Every *copy* — a clone, held with the platform's copy modifier — is an ordinary insert followed by a re-identify step in the same transaction, so the copy stops sharing identity with its source before anything observes it: a duplicate-in-place then a fresh-id pass when source and copy share a container, an insert-by-reference then a fresh-id pass when the copy lands in a different one. And a gesture may be *refused*: dropping a musician onto a layout that already lists it composes nothing — the first refused drop in the workspace, because no musician appears twice in one score or part. The refusal is meant to be signalled with the operating system's no-drop cursor; on macOS that cursor does not appear during the refused drag-over, though the drop is refused regardless.
 
-- **An inline field edit is one call, and what it should write is shared with the Instrument Library.** The entity editors announce every edit at field granularity, and the Piece Window keeps that granularity: a commit becomes one granular setter on that entity's own VPD, not an accumulated form submitted whole. Because it is one operation, the boundary names its undo step from the operation itself, so the Edit menu reads *Set Name* with nothing composed for the purpose; grouping it into an *unnamed* batch would replace that with the batch's generic label. **A composite field does not mean a batched commit** — a range half, a transposition component and a clef override are each read-modify-written into a single setter call. **What composes a batch is the act**: unticking Transposing is an atomic batch carrying an explicit name, and stays one even when dropping its no-op writes leaves it a single operation, because the name belongs to the act rather than to the count. Nothing is sent at all where the value does not differ from what the entity holds.
+- **An inline field edit is one call, and what it should write is shared with the Instrument Library.** The entity editors announce every edit at field granularity, and the Piece Window keeps that granularity: a commit becomes one granular setter on that entity's own VPD, not an accumulated form submitted whole. Because it is one operation, the boundary names its undo step from the operation itself ([ADR-0015](../ADRs/0015-Undo-and-Redo.md#mutation-sites--how-resources-register-undo-steps) §Mutation Sites), so the Edit menu reads *Set Name* with nothing composed for the purpose; grouping it into an *unnamed* batch would replace that with the batch's generic label. **A composite field does not mean a batched commit** — a range half, a transposition component and a clef override are each read-modify-written into a single setter call. **What composes a batch is the act**: unticking Transposing is an atomic batch carrying an explicit name, and stays one even when dropping its no-op writes leaves it a single operation, because the name belongs to the act rather than to the count. Nothing is sent at all where the value does not differ from what the entity holds.
 
   Working out *what* to write is the same arithmetic in both windows, and it lives in one place: `ui.core.field-edits` takes the entity as it currently stands and the commit, and returns the **writes** — `{:attr … :value …}`, plus a staff index where a write targets a staff. Returning writes rather than a function over an entity is what lets the two windows differ where they must: the Instrument Library has the record in hand and reduces them onto it, while the Piece Window holds a projection of a piece it does not own and must name the operation instead. It returns nothing that restates a value the entity already holds, so a commit that changed nothing produces nothing to send; the count of what remains says whether those writes must land together, and the act — never the count — says what the undo step is called.
 
@@ -1275,7 +1302,7 @@ slow test.
 
 ### 6.6 Teardown: Why the Application Does Not Drain the Pool
 
-The wait §6.5 demands of tests looks, at first reading, like an obligation production is shirking — and the obvious remedy is a pool-wide drain in front of `ig/halt!` when the application quits. That remedy is wrong, and it has been tried.
+The wait §6.5 demands of tests looks, at first reading, like an obligation production is shirking — and the obvious remedy is a pool-wide drain in front of `ig/halt!` when the application quits. That remedy is wrong.
 
 **A test and a quit end differently.** A test halts *abruptly*, from outside, at whatever instant its body happens to finish: startup work may still be in flight, and nothing has been given the chance to conclude. That is precisely what `util.client/halt-app!`'s wait is for. A quit does not end that way. It runs the save pass first, resolving and closing each piece window in turn, and every subsystem that starts asynchronous work is responsible for waiting on its own. A piece window's close waits for that window's own refetches *within* the close rather than ahead of it: releasing its hold on the piece refuses further fetches, drains those already running, and only then revokes the subscription that releasing the piece depends on ([ADR-0031](../ADRs/0031-Frontend-Event-Driven-Architecture.md) §The piece hold).
 
@@ -1621,11 +1648,11 @@ The mechanism that carries it is the renderer. `(swap! *state identity)` changes
 
 - **A window titled from data** — a piece window showing a piece's name. The name is user data, set verbatim, and the registry entry's `:title-key` is cleared, so the title step skips it: "Sonata" stays "Sonata" in every locale. Only the "Untitled" fallback is a UI string, and that one is re-resolved.
 - **A window built by one-time materialisation** — the confirmation dialog and the splash screen, per the boundary rule below. Neither has a renderer to re-evaluate, and neither wants one.
-- **A window with no translated text at all** — the collaboration palette is a chrome-less indicator carrying no `tr` call.
+- **A window with no translated text at all** — the collaboration palette is a chrome-less indicator carrying no `tr` call, and it too is materialised once.
 - **Notifications** — the text is computed at the moment of the event, so no key survives to re-resolve, and a notification is transient.
 - **The macOS application menu's own name** — the product name, which is not translated.
 
-**The renderer spec is the locale-reactivity boundary.** Only content the renderer re-evaluates on `swap!` gets updated. Content built by one-time `cljfx/create-component` + `cljfx/instance` at window creation time — without `cljfx/mount-renderer` watching it — is constructed once and never revisited. This is the correct choice for truly static content (confirmation dialogs, the splash screen). For any window with locale-sensitive strings, all visible content must be returned by the spec function that the renderer's `:middleware` evaluates. Button labels, section headings, and field prompts built outside the renderer spec will silently display the locale active at window-open time and will not respond to locale changes.
+**The renderer spec is the locale-reactivity boundary.** Only content the renderer re-evaluates on `swap!` gets updated. Content built by one-time `cljfx/create-component` + `cljfx/instance` at window creation time — without `cljfx/mount-renderer` watching it — is constructed once and never revisited. This is the correct choice for truly static content (confirmation dialogs, the splash screen, the collaboration palette). For any window with locale-sensitive strings, all visible content must be returned by the spec function that the renderer's `:middleware` evaluates. Button labels, section headings, and field prompts built outside the renderer spec will silently display the locale active at window-open time and will not respond to locale changes.
 
 **The `:locale` cache-buster for nested custom components.** The `swap! *state identity` cascade re-evaluates the top-level spec function, but cljfx's delta computation skips re-invoking nested custom component functions when their props are identical between renders. A component receiving only keyword props (e.g. `{:fx/type ooloi-transposition-controls :tokens [:up :major :second]}`) will not be re-invoked on locale change — cljfx sees identical props and reuses the old output.
 
@@ -1657,7 +1684,7 @@ Application settings in Ooloi are not an afterthought and not a collection of ad
 
 These two systems are architecturally independent. Piece settings concern musical semantics and belong to the backend. Frontend app settings concern application behaviour and belong to the frontend. Mixing the two would compromise the backend-authoritative invariant (Section 13.1).
 
-The remainder of this section covers frontend app settings, governed by [ADR‑0043](../ADRs/0043-Frontend-Settings.md). The central idea: settings are declared once, validated centrally, stored consistently, and exposed through a uniform API. UI surfaces for editing those settings are derived from that declaration rather than hand-crafted repeatedly.
+The remainder of this section covers frontend app settings, governed by [ADR‑0043](../ADRs/0043-Frontend-Settings.md). The central idea: settings are declared once, validated centrally, stored consistently, and exposed through a uniform API. UI surfaces for editing those settings are derived from that declaration rather than hand-crafted repeatedly. Piece settings are edited through the same generated form, in the Piece Preferences window that closes §10.2.
 
 ### 10.1 `def-app-setting`
 
@@ -1692,7 +1719,7 @@ Instead:
 * Boolean settings become checkboxes.
 * Text and validated settings become TextFields.
 
-The settings window (`app_settings_window.clj`) follows the content builder pattern ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). `show-app-settings!` publishes the open request and the UI Manager's pipeline manages the lifecycle; because the window is registered under a fixed `:window/id`, opening it twice brings the existing instance to the front rather than creating a second. Internally, the window is a TabPane with one tab per settings category namespace, each tab holding a ScrollPane of setting rows. Controls derive from registry metadata: a `:choices` entry becomes a ComboBox inside an AtlantaFX Tile; a validator-equipped text setting becomes a TextField that commits on Enter or focus loss. Each field has a per-field reset button; a "Reset All to Defaults" button at the bottom resets every setting in the active tab category after confirmation.
+The settings window (`app_settings_window.clj`) follows the content builder pattern ([ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). `show-app-settings!` publishes the open request and the UI Manager's pipeline manages the lifecycle; because the window is registered under a fixed `:window/id`, opening it twice brings the existing instance to the front rather than creating a second. The form itself is not described in that namespace: it is three shared components in `ooloi.frontend.ui.core.cljfx` (§4.4). `ooloi-setting-tabs` is the tabbed surface, one tab per category — for an application setting, the namespace of its key — each tab holding a ScrollPane of rows. `ooloi-setting-row` is one row, an openable tile built on `ooloi-openable-pane`, whose control derives from the setting's declaration: a `:choices` entry becomes a ComboBox, a checkbox hint a CheckBox, and a text setting a TextField that commits on Enter or focus loss, put to the setting's validator first. Each row has a per-field reset button, shown when the value differs from its default. `ooloi-setting-button-bar` is the bar beneath, whose Reset All Defaults resets every setting in the tab being shown after confirmation, and whose OK button closes the window. None of the three writes anything: each dispatches an event, and the window's own handler decides what that event means.
 
 Each setting tile renders the translated description as a Label with `:wrap-text true` and `:max-width 480.0`. Long descriptions — a sentence or two — break to multiple lines instead of stretching the row beyond the scroll-pane viewport, and the cap keeps the tile column visually consistent even when the user resizes the window wide. In choice tiles the description Label also takes `:h-box/hgrow :always` so it claims horizontal space ahead of the control block on the right (no spacer needed); in text rows the surrounding VBox already provides the width constraint. New settings must keep this pattern — a Label without `:wrap-text` widens the row to its single-line preferred width and defeats the scroll-pane's `:fit-to-width true` constraint, surprising the user with horizontal scroll or a stretched window.
 
@@ -1703,6 +1730,8 @@ The result is a window that is consistent by construction:
 * New settings appear automatically when declared.
 
 There is no duplication between "settings storage" and "settings UI." The window is a projection of the registry.
+
+**The same form, for a piece.** Each piece window's *Piece Settings…* button opens that piece's **Piece Preferences** window, which mounts the same rows and the same tabbed surface over the piece's own settings ([ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md) §6) — so the two settings surfaces are one implementation and cannot drift apart in appearance. What differs is where the values live. Which settings exist, their categories and order, labels, controls and validators come from the `defsetting` registry, which is shared code and therefore already on the frontend's classpath, so nothing about the declarations is fetched. A piece setting declares its category explicitly rather than in a key namespace, since its name generates the accessors clients call over gRPC. The values arrive in the piece's structural projection, which the window watches on the piece window's state rather than fetching or subscribing; a commit is one `SRV/` call on the piece's `[]` VPD, composed as a batch only where some of the piece's derived names depend on the setting. The window has no button bar: its only reset is per field, so there is no Reset All for an OK button to follow, and every change takes effect as it is made. It is a piece-owned window (§3.6) — one per piece, closing with its piece and reopening with it — while how it is arranged, which tiles are open and which tab is showing, is remembered once for every Preferences window rather than per piece (§3.5).
 
 ### 10.3 Validation Feedback
 
@@ -1863,7 +1892,7 @@ The frontend uses a permission gating system to control which UI operations are 
 **Transport-aware stub.** The `allowed?` function checks the transport type of the current gRPC connection via `srv-client/*srv-client*`:
 
 - **`:in-process`** (local desktop): always `true` — the user is the host
-- **`:network`** (remote server): always `false` — real permission delivery not yet implemented
+- **`:network`** (remote server): always `false` — no permissions are delivered over a network connection
 - **`nil`** (tests, early init): `true`
 
 **Operation keywords** follow a `verb-noun` convention. Staff and instrument permissions are independent — an admin can control each separately per role or person:
@@ -1875,7 +1904,7 @@ The frontend uses a permission gating system to control which UI operations are 
 
 **Handler gating** — mutation handlers wrap their body in `(when (permissions/allowed? :keyword) ...)`. **Editor disable gating** — `ooloi-instrument-editor` passes `(permissions/allowed? :edit-staff)` as `:editable?` to each staff editor; when `false`, all interactive controls have `:disable true`.
 
-When collaborative sessions are implemented, `allowed?` will check against a set of granted operations populated from the gRPC session handshake. The handler-level gating pattern and keyword vocabulary are permanent — only the implementation of `allowed?` will change.
+The design for the network arm is a check against a set of granted operations populated from the gRPC session handshake. The handler-level gating pattern and keyword vocabulary are permanent; the transport stub and the handshake check differ only inside `allowed?`.
 
 ---
 
@@ -1972,7 +2001,7 @@ initiate a drag: `startDragAndDrop` is triggered by toolkit-level input, so a D&
 copy-drag holding the platform copy modifier (Option on macOS, Ctrl elsewhere), and click — each
 executed on the JAT with brief pauses between steps so events are processed. The blind spot: **Robot
 suppresses MOUSE_CLICKED after a successful drop**, so the post-D&D synthetic-click bug described in
-Section 4.7 cannot be reproduced with it. That class of bug needs a handler-level test with a
+Section 4.8 cannot be reproduced with it. That class of bug needs a handler-level test with a
 `MouseEvent` constructed with `stillSincePress` false. A Robot test proves the gesture works; it cannot
 prove the gesture leaves selection alone afterwards.
 
@@ -2176,7 +2205,7 @@ The second is what a **focus-loss commit** needs. `ooloi-dense-text-field`'s `:o
 
 **Blur to the pane header or to empty space, never to another field.** A test that ends with a text field still focused fires that field's commit during teardown, against a client already torn down — and the failure guard then aborts the whole namespace, taking every other fact's verdict with it.
 
-**Robot is what proves a gesture reaches focus.** A Robot click on a *shown* Stage generates real toolkit input, which no other mechanism in a test process does. The canonical case is `active-piece-id` (in `ui.core.active-window`), which resolves the piece the foremost window belongs to (a piece window's `:window/id` is its piece-id; a layout window's `:window/piece-id` names its parent piece), returning `nil` when no piece-derivable window is foremost — the query the File-menu piece actions (Save / Save As / Close) and Close enablement target. It reads the `:active-window-id` atom, which the per-Stage `focused-listener` updates on real focus; `active_window_test` shows a real piece window and a real non-piece window, `robot-click!`s each with the shared `util.robot` helpers, and asserts `active-piece-id` follows focus.
+**Robot is what proves a gesture reaches focus.** A Robot click on a *shown* Stage generates real toolkit input, which no other mechanism in a test process does. The canonical case is `active-piece-id` (in `ui.core.active-window`), which resolves the piece the foremost window belongs to (a piece window's `:window/id` is its piece-id; an owned window's `:window/piece-id` names its piece), returning `nil` when no piece-derivable window is foremost — the query Save and Save As target, Close reading `active-closable-window-id` instead (§3.2). It reads the `:active-window-id` atom, which the per-Stage `focused-listener` updates on real focus; `active_window_test` shows a real piece window and a real non-piece window, `robot-click!`s each with the shared `util.robot` helpers, and asserts `active-piece-id` follows focus.
 
 **Shutdown race — JAT flush before pool halt.** `run-later!` callbacks queued during `show-window!` or `attach-notification-widget!` may still be pending on the JAT when the pool is halted, causing `RejectedExecutionException`. Drain the JAT queue with a no-op `run-on-fx-thread-sync!` before halting the pool. `with-ui-manager` performs this automatically. Never write manual pool/bus/manager boilerplate in tests.
 
@@ -2223,11 +2252,11 @@ The identity of the actual focus owner is what distinguishes every one of the ca
 
 A residue remains, roughly one run in twelve: `await-node-focus!` times out *and* the reclaim never
 fires, meaning the focus owner never changed at all — the request was ignored outright and no event
-followed. That case has no evidence-backed explanation yet. Measure it before theorising.
+followed. That case has no evidence-backed explanation. Measure it before theorising.
 
 #### Waiting for Window Lifecycle Events
 
-Window opens and closes are asynchronous: `show-window!` / `close-window!` (or the `window-request` facade) publish to `:window-requests`, the UI Manager performs the operation on the JAT, and only then publishes `:window-opened` / `:window-closed` on `:window-lifecycle`. A *close* is doubly deferred — `close-window!` runs the fade-out animation first and removes the window from the registry (and publishes `:window-closed`) only in the fade's `on-complete`. A test that reads the registry immediately after triggering a show or close races that pipeline.
+Window opens and closes are asynchronous: the `window-request` facade publishes to `:window-requests`, the UI Manager's subscriber runs `show-window!` / `close-window!` on the JAT, and those publish `:window-opened` / `:window-closed` on `:window-lifecycle` only when they complete. A *close* is doubly deferred, even when `close-window!` is called directly — it runs the fade-out animation first and removes the window from the registry (and publishes `:window-closed`) only in the fade's `on-complete`, and for a piece window only once the windows it owns have closed too. A test that reads the registry immediately after triggering a show or close races that pipeline.
 
 There are three distinct shapes, and choosing the wrong one is a common source of flakiness:
 
@@ -2295,11 +2324,11 @@ Every **other** key in that map goes to `start-app!` — `:peer-port`, `:auto-ha
 - The test needs `with-frontend-test-config` **outside** another platform-directory wrapper — typically because it boots a second, independent backend with `with-system`. Both redirect `~/.ooloi` and the innermost wins, so folding the config wrapper inwards would leave the application resolving to a different temp directory than the backend it talks to. That is a change in what the test isolates, not in how it is written.
 - The test **transforms the config** before starting — switching both transports to `:network`, for instance. The macro builds `combined-config` itself and offers no hook to alter it.
 
-A site kept on the older form for either reason carries a comment saying so, at the site. Anything else is a conversion that has not happened yet.
+A site that calls `start-app!` directly for either reason carries a comment saying so, at the site; any other direct call belongs in the macro.
 
-**The startup untitled window counts as an open piece.** Startup always opens the untitled New window ([ADR-0042](../ADRs/0042-UI-Specification-Format.md) untitled fallback), and opening a piece window subscribes its piece — so the Event Router holds a subscription from launch. A `start-app!` test that exercises the collaboration **connect / switch-to-remote** path therefore trips the outbound open-pieces gate ([ADR-0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md): `switch-to!` refuses with `{:refused :open-pieces}` while any local piece is subscribed) unless it first clears that window. `th/close-startup-piece-window! mgr` does so: it waits for the window's initial `get-piece-structure` read to land (closing the window removes the piece via close-on-last-release, and an in-flight fetch would otherwise fail "not found" and fire a spurious error notification), then closes it on the JAT; the test then waits for the Event Router to hold no subscription before connecting. It is a test-only stand-in for the user-facing close-without-save (discard) gesture, which now exists (`close-piece!`): a clean startup piece closes silently either way, so the helper remains a convenient direct close for the test's teardown.
+**The startup untitled window counts as an open piece.** Startup always opens the untitled New window ([ADR-0042](../ADRs/0042-UI-Specification-Format.md) untitled fallback), and opening a piece window subscribes its piece — so the Event Router holds a subscription from launch. A `start-app!` test that exercises the collaboration **connect / switch-to-remote** path therefore trips the outbound open-pieces gate ([ADR-0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md): `switch-to!` refuses with `{:refused :open-pieces}` while any local piece is subscribed) unless it first clears that window. `th/close-startup-piece-window! mgr` does so: it closes the window on the JAT and waits for nothing beforehand. Nothing needs waiting for, because the close releases the window's hold on its piece, which refuses further fetches and drains those already running — the initial `get-piece-structure` read included — before revoking the subscription, so no fetch is left asking for a piece that close-on-last-release has removed ([ADR-0031](../ADRs/0031-Frontend-Event-Driven-Architecture.md) §The piece hold). The release runs off the JAT, so the test then waits for the Event Router to hold no subscription before connecting. The helper closes through `close-window!` rather than through `close-piece!`, the user-facing close: a clean startup piece closes without a prompt either way, so the direct close is the simpler teardown.
 
-A test that explicitly closes a window closes it on the JavaFX thread, and nothing more — the flushes and the halt that used to follow are the macro's:
+A test that explicitly closes a window closes it on the JavaFX thread, and nothing more — the flushes and the halt that follow belong to the macro:
 
 ```clojure
 (with-started-app [sys-atom]
@@ -2394,7 +2423,7 @@ Application code does not construct `Stage` directly. It does not close windows 
 
 This centralisation ensures:
 
-* Geometry persistence (position, size, scale, scroll state) is consistent.
+* Geometry persistence (position, and size for a resizable window) is consistent.
 * macOS ownership rules are respected automatically.
 * Headless mode behaves identically at the lifecycle level.
 * Lifecycle events are always published.
@@ -2460,11 +2489,11 @@ The locale change cascade (`swap! *state identity` on all registered renderer at
 
 **Invariant:** If a window module uses a standalone `cljfx/create-component` call at window-creation time for content that contains user-visible strings, those strings will not update on locale change.
 
-The correct model: the renderer's `:middleware` function returns a spec that includes all visible content. `cljfx/instance @(renderer @*state)` extracts the initial JavaFX Node. `cljfx/mount-renderer` keeps the renderer watching the atom. All subsequent re-renders flow through the same spec function.
+The correct model: the renderer's `:middleware` function returns a spec that includes all visible content. `cljfx/instance @(renderer @*state)` extracts the initial JavaFX Node. `cljfx/mount-renderer` keeps the renderer watching the atom. The UI Manager's pipeline does all three for every window that declares `:window/spec-fn`, and all subsequent re-renders flow through the same spec function.
 
 For nested custom component functions that call `tr` internally on keyword props, the `:locale` cache-buster pattern (see §9.8) must be used — `swap! identity` alone is not sufficient because cljfx skips re-invoking components whose props are identical.
 
-One-time materialisation (`cljfx/create-component` + `cljfx/instance` without a mounted renderer) is reserved for `show-confirmation!` — a blocking modal that returns synchronously via `.showAndWait` and has no ongoing lifecycle. No other window uses it.
+One-time materialisation (`cljfx/create-component` + `cljfx/instance` without a mounted renderer) is reserved for windows a re-render could not change: `show-confirmation!` — a blocking modal that returns synchronously via `.showAndWait` and has no ongoing lifecycle — the splash screen, and the collaboration palette, which carries no translated text. No other window uses it.
 
 ---
 
@@ -2531,7 +2560,7 @@ For deeper formal detail, see:
 
 The application's keyboard bindings, one row per assigned accelerator. The source of truth is `command-catalogue` in `commands.clj` — every binding is declared there as an `:accelerator` on a command descriptor, and the menu system derives all platform behaviour from it (see [ADR‑0042](../ADRs/0042-UI-Specification-Format.md)). This table is a maintained view of that catalogue: it grows as commands gain bindings, and it is the conflict-check reference when assigning a new one.
 
-`Cmd/Ctrl` denotes the platform shortcut modifier: Cmd on macOS, Ctrl on Windows and Linux. Rows marked *reserved* are stub commands — the binding is spoken for and the menu item exists (disabled), but the feature is not yet active; per ADR‑0042, stubs stabilise menu structure and imply no feature commitment.
+`Cmd/Ctrl` denotes the platform shortcut modifier: Cmd on macOS, Ctrl on Windows and Linux. Rows marked *reserved* are stub commands — the binding is spoken for and the menu item exists (disabled), but the feature is inactive; per ADR‑0042, stubs stabilise menu structure and imply no feature commitment.
 
 | Binding | Command | Menu |
 |---|---|---|

@@ -50,7 +50,7 @@ A save is two operations wearing one name, differing by orders of magnitude in c
 `save-piece` and `clone-piece` therefore return a **handle**. Deref it to obtain the outcome:
 
 ```clojure
-;; Save to a chosen destination (Save As, or the first Save of a new piece)
+;; Save to a chosen destination (the first Save of a piece with no recorded location)
 (let [handle (SRV/save-piece piece-id dir-token "symphony.ooloi")]
   ;; returns immediately — the write is queued
   @handle)                                  ; => true, or {:save-failure <type>}
@@ -76,7 +76,9 @@ The save queue is a single thread, so writes happen **one at a time, in the orde
 
 Reads are the opposite, and the asymmetry is about the shared target rather than the direction: two reads of a file cannot interfere, two writes to one path can.
 
-The queue is the `:ooloi.backend.components/save-queue` component. It is the executor itself, published on a handle in `ooloi.shared.ops.persistence` so `save-piece` can reach it with nothing in hand, and its `halt-key!` drains — a write already running finishes before the halt returns, so a queued save is not lost at quit.
+The queue is the `:ooloi.backend.components/save-queue` component. It is the executor itself, published on a handle in `ooloi.shared.ops.persistence` so `save-piece` can reach it with nothing in hand. Its `halt-key!` drains: it shuts the queue to new submissions, so a write arriving afterwards is refused rather than silently dropped, and then waits for the writes already submitted to finish, so a queued save is not lost at quit. The wait is capped by `drain-timeout-ms`, 30 seconds — generous, because an abandoned save is a lost save, and bounded, because a destination that has gone away, such as a disconnected network volume, would otherwise hang the exit.
+
+The queue halts before the piece manager. It holds a ref to the piece-manager component in both configurations (`{:piece-manager (ig/ref :ooloi.backend.components/piece-manager)}`), declared for halt order rather than for anything it reads from it: Integrant halts in reverse dependency order, so a write still draining at halt completes before the piece manager halts, and what follows its completion — provenance, baseline, dirty flag — still finds the piece's entry.
 
 A failing write cannot disable it. Submissions are one-shot rather than periodic, so nothing suppresses later executions; the future captures `Throwable` rather than `Exception`, so not even an `OutOfMemoryError` escapes to kill the worker; and the escaping throwable still reaches [ADR-0017](../ADRs/0017-System-Architecture.md)'s surfacing boundary.
 
@@ -108,11 +110,13 @@ Neither direction throws for a failure a user can cause. A read returns `{:open-
 
 Everything that reports a save happens **when the write lands**, never when it is queued. Nothing may report a save that has not happened.
 
-- **The recorded location** — the path and modification time, so a later plain save needs no picker.
-- **`:piece-structure-changed`** — for a full save, whose destination changes the projected filename, so a subscribed window refetches and retitles. A plain save emits nothing: the filename is unchanged.
-- **The dirty flag**, conditionally.
+- **The recorded location** — `record-piece-provenance` replaces the piece's provenance with the path and modification time, so a later plain save needs no picker, and writes `uuid → {:kind :filesystem :path …}` to the [persistent catalogue](PIECE_MANAGER_GUIDE.md#the-persistent-catalogue).
+- **The baseline and the dirty flag**, conditionally — `record-piece-baseline!` records the written value as the value the piece is clean with respect to, and `clear-piece-dirty!` clears the flag, emitting `:piece-dirty-changed` when the clear flips it.
+- **`:piece-structure-changed`** — for a full save, whose destination changes the projected filename, so a subscribed window refetches and retitles. A plain save emits no `:piece-structure-changed`: the filename is unchanged.
 
-**The dirty flag clears only if the piece is unchanged since its snapshot.** Deferring the write opens a window, and a piece can be edited inside it — the user carries on working while a large score is frozen. Clearing regardless would mark as saved a piece whose latest edit exists nowhere but memory, so the user quits without being asked and loses it. The comparison is `=` rather than `identical?`, because the hash-consing daemon rewrites piece values transparently; [ADR-0052 §5](../ADRs/0052-Change-Detection-and-Event-Generation.md) states why, and what it costs on a score that may be an entire opera.
+**The baseline and the dirty flag change only if the piece is unchanged since its snapshot.** Deferring the write opens a window, and a piece can be edited inside it — the user carries on working while a large score is frozen. Clearing regardless would mark as saved a piece whose latest edit exists nowhere but memory, so the user quits without being asked and loses it; recording the baseline regardless would make a later undo or redo measure itself against a value the piece no longer has. The comparison is `=` rather than `identical?`, because the hash-consing daemon rewrites piece values transparently; [ADR-0052 §5](../ADRs/0052-Change-Detection-and-Event-Generation.md) states why, and what it costs on a score that may be an entire opera.
+
+**Save As follows none of this.** `clone-piece` writes a clone with fresh ids — its own piece UUID among them — and on completion delivers `true` and does nothing else: the clone is not registered, receives no provenance and no catalogue entry, and the original's provenance, baseline and dirty flag are untouched. The window stays on the original.
 
 A consequence worth expecting: pressing Save leaves the modified indicator showing for the duration of the write. That is the truth, not a lag.
 
@@ -120,7 +124,9 @@ A consequence worth expecting: pressing Save leaves the modified indicator showi
 
 **Nippy** provides the serialisation layer: a compact binary format, native handling of Clojure data structures, built-in compression, and streaming for pieces too large to hold twice in memory. See [ADR-0007](../ADRs/0007-Nippy.md).
 
-**Hash-consing survives the round trip.** Ooloi shares identical immutable musical objects — a C4 with a staccato exists once however many times it appears — and serialisation preserves that rather than expanding it. Custom Nippy transforms for `Pitch`, `Rest`, `Chord` and `Articulation` write a **registry** of shared objects once and reference it thereafter, so file size falls with the same ratio memory does. The registry is written first, so reading reconstructs shared identity as it goes. See [ADR-0029](../ADRs/0029-Global-Hash-Consing.md).
+**Hash-consing survives the round trip.** Ooloi shares identical immutable musical objects — a C4 with a staccato exists once however many times it appears — and a piece read back from disk shares them again. The file writer freezes the piece directly, with `nippy/freeze-to-file`. Custom Nippy transforms for `Pitch`, `Rest`, `Chord` and `Articulation` write each such object as its constructor arguments, and thawing passes those arguments back through the same caching constructor (`create-pitch`, `create-rest`, `create-chord`, `create-articulation`), so a thawed object is shared exactly as a newly constructed one would be. See [ADR-0029](../ADRs/0029-Global-Hash-Consing.md).
+
+`ooloi.shared.ops.persistence` also holds a registry-first format — `create-optimized-file-format` and `extract-cache-registry`, which gather the shared objects into a registry ahead of the piece — but nothing outside that namespace calls them. The file `save-piece` writes is the frozen piece itself.
 
 **Pure trees are what make the deferred write safe.** A snapshot is an immutable value, so the queue can hold it while the user edits into new versions, and the file that lands is a consistent point-in-time score rather than a smear of two. See [ADR-0010](../ADRs/0010-Pure-Trees.md).
 
@@ -165,7 +171,7 @@ This measures the serialiser, not the save path: it neither queues a write nor t
 
 ## Autosave and versioning
 
-Neither exists yet. The deferred write is what makes both possible without interrupting anybody, so what follows is the shape they should take rather than code to copy.
+Neither exists. The deferred write is what makes both possible without interrupting anybody, so what follows is the shape they should take rather than code to copy.
 
 **An autosave submits a save and ignores the handle.** That is the whole of it: the snapshot is taken at the moment autosave fires, the write queues behind anything already writing, and the user notices nothing. Two things it must respect:
 
@@ -174,7 +180,7 @@ Neither exists yet. The deferred write is what makes both possible without inter
 
 **Versioning** — keeping timestamped copies rather than overwriting — is a `clone-piece` to a derived filename, and inherits the whole save-failure taxonomy unchanged. What it needs beyond that is a policy nobody has decided: how many versions, where they live, and when they are pruned.
 
-**Format migration** would rewrite existing files under a new format. It waits on a decision rather than on code: the on-disk format carries no version stamp today, so a file written by a later Ooloi is presently indistinguishable from a damaged one. [ADR-0051 §7](../ADRs/0051-Filesystem-Operations-Real-and-Virtual.md) records that a versioned envelope is a separate future decision, and an `:unsupported-piece-format` type is what it would add.
+**Format migration** would rewrite existing files under a new format. It waits on a decision rather than on code: the on-disk format carries no version stamp, so a file written by a later Ooloi is indistinguishable from a damaged one. [ADR-0051 §7](../ADRs/0051-Filesystem-Operations-Real-and-Virtual.md) records that a versioned envelope is a separate future decision, and an `:unsupported-piece-format` type is what it would add.
 
 ## Common gotchas
 

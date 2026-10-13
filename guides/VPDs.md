@@ -4,7 +4,7 @@
 
 Vector Path Descriptors (VPDs) are a powerful feature in Ooloi that allow for efficient and flexible navigation and manipulation of the musical piece structure. They provide a consistent way to reference and modify nested elements within a piece, streamlining operations across the entire codebase.
 
-For background on why VPDs were chosen as the primary addressing mechanism in Ooloi, see the [VPDs ADR](../ADRs/0008-VPDs.md).
+For the reasons VPDs are the primary addressing mechanism in Ooloi, see the [VPDs ADR](../ADRs/0008-VPDs.md).
 
 ## What are VPDs?
 
@@ -98,20 +98,23 @@ As a general rule, all Ooloi API functions support VPDs as arguments, followed b
 2. It ensures that operations are performed on the correct piece, especially in concurrent environments.
 3. It supports the transaction system, allowing operations to be performed within the context of the current piece transaction.
 
-The piece argument can be either:
+The piece argument can be any of:
 - A Piece instance (typically used in backend operations)
 - A string piece ID (typically used by the frontend to reference a specific piece)
+- An STM ref holding a piece
 
 Here are examples of using VPDs with API functions (always use compact form):
 
 ```clojure
-(add-attachment [:m 0 1 0 3 0] piece-or-id :staccato)
-(get-items [:m 0 1 0 3 0] piece-or-id)
-(get-voice [:m 0 1 0 3 0] piece-or-id)
+(add-attachment [:m 0 1 0 3 0 :items 2] piece-or-id :staccato)  ; The third item of the voice
+(get-items [:m 0 1 0 3 0] piece-or-id)                           ; The voice's items
+(get-voice [:m 0 1 0 3] piece-or-id 0)                           ; Voice 0 of the measure
 (set-name [:m 0 1] piece-or-id "Violin I")
-(set-time-signature [] piece-or-id 0 [4 4])  ; Root piece, measure 0
-(set-tempo [] piece-or-id 0 120)              ; Root piece, measure 0
+(set-time-signature [] piece-or-id 0 (create-time-signature :descriptor "4/4"))  ; Root piece, measure 0
+(set-tempo [] piece-or-id 0 {:bpm 120 :beat-unit 1/4})                           ; Root piece, measure 0
 ```
+
+A getter addresses the element that holds what it reads: `get-voice` takes the VPD of the measure and the voice's index, just as the object form takes the measure. An attachment goes on an item — a pitch, chord or rest — so its VPD continues into the voice's `:items`.
 
 In these examples, `piece-or-id` can be either a Piece instance or a string piece ID. The API will handle the resolution of the piece ID to a Piece instance internally when necessary.
 
@@ -120,8 +123,8 @@ A VPD is normally the *first* argument — the path to the element being operate
 ### Important: Always Use Compact VPD Form
 
 ```clojure
-✅ CORRECT:  (get-voice [:m 0 1 0 3 0] piece)
-❌ WRONG:    (get-voice [:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0] piece)
+✅ CORRECT:  (get-voice [:m 0 1 0 3] piece 0)
+❌ WRONG:    (get-voice [:musicians 0 :instruments 1 :staves 0 :measures 3] piece 0)
 ```
 
 The compact form is the standard. Navigator form is only for internal Specter operations.
@@ -144,21 +147,54 @@ Internal operations extend VPDs with attribute names to build Specter paths:
 
 ```clojure
 ;; Setting the name of instrument 1 in musician 0
-;; Internally: (conj [:m 0 1] :name) => [:musicians 0 :instruments 1 :name]
+;; Internally: (conj [:m 0 1] :name) => [:m 0 1 :name]
+;; and (vpd/navigator [:m 0 1 :name]) => [:musicians 0 :instruments 1 :name]
 (set-name [:m 0 1] piece "Violin I")
 ```
 
-This pattern (`conj vpd attr-name`) is how VPDs interface with Specter for attribute access.
+This pattern (`conj vpd attr-name`) is how VPDs interface with Specter for attribute access. The extended path is still compact; `vpd/navigator` expands the indices it knows and appends the rest unchanged.
+
+## Working with VPDs Directly: `ooloi.shared.ops.vpd`
+
+Beneath the API, `ooloi.shared.ops.vpd` holds the functions that operate on VPDs themselves. They are pure functions over piece values: no transaction, no change detection, no undo. Changing a managed piece is the API's job; these are for code that already holds a piece value, such as the engine's own implementations, a timewalk consumer or a test.
+
+**The empty VPD is the piece.** `[]` addresses the root, so it is an address like any other rather than a special case.
+
+**`vpd/retrieve`** returns the element at a VPD, or `nil` if there is none.
+
+**`vpd/mutate`** returns a new piece with the value at a VPD replaced. What it does with its third argument depends on what that argument is: a function or a multimethod is applied to the current value, together with any further arguments; anything else is stored as the new value. Maps and keywords are stored, although Clojure can call them as functions.
+
+**`vpd?`** is true for a vector that is empty or starts with `:m`, `:l`, `:musicians` or `:layouts`, and false for anything else. `retrieve` and `mutate` use it to tell a VPD from an ordinary path such as `[:time-signatures]`, which they follow as it stands.
+
+**The hierarchy accessors** — `musician`, `instrument`, `staff`, `measure` and `voice` for the musical hierarchy, `layout`, `page-view`, `system-view`, `staff-view` and `measure-view` for the layout hierarchy — read one level's index from a VPD in either form. A level the VPD does not reach, or a VPD from the other hierarchy, gives `false`; a value that is not a vector throws.
+
+```clojure
+(require '[ooloi.shared.ops.vpd :as vpd])
+
+(vpd/retrieve [] piece)                          ; => piece
+(vpd/retrieve [:m 5] piece)                      ; => nil (no sixth musician)
+(vpd/mutate [:m 0 :name] piece "Violin I")       ; Value: stored
+(vpd/mutate [:m 0 :name] piece str " (solo)")    ; Function: applied, with its arguments
+(vpd/mutate [] piece assoc :title "Sonata")      ; [] applies the function to the piece
+
+(vpd/vpd? [])                                    ; => true
+(vpd/vpd? [:time-signatures])                    ; => false
+
+(vpd/measure [:m 0 0 0 5])                       ; => 5
+(vpd/voice [:m 0 0 0 5 2 :items 3])              ; => 2
+(vpd/measure [:m 0 0])                           ; => false (no measure level)
+(vpd/measure [:l 0 1 2 3])                       ; => false (layout hierarchy)
+```
 
 ## Best Practices
 
 1. **💡 Always use compact VPD form** - Use `[:m 0 1 0 3 0]` not `[:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0]`. The compact form is the standard notation for all user code. Navigator form is only for internal Specter operations.
 
-2. **💡 Prefer VPD operations over manual STM** - Use convenient VPD-based API operations like `(api/set-measure vpd piece-id 5 measure)` instead of manual STM like `(alter piece-ref assoc-in vpd measure)`. Why make life difficult when the VPD API handles transactions, validation, and error handling for you? See [API Convenience](POLYMORPHIC_API_GUIDE.md#-api-convenience-why-use-vpd-operations) for details.
+2. **💡 Prefer VPD operations over manual STM** - Use convenient VPD-based API operations like `(api/set-measure vpd piece-id 5 measure)` instead of manual STM like `(alter piece-ref assoc-in vpd measure)`. Why make life difficult when the VPD API handles transactions, validation, and error handling for you? See [API Convenience](POLYMORPHIC_API_GUIDE.md#api-convenience-why-use-vpd-operations) for details.
 
 3. Know that VPDs are an option when referencing elements within a piece. You don't need to use them for everything.
 
-4. When creating new API functions, you must support VPDs as arguments for consistency with the rest of the system. The macros in models.core are a great help.
+4. When creating new API functions, you must support VPDs as arguments for consistency with the rest of the system. Declaring the multimethod in `interfaces.clj` with a `:vpd-category` is all it takes: `ooloi.shared.models.core` reads that metadata and generates the VPD form, with nothing to call or list by hand. Adding `:api true` exposes the operation through `api` and `SRV`.
 
 5. Always provide the piece or piece ID when using API functions with VPDs.
 

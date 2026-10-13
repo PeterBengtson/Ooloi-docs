@@ -168,7 +168,7 @@ While STM provides the foundation, **Ooloi's API abstracts away most of the comp
 
 **Key advantages of Ooloi's abstraction:**
 - **Automatic transactions**: Each VPD operation is automatically wrapped in `dosync`
-- **Composable coordination**: Multiple VPD operations coordinate seamlessly across transactions
+- **Composable coordination**: A VPD operation's own transaction nests into an enclosing one, so several operations compose into one atomic change
 - **Type safety**: Polymorphic multimethods ensure correct operation dispatch
 - **Path validation**: VPDs are validated to prevent invalid references
 - **Consistent API**: Same patterns work across all musical and visual elements
@@ -187,10 +187,10 @@ While STM provides the foundation, **Ooloi's API abstracts away most of the comp
 
 **Composable Operations:**
 ```clojure
-;; Multiple VPD operations compose naturally in parallel processing:
-(doseq [update-data parallel-results]
-  (api/set-measure-view (:layout-vpd update-data) piece-id 0 (:measure-view update-data))
-  (api/set-staff-view (:staff-vpd update-data) piece-id 0 (:staff-view update-data)))
+;; Results computed in parallel are written back one VPD operation each.
+;; A setter's VPD addresses the parent; the index and the new item follow the piece-id.
+(doseq [{:keys [staff-view-vpd index measure-view]} parallel-results]
+  (api/set-measure-view staff-view-vpd piece-id index measure-view))
 ;; Each operation is automatically transactional and coordinates with others
 ```
 
@@ -204,7 +204,7 @@ The VPD API provides complete abstraction over STM complexity:
 
 ```clojure
 ;; ❌ WRONG: Never drop to STM level
-(let [piece-ref (api/get-piece-ref piece-id)]
+(let [piece-ref (pm/get-piece-ref piece-id)]   ; pm = ooloi.backend.ops.piece-manager
   (dosync
     (alter piece-ref assoc-in [:musicians 0 :instruments 0 :staves 0 :measures 5] new-measure)))
 
@@ -214,13 +214,20 @@ The VPD API provides complete abstraction over STM complexity:
 
 **For atomic coordination of multiple operations:**
 ```clojure
-;; ✅ PERFECT: Compose VPD operations in outer transaction
-(dosync
+(require '[ooloi.shared.ops.change-detection :as cd])
+
+;; ✅ RIGHT: Compose VPD operations in one coalescing scope
+(cd/with-coalesced-structural-change
   (api/set-measure [:musicians 0 :instruments 0 :staves 0] piece-id 5 measure-a)
   (api/set-staff-view [:layouts 0 :page-views 0 :system-views 0] piece-id 0 staff-view-a)
   (api/set-tempo [] piece-id position new-tempo))
-;; All operations participate in one atomic transaction automatically!
+;; One transaction: every operation succeeds or none does, and the structural
+;; changes among them, if any, emit a single :piece-structure-changed on commit
 ```
+
+`with-coalesced-structural-change` opens the transaction itself; each operation's own `dosync` nests into it. The same composition expressed as operation maps is `api/atomic`, which runs them inside this scope through the backend's `execute-atomic-operations`, and from a client it is `SRV/atomic`, which reaches that same function over gRPC.
+
+A bare `dosync` around the same three calls still gives atomicity and isolation, but it is **not** a coalescing scope: it binds no gate, so each structural change inside it emits its own `:piece-structure-changed` ([ADR-0052 §4](../ADRs/0052-Change-Detection-and-Event-Generation.md#4-exactly-one-event-per-outermost-transaction)). Neither form records an undo step when called from backend code. Undo is captured on the client-facing `SRV/` boundary, one entry per lone call or batch; backend code that wants a step registers it deliberately ([ADR-0015](../ADRs/0015-Undo-and-Redo.md)).
 
 **Why this matters:**
 - **Abstraction integrity**: VPD operations handle validation, type checking, and coordination
@@ -229,9 +236,9 @@ The VPD API provides complete abstraction over STM complexity:
 - **Consistency**: All operations follow the same patterns and conventions
 - **Maintenance**: No need to understand STM internals to write reliable concurrent code
 
-**The only STM primitive developers use:** `dosync` to compose multiple VPD operations atomically.
+**The only composition primitive developers need:** `with-coalesced-structural-change` (or `api/atomic`, given operation maps) to compose multiple VPD operations atomically.
 
-When such a composed transaction mutates piece structure, change detection emits a single `:piece-structure-changed` event for the whole transaction, not one per operation — see [ADR-0052: Change Detection and Event Generation](../ADRs/0052-Change-Detection-and-Event-Generation.md) for how agent-deferred emission and a transaction-scoped gate guarantee exactly-once-per-commit, even under retry.
+When a composed transaction in that scope mutates piece structure, change detection emits a single `:piece-structure-changed` event for the whole transaction, not one per operation — see [ADR-0052: Change Detection and Event Generation](../ADRs/0052-Change-Detection-and-Event-Generation.md) for how agent-deferred emission and a transaction-scoped gate guarantee exactly-once-per-commit, even under retry.
 
 ## Overview
 
@@ -241,79 +248,84 @@ This guide demonstrates how to leverage Ooloi's sophisticated concurrency archit
 
 ## Parallel Measure Formatting with Coordinated Updates
 
+The examples below are sketches. `calculate-measure-view`, `format-staff-view` and `visible-elements` stand for the formatting work itself and are not Ooloi functions; everything addressed through `api/`, `pm/`, `cd/` and `vpd/` is. Measure views live in a staff view, which lives in a system view, so a measure view is set with the staff view's VPD, the measure view's index within that staff view, and the new measure view.
+
 ```clojure
 ;; Advanced: Parallel measure formatting showcasing Ooloi's elegant concurrency
-(require '[ooloi.backend.api :as api])
+(require '[ooloi.shared.api :as api]
+         '[ooloi.backend.ops.piece-manager :as pm]
+         '[ooloi.shared.ops.change-detection :as cd]
+         '[ooloi.shared.ops.vpd :as vpd])
 
 (defn extract-measures-by-range
-  "Extract measures from piece using temporal coordination."
-  [piece-id measure-range]
-  (->> (api/get-piece piece-id)
+  "Extract one staff's measures from the piece using temporal coordination."
+  [piece-id staff-vpd measure-range]
+  (->> (pm/get-piece piece-id)
        vector
-       (sequence (comp (timewalk {:boundary-vpd []
-                                     :start-measure (first measure-range)
-                                     :end-measure (last measure-range)})
-                      (filter measure?)))
-       (group-by #(get (vpd %) 9))))  ; Group by measure number
+       (sequence (comp (timewalk {:boundary-vpd staff-vpd
+                                  :start-measure (first measure-range)
+                                  :end-measure (last measure-range)})
+                       (filter measure??)))
+       (group-by #(vpd/measure (vpd %)))))  ; Group by measure number
 
 (defn format-single-measure
   "Process individual measure with temporal item coordination."
   [[measure-num measure-results]]
   (let [visible-items (sequence (comp (mapcat #(timewalk (item %) {}))
-                                     visible-elements)
-                               measure-results)
+                                      visible-elements)
+                                measure-results)
         measure-view (calculate-measure-view visible-items)]
     [measure-num measure-view]))
 
 (defn update-layout-measures
-  "Coordinate parallel results into layout hierarchy with composed VPD operations."
-  [piece-id layout-vpd formatted-measures]
+  "Coordinate parallel results into one staff view with composed VPD operations."
+  [piece-id staff-view-vpd first-measure formatted-measures]
   ;; *** APPROACH 1: Compose multiple VPD operations ***
-  ;; Each VPD operation is separate but coordinated in outer transaction
-  (dosync
+  ;; Each VPD operation is separate but runs inside one enclosing transaction
+  (cd/with-coalesced-structural-change
     (doseq [[measure-num measure-view] formatted-measures]
-      ;; Each VPD call has its own dosync, but participates in our outer transaction
+      ;; Each VPD call has its own dosync, which nests into the scope's transaction
       ;; Result: All measure view updates succeed or fail as a single atomic operation
-      (api/set-measure-view (conj layout-vpd :measure-views measure-num)
-                           piece-id
-                           0 
-                           measure-view))))
+      (api/set-measure-view staff-view-vpd
+                            piece-id
+                            (- measure-num first-measure)   ; index within the staff view
+                            measure-view))))
 
 (defn update-layout-measures-batch
-  "Alternative: Update entire measure-views vector in single operation."
-  [piece-id layout-vpd formatted-measures]
+  "Alternative: Update the staff view's entire measure-views vector in one operation."
+  [piece-id staff-view-vpd first-measure formatted-measures]
   ;; *** APPROACH 2: Single vector update operation ***
   ;; Collect all results and update the entire vector at once
   ;; This is cleaner and truly atomic - one API call, one transaction
-  (let [current-measure-views (api/get-measure-views layout-vpd piece-id)
+  (let [current-measure-views (api/get-measure-views staff-view-vpd piece-id)
         ;; Build updated vector with parallel results
         updated-measure-views (reduce (fn [measure-views [measure-num measure-view]]
-                                        (assoc measure-views measure-num measure-view))
+                                        (assoc measure-views (- measure-num first-measure) measure-view))
                                       current-measure-views
                                       formatted-measures)]
     ;; Single atomic update of the entire vector
-    (api/set-measure-views layout-vpd piece-id updated-measure-views)))
+    (api/set-measure-views staff-view-vpd piece-id updated-measure-views)))
 
 (defn format-measures-parallel
   "Parallel measure formatting with temporal coordination and elegant addressing."
-  [piece-id layout-vpd measure-range]
+  [piece-id staff-vpd staff-view-vpd measure-range]
   (->> measure-range
-       (extract-measures-by-range piece-id)
+       (extract-measures-by-range piece-id staff-vpd)
        (pmap format-single-measure)      ; "Just make this parallel" - that's it!
        doall                             ; "Wait for everything to finish" - explicit coordination
-       (update-layout-measures piece-id layout-vpd)))  ; Multiple operations, composed atomically
+       (update-layout-measures piece-id staff-view-vpd (first measure-range))))  ; Composed atomically
 
 (defn format-measures-parallel-batch
   "Alternative: Single vector update approach for comparison."
-  [piece-id layout-vpd measure-range]
+  [piece-id staff-vpd staff-view-vpd measure-range]
   (->> measure-range
-       (extract-measures-by-range piece-id)
+       (extract-measures-by-range piece-id staff-vpd)
        (pmap format-single-measure)      ; "Just make this parallel" - that's it!
        doall                             ; "Wait for everything to finish" - explicit coordination
-       (update-layout-measures-batch piece-id layout-vpd)))  ; Single atomic vector update
+       (update-layout-measures-batch piece-id staff-view-vpd (first measure-range))))  ; One vector update
 
 ;; Both approaches are atomic in execution:
-;; 1. Composed approach: Multiple VPD operations coordinated via dosync
+;; 1. Composed approach: Multiple VPD operations in one with-coalesced-structural-change scope
 ;; 2. Batch approach: Single VPD operation updating entire vector
 ;; Choose based on your preference for granularity vs. simplicity
 
@@ -330,11 +342,12 @@ This guide demonstrates how to leverage Ooloi's sophisticated concurrency archit
 ;; • Automatic transaction retries, conflict resolution, and thread safety
 ;; • Enterprise-grade concurrency that reads like simple data transformation
 
-;; Usage: Elegant parallel formatting of symphony measures 10-50
-(api/store-piece "symphony-id" symphony-piece)
-(format-measures-parallel "symphony-id" 
-                         [:layouts 0 :page-views 0 :system-views 0] 
-                         (range 10 51))
+;; Usage: format measures 10-50 of the first staff, assuming one system displays them all
+(pm/store-piece "symphony-id" symphony-piece)
+(format-measures-parallel "symphony-id"
+                          [:musicians 0 :instruments 0 :staves 0]
+                          [:layouts 0 :page-views 0 :system-views 0 :staff-views 0]
+                          (range 10 51))
 ```
 
 ## Collection and Integration Patterns
@@ -351,30 +364,31 @@ This guide demonstrates how to leverage Ooloi's sophisticated concurrency archit
 
 (defn format-single-staff
   "Process individual staff with spatial layout calculations."
-  [piece staff-vpd]
+  [piece [staff-view-index staff-vpd]]
   (let [elements (extract-staff-elements piece staff-vpd)
         staff-view (format-staff-view elements)]
-    [staff-vpd staff-view]))
+    [staff-view-index staff-view]))
 
 (defn integrate-staff-layouts
   "Integrate parallel staff results using sophisticated VPD addressing."
-  [piece-id layout-vpd staff-results]
-  (doseq [[staff-vpd staff-view] staff-results]
-    (let [staff-position (last staff-vpd)]  ; Extract staff index from hierarchical VPD
-      ;; Elegant nested addressing: layout → system → staff
-      (api/set-staff-view (conj layout-vpd :staff-views staff-position)
-                         piece-id
-                         0
-                         staff-view))))
+  [piece-id system-view-vpd staff-results]
+  (doseq [[staff-view-index staff-view] staff-results]
+    ;; Elegant nested addressing: the system view's VPD, then the staff view's index in it
+    (api/set-staff-view system-view-vpd
+                        piece-id
+                        staff-view-index
+                        staff-view)))
 
 (defn parallel-staff-formatting
-  "Parallel staff processing showcasing VPD boundary scoping and hierarchical addressing."
-  [piece-id staff-vpds layout-vpd]
-  (let [piece (api/get-piece piece-id)]
+  "Parallel staff processing showcasing VPD boundary scoping and hierarchical addressing.
+   staff-vpds are given in the order of the system view's staff views."
+  [piece-id staff-vpds system-view-vpd]
+  (let [piece (pm/get-piece piece-id)]
     (->> staff-vpds
+         (map-indexed vector)                        ; [staff-view-index staff-vpd]
          (pmap (partial format-single-staff piece))  ; Multi-core processing - complexity hidden
          doall                                       ; Coordination barrier - wait for all staves
-         (integrate-staff-layouts piece-id layout-vpd))))  ; Safe concurrent updates
+         (integrate-staff-layouts piece-id system-view-vpd))))  ; Safe concurrent updates
 
 ;; Usage: Process multiple staves in parallel with elegant addressing
 (parallel-staff-formatting "symphony-id"
@@ -388,28 +402,27 @@ This guide demonstrates how to leverage Ooloi's sophisticated concurrency archit
 
 ```clojure
 ;; Problem: Direct parallel updates to atoms create race conditions
-(defn unsafe-parallel-update [piece-atom]
-  (pmap (fn [measure-data]
-          ;; RACE CONDITION: Multiple threads modifying same atom concurrently
-          (swap! piece-atom assoc-in [:layouts 0 :measures (:num measure-data)] measure-data))
-        measure-data-list))
+(defn unsafe-parallel-update [piece-atom measure-data-list]
+  (doall
+    (pmap (fn [measure-data]
+            ;; RACE CONDITION: Multiple threads modifying same atom concurrently
+            (swap! piece-atom assoc-in [:layouts 0 :measures (:num measure-data)] measure-data))
+          measure-data-list)))
 
 ;; Solution: Ooloi's VPD-based API handles STM coordination automatically
-(defn safe-parallel-update [piece-id layout-vpd]
-  (pmap (fn [measure-data]
-          ;; Each API call is automatically wrapped in dosync transaction
-          (api/set-measure-view (conj layout-vpd :measure-views (:num measure-data))
-                               piece-id 
-                               0 
-                               measure-data))
-        measure-data-list))
+(defn safe-parallel-update [piece-id staff-view-vpd measure-data-list]
+  (doall
+    (pmap (fn [{:keys [index measure-view]}]
+            ;; Each API call is automatically wrapped in dosync transaction
+            (api/set-measure-view staff-view-vpd piece-id index measure-view))
+          measure-data-list)))
 
 ;; For complex multi-step operations, just use multiple VPD operations
 ;; Each VPD operation is already automatically transactional
 (defn coordinated-batch-update [piece-id updates]
-  (doseq [update-data updates]
+  (doseq [{:keys [staff-view-vpd index measure-view]} updates]
     ;; Each call is automatically wrapped in its own transaction
-    (api/set-measure-view (:vpd update-data) piece-id 0 (:measure-view update-data))))
+    (api/set-measure-view staff-view-vpd piece-id index measure-view)))
 ```
 
 ## Key Benefits
@@ -438,7 +451,7 @@ This guide demonstrates how to leverage Ooloi's sophisticated concurrency archit
 
 **API patterns to prefer:**
 - Use `api/set-xxx` with VPDs for automatic transaction handling
-- Use `api/get-piece-ref` + manual `dosync` for complex multi-step operations
+- Use `cd/with-coalesced-structural-change` around the VPD calls, or `api/atomic` with operation maps, for complex multi-step operations (`SRV/atomic` from a client)
 - Always work with piece-ids rather than direct refs for better abstraction
 
 ## Cross-References
@@ -450,7 +463,7 @@ This guide demonstrates how to leverage Ooloi's sophisticated concurrency archit
 - **Architecture**: [ADR-0004: STM for Concurrency](../ADRs/0004-STM-for-concurrency.md) - Architectural foundation for STM approach
 - **Atom vs STM ref**: [ADR-0045: Instrument Library](../ADRs/0045-Instrument-Library.md) §"Why atom, not STM ref" - when a single atom is correct and STM would only add overhead
 - **STM fundamentals**: Clojure documentation on Software Transactional Memory
-- **Performance considerations**: See Ooloi backend performance benchmarks
+- **Performance considerations**: [Timewalk Performance Benchmarks](https://github.com/PeterBengtson/Ooloi-docs/blob/main/READMEs/BENCHMARKS_README.md) - traversal costs at 1000-measure scale, for the extraction step these patterns parallelise
 
 ## Next Steps
 

@@ -11,6 +11,8 @@
   - [What You Get for Free with VPD Operations](#what-you-get-for-free-with-vpd-operations)
   - [When You Do Want STM: Easy Composition](#when-you-do-want-stm-easy-composition)
   - [Remote Atomic Operations: `SRV/atomic`](#remote-atomic-operations-srvatomic)
+    - [Undo: one step per batch](#undo-one-step-per-batch)
+    - [Composing on the backend](#composing-on-the-backend)
 - [Type System Foundations](#type-system-foundations)
 - [The Canonical Example: VPD vs Object Dispatch](#the-canonical-example-vpd-vs-object-dispatch)
 - [Basic Polymorphic Operations](#basic-polymorphic-operations)
@@ -106,10 +108,11 @@ Same verb, different depths:
 
 ;; Instrument level
 (api/add-staff       [:m 0 0]        piece-id staff)
-(api/set-clef        [:m 0 0]        piece-id :treble)
 
 ;; Staff level
 (api/add-measure     [:m 0 0 0]      piece-id measure)
+(api/set-clefs       [:m 0 0 0]      piece-id {:sounding {:default-clef :treble}
+                                               :written  {:default-clef :treble}})
 
 ;; Measure level
 (api/add-voice       [:m 0 0 0 0]    piece-id voice)
@@ -208,7 +211,7 @@ The polymorphic mechanism: first argument determines operation mode.
 
 ;; Direct object operations
 (api/add-musician piece-object new-musician)      ; Direct object operation
-(api/get-measure voice-object 5)                  ; Direct object access
+(api/get-measure staff-object 5)                  ; Direct object access
 
 ;; Same operation name, different dispatch based on first argument type
 ;; VPD = [:path] → requires piece reference as second argument
@@ -315,7 +318,7 @@ Object pointers don't serialize over networks. VPDs do:
 
 ;; CRUCIAL: gRPC calls always use VPD pattern → always wrapped in transactions
 ;; This ensures atomicity and consistency across network boundaries
-(grpc/add-musician [] "piece-id" musician)  ; Automatic transaction on remote server
+(SRV/add-musician [] "piece-id" musician)  ; Automatic transaction on remote server
 ```
 
 **Visual comparison: Why VPDs work over gRPC while object pointers fail:**
@@ -364,7 +367,7 @@ Both `api/` and `core/` work the same way in backend and frontend:
 
 ```clojure
 ;; Standard: require core with :refer :all
-(require '[ooloi.shared.core :refer :all])
+(require '[ooloi.shared.models.core :refer :all])
 (add-musician [] piece-id musician)
 (set-tempo [] piece-id 0 tempo)
 ;; :refer :all on core gives you the entire engine plus predicates
@@ -381,6 +384,8 @@ Both `api/` and `core/` work the same way in backend and frontend:
 (require '[ooloi.frontend.api.remote-api :as SRV])
 (SRV/add-musician [] piece-id musician)
 ```
+
+An `SRV/` call throws if it is made on the JavaFX application thread; dispatch it on a pool thread instead, with `cp/future`.
 
 #### **`api/` and `SRV/` Are Not Interchangeable**
 
@@ -409,11 +414,15 @@ Compare:
 
 ```clojure
 ;; Low-level approach: Manual STM management (implementation focus)
-(let [piece-ref (api/get-piece-ref piece-id)]
+;; Backend only: get-piece-ref is a plain function of the piece manager,
+;; not part of api
+(require '[ooloi.backend.ops.piece-manager :as pm])
+(let [piece-ref (pm/get-piece-ref piece-id)]
   (dosync
     (alter piece-ref assoc-in [:musicians 0 :instruments 0 :staves 0 :measures 5] new-measure)))
 ;; Developer thinks about: refs, transactions, verbose paths, error handling
 ;; Note: assoc-in requires verbose form - compact VPDs don't work here
+;; Note: an alter like this bypasses change detection, so no event is emitted
 
 ;; Platform approach: VPD operations (musical focus)
 (api/set-measure [:m 0 0 0] piece-id 5 new-measure)
@@ -442,7 +451,7 @@ Compare:
 ;; Atomic composition without managing STM complexity
 ```
 
-Use `dosync` for atomic composition; VPD operations handle individual transactions automatically.
+Use `dosync` for atomic composition; VPD operations handle individual transactions automatically. A bare `dosync` gives atomicity and nothing more: each structural operation inside it still emits its own `:piece-structure-changed`, and it records no undo step. Composition that should reach clients as one change goes through `with-coalesced-structural-change` (`ooloi.shared.ops.change-detection`), as described under [Composing on the backend](#composing-on-the-backend).
 
 ### Remote Atomic Operations: `SRV/atomic`
 
@@ -455,19 +464,18 @@ When the frontend needs to execute multiple operations atomically on the server,
               :piece-id "symphony-1"
               :parameters ["Violin I"]}
              {:method-name :set-key-signature
-              :vpd [:m 0 0 0 0 0]
+              :vpd []
               :piece-id "symphony-1"
-              :parameters ["G major"]}])
+              :parameters [0 (api/create-key-signature :mode :major :tonic "G")]}])
 ```
+
+Key signatures are a piece-level change set, so `set-key-signature` addresses the piece (`[]`) and takes a position — here measure 0 — and a `KeySignature` record.
 
 **When to use `SRV/atomic`:**
 - **Remote atomic batches**: Frontend needs multiple operations to execute atomically on the server
 - **Batch imports**: MusicXML/MIDI import operations that must succeed or fail atomically
 - **Collaborative editing**: Multiple user operations that must be coordinated atomically
 - **Undo/redo chains**: Complex operation sequences that form logical units
-
-**Backend usage note:**
-Backend code should use `dosync` directly instead of `api/atomic`. This provides the same transactional guarantees with less overhead.
 
 **Operation format:**
 Each operation in the collection requires:
@@ -480,11 +488,40 @@ Each operation in the collection requires:
 - **Atomicity**: All operations succeed together or all fail together
 - **Consistency**: Piece remains in valid state throughout
 - **Isolation**: Concurrent operations don't see partial state
-- **Durability**: Changes are persisted once transaction completes
+- **Durability**: Not provided by the batch. A committed batch changes the piece in memory and marks it dirty; the piece reaches disk when it is saved (`save-piece`)
 
 **Piece threading is implicit, through STM.** The batch does not thread a piece *value* from one operation to the next. All operations run in one transaction, and each is an ordinary VPD call that `alter`s the same piece STM ref; because they share the transaction, each operation reads the ref's in-transaction value — which already reflects every prior operation's change. So a batch can build on itself: `add-layout` appends a layout, and a following `add-musician [:l n]` in the same batch sees that layout and adds to it. Ordering within the batch is therefore significant, and the threading comes for free from the shared ref — you compose operations in the order they must apply, and STM threads the evolving piece for you.
 
 This function integrates with Ooloi's STM-gRPC system to provide remote atomic batch execution for musical notation operations.
+
+#### Undo: one step per batch
+
+A mutation that arrives through `SRV/` records an undo step on the backend without the caller asking for one ([ADR-0015 §Automatic Capture and Deliberate Registration](../ADRs/0015-Undo-and-Redo.md#automatic-capture-and-deliberate-registration)).
+
+- **A batch is one step.** However many operations an `SRV/atomic` batch holds, it records one undo entry. The two-argument form names it: the options map `{:undo-key k :undo-params p}` is stored with the entry, uninterpreted, for the undo menu to translate. A batch given no key is labelled `:undo.atomic`. The options change nothing about how the batch executes.
+- **A lone call is one step**, labelled after its operation: `SRV/set-name` records `:undo.set-name`.
+- **A write that changes nothing records nothing.** A VPD setter given the value already present returns the identical piece, and the boundary skips the entry on that identity test.
+- **The batch's piece is its first operation's.** One batch records one entry against one piece, the one named by the first operation's `:piece-id`.
+- **Capture happens only on the request path.** It is taken where the gRPC server executes a client's call. An `api/` call made in-process on the backend records nothing, and neither does `api/atomic` outside a request; backend code that wants an undo step registers it deliberately with `push-undo!` on the Backend Undo Manager.
+
+```clojure
+(SRV/atomic ops {:undo-key    :piece.undo.create-musician-from-instruments
+                 :undo-params {:names ["Flute" "Oboe"]}})
+```
+
+A continuous gesture, such as a drag committed as the pointer moves, takes one transaction per update and is nonetheless one undo step, each later transaction amending the entry the first one pushed. That amendment is specified in [ADR-0015 §Continuous Gestures: One Undo Step](../ADRs/0015-Undo-and-Redo.md#continuous-gestures-one-undo-step); the capture described above is per call and per batch.
+
+#### Composing on the backend
+
+Backend code composing several operations does not go through a client, so it uses `api/`. A bare `dosync` around `api/` calls makes them atomic, but it is not a coalescing scope: each structural operation inside it emits its own `:piece-structure-changed`, and no undo step is recorded ([ADR-0052 §4](../ADRs/0052-Change-Detection-and-Event-Generation.md#4-exactly-one-event-per-outermost-transaction)). Composition that must reach subscribers as one change goes through `with-coalesced-structural-change`, which opens the transaction and collapses its structural changes to a single event. `api/atomic` on the backend runs its batch inside that same scope.
+
+```clojure
+(require '[ooloi.shared.ops.change-detection :as cd])
+
+(cd/with-coalesced-structural-change
+  (api/set-name [:m 0] piece-id "Violin I")
+  (api/add-instrument [:m 0] piece-id instrument))
+```
 
 ### Platform Abstraction: What the API Brings vs. How It Does It
 
@@ -498,7 +535,7 @@ Ooloi's API operates as a platform by hiding implementation complexity while exp
 - Seamless local/remote operation compatibility
 
 **What the API Hides (Implementation Details):**
-- Complex metadata-driven method dispatch with nine-category system
+- Complex metadata-driven method dispatch with ten-category system
 - STM transaction coordination and conflict resolution
 - VPD-to-object resolution and path validation
 - Network serialization and gRPC protocol handling
@@ -506,8 +543,8 @@ Ooloi's API operates as a platform by hiding implementation complexity while exp
 
 **Example of Platform Abstraction Success:**
 ```clojure
-;; Musical intent: "Add forte marking to third beat of measure 5"
-(add-attachment [:m 0 0 0 0 4 :items 2] piece-id (create-dynamic :forte))
+;; Musical intent: "Add a forte marking to the third note of measure 5"
+(add-attachment [:m 0 0 0 4 0 :items 2] piece-id (create-dynamic :name "f"))
 
 ;; Hidden complexity: VPD resolution, STM transaction, type validation,
 ;; attachment lifecycle, piece modification, change propagation, network sync
@@ -529,7 +566,7 @@ Ooloi organizes musical elements using **traits** - capabilities that determine 
 |-------|---------|-------------------|
 | **Musical** | Basic musical element | All core musical operations |
 | **RhythmicItem** | Has duration | `get-duration`, `set-duration` |
-| **Transposable** | Can change pitch | `transpose-chromatic`, `transpose-diatonic`, `transpose-by-interval` |
+| **Transposable** | Can change pitch | `transposable?`; note strings are transposed with `make-transposer` |
 | **TakesAttachment** | Can have attachments | `add-attachment` (slurs, dynamics) |
 | **HasItems** | Contains other elements | `add-item`, `get-items` |
 
@@ -542,6 +579,7 @@ Ooloi organizes musical elements using **traits** - capabilities that determine 
 ;; Rest               ✓        ✓         ✗             ✓                ✗
 ;; Tuplet             ✓        ✓         ✓             ✗                ✓
 ;; Tremolando         ✓        ✓         ✓             ✗                ✓
+;; Grace              ✓        ✓         ✗             ✗                ✓
 ```
 
 **Key insights:**
@@ -549,6 +587,7 @@ Ooloi organizes musical elements using **traits** - capabilities that determine 
 - **Rest** has duration and can have attachments, but cannot be transposed (you can't transpose silence)
 - **Tuplet** contains other items and can be transposed as a group
 - **Chord** has all the same capabilities as Pitch (duration, transposable, takes attachments)
+- **Grace** (a group of grace notes) contains other items and has duration, but is neither transposable as a group nor a target for attachments
 
 **Visual representation:**
 
@@ -597,15 +636,21 @@ classDiagram
         duration
     }
 
+    class Grace {
+        items[]
+    }
+
     Musical <|-- Pitch
     Musical <|-- Chord
     Musical <|-- Rest
     Musical <|-- Tuplet
+    Musical <|-- Grace
 
     RhythmicItem <|-- Pitch
     RhythmicItem <|-- Chord
     RhythmicItem <|-- Rest
     RhythmicItem <|-- Tuplet
+    RhythmicItem <|-- Grace
 
     Transposable <|-- Pitch
     Transposable <|-- Chord
@@ -616,6 +661,7 @@ classDiagram
     TakesAttachment <|-- Rest
 
     HasItems <|-- Tuplet
+    HasItems <|-- Grace
 ```
 
 ### Using Traits in Your Code
@@ -628,18 +674,25 @@ Ooloi provides predicate functions to filter elements by their capabilities:
 (filter transposable? musical-elements)       ; Elements that can be transposed
 (filter takes-attachment? musical-elements)   ; Elements that can have slurs, dynamics
 
-;; Practical example: transpose only transposable elements
-(defn transpose-elements [elements transposer]
-  "Transpose only elements that support transposition."
-  (->> elements
-       (filter transposable?)              ; Pitches, chords, tuplets (not rests)
-       (map transposer)))                  ; Apply transposition
+;; Transposition works on note strings. make-transposer, in
+;; ooloi.shared.ops.pitches, returns a function from pitch string to pitch string:
+(require '[ooloi.shared.ops.pitches :refer [make-transposer]])
+(def up-a-major-third (make-transposer :up :major :third))
+(up-a-major-third "C4")                   ; => "E4"
 
-;; Mixed collection - only some elements get transposed
-(def mixed-elements [pitch1 chord1 rest1 tuplet1])
-(transpose-elements mixed-elements (make-transposer :chromatic 4))
-;; => Only pitch1, chord1, tuplet1 affected (rest1 skipped)
+;; Practical example: transpose the pitches among mixed elements
+(defn transpose-pitches [elements transposer]
+  "Transpose the note of every Pitch; leave everything else as it is."
+  (map #(if (pitch? %)
+          (set-note % (transposer (get-note %)))
+          %)
+       elements))
+
+(transpose-pitches [pitch1 chord1 rest1 tuplet1] up-a-major-third)
+;; => pitch1 transposed; chord1, rest1, tuplet1 unchanged
 ```
+
+`transposable?` says that an element has pitch content (a pitch, a chord, a tuplet or a tremolando), not that an operation exists to transpose it whole; a chord's pitches are transposed one by one, like any other pitch.
 
 This trait system determines which polymorphic operations work with each musical element type.
 
@@ -657,11 +710,11 @@ flowchart TD
     Check -->|Yes:<br/>Vector| VPD[VPD Dispatch]
     Check -->|No:<br/>Object| Obj[Object Dispatch<br/>Type-Based]
 
-    VPD --> VPD1[Establish dosync<br/>Transaction]
+    VPD --> VPD1["Establish dosync<br/>Transaction<br/>mutators only"]
     VPD1 --> VPD2[Resolve Piece<br/>Reference]
     VPD2 --> VPD3[Navigate VPD<br/>Path]
     VPD3 --> VPD4[Execute Method]
-    VPD4 --> ReturnP[Return:<br/>Piece]
+    VPD4 --> ReturnP["Return:<br/>Piece from a mutator,<br/>value from a getter"]
 
     Obj --> Obj1[Method Lookup via<br/>Type Hierarchy]
     Obj1 --> Obj2[Execute Method]
@@ -680,18 +733,24 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 ```clojure
 ;; THE POLYMORPHIC MECHANISM: Same function name, different dispatch
 
-;; VPD-based dispatch (vector first argument)
-(m/defmethod add-musician clojure.lang.PersistentVector
-  [vpd piece-reference musician]
-  (let [piece-ref (pm/get-piece-ref piece-reference)]    ; Automatic piece resolution
-    (dosync                                              ; Automatic transaction
-      (alter piece-ref update-in vpd conj musician))))   ; VPD navigation
+;; Object-based dispatch (object first argument) — written in the model
+;; namespace. This one line in ooloi.shared.models.musical.piece defines
+;; get-/set-musician, get-/set-musicians, add-, remove-, move- and
+;; copy-musician, and (because of :has-id) reorder-musician, for a Piece:
+(xs/defvector Piece :musician :has-id true)
 
-;; Object-based dispatch (object first argument)  
-(m/defmethod add-musician ::h/Piece  
-  [piece musician]
-  ;; Direct operation, no automatic transaction
-  (update piece :musicians conj musician))
+;; VPD-based dispatch (vector first argument) — generated in
+;; ooloi.shared.models.core from add-musician's :vpd-category. What the
+;; generating macro emits for add-musician:
+(m/defmethod add-musician clojure.lang.PersistentVector
+  ([vpd piece-or-id-or-ref new-item]
+   (vpd-transact la-ops/vpd-add-vector-item vpd piece-or-id-or-ref :musicians [new-item]))
+  ([vpd piece-or-id-or-ref new-item position]
+   (vpd-transact la-ops/vpd-add-vector-item vpd piece-or-id-or-ref :musicians [new-item position])))
+
+;; vpd-transact resolves the piece reference to its STM ref
+;; (i/resolve-into-piece-ref), opens the dosync, alters the piece at the VPD,
+;; hands before and after to change detection, and returns the new piece.
 
 ;; Same function name → different implementations based on first argument type
 ```
@@ -701,22 +760,20 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 ### Why This Pattern is Important
 
 ```clojure
-;; ONE FUNCTION WORKS AT EVERY LEVEL:
+;; ONE FUNCTION WORKS AT EVERY LEVEL WHERE THE DATA LIVES:
 
-;; Set key signature at piece level
+;; Key signatures belong to the piece
 (api/set-key-signature [] piece-id 0 c-major)
 
-;; Set key signature at musician level
-(api/set-key-signature [:m 0] piece-id 0 d-major)
+;; An instrument or a staff carries local overrides of them
+(api/set-key-signature-override [:m 0 0]   piece-id 0 d-major)   ; Instrument 0 of musician 0
+(api/set-key-signature-override [:m 0 0 0] piece-id 0 f-major)   ; Its first staff
 
-;; Set key signature at instrument level
-(api/set-key-signature [:m 0 0] piece-id 0 e-major)
-
-;; Set key signature at staff level
-(api/set-key-signature [:m 0 0 0] piece-id 0 f-major)
-
+;; The same verb, set-key-signature-override, at two depths
 ;; Traditional APIs would need different functions for each level
 ```
+
+The piece holds the key signatures; an instrument and a staff each hold a sparse change set of overrides, and the effective key at a position is the first one found from staff to instrument to piece. A musician holds neither.
 
 ### Automatic Transaction Management
 
@@ -753,13 +810,16 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 
 ### Understanding Return Values
 
-VPD operations ALWAYS return the piece:
+VPD mutators ALWAYS return the piece; VPD getters return the value they read:
 
 ```clojure
-;; VPD form guarantees piece return
-(let [piece (api/add-musician [] piece-id musician)]     ; Returns piece
-      piece (api/set-tempo [] piece 0 {:bpm 120})]      ; Returns piece
+;; VPD mutators guarantee piece return
+(let [piece (api/add-musician [] piece-id musician)                 ; Returns piece
+      piece (api/set-tempo [] piece 0 {:bpm 120 :beat-unit 1/4})]   ; Returns piece
   piece)  ; Guaranteed to be the updated piece
+
+;; VPD getters return the value at the address
+(api/get-name [:m 0] piece)   ; => "Violin I"
 ```
 
 **Object operations return what was changed:**
@@ -779,7 +839,8 @@ VPD operations ALWAYS return the piece:
 
 | Form | Returns | Use Case | Threading |
 |------|---------|----------|-----------|
-| **VPD** | Always piece | Modifying piece structure | ✓ Safe with let rebinding |
+| **VPD mutator** | Always piece | Modifying piece structure | ✓ Safe with let rebinding |
+| **VPD getter** | The value read | Reading from the piece | Not a piece |
 | **Object** | Modified object | Direct object manipulation | ⚠️ May not return piece |
 
 **Golden Rule:** When threading multiple piece modifications, **always use VPD form** for guaranteed piece return.
@@ -821,15 +882,17 @@ Compare adding a slur:
 **Musical Expression Through Direct Terminology:**
 
 ```clojure
-;; Local operations – direct object manipulation
-(add-attachment pitch "staccato")        ; "Make this note staccato"
-(add-attachment pitch "f")                ; "Make this note forte"
-(add-attachment chord "accent")           ; "Accent this chord"
-
 ;; VPD operations – navigation + action in one expression
-(add-attachment [:m 0 0 0 2 0 :items 3] piece "tenuto")         ; "Third note: tenuto"
+(add-attachment [:m 0 0 0 2 0 :items 0] piece "staccato")       ; "Make the first note staccato"
+(add-attachment [:m 0 0 0 2 0 :items 1] piece "f")              ; "Make the second note forte"
+(add-attachment [:m 0 0 0 2 0 :items 2] piece "marcato")        ; "Marcato on the third"
+(add-attachment [:m 0 0 0 2 0 :items 3] piece "tenuto")         ; "Fourth note: tenuto"
 (add-attachment [:m 0 0 0 2 0 :items 0] piece "slur"            ; "Slur from first note
                 [:m 0 0 0 2 0 :items 5])                        ;  to sixth note"
+
+;; Local operations – direct object manipulation takes an attachment record
+(add-attachment pitch (create-articulation :name "staccato"))
+(add-attachment chord (resolve-attachment "marcato"))   ; Shortcut resolved explicitly
 
 ;; Span attachments – start and end points clearly expressed
 (add-attachment start-vpd piece "cresc" end-vpd)  ; "Crescendo from here to there"
@@ -844,7 +907,7 @@ Compare adding a slur:
 (let [piece (add-attachment [:m 0 0 0 0 0 :items 0] piece "p")              ; Piano dynamic
       piece (add-attachment [:m 0 0 0 0 0 :items 0] piece "slur"            ; Opening slur
                             [:m 0 0 0 0 0 :items 3])
-      piece (add-attachment [:m 0 0 0 0 0 :items 2] piece "accent")         ; Accent second note
+      piece (add-attachment [:m 0 0 0 0 0 :items 2] piece "marcato")        ; Marcato on third note
       piece (add-attachment [:m 0 0 0 0 0 :items 4] piece "cresc"           ; Crescendo to end
                             [:m 0 0 0 0 0 :items 7])
       piece (add-attachment [:m 0 0 0 0 0 :items 7] piece "f")]             ; Forte at climax
@@ -858,34 +921,38 @@ Compare adding a slur:
 
 ```clojure
 ;; All three forms work identically – use what reads best in context
-(add-attachment pitch "staccato")   ; String – clear and explicit
-(add-attachment pitch :f)           ; Keyword – concise for short markings
-(add-attachment pitch 'tenuto)      ; Symbol – alternative style
+(add-attachment vpd piece "staccato")   ; String – clear and explicit
+(add-attachment vpd piece :f)           ; Keyword – concise for short markings
+(add-attachment vpd piece 'tenuto)      ; Symbol – alternative style
 ```
+
+Shortcuts are resolved by the VPD form of `add-attachment` (and `set-attachment`), which hands them to `resolve-attachment` before anything is added; an unregistered name throws `Unknown attachment shortcut`. The object form adds whatever it is given, so it takes an attachment record — from a constructor, or from `resolve-attachment` called directly.
 
 **Available Musical Vocabulary:**
 
-The API provides 200+ operations and will continue to grow as development proceeds:
-- **Articulations**: `staccato`, `tenuto`, `marcato`, `accent`
-- **Dynamics**: `ffff` through `pppp`, sforzando combinations (`sf`, `sfz`, `sfp`)
-- **Hairpins**: Any combination of `<` and `>` symbols (e.g., `cresc`, `dim`, `<>`, `<><`, `><>`)
-- **Span markings**: `slur`, `tie`, `glissando`
+The shortcuts registered in `ooloi.shared.models.core`:
+- **Articulations**: `staccato` (`stacc`), `staccatissimo` (`staccmo`), `tenuto` (`ten`), `marcato` (`marc`), `marcatissimo` (`marcmo`)
+- **Dynamics**: `ffff` through `pppp`, and sforzando combinations from `sf`, `sfz` and `fz` up to `sffffzpppp`, with or without a following piano dynamic (`sfp`, `sfzpp`, …)
+- **Hairpins**: `<` (`crescendo`, `cresc`), `>` (`diminuendo`, `dim`), `<>` (`cresc-dim`)
+- **Span markings**: `slur`, `tie`, `glissando` (`gliss`)
 - **Octave shifts**: `15ma`, `8va`, `8vb`, `15mb`
 
-For specialized cases not covered by shortcuts, use constructor functions directly:
+For markings not covered by shortcuts, use constructor functions directly:
 
 ```clojure
-(def custom-marking (create-dynamic :name "custom" :velocity 85))
-(add-attachment pitch custom-marking)
+(def accent (create-articulation :name "accent"))
+(add-attachment pitch accent)
 ```
 
 ### Attachment Operations with Type Constraints
 
 ```clojure
-;; Attachments work only with elements that support them:
-(api/add-attachment pitch-object "staccato")    ; ✓ Works (Pitch implements TakesAttachment)
-(api/add-attachment chord-object "f")           ; ✓ Works (Chord implements TakesAttachment)
-(api/add-attachment rest-object "tenuto")       ; ✓ Works (Rest implements TakesAttachment)
+;; Attachments belong on elements that support them:
+(api/add-attachment pitch-object staccato)    ; ✓ Pitch implements TakesAttachment
+(api/add-attachment chord-object forte)       ; ✓ Chord implements TakesAttachment
+(api/add-attachment rest-object tenuto)       ; ✓ Rest implements TakesAttachment
+;; (staccato, forte and tenuto are attachment records, e.g.
+;;  (api/create-dynamic :name "f"))
 
 ;; Type-safe filtering before operations
 (defn add-marking-to-compatible [elements marking]
@@ -896,8 +963,10 @@ For specialized cases not covered by shortcuts, use constructor functions direct
 
 ;; Usage with mixed elements
 (def mixed [pitch1 chord1 rest1 tuplet1])
-(add-marking-to-compatible mixed "staccato")  ; Only pitch1, chord1, rest1 get marking
+(add-marking-to-compatible mixed staccato)  ; Only pitch1, chord1, rest1 get marking
 ```
+
+Filter before adding. The VPD form addresses whatever its VPD names and does not check the trait: given the VPD of a voice rather than of an item, it adds the attachment to the voice's record.
 
 ### Collection Operations with HasItems
 
@@ -907,12 +976,15 @@ For specialized cases not covered by shortcuts, use constructor functions direct
 (api/add-item tuplet-object pitch)   ; Adds pitch to tuplet
 (api/get-item tuplet-object 2)       ; Gets third item in tuplet
 
-(api/get-items measure-object)       ; Returns vector of voices
-(api/add-item measure-object chord)  ; Adds chord to measure
+;; A measure holds voices, and a voice holds the items:
+(api/get-voices measure-object)      ; Returns vector of voices
+(api/add-voice measure-object voice) ; Adds a voice to the measure
+(api/get-items voice-object)         ; Returns vector of items in the voice
+(api/add-item voice-object chord)    ; Adds chord to the voice
 
 ;; Use standard predicate from core
 
-(filter has-items? [pitch1 tuplet1 measure1])          ; => [tuplet1 measure1]
+(filter has-items? [pitch1 tuplet1 grace1])            ; => [tuplet1 grace1]
 ```
 
 **Adding by reference:** in VPD form, the item argument may itself be a VPD referencing an element already in the piece; `add-item` / `add-<elem>` then resolves it server-side and adds the referenced element by reference. See [The item can be a reference, too](#the-item-can-be-a-reference-too--a-vpd-as-the-thing-to-add) above.
@@ -963,14 +1035,14 @@ There is no `get-piece` and no `set-piece`: the piece never crosses the wire who
 
 Element-level get/set is entirely normal — `get-instrument` / `set-instrument`, `get-staff` / `set-staff`, `get-name` / `set-name`. What has no operation is the *whole piece*.
 
-Every call carries values across the wire with full fidelity — `OoloiValue` preserves Clojure types exactly ([ADR-0046](../ADRs/0046-Reference-Passing-In-Process-Transport.md), [ADR-0018](../ADRs/0018-API-gRPC-Interface-and-Events.md)) — so what you read is what the backend holds, and a value you submit lands identical. A whole-piece roundtrip (`get-piece` → edit locally → `set-piece`) would in fact work on that fidelity, and it is the sharpest proof of it — but the pair is deliberately withheld, to underline that the piece lives on the backend and changes only through operations against it ([ADR-0040](../ADRs/0040-Single-Authority-State-Model.md)). The backend's undo/redo now also leans on that absence — every piece mutation is a categorised VPD operation, with nothing uncategorised to escape capture. The boundary is a choice, not a technical limit: reintroducing the pair, were it wanted, is straightforward.
+Every call carries values across the wire with full fidelity — `OoloiValue` preserves Clojure types exactly ([ADR-0046](../ADRs/0046-Reference-Passing-In-Process-Transport.md), [ADR-0018](../ADRs/0018-API-gRPC-Interface-and-Events.md)) — so what you read is what the backend holds, and a value you submit lands identical. A whole-piece roundtrip (`get-piece` → edit locally → `set-piece`) would in fact work on that fidelity, and it is the sharpest proof of it — but the pair is deliberately withheld, to underline that the piece lives on the backend and changes only through operations against it ([ADR-0040](../ADRs/0040-Single-Authority-State-Model.md)). The backend's undo/redo also leans on that absence — every piece mutation is a categorised VPD operation, with nothing uncategorised to escape capture. The boundary is a choice, not a technical limit: reintroducing the pair, were it wanted, is straightforward.
 
 ## Cross-References
 
 ### **Implementation Details**
 - **Type system implementation**: See `shared/src/main/clojure/ooloi/shared/hierarchy.clj` for complete type definitions
 - **Shared interfaces**: See `shared/src/main/clojure/ooloi/shared/interfaces.clj` for multimethod definitions
-- **Backend implementations**: See `backend/src/main/clojure/ooloi/backend/models/` for backend-specific multimethod implementations  
+- **Backend implementations**: See `backend/src/main/clojure/ooloi/backend/ops/` for the backend's implementations of the shared protocols — piece resolution by piece-id and piece-manager operations (`piece_manager.clj`), atomic batches (`atomic_handler.clj`)
 
 ### **Related Guides**
 - **VPD integration**: See [VPDs Guide](VPDs.md) for path-based operation patterns
@@ -1021,7 +1093,7 @@ Implement in a `shared/ops/` namespace. Because shared code cannot require backe
 
 `*server-component*` is the gRPC server component map, bound per-request by `handle-execute-method` in `backend/grpc/server.clj`. Backend Integrant deps injected into the gRPC server — `:undo-manager-component`, `:instrument-library-component`, and any future singleton component — appear as keys on this map. Reach them by `(:my-component server-component)`.
 
-> **🚨 Anti-pattern: per-component dynamic vars.** An earlier iteration of the singleton pattern declared a per-component `^:dynamic` var (e.g. `*instrument-library-component*`) and bound it in every gRPC handler's `binding` block. **Do not reintroduce this pattern.** Each additional dynamic var would have to be bound in the handler's `binding` block (`handle-execute-method`); missing it silently routes the component as `nil` and the request returns `{:result nil}` with no error visible to the caller. The `*server-component*` map already carries every dep — use it directly. The subscription operations in `event_subscription.clj` and the undo operation in `ops/undo.clj` are the canonical model.
+> **🚨 Anti-pattern: per-component dynamic vars.** A singleton component is never given a `^:dynamic` var of its own (e.g. `*instrument-library-component*`). Each such var would have to be bound in the handler's `binding` block (`handle-execute-method`); missing it silently routes the component as `nil` and the request returns `{:result nil}` with no error visible to the caller. The `*server-component*` map already carries every dep — use it directly. The subscription operations in `event_subscription.clj` and the undo operation in `ops/undo.clj` are the canonical model.
 
 ### Frontend Usage
 
@@ -1046,7 +1118,7 @@ Use a VPD operation when the target lives inside a piece. Use a direct `ops/` fu
 
 ### Singleton Operations Are Reachable Only Through `SRV/`
 
-A singleton operation resolves its component from `*server-component*`, and that var is bound **per request**, by `handle-execute-method`. Outside a request it is unbound, the component reads as `nil`, and the operation fails somewhere inside itself rather than at the call — `list-filesystem-roots` invoked directly dies several frames deep, dereferencing a nil connection registry, with nothing in the message to suggest a missing binding.
+A singleton operation resolves its component from `*server-component*`, and that var is bound **per request**, by `handle-execute-method`. Outside a request it holds its root value, `nil`, so the component reads as `nil`, and the operation fails somewhere inside itself rather than at the call — `list-filesystem-roots` invoked directly dies several frames deep, dereferencing a nil connection registry, with nothing in the message to suggest a missing binding.
 
 So a singleton operation is called through `SRV/` or not at all — from tests as much as from production, and no less when the backend is in the same process. This is the one place where the api-contains-everything intuition breaks. The name exists in `api` only because `SRV` is generated from `api`; the operation still has no way to reach its component without a request around it.
 
@@ -1095,7 +1167,7 @@ Callers get the result on success, or a thrown `ex-info` carrying the server's e
 
 ### Why this shape (Pattern A, not server re-throw)
 
-The alternative — having the server re-throw and letting gRPC propagate a `StatusRuntimeException` — was tried and rejected. Rationale:
+The alternative — having the server re-throw and letting gRPC propagate a `StatusRuntimeException` — is rejected because:
 
 1. **Error message fidelity**: gRPC's `Status/INTERNAL` description gets truncated and normalised by the runtime. The response-shape `:error` string survives intact.
 2. **Inspectable as data**: tests and callers that want to verify "this call failed with X error" can do so against a value (`response`), not by catching an exception type. Rich Hickey's "errors are values too" applies — non-local control flow (throwing) is reserved for the boundary, not for traversing layers.
@@ -1112,11 +1184,11 @@ The `resolve` + `^:dynamic var` mechanism described in the previous section also
 
 The mechanism is identical to the shared→backend case — `(some-> (resolve 'ooloi.backend.grpc.server/*server-component*) deref)` followed by an invocation of `send-server-event` resolved the same way. The **reason** for using runtime resolution here is *not* the modularity constraint that motivates the shared→backend case (both files live in `backend/`, so static `:require` would be legal). The reason is **namespace-level decoupling**: the broadcasting component does not statically link the gRPC stack, allowing it to run in isolation (component tests, future deployment modes that omit gRPC) without forcing the gRPC machinery to be loaded.
 
-The dynamic var is bound during `handle-execute-method`, so during any gRPC request the broadcast call reaches a real `*server-component*`. Outside a request (component-isolation tests, server-internal mutations), the var is unbound and the broadcast no-ops, guarded by `when-let`.
+The dynamic var is bound during `handle-execute-method`, so during any gRPC request the broadcast call reaches a real `*server-component*`. Outside a request (component-isolation tests, server-internal mutations), the var holds its root value, `nil`, and the broadcast no-ops, guarded by `when-let`.
 
 ### Alternatives Considered
 
-The current choice prefers consistency with the documented shared→backend pattern and namespace-level decoupling over compile-time linkage. Three alternatives were considered and not adopted at the time of writing. They remain available if trade-offs shift later:
+The choice prefers consistency with the documented shared→backend pattern and namespace-level decoupling over compile-time linkage. Three alternatives are not adopted; they remain available should the trade-offs shift:
 
 1. **Function injection at `grpc-server`'s `init-key`.** Each broadcasting component carries a `:broadcast-fn` slot. At its own startup, `grpc-server` plugs the real send function into each. Compile-time linkage; one explicit wiring step per broadcaster; mild post-init-mutation smell.
 2. **Dedicated broadcaster component.** A small Integrant component holds the broadcast function. `grpc-server` injects the real function into it at startup. Every broadcaster declares the broadcaster as an Integrant dependency and calls a single `broadcast!` function. Scales uniformly to N broadcasters; introduces one new component whose only purpose is to hold a function reference.
@@ -1124,7 +1196,7 @@ The current choice prefers consistency with the documented shared→backend patt
 
 ### When to Revisit
 
-The current `resolve`+dynvar choice is appropriate while the number of backend broadcasters is small (today: 2) and the namespace-decoupling benefit holds.
+The `resolve`+dynvar choice is appropriate while the number of backend broadcasters is small (two: the instrument library and the backend undo manager) and the namespace-decoupling benefit holds.
 
 Revisit in favour of alternative (2) — the dedicated broadcaster component — if:
 

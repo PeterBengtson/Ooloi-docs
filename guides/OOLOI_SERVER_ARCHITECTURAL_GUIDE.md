@@ -3,9 +3,9 @@
 Distributed systems for complex domains like music notation face unique challenges in balancing semantic precision with concurrent access patterns. Ooloi's backend server explores how Clojure's functional programming strengths can combine with gRPC to address these challenges through asynchronous concurrency management.
 
 This comprehensive architectural analysis examines a server design that:
-- Handles concurrent access from multiple sources: collaborative users, background threads, file conversion plugins, and automated processes
+- Handles concurrent access from multiple sources: collaborative users, background threads, file conversion, and automated processes
 - Provides ACID transactions within the authoritative server process, atomic across batched operations within a request
-- Allows plugins to be loaded without restarting, running with equal speed and parity as core functionality
+- Is shaped for the plugin system specified by [ADR-0003](../ADRs/0003-Plugins.md), under which plugins load without a server restart and run at the same speed as core code
 - Preserves perfect type fidelity for complex musical data across network boundaries
 - Eliminates traditional protocol buffer complexity through unified message design
 - Maintains enterprise reliability through architectural simplicity
@@ -29,16 +29,18 @@ This guide serves as both architectural documentation and a case study in applyi
   - [Software Transactional Memory Integration](#software-transactional-memory-integration)
     - [Performance Characteristics](#performance-characteristics)
   - [Dynamic API Method Resolution](#dynamic-api-method-resolution)
+  - [Transactions, Events and Undo at the gRPC Boundary](#transactions-events-and-undo-at-the-grpc-boundary)
 - [Real-Time Event Streaming](#real-time-event-streaming)
   - [Two-Tier Event System](#two-tier-event-system)
   - [High-Performance Event Architecture](#high-performance-event-architecture)
   - [Performance Optimizations](#performance-optimizations)
 - [Connection Management](#connection-management)
+  - [Shared Backend State Components](#shared-backend-state-components)
   - [Connection Registry Architecture](#connection-registry-architecture)
   - [Client Validation Security](#client-validation-security)
   - [Lifecycle Management](#lifecycle-management)
 - [Error Handling](#error-handling)
-  - [Comprehensive gRPC Status Mapping](#comprehensive-grpc-status-mapping)
+  - [API Errors and gRPC Status Codes](#api-errors-and-grpc-status-codes)
   - [Distributed Error Propagation](#distributed-error-propagation)
 - [Enterprise Architecture Comparison](#enterprise-architecture-comparison)
   - [Traditional Enterprise gRPC Challenges](#traditional-enterprise-grpc-challenges)
@@ -107,7 +109,7 @@ The server preserves complete Clojure semantic fidelity across the network bound
 - **Mathematical ratios** remain ratios (not converted to decimals)
 - **Namespaced keywords** preserve their namespaces
 - **Nested data structures** maintain their exact shape
-- **Plugin-defined record types** work automatically without schema changes
+- **Record types** from any namespace cross without schema changes, which is what lets the plugin-defined types of [ADR-0003](../ADRs/0003-Plugins.md) do the same
 
 This is achieved through a specialized conversion layer that maps Clojure types to protobuf representations:
 
@@ -169,13 +171,14 @@ graph TB
     style RT fill:#ff9800,color:#ffffff
 ```
 
+A multi-step change that must be atomic is one `SRV/atomic` call. The server's `execute-atomic-operations` runs every operation in it inside one `with-coalesced-structural-change` scope, which is a single `dosync`: the batch succeeds or fails as a whole, each operation sees the piece as amended by those before it, and the batch is one undo step (see [Transactions, Events and Undo at the gRPC Boundary](#transactions-events-and-undo-at-the-grpc-boundary)):
+
 ```clojure
-;; Example: Atomic multi-staff transposition
-;; Each gRPC request runs this in its own thread
-(dosync
-  (alter-piece piece-id transpose-staff :violin-1 :up-major-third)
-  (alter-piece piece-id transpose-staff :violin-2 :up-major-third)
-  (alter-piece piece-id update-key-signature :E-major))
+;; Client side: rename two musicians as one gesture
+;; The batch runs on one gRPC thread, in one transaction
+(SRV/atomic [{:method-name :set-name :vpd [:musicians 0] :piece-id piece-id :parameters ["Violin I"]}
+             {:method-name :set-name :vpd [:musicians 1] :piece-id piece-id :parameters ["Violin II"]}]
+            {:undo-key :undo.set-name})
 ```
 
 #### Performance Characteristics
@@ -210,9 +213,9 @@ For Ooloi's workload—**short batched edits, human-paced concurrency, and many 
 
 Instead of generating static service interfaces, the server uses **runtime method discovery**:
 
-- API methods are defined as regular Clojure functions
-- `ns-resolve` discovers methods at runtime
-- Plugin methods work immediately without server restarts
+- API methods are the functions and multimethods of `ooloi.shared.api`
+- `ns-resolve` looks the requested name up in `ooloi.shared.api` at runtime; a successful lookup is cached, a miss is not, so a method defined later is found on its next call
+- [ADR-0003](../ADRs/0003-Plugins.md) specifies plugin methods that become callable through this resolution without a server restart
 - Zero code generation complexity
 
 ```mermaid
@@ -224,11 +227,19 @@ graph LR
     D --> F[Return Result]
     
     subgraph "Method Discovery"
-    B --> G[ns-resolve lookup]
-    G --> H[Plugin namespaces]
-    G --> I[Core namespaces]
+    B --> G[Method cache]
+    G -->|miss| H[ns-resolve in ooloi.shared.api]
     end
 ```
+
+### Transactions, Events and Undo at the gRPC Boundary
+
+The `ExecuteMethod` handler is where a client's mutation becomes a transaction, where its events are coalesced, and where its undo step is recorded. Both entry points live in `backend/src/main/clojure/ooloi/backend/grpc/server.clj`:
+
+- **A lone call.** `handle-execute-method` resolves the method and calls `invoke-capturing-undo`. When the method is a VPD mutator — decided by the `:vpd-category` it declares — the call runs inside `with-coalesced-structural-change`, which reads the piece value before and after the mutation within the same transaction, and one undo entry is pushed, labelled `:undo.<method-name>`. A read pays for none of this.
+- **An `SRV/atomic` batch.** `execute-atomic-operations` runs every operation inside one `with-coalesced-structural-change` scope. However many structural changes the batch makes, they coalesce to a single `:piece-structure-changed`, emitted on commit, and the batch records one undo entry, labelled with the caller's `:undo-key` or, when none is given, `:undo.atomic`.
+
+In both cases the entry is recorded only when the piece actually changed — the values on either side of the transaction are compared with `identical?`, so a no-op write leaves the undo stack alone. Undo capture is confined to this client-facing boundary: a backend-internal `api/` mutation records no undo step automatically, which is what keeps formatting passes off the undo stack. And a bare `dosync` is not a coalescing scope; composition that must yield one event goes through `with-coalesced-structural-change` ([ADR-0052 §4](../ADRs/0052-Change-Detection-and-Event-Generation.md#4-exactly-one-event-per-outermost-transaction); [ADR-0015](../ADRs/0015-Undo-and-Redo.md)).
 
 ## Real-Time Event Streaming
 
@@ -245,6 +256,11 @@ The server implements a sophisticated event notification system for collaborativ
 - `:piece-dirty-changed`: The piece's unsaved-changes flag flipped
 - `:piece-invalidation`: Visual hierarchy invalidation at any level. There is one event for every
   level — the depth of the VPD carries the level, so there are no per-level event names
+
+**Undo state**: `:undo-state-changed` announces that the undo/redo stacks of a backend-managed
+resource changed, carrying the resource key and the timestamps of the top entries. Its delivery
+follows the resource rather than its name: a piece's goes only to that piece's subscribers, the
+Instrument Library's to every connected client.
 
 The complete catalogue, with each event's required fields and scope, is in
 [ADR-0018: API, gRPC Interface and Events](../ADRs/0018-API-gRPC-Interface-and-Events.md)
@@ -269,7 +285,7 @@ graph TB
     subgraph "Event Delivery"
     E --> H[Per-Client Queues]
     G --> H
-    H --> I[Async Thread Pool]
+    H --> I[Per-Client Drainer Executor]
     I --> J[Drop-Oldest Overflow]
     J --> K[Client Delivery]
     end
@@ -277,7 +293,7 @@ graph TB
 
 ### Performance Optimizations
 
-**Asynchronous Delivery**: Events are delivered via dedicated thread pools, ensuring slow clients never block fast clients or server operations.
+**Asynchronous Delivery**: Each client's events are delivered by its own single-thread drainer executor, the only writer to that client's stream, so slow clients never block fast clients or server operations.
 
 **Queue-Based Flow Control**: Each client has an independent bounded queue (default 1000 events) with drop-oldest overflow handling.
 
@@ -289,7 +305,7 @@ graph TB
 
 ### Shared Backend State Components
 
-Three pieces of state that previously lived inside `grpc-server`'s component map are extracted into their own tiny Integrant components, so multiple gRPC servers (the in-process server and — when running — the on-demand network server per ADR-0036) and `http-server` can all depend on them directly via `ig/ref`. This is the pattern Integrant was built for: separate concerns, explicit dependency edges, lifecycle that the framework manages independently of any individual consumer.
+Three pieces of backend state are their own small Integrant components, so that every gRPC server (the in-process server and — when running — the on-demand network server per ADR-0036) and `http-server` can depend on them directly via `ig/ref`. This is the pattern Integrant was built for: separate concerns, explicit dependency edges, lifecycle that the framework manages independently of any individual consumer.
 
 The three shared components:
 
@@ -299,16 +315,18 @@ The three shared components:
 | `:ooloi.backend.components/server-statistics` | The map of thread-safe LongAdder counters (see ADR-0025) | Both gRPC servers (writers), `http-server` (reader) |
 | `:ooloi.backend.components/health-manager` | The gRPC `HealthStatusManager` singleton | Both gRPC servers, `http-server` |
 
-After this extraction, **`http-server` no longer holds an `ig/ref` to `grpc-server`** — its handlers read from the three shared components directly. This eliminates the coupling where `http-server`'s stats and health handlers had to drill into `grpc-server`'s component map for fields that weren't really `grpc-server`'s responsibility, and makes `http-server` truly system-singleton: it serves stats from the shared atoms regardless of which gRPC servers are currently running. Halting the on-demand network gRPC server does not touch `http-server` at all.
+**`http-server` holds no `ig/ref` to any gRPC server.** Its Integrant refs are the three shared components above and the cache daemon, whose sweep interval it reports (`http-server-config` in `backend/src/main/clojure/ooloi/backend/system.clj`). Its stats and health handlers read the shared components directly, since those fields are not any one gRPC server's responsibility, and so `http-server` is a system singleton: it serves statistics from the shared state regardless of which gRPC servers are running, and halting the on-demand network gRPC server does not touch it at all.
 
-See [INTEGRANT_COMPONENTS §6 — Component Design Principles](INTEGRANT_COMPONENTS.md#6-component-design-principles) for the design heuristic behind these extractions.
+See [INTEGRANT_COMPONENTS §6 — Component Design Principles](INTEGRANT_COMPONENTS.md#6-component-design-principles) for the design heuristic behind these components.
 
-### Connection Registry
+### Connection Registry Architecture
 
 The shared `:ooloi.backend.components/connection-registry` Integrant component owns the concurrent connection registry — a single atom for O(1) client lookup. Every gRPC server in the system (the in-process server, and — when running — the on-demand network gRPC server) consumes this component via an Integrant ref, so a broadcast triggered by a mutation on either transport iterates one registry and reaches every registered client regardless of which transport they joined through. See ADR-0036 §Hybrid Transport Architecture for the architectural decision and the INTEGRANT_COMPONENTS guide for component-wiring specifics:
 
 ```clojure
-;; Registry structure
+;; Registry structure: one entry per client, built by create-registry-entry and
+;; setup-client-registry-and-drainer, then completed by start-stream-drainer!
+;; (all in backend/src/main/clojure/ooloi/backend/grpc/server.clj)
 {client-id {:server-id "grpc-server-<uuid>"   ; stamped at registration; used by
                                               ; halt-key! to find this server's
                                               ; own clients (see below)
@@ -316,19 +334,21 @@ The shared `:ooloi.backend.components/connection-registry` Integrant component o
            :metadata {:connected-at timestamp
                       :client-ip "127.0.0.1"     ; nil for in-process transport
                       :client-port 54321         ; nil for in-process transport
-                      :display-name nil}         ; supplied via client_info at register time
-           :client-statistics {;; 33 client statistics fields
-                              :api-calls-total 0
-                              :events-sent 0
-                              :queue-size-current 0
-                              ;; ... (see ADR-0025 for complete structure)
-                              }
+                      :display-name nil}         ; nil: the client supplies none
            :piece-subscriptions #{piece-id-1 piece-id-2}
-           :event-queue bounded-queue
-           :consumer-thread thread-ref}}
+           :event-queue (ArrayBlockingQueue. 1000)
+           :client-statistics {:api-calls-total (LongAdder.)   ; one LongAdder per counter
+                               :events-sent (LongAdder.)
+                               ;; ... (stats/create-initial-client-statistics;
+                               ;;      see ADR-0025 for the complete structure)
+                               }
+           ;; added by start-stream-drainer!
+           :server-obs server-call-stream-observer   ; identity witness for the cancel handler
+           :drain drain-fn                            ; kicks this client's drainer
+           :exec drainer-executor}}                   ; the client's single-thread executor
 ```
 
-**Per-server ownership (`:server-id`).** The registry is shared across every gRPC server in the JVM, but each entry belongs to exactly one server — the server through whose interceptor the client registered. When a `grpc-server` component initialises, it generates a fresh `:server-id` (UUID-based) and propagates it through to the interceptor that creates registry entries. The entry is stamped with that id. When the same component's `halt-key!` runs, it filters the shared registry by its own `:server-id`: it closes only its own clients' streaming observers, stops only its own drainer executors, and `dissoc`s only its own keys. Entries owned by other still-running servers stay intact. This is what makes ADR-0036's lifecycle-independence guarantee structural rather than aspirational, on both the halt and the start path.
+**Per-server ownership (`:server-id`).** The registry is shared across every gRPC server in the JVM, but each entry belongs to exactly one server — the server whose `RegisterClient` handler accepted the client. When a `grpc-server` component initialises, it generates a fresh `:server-id` (UUID-based) and carries it on its server component. Once the `RegisterClient` handler has validated the client-id, `setup-client-registry-and-drainer` creates the entry and stamps it with that id; the interceptors create no entries. When the same component's `halt-key!` runs, it filters the shared registry by its own `:server-id`: it closes only its own clients' streaming observers, stops only its own drainer executors, and `dissoc`s only its own keys. Entries owned by other still-running servers stay intact. This is what makes ADR-0036's lifecycle-independence guarantee structural rather than aspirational, on both the halt and the start path.
 
 ### Client Validation Security
 
@@ -357,23 +377,26 @@ The connection establishment implements comprehensive client-id validation as a 
 - **Automatic server subscriptions**: Clients receive server events upon successful connection
 - **Manual piece subscriptions**: API methods for piece-specific event subscriptions  
 - **Graceful cleanup**: Disconnected clients are automatically removed from all registries
-- **Resource management**: Event queues and consumer threads are properly cleaned up
+- **Resource management**: Event queues and drainer executors are cleaned up with the registry entry
 
 ## Error Handling
 
-### Comprehensive gRPC Status Mapping
+### API Errors and gRPC Status Codes
 
-The server maps Clojure exceptions to appropriate gRPC status codes:
+A failed API call is not a gRPC error. `handle-execute-method` catches any throwable from the call, records it in the statistics, and returns an ordinary response — `{:success false :error "Execution error: <message>" :result nil}`; an unknown method returns `{:success false :error "Method not found: <name>" :result nil}`. The client's `SRV/` wrapper inspects `:success` and throws an `ex-info` carrying the server's message, so the failure surfaces at the caller with its message intact, which a bare gRPC status would not preserve.
 
-- `IllegalArgumentException` → `INVALID_ARGUMENT`
-- `SecurityException` → `PERMISSION_DENIED`  
-- `UnsupportedOperationException` → `UNIMPLEMENTED`
-- `TimeoutException` → `DEADLINE_EXCEEDED`
-- Generic exceptions → `INTERNAL`
+`stats/categorize-exception` classifies the throwable as `:conversion`, `:serialization`, `:network`, `:timeout` or `:internal`. The classification feeds the error statistics of [ADR-0025](../ADRs/0025-Server-Statistics-Architecture.md) and nothing else; it decides no status code.
+
+The status codes the server does send:
+
+- `ALREADY_EXISTS` — `RegisterClient` with a client-id that is already registered
+- `INVALID_ARGUMENT` — `RegisterClient` with a client-id that fails the format rule
+- `UNAUTHENTICATED` — `ExecuteMethod` or `Disconnect` whose `CLIENT_ID_HEADER` is missing, blank or not registered, refused by the authentication interceptor
+- `INTERNAL` — an exception escaping a unary handler, converted by the unary adapter in `shared/src/main/clojure/ooloi/shared/grpc/service_builder.clj`, with the exception's message as the description
 
 ### Distributed Error Propagation
 
-Errors in STM transactions or musical operations are properly propagated across the gRPC boundary with structured error information and context.
+An exception inside a transaction aborts it, so the piece is left as it was, and the exception's message travels back in the response's `:error` field as described above. Within an `SRV/atomic` batch, one failing operation rolls back every operation in the batch.
 
 ## Enterprise Architecture Comparison
 
@@ -408,8 +431,8 @@ Most enterprise gRPC services follow conventional patterns that create significa
 
 **Unified Protocol Design**
 - **Single message type**: `OoloiValue` eliminates schema versioning challenges entirely
-- **Plugin-friendly**: New musical notation systems work immediately without server restarts
-- **Dynamic API discovery**: Plugin methods are available via runtime resolution with zero configuration
+- **Plugin-ready**: the single message type means new data types need no schema change, which is what lets [ADR-0003](../ADRs/0003-Plugins.md) specify plugins installed without a server restart
+- **Dynamic API discovery**: methods are resolved from `ooloi.shared.api` at runtime, with no generated stubs and no registration step
 
 **Integrated Transaction & Event Architecture**
 - **STM-gRPC integration**: ACID transactions within the server process without external coordination services
@@ -421,12 +444,12 @@ Most enterprise gRPC services follow conventional patterns that create significa
 **Reliability & Performance**
 - **Comprehensive test coverage**: Extensive test suite with disciplined TDD practices
 - **Async processing**: Prevents client performance issues from cascading
-- **Bounded resource usage**: Queues and thread pools protect against runaway consumption
+- **Bounded resource usage**: Bounded per-client queues with drop-oldest overflow protect against runaway consumption
 - **Stress tested**: Validated under high-load conditions with realistic network scenarios
 
 **Operational Simplicity**
 - **Self-contained**: Single service boundary with no external coordination dependencies
-- **Plugin extensibility**: New functionality added without modifying core server code
+- **Plugin extensibility**: [ADR-0003](../ADRs/0003-Plugins.md) specifies new functionality added as plugins without modifying core server code
 - **Resource efficiency**: Proper cleanup prevents memory leaks in long-running concurrent operations
 - **Graceful degradation**: System remains stable under burst traffic and various client access patterns
 

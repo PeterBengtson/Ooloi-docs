@@ -1,9 +1,15 @@
 # MIDI in Ooloi: Input, Not Output
 
-Ooloi's relationship with MIDI is deliberately asymmetric. The system accepts MIDI
-input from keyboards and controllers for note entry. It produces no MIDI output
+Ooloi's relationship with MIDI is deliberately asymmetric. The design accepts MIDI
+input from keyboards and controllers for note entry, and produces no MIDI output
 whatsoever in its unextended form. This is not an omission — it is a decision, and
 understanding it clarifies several things about how the system is structured.
+
+This guide describes the decided design, recorded in
+[ADR-0044](../ADRs/0044-MIDI-Input-Library-and-Boundary-Architecture.md) and
+[ADR-0032](../ADRs/0032-Flow-Mode.md), both of which have the status Accepted. It is a
+specification rather than a description of running code: the codebase contains no MIDI
+code, and the names and shapes below are those the design specifies.
 
 ---
 
@@ -53,7 +59,7 @@ neither instrument alone achieves: both hands are productive simultaneously, and
 physical act of playing a pitch on a keyboard is more natural for most musicians than
 pressing cursor keys.
 
-The integration is narrow by design. Ooloi accepts:
+The integration is narrow by design. The input boundary accepts:
 
 - **NOTE_ON / NOTE_OFF** — pitch and velocity for note entry
 - **NOTE_ON with velocity 0** — treated as NOTE_OFF (standard MIDI convention)
@@ -63,14 +69,14 @@ Everything else is discarded at the input boundary, silently, before it can reac
 anything. SysEx, clock, program change, pitch bend, all other control changes — none
 of it enters the system. This hard boundary eliminates entire classes of JVM MIDI
 edge-case crashes by ensuring no SysEx or malformed message data ever enters the
-system. This is not a limitation of the implementation; it is the implementation. MIDI input is a narrow pipe for a specific purpose, not a general
-MIDI processing subsystem.
+system. The boundary is not a limitation of the design; it is the design. MIDI input
+is a narrow pipe for a specific purpose, not a general MIDI processing subsystem.
 
 ---
 
 ## The Technical Foundation
 
-Ooloi uses `javax.sound.midi` as its MIDI API on all platforms. This is the standard
+ADR-0044 specifies `javax.sound.midi` as the MIDI API on all platforms. This is the standard
 Java MIDI interface — cross-platform, no native dependencies in application code, and
 sufficient for input-only use.
 
@@ -93,10 +99,10 @@ invasive, and sufficient.
 
 ## How Events Flow
 
-A MIDI message that passes the input filter becomes a map and is published to the
-frontend event bus ([ADR-0031](../ADRs/0031-Frontend-Event-Driven-Architecture.md)) under
-the `:midi` category. The Receiver implementation — the only code that touches
-`javax.sound.midi` objects directly — does nothing else:
+In the design, a MIDI message that passes the input filter becomes a map and is
+published to the frontend event bus ([ADR-0031](../ADRs/0031-Frontend-Event-Driven-Architecture.md))
+under the `:midi` category. The `Receiver` — the only code that touches
+`javax.sound.midi` objects directly — does nothing else. In outline:
 
 ```clojure
 (reify Receiver
@@ -112,7 +118,7 @@ never touches the JavaFX scene graph. UI updates, if any, happen on the JavaFX
 Application Thread via the normal `fx/run-later!` discipline, downstream of the
 event bus — not here.
 
-Event shapes are simple:
+The event shapes are simple:
 
 ```clojure
 ;; Note entry
@@ -132,21 +138,22 @@ the gRPC boundary.
 
 ## Device Management
 
-Ooloi detects MIDI input devices at startup, persists the user's selection across
+The design detects MIDI input devices at startup, persists the user's selection across
 launches, and rescans periodically to handle devices connected or disconnected after
-startup.
+startup. ADR-0044 sets the rescan interval at three seconds, and accepts the
+consequence that shutdown may wait that long for the polling thread to exit.
 
-The selected device is stored as a frontend app setting — `:midi/input-device-id` —
-under the settings system described in [ADR-0043](../ADRs/0043-Frontend-Settings.md).
-The Settings window auto-generates a dropdown populated with currently available
-physical input devices. Virtual and loopback ports are excluded by heuristic (names
-containing "Virtual", "Through", "IAC", "Bus", and similar markers). When only one
-unambiguous physical device is present and no preference has been saved, it is
-selected automatically.
+The selected device is held as a frontend app setting — `:midi/input-device-id` —
+under the settings system described in [ADR-0043](../ADRs/0043-Frontend-Settings.md),
+which generates the Settings window's controls from the setting declarations. For this
+setting that control is a dropdown of the physical input devices currently available.
+Virtual and loopback ports are excluded by heuristic (names containing "Virtual",
+"Through", "IAC", "Bus", and similar markers). When only one unambiguous physical
+device is present and no preference has been saved, it is selected automatically.
 
 If the selected device disappears — disconnected mid-session — the preference is
 retained and a disconnected status is published on the event bus. When the device
-reappears, connection is restored automatically.
+reappears, the connection is restored automatically.
 
 ---
 

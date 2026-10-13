@@ -20,11 +20,13 @@
   - [Timpani](#timpani)
   - [Pitched Percussion](#pitched-percussion)
   - [Unpitched Percussion](#unpitched-percussion)
+- [Special Effects](#special-effects)
 - [Other](#other)
   - [Bagpipes](#bagpipes)
   - [Japanese Flute](#japanese-flute)
   - [Ocarinas](#ocarinas)
   - [Folk Plucked](#folk-plucked)
+  - [Electronics](#electronics)
 - [Keyboards](#keyboards)
 - [Plucked Instruments](#plucked-instruments)
   - [Harp](#harp)
@@ -35,8 +37,6 @@
 - [Strings](#strings)
   - [Sections and Solos](#sections-and-solos)
   - [Divisi](#divisi)
-- [Special Effects](#special-effects)
-- [Electronics](#electronics)
 - [Early Instruments](#early-instruments)
   - [Recorders](#recorders)
   - [Baroque Woodwinds](#baroque-woodwinds)
@@ -114,7 +114,7 @@ the note on the page. Non-transposing instruments show "—" in the Transpositio
 | Clarinet in B♭ | treble | Major second below written | |
 | Clarinet in A | treble | Minor third below written | |
 | Alto Clarinet in E♭ | treble; bass | Major sixth below written | Standard American concert band instrument |
-| Basset Horn in F | treble | Perfect fifth below written | |
+| Basset Horn in F | treble; bass | Perfect fifth below written | |
 | Bass Clarinet — French notation | treble | Major ninth below written | See notation variants below |
 | Bass Clarinet — German notation | bass | Major second below written | See notation variants below |
 | Contrabass Clarinet — French notation | treble | Two octaves + major second below written | |
@@ -133,15 +133,16 @@ Two professional notations coexist in the published literature, differing in tra
 
 ### Saxophones
 
-All saxophones use treble clef. They share a common fingering system but transpose against
-concert pitch by different intervals depending on the size of the instrument.
+All saxophones are written in treble clef; the alto and tenor also carry bass clef as an
+auxiliary clef. They share a common fingering system but transpose against concert pitch by
+different intervals depending on the size of the instrument.
 
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
 | Sopranino Saxophone in E♭ | treble | Minor third above written | Rare; used in some military and chamber music |
 | Soprano Saxophone in B♭ | treble | Major second below written | |
-| Alto Saxophone in E♭ | treble | Major sixth below written | |
-| Tenor Saxophone in B♭ | treble | Major ninth below written | |
+| Alto Saxophone in E♭ | treble; bass | Major sixth below written | |
+| Tenor Saxophone in B♭ | treble; bass | Major ninth below written | |
 | Baritone Saxophone in E♭ | treble | Major thirteenth below written | |
 | Bass Saxophone in B♭ | treble | Two octaves + major second below written | Rare; mainly 19th-century band repertoire |
 | Contrabass Saxophone in E♭ | treble | Two octaves + major sixth below written | Extremely rare |
@@ -189,7 +190,7 @@ This is the transposition Bruckner and Strauss both use. The clef, however, spli
 Wagner's own *Ring* uses a different, inconsistent set of conventions: B♭ "alto" and F parts
 sounding a major second and a perfect fifth below written in *Das Rheingold*; unusual keys
 such as E♭ tenor tuba and C or B♭ bass tuba in *Die Walküre* and *Siegfried*. These Ring
-variants are not currently in the bundle; when performing from those parts, use the modern
+variants are not in the bundle; when performing from those parts, use the modern
 F-horn entries and transpose by hand, or add a user-library entry with the required
 transposition.
 
@@ -223,7 +224,7 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Horn in G | Perfect 4th below written | Perfect 5th above written |
 | Horn in A | Minor 3rd below written | Major 6th above written |
 | Horn in B♭ alto | Major 2nd below written | Minor 7th above written |
-| Horn in B♭ basso | Minor 9th below written | Minor 2nd below written |
+| Horn in B♭ basso | Major 9th below written | Major 2nd below written |
 
 ### Trumpets
 
@@ -239,7 +240,7 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Trumpet in A | treble | Minor third below written | Standard alternative to B♭ trumpet in sharp keys |
 | Piccolo Trumpet in A | treble | Major sixth above written | High register; Baroque clarino variant |
 | Trumpet in B♭ | treble | Major second below written | Modern standard |
-| Piccolo Trumpet in B♭ | treble | Major second below written | High register; one octave above standard B♭ |
+| Piccolo Trumpet in B♭ | treble | Minor seventh above written | High register; one octave above standard B♭ |
 | Cornet in B♭ | treble | Major second below written | Separate entry from trumpet |
 | Soprano Cornet in E♭ | treble | Minor third above written | Leads the brass band |
 | Flugelhorn in B♭ | treble | Major second below written | Conical-bore; warmer tone than trumpet; *flicorno soprano* (Italian); *bugle* (French) |
@@ -262,15 +263,15 @@ and bass clef therefore yield different transposition intervals for the same ins
 |---|---|---|---|
 | Baritone Horn in B♭ (orchestral) | bass | — | Narrower bore than euphonium; concert pitch in bass clef; *flicorno tenore* (Italian); *saxhorn baryton* (French) |
 | Baritone Horn in B♭ (brass band) | treble | Major ninth below written | British brass band notation |
-| Euphonium / Tenor Tuba in B♭ (orchestral) | bass | — | Concert pitch in bass clef; orchestral and wind ensemble notation |
-| Euphonium / Tenor Tuba in B♭ (brass band) | treble | Major ninth below written | British brass band notation; whole part in treble clef |
+| Euphonium (orchestral) | bass | — | Concert pitch in bass clef; orchestral and wind ensemble notation |
+| Euphonium (brass band) | treble | Major ninth below written | British brass band notation; whole part in treble clef |
 | Bass Tuba | bass | — | |
 | Contrabass Tuba | bass | — | |
 | Sousaphone in B♭ (concert band) | bass | — | B♭ bass; concert pitch in bass clef; marching and concert band |
 | Sousaphone in B♭ (brass band) | treble | Major ninth below written | British brass band notation |
-| Bombardon in E♭ (orchestral) | bass | — | E♭ bass; concert pitch in bass clef |
+| Bombardon in E♭ (military band) | bass | — | E♭ bass; concert pitch in bass clef |
 | Bombardon in E♭ (brass band) | treble | Major sixth below written | E♭ bass in British brass band; treble clef notation |
-| Bombardon in B♭ (orchestral) | bass | — | B♭ bass; concert pitch in bass clef; Berg's *Wozzeck* (military stage band) |
+| Bombardon in B♭ (military band) | bass | — | B♭ bass; concert pitch in bass clef; Berg's *Wozzeck* (military stage band) |
 | Bombardon in B♭ (brass band) | treble | Major ninth below written | B♭ bass in British brass band; treble clef notation |
 | Ophicleide | bass | — | 19th-century keyed brass; precursor to the tuba; Mendelssohn, Berlioz, early Verdi |
 
@@ -283,7 +284,7 @@ and bass clef therefore yield different transposition intervals for the same ins
 | Instrument | Clef(s) | Notes |
 |---|---|---|
 | Timpani | bass | Standard orchestral timpani; single stave |
-| Timpano piccolo | bass | Small timpani; higher pitch range |
+| Piccolo Timpani | bass | Small timpani; higher pitch range |
 
 ### Pitched Percussion
 
@@ -291,18 +292,19 @@ and bass clef therefore yield different transposition intervals for the same ins
 |---|---|---|---|
 | Glockenspiel | treble | Two octaves above written | 1 stave |
 | Xylophone | treble | Octave above written | 1 stave |
-| Marimba | treble; bass | — | 1–2 staves |
+| Marimba | treble | — | 1 stave |
+| Marimba (Great Stave) | treble; bass | — | 2 staves |
 | Vibraphone | treble | — | 1 stave |
 | Tubular Bells | treble | — | 1 stave; Chimes / Röhrenglocken |
 | Crotales | treble | Two octaves above written | 1 stave; Antique Cymbals |
 | Crotale | treble | Two octaves above written | 1 stave; single instrument, specific pitch |
 | Kalimba | treble | — | 1 stave; Thumb piano / mbira; Crumb, Reich |
-| Glass Harmonica | treble | — | 1 stave; Glass armonica |
+| Glass Harmonica | treble; bass | — | 2 staves; Glass armonica |
 | Soprano Steel Pan | treble | — | 1 stave; Tenor pan; highest register |
 | Alto Steel Pan | treble | — | 1 stave; Double tenor |
 | Tenor Steel Pan | treble | — | 1 stave |
 | Baritone Steel Pan | treble | — | 1 stave; Guitar pan |
-| Tuned Gongs | treble; bass | — | 1–2 staves; Pitched; Puccini, Messiaen, Britten |
+| Tuned Gongs | treble | — | 1 stave; Pitched; Puccini, Messiaen, Britten |
 | Bass Steel Pan | bass | — | 1 stave |
 
 ### Unpitched Percussion
@@ -421,8 +423,8 @@ Instruments outside standard orchestral, chamber music, and marching band practi
 |---|---|---|---|
 | Zither | 2 | — | Austrian/Bavarian; melody + accompaniment staves |
 | Cimbalom | 2 | — | Hungarian hammered dulcimer; concert pitch |
-| Koto | 2 | — | Japanese 13-string zither; great stave |
-| Kora | 1 | — | West African 21-string harp-lute |
+| Koto | 1 | — | Japanese 13-string zither |
+| Kora | 2 | — | West African 21-string harp-lute; great stave |
 | Shamisen | 1 | — | Japanese 3-string lute |
 | Sitar | 1 | — | Indian; with sympathetic strings |
 | Oud | 1 | — | Middle Eastern/North African fretless lute |
@@ -438,9 +440,7 @@ Instruments outside standard orchestral, chamber music, and marching band practi
 | Domra Alto | 1 | — | |
 | Domra Bass | 1 | — | |
 
----
-
-## Electronics
+### Electronics
 
 | Instrument | Stave lines | Notes |
 |---|---|---|
@@ -454,15 +454,15 @@ Instruments outside standard orchestral, chamber music, and marching band practi
 | Instrument | Staves | Transposition | Notes |
 |---|---|---|---|
 | Piano | 2 | — | |
-| Electric Piano | 1–2 | — | Rhodes, Wurlitzer, and similar; concert pitch |
-| Organ (2 staves) | 2 | — | Manuals only |
-| Organ (3 staves) | 3 | — | Two manuals + pedal |
-| Hammond Organ | 2–3 | — | Two manuals; optional bass pedal stave |
+| Electric Piano | 2 | — | Rhodes, Wurlitzer, and similar; concert pitch |
+| Organ (Manuals) | 2 | — | Manuals only |
+| Organ | 3 | — | Two manual staves + pedal |
+| Hammond Organ | 2 | — | Two manuals |
 | Harpsichord | 2 | — | Both 1- and 2-manual instruments notated on 2 staves |
-| Celesta | 2 | Two octaves above written | |
-| Harmonium | 1–2 | — | Reed organ |
+| Celesta | 2 | Octave above written | |
+| Harmonium | 2 | — | Reed organ |
 | Accordion | 2 | — | |
-| Bandoneon | 2 | — | Bisonoric; Argentine tango; great stave |
+| Bandoneón | 2 | — | Bisonoric; Argentine tango; great stave |
 | Concertina (English) | 1 | — | Unisonoric; same note in/out |
 | Concertina (Anglo) | 1 | — | Bisonoric; different notes in/out |
 | Melodica | 1 | — | Blow organ / pianica |
@@ -474,7 +474,7 @@ Instruments outside standard orchestral, chamber music, and marching band practi
 | Tack Piano | 2 | — | Tacks in hammer felts; honky-tonk timbre |
 | Toy Piano | 1 | — | Cage, Crumb; usually 2–3 octave range |
 | Mellotron | 1 | — | Tape-replay keyboard; Beatles, King Crimson |
-| Synthesizer | 1–2 | — | Keyboard-based; concert pitch |
+| Synthesizer | 2 | — | Keyboard-based; concert pitch |
 
 ---
 
@@ -493,9 +493,9 @@ Instruments outside standard orchestral, chamber music, and marching band practi
 | Guitar | 1 | Octave below written | Classical guitar |
 | Electric Guitar | 1 | Octave below written | Lead / rhythm |
 | Electric Guitar (7-string) | 1 | Octave below written | Extended range |
-| Electric Bass Guitar | 1 | Octave below written | 4-string |
-| Electric Bass Guitar (5-string) | 1 | Octave below written | Extended lower range |
-| Electric Bass Guitar (6-string) | 1 | Octave below written | Extended upper and lower range |
+| Electric Bass | 1 | Octave below written | 4-string |
+| Electric Bass (5-string) | 1 | Octave below written | Extended lower range |
+| Electric Bass (6-string) | 1 | Octave below written | Extended upper and lower range |
 | Banjo | 1 | — | 5-string; bluegrass and folk |
 | Mandolin | 1 | — | |
 | Ukulele | 1 | — | |
@@ -513,7 +513,7 @@ single stave.
 | Instrument | Staves | Notes |
 |---|---|---|
 | SATB Choir | 4 | Standard mixed chorus |
-| SATB Choir (great stave) | 2 | SA on treble stave, TB on bass stave |
+| SATB Choir (Great Stave) | 2 | SA on treble stave, TB on bass stave |
 | SAB Choir | 3 | Three-part mixed chorus |
 | SSAATTBB Choir | 8 | Eight-part single chorus (2S, 2A, 2T, 2B) |
 | SA Choir | 2 | Women's or children's two-part |
@@ -521,7 +521,7 @@ single stave.
 | SSAA Choir | 4 | Two soprano + two alto parts |
 | TB Choir | 2 | Men's two-part |
 | TTBB Choir | 4 | Two tenor + two bass parts |
-| Knabenchor | 2 | Boys' choir (SS) |
+| Boys' Choir | 2 | Soprano and alto staves; *Knabenchor* (German); *Maîtrise* (French); *Coro di voci bianche* (Italian) |
 
 ### Solo Voices
 
@@ -531,7 +531,7 @@ single stave.
 | Mezzo-Soprano | treble | |
 | Contralto | treble | |
 | Counter-tenor | treble | |
-| Tenor | treble | Sounds octave below written |
+| Tenor | treble 8vb | Octave-displaced clef encodes the 1-octave shift |
 | Baritone | bass | |
 | Bass-Baritone | bass | |
 | Bass | bass | |
@@ -544,8 +544,7 @@ single stave.
 ## Strings
 
 String instruments appear in **section** and **solo** variants. Violins ship in three section
-variants — **Violins** (unified), **Violin I**, and **Violin II** — distinguished primarily by
-VST panning position (unified centre, I panned left, II panned right). Section instruments
+variants — **Violins** (unified), **Violin I**, and **Violin II**. Section instruments
 additionally appear in divisi configurations for two, three, four, and six parts.
 
 ### Sections and Solos
@@ -553,20 +552,20 @@ additionally appear in divisi configurations for two, three, four, and six parts
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
 | Violins | treble | — | Section (unified) |
-| Violin I | treble | — | Section (panned left) |
-| Violin II | treble | — | Section (panned right) |
+| Violin I | treble | — | Section |
+| Violin II | treble | — | Section |
 | Violin | treble | — | Solo |
-| Viola | alto; treble | — | Section; alto clef default |
+| Violas | alto; treble | — | Section; alto clef default |
 | Viola | alto; treble | — | Solo; alto clef default |
-| Violoncello | bass; tenor; treble | — | Section |
+| Violoncellos | bass; tenor; treble | — | Section |
 | Violoncello | bass; tenor; treble | — | Solo |
-| Double Bass | bass; tenor; treble | Octave below written | Section |
+| Double Basses | bass; tenor; treble | Octave below written | Section |
 | Double Bass | bass; tenor; treble | Octave below written | Solo |
 
 ### Divisi
 
 Divisi configurations are available for section instruments. Violins, Violin I, and Violin II
-each ship with their own divisi variants so that panning is preserved in VST playback.
+each ship with their own divisi variants.
 
 | Instrument | Staves |
 |---|---|
@@ -582,18 +581,18 @@ each ship with their own divisi variants so that panning is preserved in VST pla
 | Violin II div. 3 | 3 |
 | Violin II div. 4 | 4 |
 | Violin II div. 6 | 6 |
-| Viola div. 2 | 2 |
-| Viola div. 3 | 3 |
-| Viola div. 4 | 4 |
-| Viola div. 6 | 6 |
-| Violoncello div. 2 | 2 |
-| Violoncello div. 3 | 3 |
-| Violoncello div. 4 | 4 |
-| Violoncello div. 6 | 6 |
-| Double Bass div. 2 | 2 |
-| Double Bass div. 3 | 3 |
-| Double Bass div. 4 | 4 |
-| Double Bass div. 6 | 6 |
+| Violas div. 2 | 2 |
+| Violas div. 3 | 3 |
+| Violas div. 4 | 4 |
+| Violas div. 6 | 6 |
+| Violoncellos div. 2 | 2 |
+| Violoncellos div. 3 | 3 |
+| Violoncellos div. 4 | 4 |
+| Violoncellos div. 6 | 6 |
+| Double Basses div. 2 | 2 |
+| Double Basses div. 3 | 3 |
+| Double Basses div. 4 | 4 |
+| Double Basses div. 6 | 6 |
 
 ---
 
@@ -659,11 +658,11 @@ lautenwerk are keyboards, lute and theorbo are plucked instruments.
 | Instrument | Clef(s) | Transposition | Notes |
 |---|---|---|---|
 | Violino piccolo | treble | Minor third above written | Small violin tuned a minor third above standard; Bb3–G7 sounding |
-| Viola d'amore | treble; alto | — | Six or seven strings + sympathetic strings; A3–E6 |
-| Violoncello piccolo | bass; tenor; treble | — | Five-string cello; C2–E6 |
+| Viola d'amore | treble | — | Six or seven strings + sympathetic strings; A3–E6 |
+| Violoncello piccolo | bass | — | Five-string cello; C2–E6 |
 | Treble Viol | treble | — | Dessus de viole; D4–G6 |
 | Tenor Viol | alto | — | Taille de viole; A2–A4 |
-| Bass Viol | bass; tenor | — | Viola da gamba; D2–D5 |
+| Bass Viol | bass | — | Viola da gamba; D2–D5 |
 | Hurdy-gurdy | treble | — | Cranked wheel; Vivaldi, Schubert; medieval and folk revival; G3–G5 |
 | Violone | bass | Octave below written | Baroque string bass; D1–D4 sounding |
 

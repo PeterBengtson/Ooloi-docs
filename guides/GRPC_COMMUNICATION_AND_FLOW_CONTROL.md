@@ -7,19 +7,21 @@
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
-- [Introduction: Two Kinds of Communication](#introduction-two-kinds-of-communication)
-- [Unified Client Connection Architecture](#unified-client-connection-architecture)
+- [Introduction: Two Communication Patterns](#introduction-two-communication-patterns)
+- [Explicit App-Controlled Connection Architecture](#explicit-app-controlled-connection-architecture)
 - [Understanding the Core Problem](#understanding-the-core-problem)
 - [API Requests: Why Flow Control Is Counterproductive](#api-requests-why-flow-control-is-counterproductive)
 - [Event Streaming: Why Flow Control Is Essential](#event-streaming-why-flow-control-is-essential)
 - [The Queue-Based Solution](#the-queue-based-solution)
-- [STM and gRPC: A Perfect Partnership](#stm-and-grpc-a-perfect-partnership)
+- [STM and gRPC: Complementary Technologies](#stm-and-grpc-complementary-technologies)
 - [Practical Examples](#practical-examples)
 - [Performance Implications](#performance-implications)
   - [Event Structure and Conventions](#event-structure-and-conventions)
   - [Event Broadcasting Examples](#event-broadcasting-examples)
   - [Event Streaming Performance](#event-streaming-performance)
 - [Related Architecture](#related-architecture)
+- [Conclusion](#conclusion)
+- [Related Documentation](#related-documentation)
 
 ---
 
@@ -43,10 +45,10 @@ Deliberate changes to musical content:
 - "Transpose the violin part up an octave"
 
 ### 2. **Event Streaming** (Server → Clients)
-Real-time notifications about changes:
-- "Note added in measure 12"
-- "Tempo marking changed to Allegro"
-- "Auto-save completed"
+Real-time notifications naming what has gone stale:
+- "The structure of this piece has changed"
+- "Measures 45–47 of this piece need redrawing"
+- "The instrument library has changed"
 
 These patterns have different concurrency characteristics and flow control requirements.
 
@@ -120,7 +122,7 @@ Client Connection Sequence
        │                                          │
 ```
 
-Involuntary disconnect (network drop, JVM exit, server-initiated kick) skips PHASE 3 entirely; the `setOnCancelHandler` backstop is the only cleanup path. See [ADR-0024 §Connection Lifecycle](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) for the full six-phase model and the identity-aware handler design.
+An involuntary disconnect — a network drop, or the client's JVM exiting — skips PHASE 3 entirely, and the `setOnCancelHandler` backstop is then what cleans up. A server halt ends its clients' sessions from the other side: the halting server completes each of its own clients' streams with `.onCompleted`, stops their drainer executors and removes their registry entries itself ([ADR-0024 §Server Shutdown: Graceful Only, Never Forced](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md#server-shutdown-graceful-only-never-forced)). See [ADR-0024 §Connection Lifecycle](../ADRs/0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) for the full lifecycle model and the identity-aware handler design.
 
 ### Benefits of App-Controlled Architecture
 
@@ -131,19 +133,15 @@ Involuntary disconnect (network drop, JVM exit, server-initiated kick) skips PHA
 
 ### Implementation Impact
 
-```clojure
-;; Before: Immediate connection during component init
-(let [grpc-clients (ig/init-key :grpc-clients config)]
-  ;; Network connections already established
-  (use-client grpc-clients))
+A sketch of the sequence (`use-client` stands for whatever the application does next; `register-with-server` is in `ooloi.frontend.grpc.event-client`):
 
-;; After: Explicit app-controlled connection
-(let [grpc-clients (ig/init-key :grpc-clients config)]
+```clojure
+(let [grpc-clients (ig/init-key :ooloi.frontend.components/grpc-clients config)]
   ;; Only component infrastructure ready - no network connections
-  
+
   ;; App decides when to connect (e.g., after UI initialization)
   (register-with-server config grpc-clients)
-  
+
   ;; Now bidirectional communication is ready
   (use-client grpc-clients))
 ```
@@ -194,16 +192,26 @@ Each client's request processes independently. A slow request from one client do
 
 ### STM Concurrency Management
 
-Ooloi's backend uses Software Transactional Memory (STM) to coordinate concurrent modifications:
+Ooloi's backend uses Software Transactional Memory (STM) to coordinate concurrent modifications. Every VPD mutation — adders, removers, setters, movers — passes through one write funnel, `vpd-transact` in `shared/src/main/clojure/ooloi/shared/models/core.clj`, which runs it as a transaction on the piece's ref:
 
 ```clojure
-;; Each API call is wrapped in an STM transaction
-(defn add-note [vpd piece-id pitch]
-  (dosync                                    ; Transaction boundary
-    (alter piece-ref                         ; Atomic update
-      (fn [piece]
-        (vpd/mutate vpd piece add-note-fn pitch)))))
+(defn vpd-transact
+  "Execute an STM transaction that applies an operation function to a VPD-resolved
+  location within a piece. Used by adders, removers, setters, movers, set-seq,
+  set-attribute, and change-set operations. After the mutation, notifies the change
+  detector (ADR-0052): a structural-slot change schedules one :piece-structure-changed,
+  deferred to commit."
+  [op-fn vpd piece-or-id-or-ref attr-name args]
+  (let [piece-ref (i/resolve-into-piece-ref piece-or-id-or-ref)]
+    (dosync
+     (let [before @piece-ref
+           after  (alter piece-ref
+                         (fn [piece] (apply op-fn vpd piece attr-name args)))]
+       (cd/detect-change! before after vpd attr-name)
+       after))))
 ```
+
+When the call arrives over gRPC, the server's handler opens the enclosing transaction itself, so that it can read the piece value before and after the mutation and record one undo entry for the call; the funnel's `dosync` nests into it.
 
 STM handles conflicts when multiple clients edit the same musical element simultaneously by automatically retrying transactions.
 
@@ -328,26 +336,29 @@ Each client receives events independently, preventing slow clients from affectin
 **Implementation characteristics**:
 - **1000-item capacity** per client queue
 - **Drop-oldest policy** when queue overflows
-- **Dedicated thread pool** for asynchronous delivery
+- **One single-thread executor per client** — the drainer — for asynchronous delivery; its thread is the only one that writes to that client's stream
 - **Per-client statistics** for monitoring and health (separate top-level `:client-statistics` key)
 
-```clojure
-;; Simplified queue architecture
-(defn broadcast-event [event]
-  (doseq [[client-id client-state] @client-registry]
-    ;; Each client gets independent queue processing
-    (async/put! (:event-queue client-state) event)))
+Each client's queue is a `java.util.concurrent.ArrayBlockingQueue`, held in its connection-registry entry. A simplified sketch of the two halves (the real functions, `send-server-event`, `send-piece-event` and `start-stream-drainer!` in `backend/src/main/clojure/ooloi/backend/grpc/server.clj`, are shown and explained in [gRPC Server Streaming: Threading and Backpressure in Clojure](GRPC_STREAMING_THREADING_GUIDE.md)):
 
-(defn process-client-events [client-id]
-  ;; Each client processed by separate thread
-  (async/go-loop []
-    (when-let [event (async/<! (:event-queue @client-state))]
+```clojure
+;; Sketch. Publishing: enqueue for each recipient, then kick its drainer.
+(doseq [[client-id {:keys [event-queue drain]}] @registry]
+  (offer-with-drop-oldest event-queue event-message)   ; drops the oldest when full
+  (drain))                                             ; schedules a drain on the client's executor
+
+;; Sketch. Draining, on the client's own executor thread:
+(loop []
+  (when (and (.isReady server-obs) (not (.isCancelled server-obs)))
+    (when-some [ev (.poll event-queue)]
       (try
-        (.onNext (:stream-observer client-state) event)
+        (.onNext server-obs ev)
         (catch Exception e
-          (log/warn "Client" client-id "event delivery failed")))
+          (tp/log-error e)))      ; recorded; the next event is still delivered
       (recur))))
 ```
+
+A failed delivery is recorded through `tp/log-error`, the single surfacing boundary of [ADR-0017](../ADRs/0017-System-Architecture.md), and never ends the stream.
 
 ### Graceful Degradation
 
@@ -386,20 +397,20 @@ Queue Overflow Handling
 The combination of gRPC's threading model and STM's transaction system handles concurrent operations efficiently:
 
 ```clojure
-;; Multiple simultaneous API calls
-;; Thread 1:
-(api/add-note [:m 0 1 0 0 3] piece-id :C4)
+;; Multiple simultaneous API calls from three clients, each one ExecuteMethod RPC
+;; Client A:
+(SRV/add-item [:musicians 0 :instruments 0 :staves 0 :measures 5 :voices 0] piece-id note)
 
-;; Thread 2 (concurrent):
-(api/set-dynamic [:m 0 1 0 2] piece-id :forte)
+;; Client B (concurrent):
+(SRV/set-name [:musicians 1] piece-id "Viola")
 
-;; Thread 3 (concurrent):
-(api/change-key-signature [:m 0 2] piece-id :G-major)
+;; Client C (concurrent):
+(SRV/set-tempo [] piece-id 12 tempo)
 ```
 
 **What happens internally**:
 1. Each call gets its own gRPC thread
-2. Each thread wraps the operation in an STM transaction
+2. Each thread runs the operation in an STM transaction
 3. STM coordinates conflicts automatically
 4. Operations that don't conflict run in parallel
 5. Operations that do conflict retry transparently
@@ -435,19 +446,20 @@ STM Transaction Flow
 A client application making many rapid API calls:
 
 ```clojure
-;; Application making multiple concurrent calls
+;; Application making many calls: one note into each successive measure
 (defn upload-analysis-results [piece-id note-list]
-  (dotimes [i (count note-list)]
-    ;; Each call: separate gRPC thread + STM transaction
-    (execute-method client "add-note" 
-                   {:vpd [:m 0 1 i 0 3] 
-                    :piece-id piece-id
-                    :pitch (nth note-list i)})))
+  (doseq [[i note] (map-indexed vector note-list)]
+    ;; Each call: separate ExecuteMethod RPC, gRPC thread and STM transaction
+    (SRV/add-item [:musicians 0 :instruments 0 :staves 0 :measures i :voices 0]
+                  piece-id
+                  note)))
 ```
 
-Without flow control: All calls process concurrently, with STM handling any conflicts.
+Each of these calls is also its own undo step. Where the whole upload should be one atomic change and one undo step, the operations go into a single `SRV/atomic` batch instead ([POLYMORPHIC_API_GUIDE](POLYMORPHIC_API_GUIDE.md)).
 
-With flow control: Calls would queue behind each other, reducing concurrency benefits.
+Without flow control: each call is processed as soon as it arrives, concurrently with every other client's calls, with STM handling any conflicts.
+
+With flow control: calls would queue behind one another and behind other clients' calls, reducing concurrency benefits.
 
 ### Example 2: Real-Time Collaboration
 
@@ -524,22 +536,34 @@ All events follow a consistent structure to ensure predictable handling across t
 ```clojure
 ;; Standard event structure received by clients
 {:type :event-type-keyword          ; Required: Event type as keyword
- :timestamp 1693827465123456789     ; Required: Nanosecond timestamp (added during transport)
+ :timestamp 1729800000000000        ; Required: epoch microseconds (added automatically by the server)
  :client-id "client-123"            ; Optional: Originating client identifier
  :message "Human readable message"  ; Optional: User-friendly description
+ :piece-id "piece-123"              ; Required for piece events: Target piece identifier
  ...additional-fields...}           ; Event-specific data fields
 ```
 
 **Event Type Conventions**:
-- **Always keywords**: `:server-maintenance`, `:client-registration-confirmed`, `:piece-updated`
+- **Always keywords**: `:server-maintenance`, `:client-registration-confirmed`, `:piece-structure-changed`
 - **Kebab-case naming**: Multi-word types use dashes (`:client-registration-confirmed`)
-- **Hierarchical naming**: Complex events can use namespace-style (`:piece/content-changed`)
+- **The prefix names the delivery**: every type begins with `server-`, `client-`, `piece-`, `collaboration-`, `instrument-library-` or `undo-`, which the server's event validation enforces. A `piece-` event is sent with `send-piece-event` and reaches only the clients subscribed to that piece; every other prefix is sent with `send-server-event` to every connected client. The validator also accepts a namespace-style name containing `/`, but no Ooloi event uses one.
 
-**Core Event Categories**:
-- **Server events**: `:server-maintenance`, `:server-shutdown`, `:server-status`
-- **Client events**: `:client-registration-confirmed`, `:client-connected`
-- **Piece events**: `:piece-updated`, `:piece-created`, `:piece-deleted`
-- **Collaboration events**: `:user-joined`, `:user-left`, `:concurrent-edit`
+**Core Event Categories** (the taxonomy of ADR-0018):
+- **Piece events**, delivered to that piece's subscribers:
+  - `:piece-structure-changed`, `:piece-dirty-changed` — structural metadata changed; the unsaved-changes flag flipped
+  - `:piece-invalidation` — visual hierarchy invalidation at any level; the depth of the VPD carries the level
+  - `:piece-playback-position`, `:piece-playback-started`, `:piece-playback-stopped`
+  - `:piece-collaboration-user-joined`, `:piece-collaboration-user-left`, `:piece-collaboration-cursor-moved`, `:piece-collaboration-selection-changed`
+  - `:piece-validation-error`, `:piece-operation-failed`
+- **Global events**, delivered to every connected client:
+  - `:server-maintenance`, `:server-shutdown`, `:server-status`
+  - `:server-client-connected`, `:server-client-disconnected` (sent by a network server only)
+  - `:server-warning`, `:server-info`
+  - `:client-registration-confirmed` — the one event a client receives about itself, carrying `:server-timestamp` for its clock offset
+  - `:instrument-library-changed`
+- **Delivery by payload**: `:undo-state-changed` goes to every client when its `:resource-key` is the Instrument Library, and only to a piece's subscribers when it is a piece
+
+The `collaboration-` prefix is accepted but unused: collaboration is always about a piece, so those events carry the `piece-` prefix.
 
 **Event Processing Pipeline**:
 1. **Server creation**: Event data created with `:type` and content fields
@@ -561,23 +585,12 @@ Server events are broadcast to all connected clients regardless of piece subscri
 ;; System maintenance notification
 (send-server-event server-component
   {:type :server-maintenance
-   :message "System will restart in 5 minutes"
-   :affected-services ["api" "streaming"]
-   :estimated-downtime "2 minutes"})
+   :message "System update in 5 minutes"})
 
-;; Server status updates  
+;; Warning to every connected client
 (send-server-event server-component
-  {:type :server-status
-   :status :degraded
-   :message "Experiencing high load"
-   :response-time-ms 850})
-
-;; User session events
-(send-server-event server-component
-  {:type :server-user-limit
-   :message "Maximum concurrent users reached"
-   :current-users 100
-   :max-users 100})
+  {:type :server-warning
+   :message "Server is under heavy load"})
 ```
 
 #### Piece Events - Targeted Broadcasts
@@ -585,117 +598,52 @@ Server events are broadcast to all connected clients regardless of piece subscri
 Piece events are broadcast only to clients subscribed to the specific piece. Use these for piece-specific notifications:
 
 ```clojure
-;; Content changes in a musical piece
+;; Formatting invalidation, scoped by measure numbers
 (send-piece-event server-component
-  {:type :piece-content-changed
-   :piece-id "symphony-op27"
-   :measures [45 46 47]
-   :change-type :notes-added
-   :editor-client "user-maria"
-   :instruments ["violin-1" "violin-2"]})
+  {:type :piece-invalidation
+   :piece-id "symphony-123"
+   :measures [47 48 49]})
 
-;; Collaborative editing events
+;; Formatting invalidation, scoped by VPD: the depth carries the level (here a page)
 (send-piece-event server-component
-  {:type :piece-user-joined
+  {:type :piece-invalidation
+   :piece-id "symphony-123"
+   :vpd [:layouts 0 :page-views 2]})
+
+;; A collaborator joined this piece
+(send-piece-event server-component
+  {:type :piece-collaboration-user-joined
    :piece-id "quartet-in-d"
    :user-id "user-james"
-   :user-role "violinist"
-   :join-time (System/nanoTime)})
+   :user-name "James"})
 
-;; Auto-save notifications  
-(send-piece-event server-component
-  {:type :piece-auto-saved
-   :piece-id "concerto-no3"
-   :save-version 47
-   :changed-sections ["exposition" "development"]})
-
-;; Layout invalidation
-(send-piece-event server-component
-  {:type :piece-layout-invalidated
-   :piece-id "sonata-k545"
-   :affected-pages [1 2]
-   :reason "time-signature-change"
-   :requires-reflow true})
-```
-
-#### Practical Usage Patterns
-
-**Event Chaining for Complex Operations**:
-```clojure
-;; Multi-step operation with progress updates
-(defn transpose-piece [server-component piece-id semitones]
-  ;; Notify start
-  (send-piece-event server-component
-    {:type :piece-operation-started
-     :piece-id piece-id
-     :operation :transpose
-     :parameters {:semitones semitones}})
-  
-  ;; Perform operation
-  (let [result (perform-transposition piece-id semitones)]
-    ;; Notify completion
-    (send-piece-event server-component
-      {:type :piece-operation-completed
-       :piece-id piece-id
-       :operation :transpose
-       :affected-measures (:measures result)
-       :success true})))
-```
-
-**Error Event Broadcasting**:
-```clojure
-;; Piece-specific errors
+;; An operation on this piece failed
 (send-piece-event server-component
   {:type :piece-operation-failed
-   :piece-id "symphony-unfinished" 
-   :operation :auto-harmonize
-   :error-code "insufficient-voice-leading"
-   :message "Cannot harmonize: voice leading constraints violated"
-   :suggested-action "Review voice ranges in measures 23-27"})
-
-;; Server-wide errors
-(send-server-event server-component
-  {:type :server-error
-   :error-level :warning
-   :message "Database connection pool exhausted"
-   :affected-operations ["save" "auto-save"]
-   :recovery-eta "30 seconds"})
+   :piece-id "symphony-unfinished"
+   :message "Cannot harmonise: voice-leading constraints violated"})
 ```
 
-#### Integration with Component Lifecycle
+`:piece-structure-changed` and `:piece-dirty-changed` are not sent by hand. The change detector schedules them inside the mutating transaction and the notifier agent delivers them on commit, through the `PieceChangeNotifier` seam that the server implements with `send-piece-event` ([ADR-0052 §4](../ADRs/0052-Change-Detection-and-Event-Generation.md#4-exactly-one-event-per-outermost-transaction) and [§5](../ADRs/0052-Change-Detection-and-Event-Generation.md#5-the-dirty-flag)).
 
-```clojure
-;; In your component's event handling
-(defn handle-piece-update [server-component piece-id changes]
-  (when (significant-change? changes)
-    (send-piece-event server-component
-      {:type :piece-content-changed
-       :piece-id piece-id
-       :changes changes
-       :change-id (generate-change-id)
-       :requires-layout-update (layout-affecting? changes)}))
-  
-  ;; Check for conflicts
-  (when-let [conflicts (detect-conflicts piece-id changes)]
-    (send-piece-event server-component
-      {:type :piece-conflict-detected
-       :piece-id piece-id
-       :conflicts conflicts
-       :resolution-required true})))
-```
+#### What an Event Carries
+
+An event names what has gone stale and carries the identifiers needed to find it — a piece-id, a VPD or VPDs, measure numbers. It never carries the change itself: no change type, no changed values, no list of affected elements beyond the scope ([ADR-0022 §Communication Patterns](../ADRs/0022-Lazy-Frontend-Backend-Architecture.md#communication-patterns); [ADR-0052 §6](../ADRs/0052-Change-Detection-and-Event-Generation.md#6-two-emission-regimes)). A client that cares fetches the current state when it needs it; one that is not displaying the data marks its cache stale and fetches nothing.
+
+Timestamps are the server's business. The publishing functions add `:timestamp` in epoch microseconds (`ooloi.shared.ops.time/epoch-usec`), which is comparable across machines and across a restart. `System/nanoTime` is monotonic but has no epoch relation, so it belongs only in durations measured inside one process and never in a field that crosses the wire ([ADR-0018 §Event Consistency Requirements](../ADRs/0018-API-gRPC-Interface-and-Events.md#event-consistency-requirements)).
 
 **Key Benefits of This Approach**:
 - **Simplified signatures**: Both functions use identical `(server-component event-data)` pattern
 - **Automatic validation**: Events validated against ADR conventions before broadcast
-- **Perfect consistency**: Event-type strings automatically derived from `:type` fields
+- **Consistency**: Event-type strings automatically derived from `:type` fields
 - **Type safety**: Piece events automatically validated for required `:piece-id` field
-- **Nanosecond precision**: Timestamps automatically generated for accurate timing
+- **Comparable timestamps**: Epoch-microsecond timestamps generated automatically by the server
 
 ### Event Streaming Performance
 
 Resource characteristics:
 - Memory overhead: approximately 1000 events per client queue
-- CPU overhead: dedicated thread pool for asynchronous delivery
+- Thread overhead: one single-thread drainer executor per client for asynchronous delivery
 - Network considerations: opportunities for batching and compression
 - Monitoring: per-client delivery statistics available
 
