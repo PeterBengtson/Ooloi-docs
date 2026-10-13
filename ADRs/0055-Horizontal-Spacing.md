@@ -6,10 +6,6 @@ Accepted
 
 The architecture is decided: the forms in which horizontal engraving rules reach Stage 3, what Stages 1 and 2 compute and in which form, and the invariants that hold between them. Values and several policies are open. Each is an entry in [Open Items](#open-items), which is amended in place as [the exploration](#the-exploration) settles it. One open item reaches beyond values: a stretchability per class of gap would change ADR-0037's interface ([H11](#h11-elasticity-by-gap-class)).
 
-Revised October 2026: everything at a barline belongs to a measure, the barline in the form it takes at a system's end and any clef, key or time signature change included, so the postamble holds only cautionary key and time signatures; what a repeat barline adds mid-system is no-break material, which ADR-0037's interface carries for each boundary ([The Bar Boundary](#the-bar-boundary)). Stage 2 records provenance, and spacing can be inspected ([Inspection](#inspection)). [H7](#h7-grace-notes) has a starting point for grace notes. A barline drag has two modes ([User Inputs](#user-inputs)). [H20](#h20-drags-as-edits) is settled, and [H19](#h19-order-of-kinds-at-one-onset) and [H21](#h21-barline-drag-modes) are added.
-
-Revised October 2026: Stage 5 adjusts elements in three ways: within an envelope the contours reserved, from a minimum form into space Stage 4 has given, and, for loose elements, into whatever room exists. Ledger lines are no longer an exception to the envelope rule but the first case of a minimum form, a pattern any element whose comfortable form is wider than its acceptable minimum may declare ([Atoms and Contours](#atoms-and-contours), [Formatter Conditions and Plugins](#formatter-conditions-and-plugins)). [H22](#h22-minimum-forms) is added. Removing a column transfer is undone with the edit that caused it ([H14](#h14-removal-of-column-transfers)).
-
 ## Table of Contents
 
 - [Context](#context)

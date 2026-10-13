@@ -4,8 +4,6 @@
 
 Accepted
 
-Revised October 2026: a ledger line's length is among the adjustments stage 5 may make; the declared ranges of those adjustments must be available to stage 1, whose contours reserve them; and an open question records how stage 5's discrete decisions behave while any drag runs.
-
 ## Table of Contents
 
 - [Context](#context)

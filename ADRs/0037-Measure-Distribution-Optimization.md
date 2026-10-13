@@ -4,12 +4,6 @@
 
 Accepted
 
-Revised October 2026: Hegazy and Gourlay's spring model is adopted as the baseline fitting rule. Each column gap is a spring with an ideal width and a blocking width, which may exceed it; the former baseline, one scale factor per system, is kept as an alternative. See [Gaps as Springs](#gaps-as-springs) and [The Spring Model](#the-spring-model).
-
-Revised October 2026: a measure's closing barline, in the form it takes at a system's end, is part of the measure's width wherever the measure falls, so the postamble holds only cautionaries ([The Postamble](#the-postamble-system-end-width)). What a repeat barline adds mid-system beyond that form is no-break material: each stack carries its closing boundary's no-break width, and the DP subtracts their sum over a system's interior boundaries ([Interface Contract](#interface-contract)). Dragging a barline either transfers ideal width between its measure and the next or sets that measure's width override, and freezes its system while the drag lasts ([Editorial Control Mechanisms](#editorial-control-mechanisms), [Frozen Systems](#frozen-systems)). The reduction of constraints spanning several columns is mandatory ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)).
-
-Revised October 2026: the reduction of constraints spanning several columns is described exactly. It is exact when a constraint binds under stretching; when it binds under compression it over-reserves, by up to a quarter of the spanned gaps' room above their minimums, because a raised gap's shrink follows from its new blocking width. An exact form, in which a raised gap keeps its shrink and blocks at the constraint's ratio, is recorded as an alternative for the validation to decide ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)). Every move of the stability anchor is undone with the act that caused it, so that undo restores the layout as well as the music ([Stability Term](#stability-term)).
-
 ## Table of Contents
 - [Context](#context)
   - [Problem Statement](#problem-statement)
@@ -398,7 +392,7 @@ A gap is **ordinary** when `b_j ≤ w_j`. It is **prestretched** when `b_j > w_j
 
 This is the engraver's principle, that everything belonging to a note, accidentals included, should fit within its proportional allocation, made exact: where it cannot fit, the allocation yields only as far as the collision requires.
 
-**What the springs replace.** Before this revision the baseline required `b_j ≤ w_j` for every gap and gave every gap the same proportional stretch and shrink, so that a system had one scale factor. A prestretched gap could not be represented at all, and a gap whose minimum equalled its ideal blocked compression of its whole system. The former baseline survives as an alternative under [Fitting Rules](#fitting-rules).
+**Why not one scale factor.** A single proportional scale factor per system requires `b_j ≤ w_j` for every gap and gives every gap the same proportional stretch and shrink. It cannot represent a prestretched gap, and a gap whose minimum equals its ideal blocks compression of its whole system. It is kept as an alternative under [Fitting Rules](#fitting-rules).
 
 **Summaries for Stage 3.** Stage 3 never needs the gaps one by one. A segment's width at `r` depends on three sums and on its prestretched gaps:
 
@@ -715,7 +709,7 @@ If the springs prove adequate, asymmetric optimization becomes unnecessary compl
 
 2. **Mixed density across stacks**: a system with one very dense stack and several sparse ones compresses the sparse ones more in absolute terms, since they have more room. Within the dense stack, some staves may be heavily compressed while others remain adequate.
 
-3. **Cliff avoidance**: a gap with little room above its minimum gives up little. Under the former baseline, one such gap blocked compression of its whole system; the springs avoid that.
+3. **Cliff avoidance**: a gap with little room above its minimum gives up little. Under one scale factor per system ([Fitting Rules](#fitting-rules), rule 1), one such gap would block compression of its whole system; the springs avoid that.
 
 **Note on staff-local effects**: Since compression primarily affects the most demanding staff within each stack while other staves may remain visually intact, the arguments for asymmetric optimization are weaker than they might initially appear. Stack-level allocation may be adequate even under compression.
 
@@ -1151,7 +1145,7 @@ A fitting rule is a choice of elasticity.
 
 **Alternatives**, kept as candidates for the validation:
 
-1. **Proportional, normalised by the tightest gap** (the baseline before this revision). Stretch `σ × w_j`, shrink `(1 − max ρ) × w_j` with `ρ = max_j(b_j / w_j)` over the segment, carried as a running extremum, and feasibility `r ≥ −1`. One scale factor per system, so ratios between ideal widths are kept under compression as well as under stretching. It requires `b_j ≤ w_j` for every gap, and one gap at its minimum blocks compression of its whole system.
+1. **Proportional, normalised by the tightest gap**. Stretch `σ × w_j`, shrink `(1 − max ρ) × w_j` with `ρ = max_j(b_j / w_j)` over the segment, carried as a running extremum, and feasibility `r ≥ −1`. One scale factor per system, so ratios between ideal widths are kept under compression as well as under stretching. It requires `b_j ≤ w_j` for every gap, and one gap at its minimum blocks compression of its whole system.
 2. **Even**. Every gap has the same stretch and shrink. Under stretching, short values gain proportionally more and the hierarchy flattens; under compression, they lose proportionally more and it sharpens. Shrink is normalised by the gap with the least room, as in rule 1.
 3. **Duration-weighted shrink**. Shrink `κ × v(d_j) × w_j`, weighted by a function of the gap's duration so that, for example, shorter values compress first. Under springs no cap is needed: a gap that reaches its minimum blocks there and the others carry on. Gaps then block at different ratios, so the shrinking side acquires kinks of its own and is solved like the stretching side; `r = −1` needs a definition of its own, for example the ratio at which the last gap blocks. The weighting `v` and the scale `κ` are decided with the rule.
 4. **Air-only stretch**. Stretch proportional to the space between bare noteheads, `σ × (w_j − n)` with `n` a notehead's width, rather than to the whole ideal width, so that long values take most of any stretching. This is LilyPond's default (`Spacing_spanner::note_spacing` in `lily/spacing-basic.cc`).
@@ -1176,7 +1170,7 @@ Under the baseline a system is feasible exactly when its gaps' blocking widths f
 
 The condition is necessary and sufficient. Every gap's shrink is its own room above its minimum, so at `r = −1` every gap is at its minimum and none reaches it sooner. It comes from prefix sums in O(1), and it is the same point as Knuth–Plass's limit on shrinking ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)).
 
-Under the former baseline (rule 1 of [Fitting Rules](#fitting-rules)), one scale factor applied to every gap, and the sufficient condition was the largest column ratio, `scale ≥ max_j(b_j / w_j)` over the segment. A stack could pass a stack-level check while one of its columns collided, so every stack had to carry that ratio. Under the springs no such ratio is needed.
+Under rule 1 of [Fitting Rules](#fitting-rules), one scale factor applies to every gap, and the sufficient condition is the largest column ratio, `scale ≥ max_j(b_j / w_j)` over the segment. A stack could pass a stack-level check while one of its columns collided, so every stack would have to carry that ratio. Under the springs no such ratio is needed.
 
 ### End-of-System Width
 
@@ -1471,7 +1465,7 @@ The DP algorithm subtracts preamble, gutter, postamble and no-break widths from 
 
 - **Infeasible**: `available < Σ min`, so no `r ≥ −1` fits.
 - **Shrinking**: `r = (available − Σ natural) / (Σ natural − Σ min)`, one division. Under the baseline every gap's shrink is its room above its minimum, so `Σ g_j(r)` is linear on `[−1, 0]`.
-- **Stretching**: from `r = 0` the segment grows at `σ × Σ ordinary ideal` per unit of `r`. At each kink, in increasing order, the slope grows by `σ × w` for the prestretched gaps that start to stretch there. The walk stops on the piece that contains `available`, and `r` is one division on it. When `available` is reached before the first kink, which is the common case, this is the fast path and costs what the former baseline did.
+- **Stretching**: from `r = 0` the segment grows at `σ × Σ ordinary ideal` per unit of `r`. At each kink, in increasing order, the slope grows by `σ × w` for the prestretched gaps that start to stretch there. The walk stops on the piece that contains `available`, and `r` is one division on it. When `available` is reached before the first kink, which is the common case, this is the fast path and costs what one scale factor per system does ([Fitting Rules](#fitting-rules), rule 1).
 
 The walk visits only the kinks below `r`. A balanced tree over the kinks carrying running sums of `w` would find the piece in O(log P) for `P` prestretched gaps in the segment; the linear walk is specified for clarity, since a segment holds few prestretched gaps and `r` passes few of them within any reasonable tolerance.
 
@@ -1769,7 +1763,7 @@ Stage 3 draws on three lineages: optimal breaking by dynamic programming, a mode
   - **Efficiency.** The report places the cost in computing each line's force, never in the DP. It uses a cheap lower bound on the force, from running totals subtracted between breakpoints (prefix sums), designed never to reject a feasible line, and a fast path for forces within the first linear segment, tested with minima precomputed per measure. It observes that for `|f| < 1` most feasible lines fall in the first segment.
   - **Validation.** One 48-bar single-staff piece, Dean K. Roush's 'Lacrimosa': the breaks matched those chosen by a professional musician, who had taken a few hours over it; the program took a few seconds on a personal computer.
   - **Exactness.** The cost is separable per line, the pruning is monotone and the bound conservative, so the result is the exact optimum of its cost within the force window. The pruning is valid only because the model has no width that depends on where a line starts or ends: with a start-dependent preamble or an end-dependent postamble, a line rejected as too long can be followed by a feasible one. That is why this ADR's early termination is against the full system width ([Key Implementation Notes](#key-implementation-notes)).
-  - **Relation to Stage 3.** Stage 3 was specified from Knuth and Plass before the report had been read, and its search coincides with the report's: one node per breakpoint without fitness classes, prefix sums between breakpoints, values precomputed per stack for the fast test, monotone termination. The baseline before this revision, proportional fitting normalised by the tightest gap, was the report's model restricted to its first linear segment and rescaled so that the first collision fell at `r = −1`. This revision adopts the full model.
+  - **Relation to Stage 3.** Stage 3 was specified from Knuth and Plass before the report had been read, and its search coincides with the report's: one node per breakpoint without fitness classes, prefix sums between breakpoints, values precomputed per stack for the fast test, monotone termination. Proportional fitting normalised by the tightest gap, rule 1 of [Fitting Rules](#fitting-rules), is the report's model restricted to its first linear segment and rescaled so that the first collision falls at `r = −1`. The baseline is the full model.
 
 - **LilyPond**:
   - `lily/gourlay-breaking.cc`, by Han-Wen Nienhuys, is present from release 0.1.1 (August 1997) until September 2006. From release 1.1.32 (February 1999) its comment reads: "This algorithms is adapted from the OSU Tech report on breaking lines." What follows describes LilyPond's code, not the report, which may differ from it.

@@ -4,8 +4,6 @@
 
 Implemented
 
-Revised October 2026: [§5](#5-grace-note-position-semantics) states that grace positions inside tuplets are scaled by the ratios of the tuplets that contain them, as the walker computes them.
-
 ## Table of Contents
 
 - [Context](#context)

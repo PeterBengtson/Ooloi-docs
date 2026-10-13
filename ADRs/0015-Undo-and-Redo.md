@@ -4,8 +4,6 @@
 
 Implemented
 
-Revised October 2026: a continuous gesture, anything moved with the pointer and committed as it moves, is one undo step however many transactions it takes ([Continuous Gestures: One Undo Step](#continuous-gestures-one-undo-step)). The gesture identifier the rule relies on is not yet carried by the protocol [ADR-0018](0018-API-gRPC-Interface-and-Events.md) specifies.
-
 ## Table of Contents
 
 - [Context](#context)

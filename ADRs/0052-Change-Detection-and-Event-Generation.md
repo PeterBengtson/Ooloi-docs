@@ -4,8 +4,6 @@
 
 Implemented
 
-Revised October 2026: a continuous gesture, a drag committed as it moves, takes a transaction per update and is still one undo step ([§4](#4-exactly-one-event-per-outermost-transaction)); whether removing the entry of one that ended where it began derives the dirty flag is not yet specified ([§5](#5-the-dirty-flag)).
-
 ## Table of Contents
 
 - [Context](#context)

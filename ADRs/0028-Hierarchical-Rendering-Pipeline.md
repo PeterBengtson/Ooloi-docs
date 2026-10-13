@@ -4,8 +4,6 @@
 
 Accepted
 
-Revised October 2026: the plugin examples follow [ADR-0055](0055-Horizontal-Spacing.md) and [ADR-0013](0013-Slur-Formatting.md), with Stage 1 declaring contours and constraints and beamed stems drawn in Stage 5, and the [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant) points to ADR-0013's open question on Stage 5's adjustments. A measure's Stage 1 output includes a clef change the next measure begins with, which it draws before its closing barline, so a change of that clef reruns Stage 1 for the measure; the postamble holds only cautionary key and time signatures; and Stage 3 also subtracts what a repeat barline adds at a boundary inside a system, its no-break width ([ADR-0037](0037-Measure-Distribution-Optimization.md#interface-contract)).
-
 ## Table of Contents
 
 - [Context](#context)
