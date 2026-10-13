@@ -2,7 +2,7 @@
 
 ## Status
 
-Under implementation
+Implemented
 
 ## Table of Contents
 

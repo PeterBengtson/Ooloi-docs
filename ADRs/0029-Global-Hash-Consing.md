@@ -100,7 +100,7 @@ The hash-consing system employs a central predicate function (`hash-cons-cacheab
 
 ### Constructor-Level Implementation
 
-Hash-consing is implemented at the object constructor level, where each cacheable type maintains its own global LRU cache. When objects are created, the system first checks if an identical instance exists in the cache before creating a new one. See [Cache Key Strategy](#cache-key-strategy-1) in Implementation Strategy for details on how cache keys are constructed.
+Hash-consing is implemented at the object constructor level, where each cacheable type maintains its own global LRU cache. When objects are created, the system first checks if an identical instance exists in the cache before creating a new one. See [Cache Key Strategy](#cache-key-strategy) in Implementation Strategy for details on how cache keys are constructed.
 
 ### Memory Optimization Benefits
 

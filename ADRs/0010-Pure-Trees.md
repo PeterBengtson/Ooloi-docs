@@ -73,7 +73,7 @@ This forms the basic tree structure of the Piece.
 
 ## Visual Representation
 
-See [this diagram](/img/trees-and-dags.jpg) for a visual representation of the tree structure versus potential alternatives.
+See [this diagram](../img/trees-and-dags.jpg) for a visual representation of the tree structure versus potential alternatives.
 
 ### 4. Musical Items
 

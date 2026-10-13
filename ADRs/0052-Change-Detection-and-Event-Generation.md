@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented
+Accepted
 
 ## Table of Contents
 
