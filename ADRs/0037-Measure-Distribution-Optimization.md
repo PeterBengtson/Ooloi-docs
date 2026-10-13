@@ -8,6 +8,8 @@ Revised October 2026: Hegazy and Gourlay's spring model is adopted as the baseli
 
 Revised October 2026: a measure's closing barline, in the form it takes at a system's end, is part of the measure's width wherever the measure falls, so the postamble holds only cautionaries ([The Postamble](#the-postamble-system-end-width)). What a repeat barline adds mid-system beyond that form is no-break material: each stack carries its closing boundary's no-break width, and the DP subtracts their sum over a system's interior boundaries ([Interface Contract](#interface-contract)). Dragging a barline either transfers ideal width between its measure and the next or sets that measure's width override, and freezes its system while the drag lasts ([Editorial Control Mechanisms](#editorial-control-mechanisms), [Frozen Systems](#frozen-systems)). The reduction of constraints spanning several columns is mandatory ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)).
 
+Revised October 2026: the reduction of constraints spanning several columns is described exactly. It is exact when a constraint binds under stretching; when it binds under compression it over-reserves, by up to a quarter of the spanned gaps' room above their minimums, because a raised gap's shrink follows from its new blocking width. An exact form, in which a raised gap keeps its shrink and blocks at the constraint's ratio, is recorded as an alternative for the validation to decide ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)). Every move of the stability anchor is undone with the act that caused it, so that undo restores the layout as well as the music ([Stability Term](#stability-term)).
+
 ## Table of Contents
 - [Context](#context)
   - [Problem Statement](#problem-statement)
@@ -410,19 +412,42 @@ So each stack carries `:min`, `:natural`, `:ordinary-ideal` and its `:prestretch
 
 ### Constraints Spanning Several Columns
 
-Some minimum distances span more than one gap: a long syllable sung across a melisma, a dynamic or a word of text that must not run into the next, material crossing between staves, and two neighbouring atoms in one staff whenever other staves place columns between them. A blocking width belongs to one gap, so such a constraint is reduced to blocking widths before Stage 3 sees it, in Stage 2, in the way LilyPond's spacer reduces its rods (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`):
+Some minimum distances span more than one gap: a long syllable sung across a melisma, a dynamic or a word of text that must not run into the next, material crossing between staves, and two neighbouring atoms in one staff whenever other staves place columns between them. A blocking width belongs to one gap, so such a constraint is reduced to blocking widths before Stage 3 sees it, in Stage 2. The procedure follows LilyPond's spacer, which reduces its rods to blocking forces (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`), and differs from it in one respect, stated below:
 
 1. For a constraint of distance `D` over gaps `j..k`, find the least `r_D` at which `Σ g_i(r)` over those gaps reaches `D`, using their springs alone and the same exact solver as Stage 3 ([Solving for the Adjustment Ratio](#solving-for-the-adjustment-ratio)). If `Σ b_i ≥ D` already, the constraint is met and nothing changes.
 2. Raise each spanned gap's blocking width to its width at that ratio, `b_i ← g_i(r_D)`; its shrink follows from the new blocking width.
 
-Afterwards the span is at least `D` at every `r ≥ −1`: no spanned gap is narrower than before at any ratio, and each holds at least its share at `r_D`. A raised gap may become prestretched, with its kink at `r_D`. The reduction is conservative: in a tightly compressed system the spanned gaps can hold more room than the constraint strictly needs, because each is fixed at its share at `r_D` rather than free to trade with its neighbours. LilyPond's source accepts the same loss, on the grounds that the denser result looks worse anyway.
+Afterwards the span is at least `D` at every `r ≥ −1`: no spanned gap is narrower than before at any ratio, and each holds at least its share at `r_D`. For a single constraint, feasibility is exactly what the constraint requires: at `r = −1` every spanned gap is at its new blocking width, and together they are `D` wide.
+
+**When the constraint binds under stretching** (`r_D ≥ 0`), the reduction is exact. A raised gap holds its new blocking width below `r_D` and stretches as before above it: it becomes prestretched with its kink at `r_D`, or, at `r_D = 0`, an ordinary gap with no shrink. The span is `max(D, Σ g_i(r))` at every ratio, which is what the constraint requires and no more.
+
+**When it binds under compression** (`r_D < 0`), the reduction over-reserves. A raised gap's shrink follows from its new blocking width, `max(0, w_i − b_i′)`, so that every gap still reaches its minimum at `r = −1` and shrinking stays one division. The gap therefore does not simply stop at `r_D`: it becomes stiffer across the whole compressed range, and reaches `b_i′` only at `r = −1`. With `H` the room above their minimums, before the reduction, of the ordinary gaps the constraint spans, the span exceeds `max(D, Σ g_i(r))` by
+
+```
+|r| × (1 − |r_D|) × H        when r_D ≤ r ≤ 0
+|r_D| × (1 − |r|) × H        when −1 ≤ r ≤ r_D
+```
+
+and by nothing when `r ≥ 0`. The excess is zero at `r = 0` and at `r = −1`, and greatest at `r_D`, where it is `|r_D| × (1 − |r_D|) × H`: at most `H / 4`, at `r_D = −1/2`. A constraint reduced this way therefore widens its span in every compressed system, including those in which it would be slack, and the room comes from the system's other gaps, which compress further, so that the system's adjustment ratio is more negative than the constraint requires. For example, two ordinary gaps with `w = 4` and `b = 2` under a constraint of 6 give `r_D = −1/2`; each blocking width rises to 3 and each shrink falls to 1, and at `r = −1/2` the span is 7 rather than 6.
+
+**Overlapping constraints** are reduced one at a time, so a gap raised by one is fixed at its share of it rather than free to trade room with its neighbours under another, and together they can hold more room than they need. This holds under either form of the reduction. LilyPond's source accepts a loss of this kind, on the grounds that the denser result looks worse anyway.
+
+**The exact form**, an alternative to the baseline reduction: a raised gap keeps its shrink, `max(0, w_i − b_i)` with its original blocking width, and holds its new blocking width below `r_D`:
+
+```
+g_i′(r) = max(b_i′, w_i + r × σ × w_i)                when r ≥ 0
+g_i′(r) = max(b_i′, w_i + r × max(0, w_i − b_i))      when r < 0
+```
+
+This is how a blocking force acts in Hegazy and Gourlay's model and in LilyPond's spacer ([The Spring Model](#the-spring-model)). For a single constraint the span is then exactly `max(D, Σ g_i(r))` whatever the sign of `r_D`, and feasibility and the calibration of `r = −1` are unchanged: every gap is at its minimum at `r = −1`. The price is kinks on the shrinking side. A raised gap blocks at its `r_D` (the largest, if several constraints raised it), so the shrinking side of a segment is piecewise linear, with a kink at each such ratio carrying the shrink of the gaps that block there, and is solved by the same walk as the stretching side, from `r = 0` downwards; a segment without such gaps keeps the single division. Each stack would carry, besides its summary, the shrink of its gaps and its shrinking kinks, since `Σ natural − Σ min` no longer gives the slope ([Interface Contract](#interface-contract)), and the reduction's own solver would walk them too. Which form is the baseline is decided by the validation, against the cost of the slower path ([Evaluation Criteria](#evaluation-criteria)); vocal scores with dense lyrics in tight systems are where the difference is largest.
 
 Overlapping constraints are applied in a fixed order (by first gap, then by last), so the result is deterministic. Each raises blocking widths only, and raising a blocking width never narrows a gap at any ratio, so the order affects how room is shared, never whether a constraint holds.
 
 ```clojure
 (defn reduce-span-constraint
   "Raises the blocking widths of gaps [j, k) so that together they are at
-   least d wide at every adjustment ratio r ≥ -1 (Stage 2)."
+   least d wide at every adjustment ratio r ≥ -1 (Stage 2). Baseline form:
+   each raised gap's shrink follows from its new blocking width."
   [gaps j k d sigma]
   (let [{:keys [min natural ordinary-ideal prestretched]} (stack-summary (subvec gaps j k))]
     (if (>= min d)
@@ -436,7 +461,7 @@ Overlapping constraints are applied in a fixed order (by first gap, then by last
                 (range j k))))))
 ```
 
-Because `r_D` depends only on the springs inside the span, the reduction is independent of where systems break, and Stage 3's inputs stay fixed before it starts. A constraint that crosses a barline is reduced over the gaps of both stacks: exact within a system and conservative at a break, where the constraint may need less (a lyric extender, say) or be carried by the postamble and gutter. An edit that changes such a constraint changes both stacks, which is a range edit for [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit).
+Because `r_D` depends only on the springs inside the span, the reduction is independent of where systems break, and Stage 3's inputs stay fixed before it starts. A constraint that crosses a barline is reduced over the gaps of both stacks. Within a system it behaves as any other constraint does; at a break it is conservative, since the constraint may need less there (a lyric extender, say) or be carried by the postamble and gutter. An edit that changes such a constraint changes both stacks, which is a range edit for [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit).
 
 The reduction is mandatory and is not a setting: [ADR-0055](0055-Horizontal-Spacing.md#invariants-and-property-tests)'s Invariants 1 and 8, that no contours collide at any feasible ratio and that every constraint holds after Stage 2, depend on it. How much room it over-reserves is measured in the validation ([Evaluation Criteria](#evaluation-criteria)).
 
@@ -967,7 +992,7 @@ This is **selection, not computation**. The space was pre-reserved; Stage 5 rend
 
 When break configurations produce identical demerits (a "tie" in cost, not a musical tie), the configuration is chosen by a secondary cost, compared only when the primary costs are equal. The secondary cost is separable — a sum of per-break terms — and differs for any two distinct configurations: for example, the sum over the configuration's breakpoints `b` of `2^−b`, which, like a binary fraction, is different for any two different sets of breakpoints. Costs are compared as pairs (primary, secondary), lexicographically. Pairs add componentwise and the lexicographic order is preserved under addition, so the DP remains exact for the pair, and the optimum is unique.
 
-Because the choice is a property of the configuration rather than of the order in which a procedure meets candidates, every procedure that minimises the pair — the full pass, and [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit) from forward and backward tables — returns the same configuration. The result is deterministic across runs, platforms and editing histories. Ties are expected rather than exceptional: under rational arithmetic, identical measures produce identical costs.
+Because the choice is a property of the configuration rather than of the order in which a procedure meets candidates, every procedure that minimises the pair — the full pass, and [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit) from forward and backward tables — returns the same configuration. The result is deterministic across runs, platforms and editing histories, given the same music and layout data; under a [Stability Term](#stability-term) the anchor is part of that data, and every move of it is undone with the act that caused it. Ties are expected rather than exceptional: under rational arithmetic, identical measures produce identical costs.
 
 In the Stage 3 code sketch a segment `[s, t)` adds its primary cost and the term `2^−t` for the breakpoint it ends at, and a candidate replaces the stored best only when its pair is lexicographically smaller.
 
@@ -1048,7 +1073,7 @@ Visual judgement, together with measurements taken on the same scores:
 - The number of systems
 - How many breaks an edit changes (stability)
 - Running time
-- How much room the reduction of constraints spanning several columns over-reserves: the same systems solved offline with those constraints imposed exactly, system by system, compared with the reduced springs ([Constraints Spanning Several Columns](#constraints-spanning-several-columns))
+- How much room the reduction of constraints spanning several columns over-reserves: the same systems solved offline with those constraints imposed exactly, system by system, compared with the springs as reduced by the baseline and by its exact form. This, with the cost of the exact form's slower path, decides which form is the baseline ([Constraints Spanning Several Columns](#constraints-spanning-several-columns))
 - The number of manual interventions (forced breaks, width overrides) needed to reach the layout of a reference engraving: the measure that matters most to an engraver
 
 The test material is chosen for where the difficulty lies: chromatic passages in short values, bars that mix long values with runs of very short ones, vocal scores with dense lyrics, tight orchestral pages, music of gradually changing density, and parts with page turns. Parts with page turns evaluate Stage 6 and the separation of system breaking from page breaking ([Joint System and Page Breaking](#joint-system-and-page-breaking)), not Stage 3 alone. The references are printed engravings, not the output of other programs.
@@ -1072,7 +1097,7 @@ min over feasible [s, t) with s ≤ m < t of   F(s) + cost′(s, t) + G(t)
 - **Full passes**: a change of clef or key signature alters the preamble of every later system, and a key signature change alters the accidentals of later measures ([ADR-0035](0035-Remembered-Alterations.md)); a change to forced or prevented breaks changes the problem's partition. These re-run Stage 3 in full.
 - **Refresh**: after an edit, `F(s)` for `s > m` and `G(t)` for `t ≤ m` are stale. They are recomputed off the edit's critical path, O(N×K), or lazily: the next edit at `m₂` needs only the part of each table between the two edits.
 - **Backward early termination** needs the mirror of the width assumption under [Key Implementation Notes](#key-implementation-notes): for fixed `t`, the system width must not increase as the end moves right. Where it does, the backward pass scans every end — slower, still exact.
-- **Ties** are resolved as [Deterministic Tie-Breaking](#deterministic-tie-breaking) specifies, which both the full pass and re-optimisation apply, so a score produces the same layout however its edits arrived.
+- **Ties** are resolved as [Deterministic Tie-Breaking](#deterministic-tie-breaking) specifies, which both the full pass and re-optimisation apply, so a score with the same layout data, the stability anchor included, produces the same layout however its edits arrived.
 
 ### Stability Term
 
@@ -1080,6 +1105,7 @@ min over feasible [s, t) with s ≤ m < t of   F(s) + cost′(s, t) + G(t)
 
 - **The anchor is layout data**: persisted with the layout, and identifying breaks by measure identity rather than by index, so that it survives measure insertion and deletion and the layout remains regenerable from semantics and layout data.
 - **Anchor policy sets the refresh cost**: while the anchor is fixed, [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit) applies unchanged, with `F` and `G` computed under the anchored objective. Moving the anchor changes `D` for any segment whose relation to it changed, so both tables are recomputed, O(N×K). When the anchor moves — after every edit, on save, on an explicit reflow — and the value of `λ` are evaluated.
+- **Every move of the anchor is undone with the act that caused it**, so that undo restores the layout as well as the music. Without this, undoing an edit would restore the music but re-optimise it against the anchor the edit had moved, and the layout could differ from the one before the edit. Formatting runs after an edit has committed ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md#computational-scaling-characteristics)), so a move made in response to an edit amends that edit's undo entry, as the later transactions of a continuous gesture amend the entry its first one pushed ([ADR-0015](0015-Undo-and-Redo.md#continuous-gestures-one-undo-step)); undoing the edit then restores the anchor it moved. An explicit reflow is an edit of layout data with an undo entry of its own. A move on save belongs to no undo entry, so under that policy undo restores the layout only for edits made since the last save. The same holds for any other layout data the engine changes in response to an edit, such as removing a width transfer whose column no longer exists ([ADR-0055 H14](0055-Horizontal-Spacing.md#h14-removal-of-column-transfers)).
 
 ### Frozen Systems
 
@@ -1777,7 +1803,7 @@ Stage 3 draws on three lineages: optimal breaking by dynamic programming, a mode
 
 - **Hegazy and Gourlay** (1987), above: springs through boxes, blocking widths, prestretched springs, and the force of a line as a piecewise-linear function.
 
-- **LilyPond**: `lily/spring.cc` (Joe Neeman, from 2007) defines a spring by its ideal distance, its minimum distance and its inverse stretch and compression strengths. Its length under a force is the larger of the minimum and the ideal plus force times flexibility, with a blocking force below which the length is constant, including the case in which the minimum exceeds the ideal: Hegazy and Gourlay's spring. By default a spring compresses by its room above its minimum (`Spring::set_default_compress_strength`), as in this ADR's baseline, and a note's spring stretches in proportion to the space between bare noteheads (`Spacing_spanner::note_spacing` in `lily/spacing-basic.cc`). Minimum distances spanning several columns, its "rods", are reduced to blocking forces on the springs they span (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`): the reduction of [Constraints Spanning Several Columns](#constraints-spanning-several-columns). LilyPond solves the spacing afresh for every candidate line.
+- **LilyPond**: `lily/spring.cc` (Joe Neeman, from 2007) defines a spring by its ideal distance, its minimum distance and its inverse stretch and compression strengths. Its length under a force is the larger of the minimum and the ideal plus force times flexibility, with a blocking force below which the length is constant, including the case in which the minimum exceeds the ideal: Hegazy and Gourlay's spring. By default a spring compresses by its room above its minimum (`Spring::set_default_compress_strength`), as in this ADR's baseline, and a note's spring stretches in proportion to the space between bare noteheads (`Spacing_spanner::note_spacing` in `lily/spacing-basic.cc`). Minimum distances spanning several columns, its "rods", are reduced to blocking forces on the springs they span (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`): a spring keeps its flexibility and holds its length below the blocking force, which is the exact form of the reduction under [Constraints Spanning Several Columns](#constraints-spanning-several-columns); Ooloi's baseline instead recomputes each raised gap's shrink from its new blocking width. LilyPond solves the spacing afresh for every candidate line.
 
 - **MuseScore**: when a system is justified (`HorizontalSpacing::justifySystem` and `stretchSegmentsToWidth` in `src/engraving/rendering/score/horizontalspacing.cpp`), each segment is a spring whose stiffness comes from its duration, and a segment already wider than its duration warrants, from a collision, does not stretch until the force reaches it: the stretching half of the model. Compression is handled separately, by re-spacing with reduced paddings and duration spacing in steps.
 
@@ -1874,6 +1900,7 @@ A horizontal rule that cannot be expressed in one of these forms is a design pro
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (accidental algorithm that closes the semantic model; tied-note bypass rules inform gutter requirements)
 - [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) (upstream computation of each gap's ideal and blocking widths, the gutter, and the reduction of constraints spanning several columns)
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) (the layout never feeds back into a musical edit; frozen systems)
+- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) (continuous gestures as one undo step; anchor moves amend the entry of the edit that caused them)
 - [ADR-0014: Timewalk](0014-Timewalk.md) (temporal traversal providing measure discovery)
 - [ADR-0029: Global Hash-Consing](0029-Global-Hash-Consing.md) (immutable data structures enabling stage separation)
 - [Knuth–Plass line-breaking algorithm](https://en.wikipedia.org/wiki/Knuth%E2%80%93Plass_line-breaking_algorithm) - Wikipedia overview
