@@ -8,14 +8,16 @@
 - [🟢 Prerequisites and Intended Audience](#-prerequisites-and-intended-audience)
 - [🟢 What Timewalking Actually Does](#-what-timewalking-actually-does)
 - [🟢 What Timewalking Returns: The Power of Tuples](#-what-timewalking-returns-the-power-of-tuples)
+- [What the Stream Contains](#what-the-stream-contains)
 - [🟡 The Fundamental Insight: Structure → Stream](#-the-fundamental-insight-structure--stream)
 - [🟢 Starting Simple: Direct Lazy Sequences](#-starting-simple-direct-lazy-sequences)
 - [🟡 The Magic of Composition](#-the-magic-of-composition)
-- [🟡 Why Not Just Use `->>` for Everything?](#-why-not-just-use-----for-everything)
+- [🟡 Why Not Just Use `->>` for Everything?](#-why-not-just-use---for-everything)
   - [Choosing the Right Consumption Strategy](#choosing-the-right-consumption-strategy)
   - [🔴 Advanced Pattern: Using `reduce` for Stateful Transformations](#-advanced-pattern-using-reduce-for-stateful-transformations)
 - [🟠 Understanding Timewalk's Architecture: Push vs Pull](#-understanding-timewalks-architecture-push-vs-pull)
 - [🟢 Efficiency Tips](#-efficiency-tips)
+  - [Grace End Markers and Grace Positions](#grace-end-markers-and-grace-positions)
 - [🔴 Real-World Example: Remembered Alterations](#-real-world-example-remembered-alterations)
 - [Cross-References](#cross-references)
 
@@ -29,7 +31,7 @@ The `timewalk` function provides powerful traversal of musical piece structures 
 
 2. **For Clojure learners**: This guide teaches **transducers, lazy sequences, functional composition, and threading macros** through practical musical examples. The musical domain makes these concepts natural and intuitive, demonstrating how functional programming patterns solve real-world problems.
 
-As the timewalker supports both direct lazy sequences and transducers, you'll see both approaches throughout. The guide progresses from simple operations to advanced transducer patterns, teaching both Ooloi's API and core Clojure concepts simultaneously.
+As the timewalker supports both a direct sequence form and a transducer form, you'll see both approaches throughout. The guide progresses from simple operations to advanced transducer patterns, teaching both Ooloi's API and core Clojure concepts simultaneously. The two forms do not cost the same: the direct form walks the whole scope before you see its first result, while the transducer form can stop the walk the moment you have what you need. [Understanding Timewalk's Architecture: Push vs Pull](#-understanding-timewalks-architecture-push-vs-pull) explains why.
 
 ## 🟢 Prerequisites and Intended Audience
 
@@ -63,7 +65,7 @@ The rest of this guide shows you how to work with that stream.
 
 ## 🟢 What Timewalking Returns: The Power of Tuples
 
-To demonstrate all this, let's get specific with the timewalker. Every item returned by timewalking is a **three-element tuple** containing everything you need:
+To demonstrate all this, let's get specific with the timewalker. Every element of the stream is a **three-element tuple** containing everything you need:
 
 ```clojure
 [item vpd position]
@@ -72,6 +74,8 @@ To demonstrate all this, let's get specific with the timewalker. Every item retu
 - **`item`** - The actual musical object (pitch, chord, rest, measure, etc.)
 - **`vpd`** - Vector Path Descriptor - the exact location of this item in the piece
 - **`position`** - Rhythmic position within the measure (0, 1/4, 1/2, 3/4, etc.)
+
+One tuple carries no musical object: the grace end marker `[:end :Grace nil]`, which the walker emits after each grace group only when asked to (see [Grace End Markers and Grace Positions](#grace-end-markers-and-grace-positions)). Its "item" is the keyword `:end` and its position is `nil`.
 
 This tuple gives you **complete context** for any musical element:
 
@@ -128,6 +132,30 @@ Since the `timewalk` function returns `[item vpd position]` tuples, Ooloi provid
 
 These helpers transform the timewalker from a low-level traversal tool into a readable musical analysis API.
 
+## What the Stream Contains
+
+A filter only behaves as you expect when you know what arrives in the stream, and the stream holds more than notes. In order (`walk!`, `walk-measure!`, `walk-voice!` and `walk-item!` in `ooloi.shared.ops.timewalk`):
+
+1. **The boundary object comes first**, at position 0: the piece when the options name no `:boundary-vpd`, the instrument for `[:m 0 0]`, and so on. If the boundary is itself a measure, the measure is the first tuple.
+2. **Then measure by measure.** Every measure numbered N within the boundary, staff by staff in structural order, comes before any measure numbered N+1. Each measure is emitted at position 0, followed by its voices; each voice is emitted at position 0, followed by its items.
+3. **Musicians, instruments and staves below the boundary are not emitted.** The walker descends through them to find the measures and passes nothing on.
+4. **Items arrive container first.** A tuplet, tremolando or grace group is emitted before its contents, which follow at their own positions.
+5. **Chord pitches and attachments are tuples of their own**, at the position of the item they belong to, with VPDs ending in `:pitches k` or `:attachments k`. `(filter pitch??)` therefore yields the pitches inside chords as well as the single notes; to keep only the single notes, drop the tuples whose VPD contains `:pitches`.
+6. **`:start-position` and `:end-position` filter only the items directly in a voice**, by the position at which each starts. The contents of a tuplet that starts inside the window are emitted in full, wherever they end.
+
+```clojure
+;; The opening of a walk over a piece with one staff, one measure, one voice
+;; holding a C major chord of a half note and a rest:
+[piece          []                                0]
+[measure        [:m 0 0 0 0]                      0]
+[voice          [:m 0 0 0 0 0]                    0]
+[chord          [:m 0 0 0 0 0 :items 0]           0]
+[pitch-c4       [:m 0 0 0 0 0 :items 0 :pitches 0] 0]
+[pitch-e4       [:m 0 0 0 0 0 :items 0 :pitches 1] 0]
+[pitch-g4       [:m 0 0 0 0 0 :items 0 :pitches 2] 0]
+[rest           [:m 0 0 0 0 0 :items 1]           1/2]
+```
+
 ## 🟡 The Fundamental Insight: Structure → Stream
 
 *"It's just a jump to the left, and then a step to the right" - Riff Raff*
@@ -160,7 +188,7 @@ piece
 
 ;; Stream (linear, temporal)
 (timewalk piece {})
-;; => [pitch-event1] [pitch-event2] [rest-event1] [chord-event1] ...
+;; => [piece-event] [measure-event] [voice-event] [pitch-event1] [pitch-event2] [rest-event1] [chord-event1] ...
 ```
 
 ### This Changes Everything
@@ -204,7 +232,7 @@ You think:
 **Timewalking lets you code the way you think about music:**
 
 ```clojure
-;; Find the first C# in the piece
+;; Find the first C#4 in the piece
 (->> (timewalk piece {})
      (filter pitch??)
      (filter #(= "C#4" (:note (item %))))
@@ -244,7 +272,7 @@ When you embrace the stream mindset:
 1. **You stop thinking about structure** - The hierarchy becomes invisible. You never write "musician 0, instrument 0, staff 0" again.
 2. **Code becomes declarative** - "give me pitches above C5" not "for each musician, for each instrument..."
 3. **Operations compose naturally** - filter → map → take is a pipeline, not nested loops
-4. **Performance comes free** - streaming processes one item at a time, no intermediate collections
+4. **Performance comes with the form** - a transducer pipeline processes one item at a time, with no intermediate collections
 5. **Reusability emerges** - same transformation works on different pieces
 
 **Before structure → stream thinking:**
@@ -274,7 +302,7 @@ When you embrace the stream mindset:
 The second version is:
 - **Shorter** (5 lines vs 12)
 - **Clearer** (expresses intent directly)
-- **More efficient** (lazy, streams, no atom)
+- **Free of mutable state** (no atom, no accumulation by hand)
 - **More composable** (can easily add more filters)
 
 Everything that follows builds on this insight. But it all comes back to this: **structure → stream**. Once you see this, transducers become natural.
@@ -310,29 +338,28 @@ Before diving into examples, you need to understand `->>` (pronounced "thread-la
 
 **Why it's useful:** With `->>` you read top-to-bottom, which matches how you think about data transformations: "start with this data, then filter it, then map it, then take some."
 
-**Important Performance Note:** When you see `->>` with lazy sequences (like timewalk returns), **no intermediate collections are created**. Each step processes one item at a time:
+**Important Performance Note:** The steps after the timewalk are lazy — `filter`, `map` and `take` realise only as much as you consume. The timewalk at the head of the thread is not:
 
 ```clojure
-;; This looks like it creates intermediate collections, but it doesn't
-(->> (timewalk piece {})             ; Lazy sequence
-     (filter pitch??)                ; Still lazy (note: ??)
-     (map #(:note (item %)))         ; Still lazy
-     (take 10))                      ; Still lazy, only realizes 10 items
+(->> (timewalk piece {})             ; Walks the whole piece and holds every tuple
+     (filter pitch??)                ; Lazy (note: ??)
+     (map #(:note (item %)))         ; Lazy
+     (take 10))                      ; Lazy: realises 10 results, but the walk is already done
 ```
 
-The magic happens because the `timewalk` function returns a **lazy sequence**, so no "consing" (creating intermediate lists) occurs until you actually consume the results.
+The 2-arity `(timewalk piece {})` is `(sequence (timewalk {}) [piece])`. `sequence` with a transducer processes its input one element at a time and buffers whatever each element produces. Here there is only one input element, the piece, so the whole walk runs as soon as the sequence is created and every tuple in scope is held in the buffer. `take 10` limits what you receive; it does not shorten the walk.
 
-**Connection to transducers:** The `->>` pattern shows you're doing step-by-step data transformation. Transducers take this same concept but make it more efficient by eliminating intermediate collections. The thought process is identical - it's just the implementation that's optimized.
+**Connection to transducers:** The `->>` pattern shows you're doing step-by-step data transformation. Transducers take the same concept and fuse the steps into one. Placing the timewalk itself inside the composition is what lets an early `take` stop the walk, as [Even Better: The Transducer Form](#even-better-the-transducer-form) shows.
 
 ## 🟢 Starting Simple: Direct Lazy Sequences
 
-The easiest way to use the `timewalk` function is the **2-arity form** that returns a lazy sequence directly:
+The easiest way to use the `timewalk` function is the **2-arity form** that returns a sequence directly:
 
 ```clojure
 (timewalk piece {})  ; Empty map means "traverse the entire piece"
 ```
 
-**For Clojure learners**: A **lazy sequence** is one of Clojure's most powerful features. Instead of computing all results upfront and storing them in memory, lazy sequences generate values *on demand* as you consume them. This means you can work with potentially infinite sequences or very large data sets without exhausting memory. When you call `(timewalk piece {})`, it doesn't immediately traverse the entire musical structure—it returns a recipe for traversal that executes incrementally as you request items. This lazy evaluation combines naturally with the `->>` threading macro to build readable, memory-efficient data processing pipelines.
+**For Clojure learners**: A **lazy sequence** is one of Clojure's most powerful features. Instead of computing all results upfront and storing them in memory, a lazy sequence generates values *on demand* as you consume them, which is what lets `filter`, `map` and `take` in the examples below do only the work their results require. The 2-arity timewalk is a convenience, not a lazy producer: it is `(sequence (timewalk options) [piece])`, a sequence over a single input element, the piece. Creating it runs the entire scoped walk and holds all of its tuples, however few you then read. That is entirely acceptable for exploration at the REPL and for small pieces. For large scores, or whenever you want to stop at the first match, use the transducer form introduced in [Even Better: The Transducer Form](#even-better-the-transducer-form).
 
 Let's start with practical examples that show the power of this approach.
 
@@ -464,7 +491,7 @@ Here the power of composition becomes evident. Those steps above can be **compos
             (map #(:note (item %)))
             (take 10))
       (timewalk piece {}))
-;; Total: Zero lazy wrappers, pure push-based transduction
+;; Total: Zero lazy wrappers between the steps; the input is the 2-arity sequence
 ;; Result: Realized vector (push-based, immediate evaluation)
 ```
 
@@ -473,7 +500,7 @@ Here the power of composition becomes evident. Those steps above can be **compos
 - **`sequence` with transducers**: Composed transformation, returns lazy sequence (still pull-based, but more efficient)
 - **`into` with transducers**: True push-based processing, no lazy wrappers, immediate realization
 
-All three approaches avoid realizing unnecessary elements, but `into` is the only truly push-based one that eliminates all lazy overhead.
+The differences lie entirely downstream of the walk. In all three, the 2-arity `(timewalk piece {})` has walked the whole piece and buffered every tuple before the first `filter` runs, so `take 10` saves processing in the later steps and none in the traversal. To have `take 10` stop the walk itself, the timewalk goes inside the composition; see [Even Better: The Transducer Form](#even-better-the-transducer-form).
 
 ### Performance Comparison: Threading vs Transducers
 
@@ -485,17 +512,20 @@ Here's why transducers tend to be more efficient for complex processing chains:
      (filter pitch??)
      (map #(:note (item %)))
      (take 1000))
-;; Memory: Creates 3 intermediate lazy sequence objects
-;; Processing: Each step wraps the previous step in a new lazy sequence
+;; Memory: Every tuple of the symphony, buffered by the 2-arity walk,
+;;         plus 3 intermediate lazy sequence objects
+;; Processing: The whole symphony is walked; each later step wraps the previous one
 
-;; Transducer approach - single processing chain
-(into [] 
-      (comp (filter pitch??)
+;; Transducer approach - single processing chain, timewalk included
+(into []
+      (comp (timewalk {})
+            (filter pitch??)
             (map #(:note (item %)))
             (take 1000))
-      (timewalk large-symphony {}))
-;; Memory: Single processing chain, no intermediate objects
-;; Processing: All steps fused into one efficient transformation
+      [large-symphony])
+;; Memory: The walk's index of the symphony's measures and the 1000 results;
+;;         no tuple sequence, no intermediate objects
+;; Processing: All steps fused; the walk stops after the 1000th pitch
 ```
 
 **Why transducers are typically faster:**
@@ -508,12 +538,6 @@ Here's why transducers tend to be more efficient for complex processing chains:
 - **Chain length**: More steps = bigger transducer advantage
 - **Data size**: Larger sequences benefit more from reduced allocation
 - **GC pressure**: Complex applications see bigger gains from reduced intermediate objects
-
-**Real-world benchmarks** show significant improvements:
-- **Clojure community benchmarks**: ~45% faster execution (109ms → 60ms for multi-step transformations)
-- **Memory efficiency**: Eliminates intermediate lazy sequence objects between steps
-- **JVM optimization**: Better loop fusion opportunities compared to chained lazy operations
-- **Scaling**: Performance gap widens with longer transformation chains
 
 **Why transducers win on the JVM:**
 - **No intermediate allocations**: Direct function composition vs lazy sequence wrappers
@@ -535,7 +559,7 @@ Timewalk demonstrates a true push-based transducer: it *drives* the reducing fun
 - **Pull (lazy)**: "I'll generate the next value when you ask for it"
 - **Push (transducer)**: "Here's the next value right now — process it or stop"
 
-The push model enables **early termination to stop computation itself**, not just sequence consumption. When `take 10` signals termination via `reduced`, timewalk immediately stops traversing the musical hierarchy — no wasted work generating values that will never be used.
+The push model enables **early termination to stop computation itself**, not just sequence consumption. When timewalk is part of the composition and `take 10` signals termination via `reduced`, timewalk immediately stops traversing the musical hierarchy — no wasted work generating values that will never be used. The 2-arity form does not get this benefit: its walk has finished before any downstream step can return `reduced`.
 
 Think of them as "transformation recipes" that can be applied to any data source:
 
@@ -547,10 +571,9 @@ Think of them as "transformation recipes" that can be applied to any data source
         (take 10)))
 
 ;; The same recipe works with different data sources:
-(sequence process-melody (timewalk piece1 opts))  ; Apply to piece1
-(sequence process-melody (timewalk piece2 opts))  ; Apply to piece2
-(into [] process-melody (timewalk piece3 opts))   ; Collect into vector
-(transduce process-melody + 0 some-sequence)          ; Reduce to single value
+(sequence (comp (timewalk opts) process-melody) [piece1])  ; Lazy result from piece1
+(into [] (comp (timewalk opts) process-melody) [piece2])   ; Vector from piece2
+(into [] process-melody some-tuples)                        ; Any collection of tuples
 ```
 
 **Key insight**: The transformation logic is **separate** from:
@@ -585,8 +608,10 @@ The musical context makes it natural because you're always doing multi-step proc
 **Key insight:** This approach combines the best of both worlds:
 - **Input**: Still uses the familiar `->>` threading pattern
 - **Processing**: `sequence` with `comp` creates a single efficient transformation
-- **No intermediate collections**: The composed transducer processes items one at a time
+- **No intermediate collections downstream**: The composed transducer processes the tuples one at a time
 - **Result**: Lazy sequence that can be consumed incrementally
+
+The input, though, is the 2-arity walk's buffer of every tuple in the piece, complete before the composed transformation sees the first.
 
 **Important distinction**: The `->>` here is just for readability - it's equivalent to:
 ```clojure
@@ -617,7 +642,9 @@ The timewalker's dual-arity API follows the exact same pattern as Clojure's core
 
 **Why This Pattern Works**
 
-This isn't a novel design - it's how functional composition works in Clojure. The `timewalk` function behaves exactly like `map`, `filter`, and `take`, just with musical semantics instead of generic collection operations.
+This isn't a novel design - it's how functional composition works in Clojure. The `timewalk` function has the same two shapes as `map`, `filter`, and `take`, just with musical semantics instead of generic collection operations.
+
+One difference matters. `(map inc coll)` is lazy element by element, because `coll` has many elements. The 2-arity `(timewalk piece {})` is `(sequence (timewalk {}) [piece])`, whose input has one element, the piece; the transducer turns that one element into every tuple in scope, and `sequence` buffers them all at once. The 2-arity form is therefore a convenience for exploration and small pieces, which runs the whole scoped walk when it is created. The transducer form is the one that streams.
 
 **Composition in Action**
 
@@ -631,8 +658,10 @@ The `timewalk` function itself can be part of the composition:
                 (map #(:note (item %)))
                 (take 10))
           [piece])
-;; => ["C4" "E4" "G4" "C5" "E5" ...]
+;; => ("C4" "E4" "G4" "C5" "E5" ...)
 ```
+
+Here `take 10` is inside the same composition as the walk, so after the tenth result it returns `reduced`, the walker sees it and stops traversing. The same holds for `into` and `transduce` over the composition, and for `reduce` over an `eduction` of it: put the timewalk inside, apply the whole to `[piece]`.
 
 This is **composable**, **reusable**, and **efficient** - the hallmarks of good functional design. More importantly, it integrates naturally with the Clojure ecosystem because it follows established conventions.
 
@@ -667,16 +696,22 @@ Transducers become essential for:
 
 **Example: When size matters**
 ```clojure
+;; make-transposer (ooloi.shared.ops.pitches) returns a function from
+;; pitch string to pitch string, so it is applied to the :note of each pitch
+(def up-a-tone (make-transposer :up :major :second))
+
 ;; Small chamber piece (1000 total elements) - either approach works fine
 (->> (timewalk string-quartet {})
      (filter pitch??)
-     (map (comp (make-transposer :up :major :second) item)))
+     (map (comp up-a-tone :note item)))
 
-;; Large symphony (50,000+ total elements) - transducers prevent memory pressure
+;; Large symphony (50,000+ total elements) - the transducer form never holds
+;; the symphony's tuples, only the transposed note strings it collects
 (into []
-      (comp (filter pitch??)
-            (map (comp (make-transposer :up :major :second) item)))
-      (timewalk symphony {}))
+      (comp (timewalk {})
+            (filter pitch??)
+            (map (comp up-a-tone :note item)))
+      [symphony])
 ```
 
 ### Choosing the Right Consumption Strategy
@@ -698,14 +733,15 @@ Once you've filtered and transformed your timewalking stream, you need to consum
 **When you want lazy, on-demand processing:**
 - Use `->>` threading or `sequence` for lazy sequences
 - Best for: REPL exploration, small pieces, simple transformations
+- Over the 2-arity form, the downstream steps are lazy but the walk is not
 
 **When you need reusable transformations:**
 - Use 1-arity transducer form to compose once, apply many times
 - Best for: Library code, applying same transformation to multiple pieces
 
 **When you need early termination:**
-- Always use `take` before any limiting operation
-- Critical for performance: stops computation immediately, not just consumption
+- Put `take` (or `take-while`, `halt-when`) in the same composition as the 1-arity `(timewalk opts)`, applied to `[piece]`
+- Critical for performance: this stops the walk itself; a `take` after the 2-arity form only limits the result
 
 ## 🔴 Advanced Pattern: Using `reduce` for Stateful Transformations
 
@@ -716,13 +752,13 @@ When modifying a piece during traversal, each modification creates a new piece o
 ### The Problem: Side Effects with Stale State
 
 ```clojure
-;; This DOESN'T WORK - VPDs become stale after first modification
+;; This DOESN'T WORK - every modification is applied to the original piece
 (let [transposer (make-transposer :up :major :third)]
-  (run! #(vpd/mutate (vpd %) piece transposer)
+  (run! #(vpd/mutate (conj (vpd %) :note) piece transposer)
         (->> (timewalk piece {})
              (filter pitch??))))
-;; Problem: First modification returns new piece, but it's immediately discarded
-;; Subsequent modifications operate on original piece, but we want to use the new one
+;; Problem: Each modification returns a new piece, which is immediately discarded
+;; Every later modification starts again from the original piece
 ```
 
 ### The Solution: Threading State with `reduce`
@@ -730,14 +766,17 @@ When modifying a piece during traversal, each modification creates a new piece o
 ```clojure
 ;; This WORKS - piece state threads through each transformation
 (let [transposer (make-transposer :up :major :third)
-      transpose-pitch! (fn [piece result] (vpd/mutate (vpd result) piece transposer))]
-  (reduce transpose-pitch!
+      transpose-pitch (fn [piece result]
+                        (vpd/mutate (conj (vpd result) :note) piece transposer))]
+  (reduce transpose-pitch
           piece
           (->> (timewalk piece {})
                (filter pitch??))))
 ;; Success: Each modification receives current piece, returns updated piece
 ;; Final result is fully transposed piece with all modifications applied
 ```
+
+`make-transposer` returns a function from pitch string to pitch string, so the VPD is extended with `:note` to address the pitch's note string rather than the Pitch record. `vpd/mutate` takes the path, the piece and the transform, applies the transform to the value at that path and returns the new piece. The VPDs collected from the original piece stay valid throughout, because transposing a note changes no item's place in the structure. Pitches inside chords are included, since `(filter pitch??)` yields them as tuples of their own.
 
 **Key insight**: `reduce` threads the accumulator (the piece) through each step, ensuring every transformation operates on the current state. This pattern is essential whenever modifications depend on previous modifications.
 
@@ -753,78 +792,80 @@ When modifying a piece during traversal, each modification creates a new piece o
 #### Collect into collection (`into`)
 ```clojure
 ;; Vector for sequential access
-(into [] (comp (filter pitch??) (map #(:note (item %)))) (timewalk piece {}))
+(into [] (comp (timewalk {}) (filter pitch??) (map #(:note (item %)))) [piece])
 
 ;; Set for unique values
-(into #{} (comp (filter pitch??) (map #(:note (item %)))) (timewalk piece {}))
+(into #{} (comp (timewalk {}) (filter pitch??) (map #(:note (item %)))) [piece])
 ```
 
 #### Reduce to single value (`transduce`)
 ```clojure
 ;; Count pitches above middle C
-(transduce (comp (filter pitch??) (filter #(hz>= (item %) "C4")) (map (constantly 1)))
+(transduce (comp (timewalk {})
+                 (filter pitch??)
+                 (filter #(hz>= (item %) "C4"))
+                 (map (constantly 1)))
            +
            0
-           (timewalk piece {}))
+           [piece])
 ```
 
 #### Side effects only (`run!`)
 ```clojure
-;; Schedule for MIDI playback, no return value needed
+;; Schedule for MIDI playback, no return value needed.
+;; run! reduces over the eduction, so each tuple is pushed to the
+;; function as the walker finds it and no tuple sequence is built.
 (run! schedule-for-midi
-      (->> (timewalk piece {}) (filter pitch??)))
+      (eduction (comp (timewalk {}) (filter pitch??)) [piece]))
 ```
 
 #### Lazy processing (`sequence` or `->>`)
 ```clojure
-;; Simple threading for exploration
+;; Simple threading for exploration (the 2-arity walk runs in full)
 (->> (timewalk piece {}) (filter pitch??) (map #(:note (item %))) (take 10))
 
-;; Or with explicit sequence
-(sequence (comp (filter pitch??) (map #(:note (item %))) (take 10))
-          (timewalk piece {}))
+;; With the walk inside the composition, take 10 stops it
+(sequence (comp (timewalk {}) (filter pitch??) (map #(:note (item %))) (take 10))
+          [piece])
 ```
 
 #### Reusable transformations (1-arity form)
 ```clojure
 ;; Define once, apply many times
 (def find-high-notes
-  (comp (filter pitch??) (filter #(hz>= (item %) "C5")) (map item)))
+  (comp (timewalk {}) (filter pitch??) (filter #(hz>= (item %) "C5")) (map item)))
 
-(into [] find-high-notes (timewalk piece1 {}))
-(into [] find-high-notes (timewalk piece2 {}))
+(into [] find-high-notes [piece1])
+(into [] find-high-notes [piece2])
 ```
 
 #### Early termination (`take`)
 ```clojure
-;; CRITICAL: Always use take before first to enable early termination
-(->> (timewalk piece {})
-     (filter pitch??)
-     (take 1)   ; Stops immediately after finding first pitch
-     (first))   ; Extract the result
-
-;; With transducers - most efficient
-(first (into [] (comp (filter pitch??) (take 1)) (timewalk piece {})))
+;; The walk stops at the first pitch
+(first (into [] (comp (timewalk {}) (filter pitch??) (take 1)) [piece]))
 ```
 
-### Critical Performance Rule: Always Use `take` Before `first`
+### Critical Performance Rule: Stop the Walk, Not Just the Result
 
-**NEVER do this:**
+**This does not stop the walk:**
 ```clojure
 (->> (timewalk piece {})
      (filter pitch??)
-     (first))  ; BAD: May process entire piece
+     (take 1)   ; Limits the result to one tuple...
+     (first))   ; ...but the 2-arity walk has already covered the whole piece
 ```
 
-**ALWAYS do this:**
+**This does:**
 ```clojure
-(->> (timewalk piece {})
-     (filter pitch??)
-     (take 1)   ; GOOD: Stops after finding first match
-     (first))   ; Extract result
+(first
+  (into []
+        (comp (timewalk {})
+              (filter pitch??)
+              (take 1))   ; Returns reduced after the first match; the walker stops
+        [piece]))
 ```
 
-**Why:** `first` alone doesn't signal early termination. `take 1` stops traversal immediately. For large scores, this is the difference between processing 1 item vs. thousands.
+**Why:** the 2-arity form has walked its whole scope and buffered every tuple before `filter` or `take` see anything, so no downstream step can shorten the traversal. With the 1-arity `(timewalk opts)` in the same composition, `take 1` returns `reduced` after the first match and the walker checks for it after every tuple it emits. For large scores, this is the difference between walking the items up to the first match and walking every item in scope. `sequence` over the same composition stops as well, because `take` returns `reduced` inside the walk; `first` over `(timewalk piece {})`, with or without a lazy `take`, never does.
 
 ## 🟠 Understanding Timewalk's Architecture: Push vs Pull
 
@@ -833,34 +874,39 @@ When modifying a piece during traversal, each modification creates a new piece o
 You've been using two approaches to consume timewalking results:
 
 ```clojure
-;; Approach 1: Threading with lazy sequences
+;; Approach 1: The 2-arity form, consumed as a sequence
 (->> (timewalk piece {})
      (filter pitch??)
      (take 10))
 
-;; Approach 2: Transducers with sequence
-(sequence (comp (filter pitch??)
+;; Approach 2: The 1-arity form, part of the composition
+(sequence (comp (timewalk {})
+                (filter pitch??)
                 (take 10))
-          (timewalk piece {}))
+          [piece])
 ```
 
-Both work, but there's a fundamental architectural difference that affects performance and behavior.
+Both return the same ten tuples, but there's a fundamental architectural difference that affects performance and behaviour.
 
 ### The Two Paradigms
 
-**Pull-based (lazy sequences)**:
-```
-You ----request----> Lazy Seq ----request----> Timewalk
-You <----value------ Lazy Seq <----value------ Timewalk
-```
-You pull values when needed. Timewalk generates them on demand.
+The walker itself is always push-based: it calls a reducing function with each tuple as it finds it. What differs is who receives the pushes.
 
-**Push-based (true transducers)**:
+**The 2-arity form (a buffer in front of you)**:
+```
+(timewalk piece {})
+  Timewalk ----every tuple in scope----> sequence's buffer      (all at once, when created)
+You ----request----> Lazy Seq ----request----> buffer
+You <----value------ Lazy Seq <----value------ buffer
+```
+`(timewalk piece {})` is `(sequence (timewalk {}) [piece])`. `sequence` feeds its single input element, the piece, through the walk, and the walk runs to the end of its scope while every tuple is added to the buffer. You then pull values one at a time, but only from the buffer; the walk is already over.
+
+**The 1-arity form (true transducers)**:
 ```
 Timewalk ----value----> Your Function ----result----> Collection
 Timewalk ----value----> Your Function ----STOP!
 ```
-Timewalk pushes values as it discovers them. You signal when to stop.
+Timewalk pushes values into your composition as it discovers them. You signal when to stop.
 
 ### Why This Matters: Early Termination
 
@@ -870,21 +916,21 @@ The distinction becomes significant when finding specific elements:
 ;; Find the first forte passage in a symphony
 ```
 
-**With pull-based lazy sequences**:
+**With the 2-arity form**:
 ```
 ╔════════════════════════════════════════════════════════╗
 ║  Symphony (100,000 elements)                           ║
 ║  ┌──────────────────────────────────────────────────┐ ║
-║  │ Timewalk generates lazily...                     │ ║
+║  │ Timewalk walks all 100,000 into the buffer...    │ ║
 ║  │ Element 1 → check → no                           │ ║
 ║  │ Element 2 → check → no                           │ ║
 ║  │ Element 3 → check → YES! (take 1)                │ ║
-║  │ ✓ Stop consuming... but timewalk doesn't know    │ ║
+║  │ ✓ Stop consuming... the walk finished long ago   │ ║
 ║  └──────────────────────────────────────────────────┘ ║
 ╚════════════════════════════════════════════════════════╝
 ```
 
-**With push-based transducers**:
+**With the 1-arity form in the composition**:
 ```
 ╔════════════════════════════════════════════════════════╗
 ║  Symphony (100,000 elements)                           ║
@@ -898,25 +944,31 @@ The distinction becomes significant when finding specific elements:
 ╚════════════════════════════════════════════════════════╝
 ```
 
-**The key insight**: With push-based transducers, `take 1` stops *computation itself*. The timewalk stops discovering and processing items the moment it receives a `reduced` signal.
+**The key insight**: With timewalk inside the composition, `take 1` stops *computation itself*. The timewalk stops discovering and processing items the moment it receives a `reduced` signal.
 
 ### Timewalk's True Transducer Implementation
 
-Timewalk implements a **push-based producer**. As it discovers musical items during traversal, it immediately calls your reducing function with each `[item vpd position]` tuple. This is why transducers with timewalk are genuinely efficient — there's no intermediate sequence being created and then consumed.
+Timewalk implements a **push-based producer**. As it discovers musical items during traversal, it immediately calls the reducing function with each `[item vpd position]` tuple. When the rest of your pipeline is that reducing function, there's no intermediate sequence being created and then consumed. Both arities, as defined in `ooloi.shared.ops.timewalk`:
 
 ```clojure
-;; What's actually happening (conceptual)
-(defn timewalk [piece options]
-  (fn [reducing-fn]  ; Returns a transducer
-    (fn [acc item]   ; Your reducing function gets called directly
-      ;; Timewalk discovers item → immediately calls your function
-      ;; If you return (reduced acc), timewalk stops traversing
-      (reducing-fn acc [item vpd position]))))
+(defn timewalk
+  ([options]
+   (fn [rf]                       ; Returns a transducer
+     (fn
+       ([] (rf))
+       ([acc] (rf acc))
+       ([acc piece]               ; Each input element is a piece
+        ;; walk! calls (rf acc [item vpd position]) for every item it finds,
+        ;; and stops as soon as rf returns (reduced acc)
+        (walk! rf acc piece options)))))
+
+  ([piece options]
+   (sequence (timewalk options) [piece])))
 ```
 
 This is the distinction between:
-- **Creating then consuming** (lazy sequences - pull)
-- **Discovering and processing** (transducers - push)
+- **Creating then consuming** (the 2-arity form - the walk fills a buffer, you read it)
+- **Discovering and processing** (the 1-arity form in a composition - push)
 
 ### Three Ways to Consume Timewalking Results
 
@@ -929,24 +981,27 @@ Use when you process each item once and discard it:
 ```clojure
 ;; MIDI export - process each note once without storing
 (run! #(schedule-for-midi (item %))
-      (->> (timewalk piece {})
-           (filter pitch??)))
-;; Memory: Constant (~10 MB regardless of piece size)
+      (eduction (comp (timewalk {})
+                      (filter pitch??))
+                [piece]))
+;; Memory: No tuple sequence; each tuple is handed to schedule-for-midi and dropped
 ;; Returns: nil (pure side effects, no collection built)
 
 ;; Count without materializing - aggregate to single value
-(transduce (comp (filter pitch??) (map (constantly 1)))
+(transduce (comp (timewalk {})
+                 (filter pitch??)
+                 (map (constantly 1)))
            +
            0
-           (timewalk piece {}))
+           [piece])
 ;; Returns: 42 (count of pitches)
-;; Memory: Constant - never builds intermediate collection
+;; Memory: Never builds a collection of tuples
 
 ;; Early termination - stops computation immediately
 (first
   (into []
         (comp (timewalk {})
-              (filter forte-passage?)
+              (filter forte-passage??)
               (take 1))
         [piece]))
 ;; Stops traversing the moment first forte found
@@ -979,22 +1034,23 @@ Use when you need to access results multiple times or in random order:
 - Need to count results before processing
 - Building lookup tables or indices
 
-#### 3. Lazy Pull Sequences - Simple but Less Optimal
+#### 3. The 2-arity Form - Simple but Not Streaming
 
 Use when simplicity matters more than optimal performance:
 
 ```clojure
-;; Simple threading - creates lazy sequence wrappers
+;; Simple threading over the 2-arity form
 (->> (timewalk piece {})
      (filter pitch??)
      (map #(:note (item %)))
      (take 10))
 
-;; Cost: Lazy sequence wrapper overhead
+;; Cost: The whole scoped walk runs, and every tuple is held, before filter
+;;       sees the first; take 10 limits the result, not the walk
 ;; Benefit: Familiar, easy to read, good enough for small pieces
 ```
 
-**When lazy sequences are fine**:
+**When the 2-arity form is fine**:
 - Small pieces (< 1,000 elements)
 - Prototyping and experimentation
 - REPL exploration
@@ -1003,56 +1059,67 @@ Use when simplicity matters more than optimal performance:
 ### Decision Guide: Which Approach to Use
 
 ```clojure
-;; Side effects only → True streaming with run!
+;; Side effects only → True streaming with run! over an eduction
 (run! #(schedule-for-midi (item %))
-      (->> (timewalk piece {}) (filter pitch??)))
+      (eduction (comp (timewalk {}) (filter pitch??)) [piece]))
 
 ;; Aggregate to single value → True streaming with transduce
-(transduce (comp (filter pitch??) (map (constantly 1)))
+(transduce (comp (timewalk {}) (filter pitch??) (map (constantly 1)))
            +
            0
-           (timewalk piece {}))
+           [piece])
 
 ;; Need random access → Materialise with into
 (into [] (comp (timewalk {}) (filter pitch??)) [piece])
 
 ;; Finding first match → Early termination
-(first (into [] (comp (timewalk {}) (filter target?) (take 1)) [piece]))
+(first (into [] (comp (timewalk {}) (filter target??) (take 1)) [piece]))
 
-;; Simple exploration → Lazy sequences (threading)
+;; Simple exploration → The 2-arity form (threading)
 (->> (timewalk piece {}) (filter pitch??) (take 5))
 ```
 
 ### Why Timewalk Uses Push Architecture
 
-This architectural choice enables:
+This architectural choice enables, in the transducer form:
 
 1. **True early termination** - Stop computation itself, not just consumption
 2. **Zero intermediate allocation** - No lazy sequence wrappers between steps
-3. **Constant memory streaming** - Process million-note symphonies in <10 MB
+3. **Streaming without holding tuples** - The walk keeps an index of the measures in scope, one entry per measure of each staff, built before the first tuple is pushed (`collect-measures` in `ooloi.shared.ops.timewalk`). The tuples themselves are kept only if the consumer keeps them
 4. **Composability** - Combine with all Clojure transducer operations
 
 The push-based architecture is what makes timewalk efficient enough for professional orchestral scores while maintaining the elegant compositional properties of functional programming.
 
 ### The Practical Takeaway
 
-**For most work**: Use push-based transducers with `sequence`, `into`, or `transduce`. The performance benefits are substantial and the patterns become natural quickly.
+**For most work**: Put the 1-arity `(timewalk opts)` at the head of a composition and apply it to `[piece]` with `sequence`, `into`, `transduce` or an `eduction`. The performance benefits are substantial and the patterns become natural quickly.
 
-**For exploration**: Lazy sequences with `->>` threading are perfectly fine and more readable for learning.
+**For exploration**: The 2-arity form with `->>` threading is perfectly fine and more readable for learning. It runs the whole scoped walk when it is created.
 
 **For random access**: Materialise into a vector explicitly when you need it.
 
-The architecture is designed so the right choice is usually the simplest one.
+The rule is short: when the scope is large or you mean to stop early, the timewalk goes inside the composition.
 
 ## 🟢 Efficiency Tips
 
-**For Clojure learners**: These patterns demonstrate doing less work as the ultimate optimization through lazy evaluation, early termination, and precise scope control.
+**For Clojure learners**: These patterns demonstrate doing less work as the ultimate optimisation through early termination and precise scope control.
 
 ### The Options Map: Controlling Traversal Scope
 
 Up until now, we've been passing an empty map `{}` as the second parameter to `timewalk`. This tells the timewalker to traverse the entire piece structure. But `timewalk` provides powerful scope control through this options map—you can limit traversal to specific musicians, instruments, staves, measure ranges, or even beat positions within measures.
 
 **Why this matters**: Processing only what you need is the most effective optimization. Rather than filtering results after traversal, you can prevent unnecessary traversal entirely. For large orchestral scores, this can mean the difference between processing 50,000 items and processing 100.
+
+The options, with their defaults (`timewalk` in `ooloi.shared.ops.timewalk`):
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `:boundary-vpd` | `[]` (the piece) | The subtree to walk: a musician, instrument, staff or measure |
+| `:start-measure` | `0` | First measure index walked |
+| `:start-position` | `0` | First position walked within the start measure |
+| `:end-measure` | `nil` (the last measure) | Last measure index walked, inclusive |
+| `:end-position` | `nil` (end of measure) | Last position walked within the end measure, inclusive |
+| `:grace-end-markers?` | `false` | Emit `[:end :Grace nil]` after each grace group |
 
 Let's explore the scope control options available.
 
@@ -1063,7 +1130,8 @@ Don't process the entire symphony when you only need one part:
 ```clojure
 ;; ❌ INEFFICIENT - Traverses all 29 instruments, then filters
 (->> (timewalk large-symphony {})
-     (filter #(= (vpd %) [:m 0 0]))  ; Filter after processing
+     (filter #(and (= 0 (vpd/musician (vpd %)))      ; Filter after processing
+                   (= 0 (vpd/instrument (vpd %)))))
      (filter pitch??))
 
 ;; ✅ EFFICIENT - Only traverses the one instrument you need
@@ -1108,24 +1176,45 @@ Need items starting from beat 2 of measure 5 through beat 3 of measure 7?
 
 The `:start-position` and `:end-position` parameters use **rationals representing position within the measure**. Position 0 is the downbeat. The measure length equals the time signature duration (see [ADR-0033: Time Signature Architecture](../ADRs/0033-Time-Signature-Architecture.md)): 4/4 = 1 (four quarters), 3/4 = 3/4 (three quarters), 5/8 = 5/8 (five eighths), 6/8 = 6/8 = 3/4 (six eighths), etc. Remember: `:end-position` is **inclusive**, so items at exactly that position are included in the results.
 
+The position window applies to the items directly in each voice, compared by the position at which each starts; `:start-position` applies only in the start measure and `:end-position` only in the end measure. Measures, voices and the boundary object are emitted regardless, and so is everything inside an item that passes, such as the remaining notes of a tuplet that starts at the window's last position.
+
+### Grace End Markers and Grace Positions
+
+A grace group (a `Grace` container) is emitted at its **target position**, the position in the voice to which it is attached, and its notes follow at positions **relative to the group**: the first at 0, each later one offset by the notated durations before it. Inside tuplets, those offsets are scaled by the product of the ratios of the tuplets that contain the group, as every position inside a tuplet is ([ADR-0014: Timewalk §5, Grace Note Position Semantics](../ADRs/0014-Timewalk.md#5-grace-note-position-semantics)):
+
+```clojure
+;; A grace group at 1/4 holding D5, E5 and F5, each a thirty-second
+[grace  [:m 0 0 0 0 0 :items 1]          1/4]
+[d5     [:m 0 0 0 0 0 :items 1 :items 0] 0]
+[e5     [:m 0 0 0 0 0 :items 1 :items 1] 1/32]
+[f5     [:m 0 0 0 0 0 :items 1 :items 2] 1/16]
+;; Inside a triplet (ratio 2/3) the same notes lie at 0, 1/48 and 1/24
+```
+
+These positions are structural, not rhythmic: they preserve the notated proportions within the group, not the moment at which the grace notes sound. A downstream step that needs the sounding position computes it, as `position-grace-notes-rhythmically` does in the [Remembered Alterations](#-real-world-example-remembered-alterations) pipeline below.
+
+With `:grace-end-markers? true`, the walker emits `[:end :Grace nil]` after the last tuple of each grace group, so a stateful step can tell where a group ends without knowing its length. The marker is a three-element vector whose item is the keyword `:end` and whose position is `nil`; the `??` predicates return false for it, so `(filter pitch??)` removes it along with every other non-pitch tuple. A pipeline that does not ask for markers never sees one.
+
 ### Early Termination
 
-Even with scope limiting, use `take` to stop as soon as you find what you need:
+Even with scope limiting, stop as soon as you find what you need, with `take` inside the composition:
 
 ```clojure
 ;; Find first forte passage in violin I, measures 10-50
-(->> (timewalk piece {:boundary-vpd [:m 0 0]
-                      :start-measure 10
-                      :end-measure 50})
-     (filter forte-passage??)
-     (take 1)   ; Stops immediately when found
-     (first))
+(first
+  (into []
+        (comp (timewalk {:boundary-vpd [:m 0 0]
+                         :start-measure 10
+                         :end-measure 50})
+              (filter forte-passage??)
+              (take 1))   ; The walk stops when found
+        [piece]))
 ```
 
 **The hierarchy of efficiency**:
 1. **Scope limiting** - Don't traverse what you don't need
 2. **Measure ranges** - Further narrow the traversal window
-3. **Early termination with `take`** - Stop as soon as goal achieved
+3. **Early termination with `take` in the composition** - Stop as soon as goal achieved
 
 ## 🔴 Real-World Example: Remembered Alterations
 
@@ -1139,25 +1228,28 @@ Using transducers lets you break this complexity into manageable, composable pie
 
 ### The Pipeline
 
-This is the complete implementation for one measure of an instrument:
+This is the pipeline at the core of `accidental-decisions-for-measure` in `ooloi.shared.fmt.remembered-alterations`, which decides the accidentals of one measure of an instrument:
 
 ```clojure
 (transduce
-  (comp
-    (timewalk {:boundary-vpd instrument-vpd
-               :start-measure m
-               :end-measure   m
-               :grace-end-markers? true})
-    (filter grace-pipeline-item?)
-    (position-grace-notes-rhythmically)
-    (merge-voices)
-    (filter pitch??)
-    (group-simultaneities)
-    (detect-simultaneity-conflicts))
-  (process-pitch-tuple piece key-sig prev-final m)
-  initial-state
-  [piece])
+ (comp
+  (timewalk {:boundary-vpd instrument-vpd
+             :start-measure measure-index
+             :end-measure (inc measure-index)
+             :end-position 0
+             :grace-end-markers? true})
+  (filter grace-pipeline-item?)
+  (position-grace-notes-rhythmically piece measure-index)
+  (merge-voices)
+  (filter pitch??)
+  (group-simultaneities)
+  (detect-simultaneity-conflicts))
+ (completing reducer)
+ initial-state
+ [piece])
 ```
+
+`initial-state` is the accumulator, built by `create-initial-state` from what the previous measure handed on, and `reducer` is the two-argument reducing function returned by `process-pitch-tuple`; `completing` adds the one-argument arity that `transduce` calls at the end. The window reaches one position into the next measure, `:end-measure (inc measure-index)` with `:end-position 0`, because grace notes at the very start of the next measure sound at the end of this one, and their accidentals are decided here ([ADR-0035: Grace Notes at Measure Boundaries](../ADRs/0035-Remembered-Alterations.md#grace-notes-at-measure-boundaries)).
 
 Eight pieces—seven transducers and one reducer—collectively implement the accidental algorithm. Each piece is focused and manageable. As the stream flows through the pipeline, each step transforms it for the next: adding data, modifying positions, consolidating voices, filtering, grouping events, all in preparation for the reducer where the decisions are made.
 
@@ -1169,19 +1261,19 @@ Let's trace how the stream transforms at each step:
 ```clojure
 (timewalk {:boundary-vpd instrument-vpd ...})
 ```
-Transforms nested piece structure into a linear stream of `[item vpd position]` tuples. All staves and voices become a single temporal sequence. Includes structural markers (Instrument, Measure, Voice) for downstream processing.
+Transforms nested piece structure into a linear stream of `[item vpd position]` tuples. All staves and voices become a single temporal sequence. Includes structural markers (Instrument, Measure, Voice) for downstream processing and, because `:grace-end-markers? true` is given, an `[:end :Grace nil]` after each grace group.
 
 **Step 2: Filter for grace pipeline**
 ```clojure
 (filter grace-pipeline-item?)
 ```
-Reduces the stream to items relevant for grace positioning: pitches, grace notes, and structural markers. Other musical elements are filtered out early, minimizing downstream work.
+Reduces the stream to items relevant for grace positioning: pitches, grace containers, grace end markers, and the Instrument, Measure and Voice markers. Other musical elements are filtered out early, minimising downstream work.
 
 **Step 3: Transform grace positions**
 ```clojure
-(position-grace-notes-rhythmically)
+(position-grace-notes-rhythmically piece measure-index)
 ```
-Walks the stream, adjusting rational positions for grace notes from metric to temporal positions. Each grace note's position field is recalculated based on tempo and available space. Structural markers pass through unchanged.
+Walks the stream, adjusting rational positions for grace notes from metric to temporal positions. Each grace note's position field is recalculated based on tempo and available space. Grace containers and grace end markers are consumed here, and so are Voice markers, each of which first resets the previous position against which grace notes are placed. Instrument and Measure markers pass through unchanged.
 
 **Step 4: Consolidate voices**
 ```clojure
@@ -1209,9 +1301,9 @@ Scans grouped items, adding conflict metadata where needed. Singles still pass t
 
 **Step 8: Reduce to decisions**
 ```clojure
-(process-pitch-tuple piece key-sig prev-final m)
+(completing (process-pitch-tuple piece key-sig (:prev-final initial-state) measure-index))
 ```
-The stateful reducer. Receives the prepared stream and produces decisions. Threads state through each item, returning `[final-state decisions tied-ids]` for the next measure.
+The stateful reducer. Receives the prepared stream and produces decisions. Threads one state map through each item (remembered alterations, courtesy accidentals shown, tied notes and the decisions so far) and returns it at the end, and `accidental-decisions-for-measure` builds `[partitions-structure decisions tied-target-endpoint-ids]` from it. The partitions structure and the tied endpoint ids are what the next measure starts from.
 
 Notice the pattern: each transducer transforms the stream for the next stage. Structure becomes stream, stream gets filtered for grace processing, grace positions get adjusted, voices get consolidated, stream gets filtered for pitches only, pitches get grouped, groups get enriched, stream gets reduced to decisions. The pipeline has two clear phases: structural processing (steps 1-4) and pitch processing (steps 5-8). No single piece needs to understand the whole problem—each just transforms its input and passes the result along.
 
@@ -1260,8 +1352,8 @@ Everything you've learned in this guide comes together here:
 ## Cross-References
 
 - **Basic usage**: See [🟢 Starting Simple](#-starting-simple-direct-lazy-sequences) for your first timewalking operations
-- **Performance**: See [Performance Comparison](#performance-comparison-threading-vs-transducers) for timing benchmarks
-- **Benchmarks**: See [Timewalk Performance Benchmarks](https://github.com/PeterBengtson/Ooloi-docs/blob/main/READMEs/BENCHMARKS_README.md) for comprehensive performance validation showing sub-millisecond cache refresh, constant-memory streaming, and 2-10 microsecond endpoint searches (2025 laptop)
+- **Performance**: See [Performance Comparison](#performance-comparison-threading-vs-transducers) for how threading and transducers compare
+- **Benchmarks**: See [Timewalk Performance Benchmarks](https://github.com/PeterBengtson/Ooloi-docs/blob/main/READMEs/BENCHMARKS_README.md) for measured traversal times, including sub-millisecond cache refresh and 2-10 microsecond endpoint searches (2025 laptop)
 - **🔴 Advanced concurrency**: See [Advanced Concurrency Patterns](ADVANCED_CONCURRENCY_PATTERNS.md) for parallel processing with STM coordination
 - **VPD addressing**: See [VPDs Guide](VPDs.md) for understanding the Vector Path Descriptors returned in timewalking tuples
 - **Type predicates**: See [Polymorphic API Guide](POLYMORPHIC_API_GUIDE.md) for the type predicates and helper functions used in filtering
