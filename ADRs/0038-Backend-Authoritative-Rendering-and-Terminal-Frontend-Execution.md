@@ -586,7 +586,7 @@ Performance depends on:
 
 **Vector Rendering Efficiency:** GPUs excel at parallel vector path rendering. Bezier curve rasterization, glyph rendering, and anti-aliasing benefit massively from GPU compute. Software rasterization would require frame budgets exceeding 100ms for complex viewports.
 
-**Technology Flexibility:** Skija is Ooloi's GPU-accelerated vector rendering API. Skija internally uses Metal (macOS), Vulkan (Linux/Windows), or OpenGL (fallback) as GPU backends - these are implementation details managed by Skija. Backend paintlists are rendering-library-agnostic, meaning they describe drawing instructions independently of any specific rendering technology.
+**Technology Flexibility:** Skija is Ooloi's GPU-accelerated vector rendering API. Skija draws through a GPU context that the frontend creates for the platform's graphics API — Metal on macOS, Vulkan on Linux and Windows, OpenGL as the fallback — from that API's native objects (for Metal, the device and its command queue). Backend paintlists are rendering-library-agnostic, meaning they describe drawing instructions independently of any specific rendering technology.
 
 **Error Recovery:** Software rasterization fallback exists for GPU driver failures or diagnostic scenarios, but is not intended for production use due to performance constraints.
 
@@ -659,6 +659,6 @@ The litmus test (discard frontend state, regenerate from backend → identical o
 
 GPU acceleration via Skija Pictures (GPU command buffers) is **required** for production performance with complex orchestral scores. Paintlists are recorded once into Pictures, then Pictures are replayed every frame. This is essential - you cannot re-parse and re-issue draw commands for 30,000 objects at any acceptable frame rate.
 
-Skija is Ooloi's committed GPU rendering API. Skija internally uses platform-appropriate GPU backends (Metal on macOS, Vulkan on Linux/Windows, OpenGL as fallback) - this is handled transparently by Skija. Backend paintlists are rendering-library-agnostic and describe vector drawing instructions independently of the rendering technology. Software rasterization exists only for error recovery (GPU driver failure), not production use.
+Skija is Ooloi's committed GPU rendering API. It draws through a GPU context the frontend creates for the platform's graphics API (Metal on macOS, Vulkan on Linux and Windows, OpenGL as fallback); choosing and creating that context is frontend work, not something Skija does on its own. Backend paintlists are rendering-library-agnostic and describe vector drawing instructions independently of the rendering technology. Software rasterization exists only for error recovery (GPU driver failure), not production use.
 
 Pictures can be evicted from cache under memory pressure (regeneration is cheap: one-time recording from local paintlist). But the Picture recording mechanism itself is not optional - it's how GPU acceleration works.

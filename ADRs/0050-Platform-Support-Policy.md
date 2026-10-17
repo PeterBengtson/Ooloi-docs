@@ -111,11 +111,11 @@ This is why "just ship an Intel bundle and let Rosetta handle Apple Silicon" is 
 
 The JVM execution path is not the only platform-level concern that favours Apple Silicon on macOS. The GPU rendering path tells the same story from a different angle.
 
-Ooloi uses Skija (Java bindings for Skia) for high-performance 2D rendering and printing ([ADR-0005](0005-JavaFX-and-Skija.md)). Skija currently uses OpenGL as its GPU backend on macOS. Apple deprecated OpenGL in macOS 10.14 Mojave (2018) and has not updated it since. OpenGL still functions, but it is a dead-end path that will eventually be removed.
+Ooloi uses Skija (Java bindings for Skia) for high-performance 2D rendering and printing ([ADR-0005](0005-JavaFX-and-Skija.md)). Skija draws through a GPU context created for one of four graphics APIs: OpenGL, Metal, Direct3D or Vulkan. On macOS that API is Metal. Apple deprecated OpenGL in macOS 10.14 Mojave (2018) and has not updated it since. OpenGL still functions, but it is a dead-end path that will eventually be removed.
 
 The successor is Metal, Apple's native GPU API. On Apple Silicon, Metal is the native execution path — Apple Silicon GPUs use a tile-based deferred rendering (TBDR) architecture designed from the ground up for Metal. On Intel Macs, Metal was a compatibility layer over GPUs (Intel, AMD, Nvidia) designed for immediate-mode rendering. Apple has stopped updating Metal support for Intel hardware: Intel Metal received no updates in macOS Ventura, and Metal 2/3 capabilities are being deprecated on Intel machines.
 
-When Skija's Metal backend ships — it is planned but not yet available — Apple Silicon will be the platform where it performs natively. Intel Macs will have neither a current OpenGL path nor a maintained Metal path. The GPU rendering story on macOS converges on the same conclusion as the JVM story: Apple Silicon is the only path with a future.
+Skija's Metal backend runs natively on Apple Silicon. Intel Macs have neither a current OpenGL path nor a maintained Metal path. The GPU rendering story on macOS converges on the same conclusion as the JVM story: Apple Silicon is the only path with a future.
 
 ### Build-On-Target Discipline
 
