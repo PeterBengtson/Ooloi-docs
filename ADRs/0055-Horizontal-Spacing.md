@@ -224,11 +224,12 @@ Interpolating linearly between powers of two approximates a logarithmic table cl
 
 An entry at the dotted value removes the difference wherever measurement shows it matters. The values themselves are [H1](#h1-the-duration-table).
 
-**The anchoring duration** `d_ref` fixes where the table sits. A table is only a shape: how much more room a quarter gets than an eighth. Something has to fix its position in staff spaces, and since the table is indexed by `ρ`, changing `d_ref` moves every duration along it. How `d_ref` is set is [H2](#h2-the-anchoring-duration). Four things are decided now:
+**The anchoring duration** `d_ref` fixes where the table sits. A table is only a shape: how much more room a quarter gets than an eighth. Something has to fix its position in staff spaces, and since the table is indexed by `ρ`, changing `d_ref` moves every duration along it. How `d_ref` is set is [H2](#h2-the-anchoring-duration). Five things are decided now:
 
 - It is set before Stage 2, from the music or by the user.
 - It never depends on systems, which are chosen from the widths it produces.
 - It may be derived from a reduction over Stage 1's output across a section or a piece, a forward dependency.
+- It is a function of the piece alone: of the music, and of any value the user has pinned and any section the user has begun. It never depends on the value it had before an edit, so no rule with hysteresis sets it, and the layout stays a function of the piece ([ADR-0037](0037-Measure-Distribution-Optimization.md#layout-is-a-function-of-the-piece)).
 - Where it changes, every stack that uses it is re-spaced, and ADR-0037's [re-optimisation after an edit](0037-Measure-Distribution-Optimization.md#exact-re-optimisation-after-an-edit) falls back to a full pass. The user may pin it, and may begin a new section with a value of its own.
 
 **The controlling duration.** For a gap leaving a column `c` with duration, the controlling duration `d_ctrl` is the shortest duration among the notes and rests, in any staff of the stack, that sound at `c`: those beginning at or before `c` and ending after it. Grace notes are never among them, since their metric duration is zero; if they form columns of their own, those columns take their widths from a grace table ([H7](#h7-grace-notes)). With `c′` the next column with a later onset:
@@ -360,7 +361,7 @@ ADR-0037's baseline elasticity applies to every gap: stretch `σ × w`, shrink `
 - **What changes.** While both gaps' ideal widths stay at or above their blocking widths, the stack's summary is unchanged: a transfer leaves `Σ w`, `Σ` shrink and `Σ` stretch where they were. Every candidate system's ratio, and so the breaks, stay as they were, and only the dragged column moves.
 - **When the summary changes.** Under stretching, the clamp can let the losing gap's ideal width fall below its blocking width, while its width at the current ratio stays above it. This system's ratio is still unchanged, but the gap is now prestretched and the stack's summary changes, so the breaks may change. It is a real request for more room.
 
-Each transfer is attached to its column, identified by measure, rhythmic position and kind, since a clef change can share an onset with a note, and for a grace column by its offset as well, since a grace group has several columns at one onset ([H19](#h19-order-of-kinds-at-one-onset)). Stage 2 applies it after the reductions, and clamps it there so that no ideal width falls below zero, ADR-0037's precondition: the gaps it was made against may have changed since. A reduction raises blocking widths only, so every constraint holds whatever the ideal widths, and a transfer can neither break one nor change what a reduction reserved. A transfer persists until the user removes it, or the engine does: when its column no longer exists, or when its measure is reformatted ([H14](#h14-removal-of-column-transfers)).
+Each transfer is attached to its column, identified by measure, rhythmic position and kind, since a clef change can share an onset with a note, and for a grace column by its offset as well, since a grace group has several columns at one onset ([H19](#h19-order-of-kinds-at-one-onset)). Stage 2 applies it after the reductions, and clamps it there so that no ideal width falls below zero, ADR-0037's precondition: the gaps it was made against may have changed since. A reduction raises blocking widths only, so every constraint holds whatever the ideal widths, and a transfer can neither break one nor change what a reduction reserved. A transfer persists until the user removes it, or until an edit removes it as part of itself: when its column no longer exists, or when its measure is reformatted ([H14](#h14-removal-of-column-transfers)).
 
 ```clojure
 (defn drag->transfer
@@ -383,7 +384,7 @@ Each transfer is attached to its column, identified by measure, rhythmic positio
 - **Mode (i) at a system's end.** Where N+1 is on the next system, the drag changes that system's width instead, and the barline follows the pointer. The width is anchored to the measure that ends the system, and has no effect if that measure no longer ends one, so the system stays frozen whatever the setting ([ADR-0037](0037-Measure-Distribution-Optimization.md#frozen-systems)).
 - **Mode (ii): the measure's width.** The drag sets N's ideal-width override, solved exactly so that the barline lands under the pointer after the system refits. The system's other gaps give or take room through their springs, the next measure is not edited, and the breaks may change. At a system's end, where the barline cannot move, the measure changes width by the distance dragged and its start moves.
 
-While a drag lasts its system is frozen; whether the freeze remains afterwards is a setting, off by default ([ADR-0037](0037-Measure-Distribution-Optimization.md#frozen-systems)). Both modes are also reachable from the keyboard in fixed steps, each an ordinary edit. Which mode is the default, and how the other is chosen, is [H21](#h21-barline-drag-modes).
+While a drag lasts its system is frozen; whether the freeze remains afterwards is a setting, off by default. Off, the freeze ends with the drag however the drag ends, and the layout is that of the piece as the drag left it ([ADR-0037](0037-Measure-Distribution-Optimization.md#frozen-systems)). Both modes are also reachable from the keyboard in fixed steps, each an ordinary edit. Which mode is the default, and how the other is chosen, is [H21](#h21-barline-drag-modes).
 
 **Measure-width overrides**, such as "stretch this measure", are specified by ADR-0037's [Width Overrides](0037-Measure-Distribution-Optimization.md#editorial-control-mechanisms). **The anchoring duration** may be pinned, and a new section begun with a value of its own ([H2](#h2-the-anchoring-duration)). **Element offsets**, such as dragging a dynamic or a text, are Stage 5 placements relative to the element's anchor. They are not spacing inputs.
 
@@ -408,7 +409,7 @@ The boundary between Stages 1–2 and Stage 3 is specified by properties, tested
 2. **Attachments never change duration space.** With durations and stem directions fixed, adding or removing accidentals, articulations or ledger lines, or displacing noteheads, changes no controlling duration and no ideal width of a gap leaving a column with duration. A grace group, if grace notes form columns ([H7](#h7-grace-notes)), may divide the duration space before its main note among its own gaps, but never changes its total.
 3. **The duration table is monotone and sub-linear.** Its width never decreases as the duration grows, and its width divided by duration never increases.
 4. **Stage 1 is independent of spacing parameters.** Changing the duration table, the anchoring duration, the clearance table, a spacing distance or `σ` changes no Stage 1 output, minimum and comfortable forms included.
-5. **Determinism.** Identical content gives identical contours, summaries and gap lists, whatever the order in which staves, measures and stacks are processed. Stage 5's expansions of minimum forms are identical whatever the order in which it meets them ([H22](#h22-minimum-forms)).
+5. **Determinism.** Identical content gives identical contours, summaries and gap lists, whatever the order in which staves, measures and stacks are processed, and whatever sequence of edits produced the piece. A cache returns only what recomputation from the piece would give, and no value computed before an edit, the anchoring duration included, is otherwise an input to a result computed after it ([ADR-0037](0037-Measure-Distribution-Optimization.md#layout-is-a-function-of-the-piece)). Stage 5's expansions of minimum forms are identical whatever the order in which it meets them ([H22](#h22-minimum-forms)).
 6. **Scale invariance.** Widths are in staff spaces at the system's staff size; changing that size changes none of them. A staff drawn at reduced size contributes contours scaled by its ratio, and text sized in absolute units is converted at the system's size.
 7. **Drag neutrality.** A transfer that keeps both gaps' ideal widths at or above their blocking widths leaves the stack's `:min`, `:natural`, `:ideal`, `:ordinary-ideal` and `:prestretched` unchanged.
 8. **Sound reduction.** After Stage 2, every constraint spanning several columns holds at every `r ≥ −1`.
@@ -477,7 +478,7 @@ Starting point: LilyPond's. It takes the shortest duration that starts in each m
 This item needs reasoning in depth before measurement:
 
 - A fixed anchor leaves fast music at its collision limit at its ideal widths, with no room to compress and a cost that cannot see the crowding.
-- An anchor derived from the music couples a section, so one edit can re-space it.
+- An anchor derived from the music couples a section, so one edit can re-space it. A statistic such as LilyPond's can change when a single bar changes. Damping it by remembering earlier values would make the anchoring duration depend on the order of edits, which [Ideal Widths](#ideal-widths) excludes; a value that must hold is pinned by the user, as part of the piece.
 - The engraver's dominant value is a pulse, whereas LilyPond's statistic is the most common shortest value. Which of the two the anchor follows is part of this item.
 
 ### H3: Optical corrections
@@ -571,7 +572,7 @@ The space a bar rest needs within its measure, and the width of a multi-bar rest
 
 ### H14: Removal of column transfers
 
-What counts as reformatting a measure, so that the engine removes its transfers. This is specified with the editing commands. Removing a transfer is a change to layout data made in response to an edit, so it is undone with that edit, as ADR-0037 requires of every such change ([ADR-0037](0037-Measure-Distribution-Optimization.md#stability-term)).
+What counts as reformatting a measure, so that the engine removes its transfers. This is specified with the editing commands. Removing a transfer is part of the edit that causes it, made by the editing command rather than by formatting, carried in that edit's transaction and undone with it, as ADR-0037 requires of every change to layout data ([ADR-0037](0037-Measure-Distribution-Optimization.md#layout-is-a-function-of-the-piece)).
 
 ### H15: Verification against Gould and Ross
 

@@ -35,9 +35,9 @@ Accepted
   - [Stage Boundary Enforcement](#stage-boundary-enforcement)
   - [Connecting Element Adaptation](#connecting-element-adaptation)
   - [Deterministic Tie-Breaking](#deterministic-tie-breaking)
-  - [Edit Locality](#edit-locality)
+  - [Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)
   - [Caching and Incremental Recompute](#caching-and-incremental-recompute)
-- [Stability and Quality Extensions](#stability-and-quality-extensions)
+- [Extensions](#extensions)
   - [Evaluation Criteria](#evaluation-criteria)
   - [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit)
   - [Stability Term](#stability-term)
@@ -288,7 +288,7 @@ Given identical input (measure stacks with their bounds, system/page capacities)
 - Deterministic tie-breaking: equal costs are resolved by a secondary cost that differs for any two configurations (see [Deterministic Tie-Breaking](#deterministic-tie-breaking))
 - Closed-form allocation: each system's adjustment ratio is the exact solution of a piecewise-linear equation (no iterative solver convergence)
 
-**Edit locality**: Preserving break decisions away from an edit, to minimise perceptual layout "jitter" during editing, is a goal. The DP does not provide it: a global optimum is not local. See [Edit Locality](#edit-locality).
+**Path independence**: the layout depends on the piece alone, its music and its layout data, never on the sequence of edits by which the piece was reached. An edit can therefore move breaks anywhere between the forced breaks around it, before the edit as well as after it, whenever it changes the optimum. See [Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece).
 
 ### Calibrating the Adjustment Ratio
 
@@ -693,7 +693,7 @@ This general formulation is broader than the springs, which already give each ga
 - Requires iterative solver or closed-form derivation (non-trivial)
 - Allocation now influences break selection (coupling)
 - Tuning parameters and heuristic behavior
-- Reduced predictability and edit locality
+- Reduced predictability
 - Material implementation complexity
 - Runtime cost: each of O(N×K) segments requires optimization
 
@@ -903,7 +903,7 @@ Traditional notation software suffers from feedback loops between layout and sem
 This approach has fundamental problems:
 - **Non-deterministic**: Different runs may produce different results
 - **Heuristic-driven**: "Good enough" is not optimal
-- **Jitter-prone**: Small edits can cause cascading layout changes
+- **Path-dependent**: The result depends on the order in which corrections were applied, so the same score can lay out differently
 - **Performance-limited**: Iteration caps are necessary to prevent infinite loops
 
 ### How Complete Information Enables Optimality
@@ -941,7 +941,7 @@ The semantic model remains closed. Stage 5 only adds visual decoration within pr
 With complete information and no feedback:
 - **Deterministic**: Same input always produces same output
 - **Optimal**: Minimal cost under the stated cost function, given its inputs - an exact result for that function, not an approximation of it
-- **Stable**: No jitter from iteration or heuristics
+- **Path-independent**: The result depends on the piece alone, not on the order of computation or the history of edits (see [Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece))
 - **Fast**: One pass through the pipeline, no convergence loops
 
 This is the architectural achievement: problems that seemed to require feedback collapse into pure forward flow when the right information is available at the right stage.
@@ -959,7 +959,7 @@ Complete information enables user-controllable settings that would otherwise req
 
 The setting affects Stage 5 rendering only; the gutter is always reserved (see [The Gutter](#the-gutter-system-start-width-delta)). It has to be: under `:page`, whether a system-start stack also starts a page is decided in Stage 6, after Stage 3 has used the gutter, so a reservation that depended on the setting could not know which systems need it. Changing the setting changes what Stage 5 draws in the reserved space; the distribution is unchanged, and no iteration or manual correction is involved.
 
-**Architectural capability:** The complete-information architecture makes user-controllable courtesy accidental settings straightforward to implement—a feature that requires deterministic distribution to work without manual adjustment or layout jitter. Traditional architectures that lack complete information at distribution time cannot offer such settings without risking non-deterministic behavior or requiring iterative correction.
+**Architectural capability:** The complete-information architecture makes user-controllable courtesy accidental settings straightforward to implement—a feature that requires deterministic distribution to work without manual adjustment. Traditional architectures that lack complete information at distribution time cannot offer such settings without risking non-deterministic behavior or requiring iterative correction.
 
 This demonstrates how complete information turns a potentially complex feature into a choice about what is drawn in space already reserved, which needs no change to the distribution. The architecture enables the feature; the feature validates the architecture.
 
@@ -986,21 +986,31 @@ This is **selection, not computation**. The space was pre-reserved; Stage 5 rend
 
 When break configurations produce identical demerits (a "tie" in cost, not a musical tie), the configuration is chosen by a secondary cost, compared only when the primary costs are equal. The secondary cost is separable — a sum of per-break terms — and differs for any two distinct configurations: for example, the sum over the configuration's breakpoints `b` of `2^−b`, which, like a binary fraction, is different for any two different sets of breakpoints. Costs are compared as pairs (primary, secondary), lexicographically. Pairs add componentwise and the lexicographic order is preserved under addition, so the DP remains exact for the pair, and the optimum is unique.
 
-Because the choice is a property of the configuration rather than of the order in which a procedure meets candidates, every procedure that minimises the pair — the full pass, and [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit) from forward and backward tables — returns the same configuration. The result is deterministic across runs, platforms and editing histories, given the same music and layout data; under a [Stability Term](#stability-term) the anchor is part of that data, and every move of it is undone with the act that caused it. Ties are expected rather than exceptional: under rational arithmetic, identical measures produce identical costs.
+Because the choice is a property of the configuration rather than of the order in which a procedure meets candidates, every procedure that minimises the pair — the full pass, and [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit) from forward and backward tables — returns the same configuration. The result is deterministic across runs, platforms and editing histories: it depends on the piece alone, its music and its layout data ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)). Ties are expected rather than exceptional: under rational arithmetic, identical measures produce identical costs.
 
 In the Stage 3 code sketch a segment `[s, t)` adds its primary cost and the term `2^−t` for the breakpoint it ends at, and a candidate replaces the stored best only when its pair is lexicographically smaller.
 
 If editorial preferences are needed (e.g., prefer structural boundaries), they can be encoded via the optional `break-penalty-fn` parameter, which shifts costs rather than relying on tie-breaking.
 
-### Edit Locality
+### Layout Is a Function of the Piece
 
-Edit locality — preserving break decisions away from an edit, so that the layout does not visibly "jitter" while the user works — is a goal. The algorithm does not provide it.
+The layout is a function of the piece alone: of its music, and of its layout data, the decisions about layout the user has made and stored with it (forced and prevented breaks, frozen systems, width overrides, transfers of ideal width, system widths, a pinned anchoring duration). It never depends on the route by which the piece reached its present state. Whatever sequence of edits produced a piece, with whatever undos and redos among them, in whatever order collaborators' edits arrived, and whether the piece was edited in this session or loaded from a file, its layout is the one a full pass over that piece produces. Two pieces whose values are equal, music and layout data alike, have the same layout.
 
-The break configuration Stage 3 selects is a global optimum, and a global optimum is not local. An edit to stack `m` can change system breaks after `m` and before `m`: the DP finds the configuration of least total cost for the whole sequence, and the chosen breaks are traced backwards from its end, so a change of cost at `m` can alter the choice of breaks anywhere in the score. Nor is there any guarantee that, beyond some point, the new break decisions coincide with the previous solution again.
+Three rules keep it so:
 
-What holds is that recomputation is cheap. Stack metrics are cached (see [Caching and Incremental Recompute](#caching-and-incremental-recompute)), so re-running Stage 3 after an edit is scalar arithmetic over the cached metrics: collision detection, atom formation and vertical reconciliation are not repeated for any stack whose content did not change.
+- **Formatting reads layout data and never writes it.** Layout data changes only through edits: the user's own acts, and the changes an editing command makes as part of its edit, such as removing a transfer whose column no longer exists ([ADR-0055 H14](0055-Horizontal-Spacing.md#h14-removal-of-column-transfers)). Such changes belong to the edit's own transaction and are undone with it ([ADR-0015](0015-Undo-and-Redo.md)). A cache returns only what recomputation from the piece would give; beyond that, nothing the engine has computed, a previous layout, a previous break configuration or a previous value of a statistic, is stored and read back as an input.
+- **No input depends on a previous output.** Each segment's cost depends on the segment alone, and every quantity upstream of Stage 3 is computed from the piece. A cost that compares a layout with an earlier one, or a value that resists change by remembering what it was, would make the layout depend on history, and neither is used ([Stability Term](#stability-term), [ADR-0055 H2](0055-Horizontal-Spacing.md#h2-the-anchoring-duration)).
+- **Every procedure returns the same configuration.** Exact arithmetic and [Deterministic Tie-Breaking](#deterministic-tie-breaking) make the full pass and [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit) return the same breaks and ratios, so incremental computation saves time and changes no result.
 
-The mechanisms that provide it are specified under [Stability and Quality Extensions](#stability-and-quality-extensions): exact re-optimisation after an edit keeps recomputation to about K² evaluations, and a stability term and frozen systems keep breaks where they were.
+**Breaks move.** The break configuration Stage 3 selects is a global optimum, and a global optimum is not local. An edit to stack `m` can change system breaks after `m` and before `m`: the DP finds the configuration of least total cost for the whole sequence, and the chosen breaks are traced backwards from its end, so a change of cost at `m` can alter the choice of breaks anywhere between the forced breaks around it. Nor is there a point beyond which the new configuration must coincide with the previous one. This is intended: when an edit changes which layout is best, the layout changes with it.
+
+**Keeping breaks where they are is an edit.** Where the user wants breaks to stay, the user says so, with forced breaks or a frozen system ([Editorial Control Mechanisms](#editorial-control-mechanisms), [Frozen Systems](#frozen-systems)). Both are layout data, stored with the piece, visible and undone like any other edit, so the layout remains a function of the piece. Forced breaks also bound how far an edit can reach, since each partition is optimised on its own.
+
+**Orientation is presentation.** How a client keeps the user oriented when the layout changes, for example by keeping the edited material where it was on the screen, belongs to the frontend. It takes the layout as given and feeds nothing back into it ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)), and it is not specified here.
+
+**Recomputation is cheap.** Stack metrics are cached (see [Caching and Incremental Recompute](#caching-and-incremental-recompute)), so re-running Stage 3 after an edit is scalar arithmetic over the cached metrics: collision detection, atom formation and vertical reconciliation are not repeated for any stack whose content did not change, and exact re-optimisation needs about K² evaluations for a single-stack edit.
+
+**Property test.** For generated pieces and generated sequences of edits, these layouts are identical, breaks, adjustment ratios and tie-breaks included: the layout after the edits; after any of them are undone and redone; of an equal piece reached by a different sequence of edits; of the piece serialised and loaded afresh; and a full pass over the final piece.
 
 ### Caching and Incremental Recompute
 
@@ -1030,7 +1040,7 @@ Edits affect Stages 3-4 only through changes to stack metrics:
 
 1. **Local edit**: modifying or inserting notation in a measure updates only the affected stack's upstream-derived width values (and its neighbour's, where a constraint spans the barline between them), and the postamble of any system boundary at which that change takes effect. A clef change taking effect at the start of measure M also updates M−1's, since M−1 draws it; Stage 3 needs nothing further for it, since a clef change already forces a full pass ([Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit)). A change to a barline updates its stack's no-break width, and the gutter of the stack after it.
 
-2. **Fast path (break stability)**: Stage 3 is re-run over the cached metrics. If the resulting break configuration is unchanged, then:
+2. **Fast path (breaks unchanged)**: Stage 3 is re-run over the cached metrics. If the resulting break configuration is unchanged, then:
 
    * the adjustment ratio of the system containing the edited stack may change, and with it the `actual_width` of every stack in that system; no other system's ratio changes
    * Stage 4 repositioning and Stage 5 regeneration are confined to that system and to connecting elements that touch it
@@ -1039,7 +1049,7 @@ Edits affect Stages 3-4 only through changes to stack metrics:
 3. **Ripple path (break changes)**: if the re-run produces a different break configuration:
 
    * unaffected stacks retain cached metrics, so the DP runs over the same scalar input as before except at the edited stack, and no upstream work is repeated for them
-   * the changed breaks are not confined to the neighbourhood of the edit: they may occur after it and before it, and nothing guarantees that the new configuration coincides with the previous one beyond any particular point (see [Edit Locality](#edit-locality))
+   * the changed breaks are not confined to the neighbourhood of the edit: they may occur after it and before it, and nothing guarantees that the new configuration coincides with the previous one beyond any particular point (see [Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece))
    * `actual_width` recomputation is confined to systems whose membership or width policy changed
 
 #### Practical Complexity
@@ -1050,13 +1060,13 @@ With cached stack metrics, Stage 3 runtime is dominated by DP over **scalars**, 
 * plus a Stage 3 re-run: **O(N×K)** scalar segment evaluations over cached metrics, with no collision or layout work for any unchanged stack
 * plus **O(K)** (where `K ≈ measures/system`) allocation for each system whose membership or adjustment ratio changed
 
-#### Relationship to Edit Locality
+#### Caches Change No Result
 
-This caching strategy makes recomputation after an edit cheap: re-running Stage 3 costs scalar arithmetic over cached aggregates, and no upstream work is repeated for stacks whose content did not change. It does not make the result local. A re-run may change breaks anywhere in the score; the mechanisms that keep break decisions stable are specified under [Stability and Quality Extensions](#stability-and-quality-extensions).
+This caching strategy makes recomputation after an edit cheap: re-running Stage 3 costs scalar arithmetic over cached aggregates, and no upstream work is repeated for stacks whose content did not change. The caches are derived from the piece and change no result: a re-run over cached metrics returns exactly what a full pass from scratch returns, and may change breaks anywhere between the forced breaks around the edit ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)).
 
-## Stability and Quality Extensions
+## Extensions
 
-The baseline specified above is complete and exact on its own. The mechanisms in this section extend it for stability under editing and for layout quality. Each is specified here with its cost and its effect on exactness. Which are enabled by default, and with which parameters, is decided during implementation by the empirical validation in [Consequences](#consequences) — simple scores, then complex ones, then Elektra — against the criteria below; the one exception is [Feasibility](#feasibility), which states the baseline's own condition.
+The baseline specified above is complete and exact on its own. The mechanisms in this section extend it for speed under editing, for editorial control and for layout quality, and two that are not adopted are recorded with the reasons. Each is specified here with its cost and its effect on exactness, and every one that is available keeps the layout a function of the piece ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)). Which are enabled by default, and with which parameters, is decided during implementation by the empirical validation in [Consequences](#consequences) — simple scores, then complex ones, then Elektra — against the criteria below; the one exception is [Feasibility](#feasibility), which states the baseline's own condition.
 
 ### Evaluation Criteria
 
@@ -1065,7 +1075,6 @@ Visual judgement, together with measurements taken on the same scores:
 - The distribution of per-system adjustment ratios `r`: minimum, maximum, variance
 - The difference between adjacent systems' `r`
 - The number of systems
-- How many breaks an edit changes (stability)
 - Running time
 - How much room the reduction of constraints spanning several columns over-reserves: the same systems solved offline with those constraints imposed exactly, system by system, compared with the springs as reduced by the baseline and by its exact form. This, with the cost of the exact form's slower path, decides which form is the baseline ([Constraints Spanning Several Columns](#constraints-spanning-several-columns))
 - The number of manual interventions (forced breaks, width overrides) needed to reach the layout of a reference engraving: the measure that matters most to an engraver
@@ -1091,15 +1100,13 @@ min over feasible [s, t) with s ≤ m < t of   F(s) + cost′(s, t) + G(t)
 - **Full passes**: a change of clef or key signature alters the preamble of every later system, and a key signature change alters the accidentals of later measures ([ADR-0035](0035-Remembered-Alterations.md)); a change to forced or prevented breaks changes the problem's partition. These re-run Stage 3 in full.
 - **Refresh**: after an edit, `F(s)` for `s > m` and `G(t)` for `t ≤ m` are stale. They are recomputed off the edit's critical path, O(N×K), or lazily: the next edit at `m₂` needs only the part of each table between the two edits.
 - **Backward early termination** needs the mirror of the width assumption under [Key Implementation Notes](#key-implementation-notes): for fixed `t`, the system width must not increase as the end moves right. Where it does, the backward pass scans every end — slower, still exact.
-- **Ties** are resolved as [Deterministic Tie-Breaking](#deterministic-tie-breaking) specifies, which both the full pass and re-optimisation apply, so a score with the same layout data, the stability anchor included, produces the same layout however its edits arrived.
+- **Ties** are resolved as [Deterministic Tie-Breaking](#deterministic-tie-breaking) specifies, which both the full pass and re-optimisation apply, so a piece produces the same layout however its edits arrived ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)).
 
 ### Stability Term
 
-`d″(s, t) = d(s, t) + λ × D(s, t)`, where `d` is the segment's demerits and `D` measures departure from an anchored previous layout — for example 1 when `s` is not a break of the anchor, or when `[s, t)` is not one of its systems. `D` depends only on the segment, so the objective stays separable and the result is exact for `d + λD`. That objective is deliberately not the pure demerits of the segment cost model: `λ` sets how much quality is exchanged for stability.
+**Not adopted.** A stability term adds to each segment's demerits a charge for departing from an anchored previous layout: `d″(s, t) = d(s, t) + λ × D(s, t)`, where `D` is, for example, 1 when `s` is not a break of the anchor. `D` depends only on the segment, so the result is exact for `d + λD`, but that objective takes an earlier output as an input. The layout becomes a function of the piece and of the anchor, and the anchor a function of the route by which the piece was reached, so two routes to the same piece can give different layouts. Persisting the anchor with the piece and undoing its moves with the edits that caused them makes the result reproducible for one history, not independent of history. And wherever the term changes the result, the layout it keeps has higher demerits than the layout the piece calls for.
 
-- **The anchor is layout data**: persisted with the layout, and identifying breaks by measure identity rather than by index, so that it survives measure insertion and deletion and the layout remains regenerable from semantics and layout data.
-- **Anchor policy sets the refresh cost**: while the anchor is fixed, [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit) applies unchanged, with `F` and `G` computed under the anchored objective. Moving the anchor changes `D` for any segment whose relation to it changed, so both tables are recomputed, O(N×K). When the anchor moves — after every edit, on save, on an explicit reflow — and the value of `λ` are evaluated.
-- **Every move of the anchor is undone with the act that caused it**, so that undo restores the layout as well as the music. Without this, undoing an edit would restore the music but re-optimise it against the anchor the edit had moved, and the layout could differ from the one before the edit. Formatting runs after an edit has committed ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md#computational-scaling-characteristics)), so a move made in response to an edit amends that edit's undo entry, as the later transactions of a continuous gesture amend the entry its first one pushed ([ADR-0015](0015-Undo-and-Redo.md#continuous-gestures-one-undo-step)); undoing the edit then restores the anchor it moved. An explicit reflow is an edit of layout data with an undo entry of its own. A move on save belongs to no undo entry, so under that policy undo restores the layout only for edits made since the last save. The same holds for any other layout data the engine changes in response to an edit, such as removing a width transfer whose column no longer exists ([ADR-0055 H14](0055-Horizontal-Spacing.md#h14-removal-of-column-transfers)).
+It contradicts [Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece), and no form of it is planned. Breaks stay where they are only where the user fixes them, with forced breaks or a frozen system, which are part of the piece; how a client keeps the user oriented when breaks move is presentation.
 
 ### Frozen Systems
 
@@ -1109,13 +1116,13 @@ A system the user locks keeps its breaks: its start and end become forced breaks
 
 **Drags.** A drag inside a frozen system is clamped at `r = −1`, as [ADR-0055](0055-Horizontal-Spacing.md#user-inputs) clamps column drags; at `r = −1` no gap has room left to give. Most drags change ideal widths only, which leaves `Σ min` as it was; a barline drag at a system's end may instead narrow the system, and the clamp keeps it from narrowing past its minimum. Either way a drag never makes the system infeasible. A barline drag freezes its system while the drag lasts, since it changes measures' widths and with them the stacks' summaries ([Editorial Control Mechanisms](#editorial-control-mechanisms)).
 
-Whether the freeze remains after the drag is a setting, off by default, and Ooloi supports both. Off, the breaks are recomputed when the drag ends: what the drag set, a transfer or an override, applies in whichever system its measures then fall, and breaks before and after the edit may move ([Edit Locality](#edit-locality)). On, the freeze remains until the user removes it: the system keeps its breaks, and the drag changes nothing beyond it. A barline drag at a system's end that changes the system's width leaves the system frozen whatever the setting, since that width applies only while its measure ends the system.
+Whether the freeze remains after the drag is a setting, off by default, and Ooloi supports both. Off, the freeze ends with the drag, however the drag ends, a lost connection included: the layout is then that of the piece as the drag left it, with what the drag set, a transfer or an override, and no freeze, exactly as if that piece had been reached any other way. What the drag set applies in whichever system its measures then fall, and breaks before and after the edit may move ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)). On, the freeze remains until the user removes it: it is layout data like any other freeze, the system keeps its breaks, and the drag changes nothing beyond it. A barline drag at a system's end that changes the system's width leaves the system frozen whatever the setting, since that width applies only while its measure ends the system.
 
 **An edit that makes a frozen system infeasible.** What then happens is not yet specified, but two possibilities are excluded. Refusing the edit would need formatting inside the edit's transaction, whereas formatting runs after an edit has committed ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md#computational-scaling-characteristics)), and it would let the layout veto a musical edit ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)). Deleting the freeze would have formatting discard layout the user set. Two remain: suspending the freeze while it cannot be honoured, but keeping it, so that it applies again once it can; or accepting an overfull system, whose widths then exceed what is available.
 
 ### Consistency Between Adjacent Systems
 
-**Not adopted.** Neither form below is part of the baseline, and neither is planned. Badness is cubic and demerits square it, so under an exact optimum a cramped system survives next to a loose one only when every alternative costs more in total. Where that happens, an evenness term can only buy uniformity by distorting other systems, and the known risk recorded below is exactly that. TeX needs fitness classes because a line holds dozens of words; a system holds a handful of bars, and the cost already does most of the work. The forms are recorded so that the decision can be revisited if the validation shows adjacent systems that the cost fails to catch.
+**Not adopted.** Neither form below is part of the baseline, and neither is planned. Badness is cubic and demerits square it, so under an exact optimum a cramped system survives next to a loose one only when every alternative costs more in total. Where that happens, an evenness term can only buy uniformity by distorting other systems, and the known risk recorded below is exactly that. TeX needs fitness classes because a line holds dozens of words; a system holds a handful of bars, and the cost already does most of the work. Both exact forms below compare a system with its neighbour in the same layout, not with an earlier layout, so they would keep the layout a function of the piece: the objection to them is musical, not structural. The forms are recorded so that the decision can be revisited if the validation shows adjacent systems that the cost fails to catch.
 
 Two exact forms, each needing more DP state than the baseline:
 
@@ -1703,7 +1710,7 @@ This section defines the relationship once. Elsewhere in this ADR, "Knuth-Plass"
 - **Fitness classes**: a cost that depends on the class of the preceding system is exact only if the DP keeps one node per (breakpoint, fitness class), which multiplies the work by the number of classes. Keeping a single node per breakpoint with such a term makes the result an approximation.
 - **Looseness**: aiming for a number of systems other than the optimal one requires the number of systems so far to be part of the state, one node per (breakpoint, system count).
 
-**Adoption**: Whether looseness or ending classes are adopted is decided during implementation, by the empirical validation this ADR specifies under [Future Considerations](#consequences) (simple scores, then complex ones, then Elektra). The extensions are specified, with their costs and evaluation criteria, under [Stability and Quality Extensions](#stability-and-quality-extensions); none is enabled by this ADR, and the evenness forms are not adopted.
+**Adoption**: Whether looseness or ending classes are adopted is decided during implementation, by the empirical validation this ADR specifies under [Future Considerations](#consequences) (simple scores, then complex ones, then Elektra). The extensions are specified, with their costs and evaluation criteria, under [Extensions](#extensions); none is enabled by this ADR, and the evenness forms are not adopted.
 
 Both problems share the mathematical structure enabling polynomial-time exact optimization of the reduced subproblem:
 - 1-dimensional sequence with a summary per element
@@ -1849,7 +1856,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 2. **Rhythm and collision together** - Gaps free to stretch keep their proportions; a gap the music needs wider gets exactly the room its collision requires, and no more
 3. **Complete information** - Gutter deltas, the no-break width of every boundary, and the preamble and postamble of every candidate system enable optimal decisions without feedback
 4. **Closed semantic model** - Rendering decorations cannot affect musical semantics
-5. **Deterministic output** - Identical input produces identical layout across platforms
+5. **Deterministic output** - The layout is a function of the piece alone: identical across platforms, sessions and editing histories
 6. **Cheap recomputation** - An edit re-runs Stage 3 over cached scalar metrics, without repeating upstream work for unchanged stacks
 7. **Variable system widths** - Natural handling of final systems, editorial overrides, margins and layout settings
 8. **Clean stage separation** - No feedback loops with connecting elements or decorations
@@ -1864,7 +1871,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 3. **Staff-local effects** - Compression affects individual staves within stacks, not uniform visual degradation
 4. **Policy-free core** - Algorithm is purely geometric by default; editorial preferences can be added via optional `break-penalty-fn` without modifying the core
 5. **Gutter and no-break storage** - Each stack carries `gutter` and `no-break-width` (typically 0N), and the DP one more prefix sum; overhead is minimal
-6. **Global breaks** - The break configuration is a global optimum, so an edit can change system breaks anywhere in the score; stability comes from the mechanisms under [Stability and Quality Extensions](#stability-and-quality-extensions), not from the DP itself
+6. **Global breaks** - The break configuration is a global optimum, so an edit can change system breaks anywhere between the forced breaks around it, before the edit as well as after it. Breaks stay where they are only where the user fixes them, with forced breaks or frozen systems; keeping the user oriented is presentation ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece))
 7. **Springs, not one scale factor** - Stage 4 applies each system's adjustment ratio gap by gap, and each stack's input to Stage 3 includes a short list of its prestretched gaps besides its sums
 
 **Future Considerations:**
@@ -1893,8 +1900,8 @@ A horizontal rule that cannot be expressed in one of these forms is a design pro
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) (pipeline architecture, Stage 3 system breaking position, gutter model, closed semantic model)
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (accidental algorithm that closes the semantic model; tied-note bypass rules inform gutter requirements)
 - [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) (upstream computation of each gap's ideal and blocking widths, the gutter, and the reduction of constraints spanning several columns)
-- [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) (the layout never feeds back into a musical edit; frozen systems)
-- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) (continuous gestures as one undo step; anchor moves amend the entry of the edit that caused them)
+- [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) (the layout never feeds back into a musical edit; frozen systems; orientation as presentation)
+- [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) (continuous gestures as one undo step; changes an edit makes to layout data are undone with it)
 - [ADR-0014: Timewalk](0014-Timewalk.md) (temporal traversal providing measure discovery)
 - [ADR-0029: Global Hash-Consing](0029-Global-Hash-Consing.md) (immutable data structures enabling stage separation)
 - [Knuth–Plass line-breaking algorithm](https://en.wikipedia.org/wiki/Knuth%E2%80%93Plass_line-breaking_algorithm) - Wikipedia overview
