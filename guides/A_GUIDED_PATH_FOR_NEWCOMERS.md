@@ -138,7 +138,7 @@ How pieces are stored, retrieved, and referenced. UUID-based identification in p
 
 **16. [ADR-0016: Settings](../ADRs/0016-Settings.md)**
 
-Configuration for any entity in either hierarchy, from a piece to a single pitch. `defsetting` generates `get-` and `set-` accessors indistinguishable from those of a record slot, so the polymorphic API covers settings with no new vocabulary; values are stored in a `:settings` map that holds only what differs from the default, are validated when written, and are addressed by VPD like everything else. Piece settings — accidental behaviour, the music font, staff spacing and the rest — are of this kind.
+Configuration for any entity in either hierarchy, from a piece to a single pitch. `defsetting` generates `get-` and `set-` accessors indistinguishable from those of a record slot, so the polymorphic API covers settings with no new vocabulary; values are stored in a `:settings` map that holds only what differs from the default, are validated when written, and are addressed by VPD like everything else. Piece settings — accidental behaviour, the default music font and the glyphs drawn from other fonts, staff spacing and the rest — are of this kind.
 
 > **What you should understand at the end of Phase 3:** How to address any element in any piece using a VPD. How the polymorphic API dispatches. How pieces are stored and retrieved. How to read and construct any API call in the codebase.
 
@@ -269,7 +269,7 @@ How Stages 1 and 2 produce the springs ADR-0037 fits. Every horizontal engraving
 
 **35. [ADR-0038: Backend Authoritative Rendering and Terminal Frontend Execution](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**
 
-The frontend is *terminal*: it executes rendering decisions but never renegotiates, refines, or reinterprets them. The litmus test: discard all frontend rendering state, regenerate from backend → identical output. This is the property that makes distributed collaboration and multiple frontend implementations consistent without complex synchronisation.
+The frontend is *terminal*: it executes rendering decisions but never renegotiates, refines, or reinterprets them. The litmus test: discard all frontend rendering state, regenerate from backend → identical output. This is the property that makes distributed collaboration and multiple frontend implementations consistent without complex synchronisation. The ADR also specifies how that execution is done without the window ever stuttering: three cache levels — paintlists, Skija Pictures, raster tiles — a score viewport built of tiles that JavaFX composites, so its UI can overlap the score, and a threading model in which nothing that renders runs on the JavaFX Application Thread.
 
 **36. [ADR-0013: Slur Formatting](../ADRs/0013-Slur-Formatting.md)**
 
@@ -365,7 +365,7 @@ These documents are not required for understanding Ooloi's architecture. They pr
 
 **[ADR-0047: Font Management](../ADRs/0047-Font-Management.md)** — Font registry with dual Skija/JavaFX registration, bundled-first loading, local font discovery across the OS font directories, exact version matching for pieces (the TeX model: a piece stores the font version it was laid out against, and opening it later requires that exact version to reproduce the layout), and multi-user font consistency for collaborative sessions. Read together with ADR-0006, ADR-0048 and ADR-0049 — they form the font-and-glyph cluster.
 
-**[ADR-0048: SMuFL Glyph Selection Architecture](../ADRs/0048-SMuFL-Glyph-Selection-Architecture.md)** — The general mechanism for selecting notation glyphs from the SMuFL specification. Logical keywords resolve to SMuFL classes, which resolve to glyphs through a three-level cascade (house style → piece → local), filtered by the active font's glyph inventory. The additional-glyphs mechanism lets individual glyphs be added to a class without pulling in a whole mixed range. ADR-0049 is the first concrete implementation of this architecture.
+**[ADR-0048: SMuFL Glyph Selection Architecture](../ADRs/0048-SMuFL-Glyph-Selection-Architecture.md)** — The general mechanism for selecting notation glyphs from the SMuFL specification. Logical keywords resolve to SMuFL classes, which resolve to glyphs through a three-level cascade (house style → piece → local). Each glyph comes from the piece's default music font or, where the user has chosen, from another SMuFL font, and is offered only from fonts that provide it. The additional-glyphs mechanism lets individual glyphs be added to a class without pulling in a whole mixed range. ADR-0049 is the first concrete implementation of this architecture.
 
 **[ADR-0049: Clef Registry](../ADRs/0049-Clef-Registry.md)** — The first application of ADR-0048. Clefs become a registry mapping keywords to structured definitions (class, line or space, pitch, optional additional glyphs), with 17 defaults covering standard practice and full support for user-defined clefs (French violin clef, sub-bass clef, mensural C clefs, anything else). A flat keyword such as `:treble` conflates glyph, staff position and octave transposition in one name, and a fixed set of such keywords can express no clef outside it; factoring the name into orthogonal fields makes any clef a definition rather than a new keyword, while the default keywords keep their names.
 

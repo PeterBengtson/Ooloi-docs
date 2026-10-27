@@ -100,7 +100,7 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
    - Ensure consistency between screen display and printed output.
    - Develop a cross-platform print dialog and settings interface.
    - Implement support for various paper sizes and orientations.
-8. Optimize rendering performance for large scores using techniques like virtualization.
+8. Render large scores through a virtualised, tiled viewport: Skija rasterises fixed-size tiles on the GPU and JavaFX composites them, with nothing that renders on the JavaFX Application Thread. The tiled viewport, its threading model and the requirements governing it (R1–R3: no freeze or stutter, an even 30 fps for score content, JavaFX UI free to overlap the score) are specified in [ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md). Small notation previews in dialogs use the same drawing code on a CPU raster surface (ADR-0038 §Small Notation Previews).
 9. Develop a theming system to allow for customizable appearances.
 10. Implement platform-specific optimizations where necessary.
 11. Conduct thorough testing of printing functionality across all supported platforms.
@@ -128,6 +128,7 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
 - [ADR-0000: Clojure](0000-Clojure.md) - Language choice enabling JavaFX integration through excellent Java interop
 - [ADR-0001: Frontend-Backend Separation](0001-Frontend-Backend-Separation.md) - Architectural decision requiring frontend GUI framework choice
 - [ADR-0006: SMuFL](0006-SMuFL.md) - Musical symbol standard that will be rendered through JavaFX/Skija
+- [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) - The rendering architecture built on these choices: paintlists, Pictures and JavaFX-composited tiles, the frontend rendering threading model, and the requirements R1–R3
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - JavaFX Application Thread integration with backend event streams using Platform.runLater() patterns
 - [ADR-0042: UI Specification Format](0042-UI-Specification-Format.md) - The UI built on these choices: window specification and lifecycle, the menu system, theming and styling — and §*macOS native integration*, the Cocoa mechanics implementing the native-parity position taken here
 
@@ -178,6 +179,7 @@ The realistic prospects, in rough order of likelihood:
 - **Integration**: Direct JavaFX theme integration through AtlantaFX, minimal code changes required
 - **Extensibility**: AtlantaFX provides foundation for custom styling and component extensions
 - **Colour System**: AtlantaFX implements the GitHub Primer colour system with semantic (functional) tokens (`-color-fg-default`, `-color-accent-muted`, `-color-danger-emphasis`, etc.) that resolve to different concrete values in dark vs light mode. All frontend CSS must use these tokens exclusively — no hardcoded hex/rgb values. Scale tokens (`-color-base-N`) are raw palette values and must not be used.
+- **Colour Scope**: The theme governs JavaFX UI only. Skija surfaces — score pages, notation previews, print output — are outside the theme system and may use any colour, whether the score's own or one the user chooses. See [ADR-0042](0042-UI-Specification-Format.md) §Theme-Independent Styling.
 - **Icons**: Ikonli Material Design 2 (`ikonli-javafx` + `ikonli-material2-pack` 12.4.0) provides font-based icons via `FontIcon` nodes. Icons are referenced by string literals and inherit colour from parent control severity classes.
 
 ## Copper Plate Aesthetic Principle

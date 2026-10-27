@@ -446,7 +446,7 @@ The combined application accepts the **union** of all backend and frontend envir
 
 ### JVM Configuration
 
-The combined application uses sensible JVM defaults (G1GC, compact object headers, string deduplication, 50ms GC pause target) configured in `project.clj`. The JVM automatically sizes memory based on available system resources.
+The combined application uses sensible JVM defaults (G1GC, compact object headers, string deduplication, 50ms GC pause target) configured in `project.clj`. The built application carries the same garbage-collection flags: `lein build` passes them to the bundled JVM. The JVM automatically sizes memory based on available system resources.
 
 **Advanced: Overriding JVM settings** (for specialized scenarios):
 ```bash

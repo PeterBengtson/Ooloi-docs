@@ -62,7 +62,7 @@ The clef registry is a map from keyword to clef definition. It is a standalone d
 
 Exactly one of `:line` or `:space` is present. `:additional-glyphs` is absent when not needed.
 
-The available glyphs for a clef = (members of `:class` from `classes.json`) ∪ `:additional-glyphs`, filtered by the active font's glyph inventory ([ADR-0048 §Font Availability Filtering](0048-SMuFL-Glyph-Selection-Architecture.md#font-availability-filtering)).
+The available glyphs for a clef = (members of `:class` from `classes.json`) ∪ `:additional-glyphs`, filtered by each font's glyph inventory ([ADR-0048 §Font Availability Filtering](0048-SMuFL-Glyph-Selection-Architecture.md#font-availability-filtering)).
 
 ### Musical Semantics of the Fields
 
@@ -139,7 +139,7 @@ When a clef changes mid-staff, it is conventionally drawn smaller. SMuFL provide
 | `:clefsPercussion` | (none --- use main glyph at reduced size) |
 | `:clefsTab` | (none --- use main glyph at reduced size) |
 
-The derivation is handled by the rendering pipeline, not stored in the clef definition. If the active font lacks the change glyph, the main glyph is rendered at a reduced size.
+The derivation is handled by the rendering pipeline, not stored in the clef definition. If the font that supplies the clef lacks the change glyph, the main glyph is rendered at a reduced size.
 
 ### User-Defined Clefs
 
@@ -226,7 +226,7 @@ The alternative is a single `:position` field where integers represent lines and
 - Users can define custom clefs with any combination of glyph class, staff position, and pitch. Historical and experimental notation is supported without special-casing.
 - The glyph selection cascade ([ADR-0048](0048-SMuFL-Glyph-Selection-Architecture.md)) applies to clefs uniformly: house style defaults, piece overrides, and local overrides all work.
 - The existing 17 clef keywords are unchanged. All current code, instrument library entries, i18n translations, and tests continue to work without modification.
-- Font availability filtering ensures users only see clef glyphs that the active font provides. Switching to a low-coverage font never produces errors.
+- Font availability filtering ensures users only see clef glyphs a font provides, offered from that font. Choosing a low-coverage default music font never produces errors.
 
 **Negative**
 

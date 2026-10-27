@@ -16,7 +16,7 @@ Under implementation
   - [Bundled Fonts](#bundled-fonts)
   - [Local Font Discovery](#local-font-discovery)
   - [User-Supplied Fonts](#user-supplied-fonts)
-  - [Active Font Selection](#active-font-selection)
+  - [The Default Music Font and Glyph Deviations](#the-default-music-font-and-glyph-deviations)
   - [Piece Font Manifest and Version Matching](#piece-font-manifest-and-version-matching)
   - [UI Integration](#ui-integration)
 - [Rationale](#rationale)
@@ -36,9 +36,9 @@ Under implementation
 
 [ADR-0006](0006-SMuFL.md) establishes SMuFL as Ooloi's sole font standard for musical symbol rendering. This ADR addresses the concrete question of how SMuFL fonts are loaded, managed, and kept consistent across the two rendering paths (Skija for score rendering, JavaFX for UI controls) and across multiple clients in a collaborative session.
 
-The rendering pipeline is backend-authoritative (ADR-0038). The backend computes layout — glyph positions, stem lengths, beam angles, spacing — from a specific font version's metadata. The frontend renders the resulting paintlists using the corresponding typeface. If the two sides disagree about which font is active, or use different versions of the same font, the result is misaligned notation. Font management exists to prevent this.
+The rendering pipeline is backend-authoritative (ADR-0038). The backend computes layout — glyph positions, stem lengths, beam angles, spacing — from the metadata of specific font versions. The frontend renders the resulting paintlists using the corresponding typefaces. A piece is not drawn from a single font: it has a default music font, and its settings may draw any number of glyphs from other SMuFL fonts. If the two sides disagree about which font supplies a glyph, or use different versions of the same font, the result is misaligned notation. Font management exists to prevent this.
 
-Two distinct rendering paths consume the same font data. The Skija GPU rendering layer draws musical notation in the score; JavaFX draws SMuFL glyphs in UI controls — clef selectors, symbol palettes, toolbars, and any other control that displays a musical symbol. Both paths must use the same font from the same source, governed by the same metadata, at all times. The font registry exists to enforce this invariant.
+Two distinct rendering paths consume the same font data. The Skija GPU rendering layer draws musical notation in the score; JavaFX draws SMuFL glyphs in UI controls — clef selectors, symbol palettes, toolbars, and any other control that displays a musical symbol. For every glyph, both paths must use the same font from the same source, governed by the same metadata, at all times. The font registry exists to enforce this invariant.
 
 ---
 
@@ -58,6 +58,8 @@ The font registry is an Integrant component with a standard lifecycle. Its state
 | `:version` | `String` | Font version string extracted from the font's name table |
 
 The component initialises by loading all bundled fonts, then running the local discovery scan. It halts by releasing Skija typeface resources.
+
+**A typeface is released only once nothing can still draw with it.** Skija Pictures record references to the typefaces they draw with, and Pictures are replayed on worker threads and on the GPU render thread ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) §Frontend Rendering Threading Model). The registry therefore never releases a typeface while a Picture or tile built from it may still be in use: it releases it after the caches built from it have been dropped.
 
 ### Dual Registration
 
@@ -79,9 +81,13 @@ Each SMuFL font ships with a companion `metadata.json` file conforming to the SM
 - **Glyph names → codepoints**: the mapping from canonical SMuFL names to Unicode Private Use Area codepoints.
 - **Glyph bounding boxes**: per-glyph extents in staff spaces, consumed by the rendering pipeline for spatial calculations.
 - **Anchor points**: stem attachments, optical centres, and other positioning data.
-- **Engraving defaults**: staff line thickness, stem width, beam spacing, and other font-specific defaults the rendering pipeline uses when no user override exists.
+- **Engraving defaults**: the staff line thickness, stem width, beam spacing and similar values the font's designer recommends.
 
 The rendering pipeline reads all glyph metrics from the registry. There is no separate metadata loading path.
+
+**A glyph's metrics come from the font that supplies it.** Casting off and horizontal positioning use the actual widths and extents of the glyphs being drawn: a notehead drawn from one font is spaced by that font's notehead, never by another font's. Spacing a piece by the metrics of a font it is not drawn with would be wrong in every measure.
+
+**Engraving values are piece settings, not font properties.** Staff line thickness, stem width, beam spacing and the like are settings of the piece ([ADR-0016](0016-Settings.md)), and the piece's settings are part of its house style, which overrides whatever a font recommends. A font's engraving defaults are therefore information rather than configuration. A way for the user to import a font's recommended values into the piece's settings may be offered; that is not yet decided.
 
 #### Spec-Level Metadata
 
@@ -93,11 +99,11 @@ Independent of any specific font, the SMuFL specification defines three JSON fil
 | `classes.json` | Named groupings of functionally related glyphs (e.g., `clefsG` contains all G clef variants, `noteheadSetDefault` contains the standard notehead set) | Glyph classification. Drives user-facing glyph selection: when a user chooses an alternative visual variant for a notation element, the class determines which glyphs are valid alternatives. |
 | `ranges.json` | Named ranges of glyphs as they appear in the SMuFL specification layout, with descriptions (e.g., `medievalAndRenaissanceClefs`, `rests`, `noteheads`) | Broader organisational groupings. Used alongside classes to discover related glyphs across historical periods and notation systems. |
 
-**Why both layers are necessary.** Per-font metadata tells the registry what a specific font *can render* and how (metrics, bounding boxes). Spec-level metadata tells the registry what the glyphs *are* and how they relate to each other (classification, vocabulary). The intersection — glyphs that exist in the spec AND are present in the active font — determines what the application can offer the user at any given moment.
+**Why both layers are necessary.** Per-font metadata tells the registry what a specific font *can render* and how (metrics, bounding boxes). Spec-level metadata tells the registry what the glyphs *are* and how they relate to each other (classification, vocabulary). The intersection — glyphs that exist in the spec AND are present in a registered font — determines what the application can offer the user from that font at any given moment.
 
 **Glyph classification drives the glyph selection mechanism.** The classes from `classes.json` define which glyphs are valid visual alternatives for each notation element. The full glyph selection mechanism — the three-level cascade (house style → piece → local), two selection patterns (single glyph vs. set), the `:additional-glyphs` mechanism for historical variants, and the complete class inventory — is specified in [ADR-0048: SMuFL Glyph Selection Architecture](0048-SMuFL-Glyph-Selection-Architecture.md).
 
-**Font availability filtering.** Not every SMuFL font implements every glyph. When the user is presented with visual alternatives for a notation element, the choices are the intersection of the element's SMuFL class membership and the active font's glyph inventory (from its per-font metadata). Glyphs defined in the spec but absent from the active font simply do not appear as choices. No error, no placeholder — the font's capabilities are respected silently.
+**Font availability filtering.** Not every SMuFL font implements every glyph. When the user is presented with visual alternatives for a notation element, the choices offered from each registered font are the intersection of the element's SMuFL class membership and that font's glyph inventory (from its per-font metadata). A glyph a font lacks is simply not offered from that font; the same glyph from another registered font may be. No error, no placeholder — each font's capabilities are respected silently.
 
 ### Bundled Fonts
 
@@ -119,7 +125,7 @@ Ooloi ships with eleven SMuFL-compliant notation fonts as JAR resources in `shar
 | Finale Ash | Handwritten (legendary AshMusic) | MakeMusic | SIL OFL |
 | Leipzig (v5.2.96) | Scholarly/musicological | RISM Digital | SIL OFL |
 
-Bravura is the canonical fallback: it is always available, always loads first, and serves as the default active font.
+Bravura is the canonical fallback: it is always available, always loads first, and is the default music font of a piece whose house style names no other.
 
 Bundled fonts are the tested, known-good pairing with the rendering pipeline. A specific version of each font is validated against the layout engine before each Ooloi release. Upgrading a bundled font is an application release, not a user action — the TeX model applies here. Knuth does not let users swap in a different Computer Modern and expect the same line breaks; the font and the layout engine are a tested pair.
 
@@ -155,31 +161,31 @@ Discovery without silent substitution. Nothing changes without an explicit user 
 
 The font management UI allows the user to load additional SMuFL fonts from arbitrary file paths. These go through the same registration pipeline: load bytes, register with Skija and JavaFX, parse metadata, validate SMuFL compliance, add to registry. No system installation is required — Skija loads typefaces from byte arrays, not from the OS font system.
 
-The user's active font selection is persisted in application settings and restored at startup. If a previously selected user-supplied font is no longer available at the stored path, the registry falls back to Bravura and posts a notification.
+The user-supplied fonts the registry knows are persisted in application settings and registered again at startup. If one is no longer available at its stored path, it is not registered and a notification says so; a piece that draws glyphs from it cannot be rendered until it is available again (§Piece Font Manifest and Version Matching).
 
-### Active Font Selection
+### The Default Music Font and Glyph Deviations
 
-The registry maintains a single active notation font. All rendering — backend layout computation and frontend drawing — uses the active font's metadata and typeface. Switching the active font triggers a full re-render: the backend recomputes layout with the new font's metrics and the frontend redraws with the new typeface.
+There is no single font for a piece. Each piece has a **default music font**, which supplies every glyph the piece draws unless a setting says otherwise. On top of it the user may define **deviations** for any number of glyphs — all the dynamics from another SMuFL font, say, or a single notehead. A deviation names the glyph and the registered font that supplies it. Both are piece settings ([ADR-0016](0016-Settings.md)), part of the piece's house style, and both resolve through the glyph selection cascade of [ADR-0048](0048-SMuFL-Glyph-Selection-Architecture.md): house style, then piece, then the individual element. Each stores a font's family name and source, not a file path; the registry resolves the fonts when the piece is opened.
 
-The active font selection is stored in application settings (see ADR-0016 / ADR-0043). The setting stores the font family name and source, not a file path — the registry resolves the font at startup.
+Backend layout computation and frontend drawing resolve every glyph to the same font. Changing the default music font or a deviation is a setting change like any other: the backend lays out again with the metrics of the fonts now supplying those glyphs, and invalidates what changed — the whole piece for the default music font, only the regions that draw the affected glyphs for a deviation. On the frontend, the Pictures and tiles built from the replaced paintlists are dropped and rebuilt off the JavaFX Application Thread, with the previous tiles or placeholders on screen until the rebuild lands, so a change of font never freezes the window ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) §Three-Level Cache Architecture).
 
 ### Piece Font Manifest and Version Matching
 
-Each piece records the notation font used for its layout: font family name and exact version string. This is a **hard constraint**, not advisory metadata.
+Each piece records every notation font its layout draws on — the default music font and every font a deviation names — each by family name and exact version string. This is a **hard constraint**, not advisory metadata.
 
-When a client opens a piece, the registry checks whether the exact font version is available locally. If the version does not match exactly, the piece **cannot be rendered**. The client receives a clear error identifying the required font and version, not a degraded or approximate rendering.
+When a client opens a piece, the registry checks that every font in the manifest is available locally at its exact version. If any is missing or differs, the piece **cannot be rendered**. The client receives a clear error identifying each required font and version, not a degraded or approximate rendering.
 
 This is the only honest position given the rendering architecture. The backend computes layout — glyph positions, stem lengths, beam angles, spacing — from a specific font version's metrics. A different version of the same font may have different stem widths, altered anchor points, or changed bounding boxes. Rendering with a mismatched version produces subtly incorrect output with no visible cause. Refusing to render is better than rendering incorrectly.
 
-In a multi-user environment where multiple clients connect to the same server, this means all clients working on a piece must have the exact font version that piece was created with. This is a deliberate constraint: the font and the layout are a tested pair, and the pair must match across all participants. If a client lacks the required version, the font management UI provides the path to acquire and register it.
+In a multi-user environment where multiple clients connect to the same server, this means all clients working on a piece must have the exact version of every font in its manifest. This is a deliberate constraint: each font and the layout are a tested pair, and the pair must match across all participants. If a client lacks a required version, the font management UI provides the path to acquire and register it.
 
 ### UI Integration
 
-A JavaFX control displaying a SMuFL glyph sets its text content to the appropriate Unicode Private Use Area codepoint and its font family to the active font's JavaFX family name from the registry. No image files, no SVG paths, no special rendering. It is a character in a font.
+A JavaFX control displaying a SMuFL glyph sets its text content to the appropriate Unicode Private Use Area codepoint and its font family to the JavaFX family name, from the registry, of the font that supplies that glyph. No image files, no SVG paths, no special rendering. It is a character in a font.
 
-When the active font changes, every UI control displaying SMuFL glyphs updates because the font family resolves to the new typeface. The mechanism is JavaFX's standard font resolution, not a custom invalidation system.
+When the font supplying a glyph changes, every UI control displaying that glyph updates because its font family resolves to the new typeface. The mechanism is JavaFX's standard font resolution, not a custom invalidation system.
 
-This applies to clef selectors, key signature displays, note value selectors, articulation palettes, and any other UI element that shows a musical symbol. The same glyph the Skija score renderer draws appears in the UI through JavaFX's normal text layout — one font, two rendering paths, one source of truth.
+This applies to clef selectors, key signature displays, note value selectors, articulation palettes, and any other UI element that shows a musical symbol. The same glyph the Skija score renderer draws appears in the UI through JavaFX's normal text layout — one font for each glyph, two rendering paths, one source of truth.
 
 ---
 
@@ -187,7 +193,7 @@ This applies to clef selectors, key signature displays, note value selectors, ar
 
 ### Why bundled-first
 
-The rendering pipeline is backend-authoritative (ADR-0038). The backend computes glyph metrics, bounding boxes, and anchor points from SMuFL metadata to produce paintlists; the frontend renders those paintlists using the corresponding typeface. If the two sides disagree about which font is active — or use different versions of the same font — the result is misaligned notation. Bundling a specific, tested version of each font and loading it by default eliminates this class of defect.
+The rendering pipeline is backend-authoritative (ADR-0038). The backend computes glyph metrics, bounding boxes, and anchor points from SMuFL metadata to produce paintlists; the frontend renders those paintlists using the corresponding typefaces. If the two sides disagree about which font supplies a glyph — or use different versions of the same font — the result is misaligned notation. Bundling a specific, tested version of each font and loading it by default eliminates this class of defect.
 
 ### Why discovery without silent substitution
 
@@ -221,7 +227,7 @@ The benefit — making bundled SMuFL fonts available to other applications — d
 
 - Rendering is deterministic: the same font version is used for layout computation and drawing, across backend and frontend, regardless of what the user has installed locally.
 - SMuFL glyphs appear in both the score and UI controls from the same font, with no image assets or special rendering paths.
-- Users can choose alternative SMuFL fonts through the font management UI. The aesthetic choice is theirs; the rendering invariant is maintained by the architecture.
+- Users choose a piece's default music font and may draw any number of glyphs from other SMuFL fonts. The aesthetic choice is theirs; the rendering invariant is maintained by the architecture, glyph by glyph.
 - Local font discovery respects the user's agency — newer versions and alternative fonts are surfaced, not ignored — without introducing silent rendering changes. Dismissed notifications reappear until the user makes an explicit choice; resolved choices are permanent.
 - In multi-user environments, exact font version matching guarantees all participants see identical rendering. There is no class of "works on my machine" font drift.
 - The font registry is a clean Integrant component with no global state; it can be started and stopped in tests.
@@ -230,7 +236,7 @@ The benefit — making bundled SMuFL fonts available to other applications — d
 
 - Upgrading bundled fonts requires an Ooloi release. Users who want a newer version of a bundled font before the next release must use the local font path and explicitly opt in.
 - The local font scan adds startup time proportional to the number of fonts installed on the system. The scan should be bounded (check known directories, match known family names or metadata files, do not parse every installed font).
-- JavaFX's `Font.loadFont` registers fonts globally for the JVM lifetime. If multiple font versions of the same family are loaded (bundled and user-supplied), JavaFX's family name resolution may be ambiguous. The registry must manage this — either by loading only the active version, or by qualifying family names.
+- JavaFX's `Font.loadFont` registers fonts globally for the JVM lifetime. If multiple font versions of the same family are loaded (bundled and user-supplied), JavaFX's family name resolution may be ambiguous. The registry must manage this — either by loading only the versions an open piece's manifest names, or by qualifying family names.
 - Exact version matching means a client cannot open a piece created with a font version it does not have. This is intentional friction: the user is told exactly what is needed and can acquire it through the font management UI. The alternative — silent misrendering — is worse.
 
 ---
@@ -243,11 +249,12 @@ The benefit — making bundled SMuFL fonts available to other applications — d
 - [ADR-0048: SMuFL Glyph Selection Architecture](0048-SMuFL-Glyph-Selection-Architecture.md) — class-driven glyph selection mechanism built on the spec-level metadata this ADR loads
 - [ADR-0005: JavaFX and Skija](0005-JavaFX-and-Skija.md) — frontend rendering framework; Skija draws the score, JavaFX draws the UI
 - [ADR-0003: Plugins](0003-Plugins.md) — plugin system that may extend SMuFL-based notation with specialised symbols
-- [ADR-0016: Settings](0016-Settings.md) / [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) — active font selection stored in application settings
+- [ADR-0016: Settings](0016-Settings.md) — the default music font, glyph deviations and engraving values are piece settings
+- [ADR-0043: Frontend Settings](0043-Frontend-Settings.md) — the user-supplied fonts the registry knows are stored in application settings
 - [ADR-0017: System Architecture](0017-System-Architecture.md) — Integrant component lifecycle
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) — consumer of font metrics for spatial calculations
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) — notification system for local font discovery alerts
-- [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) — rendering invariant: backend layout and frontend drawing must agree on the active font
+- [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) — rendering invariant: backend layout and frontend drawing must agree on which font supplies each glyph; a change of font invalidates Pictures and tiles through the ordinary route
 
 ### External References
 

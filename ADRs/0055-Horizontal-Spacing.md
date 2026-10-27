@@ -80,7 +80,7 @@ Before measuring anything, an engraver makes a few judgements that govern everyt
 
 Three authorities answer different questions:
 
-- **SMuFL metadata**: can this exist without collision? The bounding boxes, cut-outs, anchors and engraving defaults of the active font ([ADR-0006](0006-SMuFL.md), [ADR-0047](0047-Font-Management.md)), read as exact rationals.
+- **SMuFL metadata**: can this exist without collision? The bounding boxes, cut-outs and anchors of the font that supplies each glyph ([ADR-0006](0006-SMuFL.md), [ADR-0047](0047-Font-Management.md)), read as exact rationals. Engraving values such as staff line thickness and stem width are piece settings, not font properties (ADR-0047 §Per-Font Metadata).
 - **The engraving literature**, Gould (2011) and Ross (1970): would this be considered correct engraving? Proportions, clearances and conventions. Values recorded from them here are provisional until verified against the books, with page references ([H15](#h15-verification-against-gould-and-ross)).
 - **Printed editions in the plate-engraving tradition**: does it look as engravers made it? They are the arbiter wherever the first two leave a choice ([The Exploration](#the-exploration)). The output of other notation programs is not a reference.
 
@@ -113,7 +113,7 @@ Elasticity is not a fifth form: it is a parameter of ADR-0037's model, which may
 - declares, as geometry, the constraints spanning several columns that its own content implies: which atoms or glyphs, and of what kind (ties, lyrics, elements that reserve room, plugin reservations);
 - supplies the geometry of the decorations a measure needs when it starts a system: courtesy accidentals for tied-to notes, tie continuations, a start repeat that may move there; and of its closing barline both as it ends a system and as it stands mid-system ([The Bar Boundary](#the-bar-boundary)).
 
-Stage 1's results depend on the measure's content, the active font and the settings that change glyph geometry. They never depend on the duration table, the anchoring duration, the clearance table, spacing distances such as the minimum tie length, `σ`, or anything in another measure, with one exception: a measure draws before its closing barline a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with, and that clef is part of its cache key ([The Bar Boundary](#the-bar-boundary)). That is what keeps Stage 1 parallel, and its caches valid when any spacing parameter changes.
+Stage 1's results depend on the measure's content, the fonts that supply its glyphs and the settings that change glyph geometry. They never depend on the duration table, the anchoring duration, the clearance table, spacing distances such as the minimum tie length, `σ`, or anything in another measure, with one exception: a measure draws before its closing barline a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with, and that clef is part of its cache key ([The Bar Boundary](#the-bar-boundary)). That is what keeps Stage 1 parallel, and its caches valid when any spacing parameter changes.
 
 **Stage 2** runs per measure stack, in two steps. First, for each stack, it:
 

@@ -39,7 +39,7 @@ Bravura is the canonical default and fallback font. Ooloi bundles eleven SMuFL f
 
 5. **Metadata Support**: SMuFL fonts ship with extensive metadata — glyph bounding boxes, anchor points, engraving defaults — essential for precise positioning and scaling in the rendering pipeline.
 
-6. **Font Flexibility**: Users can choose from various SMuFL-compliant fonts, allowing stylistic customisation without changing the underlying code. A piece rendered with one SMuFL font can be re-rendered with another; the rendering pipeline reads all metrics from the active font's metadata.
+6. **Font Flexibility**: Users can choose from various SMuFL-compliant fonts, allowing stylistic customisation without changing the underlying code. A piece has a default music font and may draw any number of glyphs from other SMuFL fonts; changing either re-renders the piece, and the rendering pipeline reads each glyph's metrics from the metadata of the font that supplies it.
 
 7. **Future-Proofing**: SMuFL is an evolving standard supported by the principal notation software vendors and is likely to expand to cover new notation needs.
 
@@ -74,7 +74,7 @@ Bravura is the canonical default and fallback font. Ooloi bundles eleven SMuFL f
 - [ADR-0005: JavaFX and Skija](0005-JavaFX-and-Skija.md) — frontend rendering framework that displays SMuFL symbols via both Skija (score rendering) and JavaFX (UI controls)
 - [ADR-0003: Plugins](0003-Plugins.md) — plugin system that may extend SMuFL-based notation with specialised symbols
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) — consumer of SMuFL font metrics for spatial calculations
-- [ADR-0047: Font Management](0047-Font-Management.md) — font registry component, bundled font strategy, local font discovery, dual Skija/JavaFX registration, piece font manifests, and active font selection
+- [ADR-0047: Font Management](0047-Font-Management.md) — font registry component, bundled font strategy, local font discovery, dual Skija/JavaFX registration, piece font manifests, and the default music font with its glyph deviations
 - [ADR-0048: SMuFL Glyph Selection Architecture](0048-SMuFL-Glyph-Selection-Architecture.md) — how Ooloi exploits SMuFL's glyph vocabulary and classification system: class-driven glyph selection, three-level cascade, font availability filtering
 
 ## External References

@@ -343,7 +343,7 @@ sequenceDiagram
         F->>B: Request fresh MeasureView(127)
         B->>F: Updated paintlist data
         F->>F: Update local cache
-        F->>F: Skija rendering: paintlist → pixels
+        F->>F: Skija: paintlist → Pictures → tiles
         F->>U: Visual refresh (note appears)
     else Measure 127 not visible
         F->>F: Keep cache stale, defer until navigation
@@ -390,7 +390,9 @@ The 100-millisecond **asynchronous** batching interval amplifies computational e
 
 ### Shared Threadpool
 
-The rendering pipeline uses the shared Claypoole thread pool (see Issue #142), injected via Integrant dependency. One pool serves all parallel workloads — rendering pipeline, event bus subscriber dispatch, fetch coordinator, and future consumers. This prevents thread proliferation: separate pools would create 2×cores threads competing for the same hardware.
+The rendering pipeline uses the shared Claypoole thread pool (see Issue #142), injected via Integrant dependency. One pool serves all parallel workloads — rendering pipeline, event bus subscriber dispatch, fetch coordinator, the frontend's Skija Picture recording, and future consumers. This prevents thread proliferation: separate pools would create 2×cores threads competing for the same hardware.
+
+The frontend's GPU render thread is the one dedicated thread outside it, and not for reasons of load: a GPU context may be used from only one thread at a time, so the thread that owns one cannot be a pool thread ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) §Frontend Rendering Threading Model).
 
 **Priority via task ordering, not pool separation:** Visible measures are processed first in each batch by ordering the work queue. The 100ms batching interval already provides the priority mechanism — just order correctly within each batch. A separate priority pool would sit idle while the CPU pool is saturated (or vice versa), waste resources, and introduce priority inversion failure modes.
 
@@ -448,7 +450,7 @@ Pipeline results are cached until local edits change them. The atom-relative geo
 
 Invalidation works hierarchically: musical events trigger measure recalculation, which may trigger system recalculation, which may trigger page recalculation.
 
-**These invalidations are the whole notification channel for the music.** A change to the musical content emits no structural event of any kind — its notification *is* the invalidation sequence this pipeline produces, asynchronously and at whatever granularity the recalculation determines. That is one half of a complete division: changes to the things that *contain* the music — which musicians a piece has, what they play, on how many staves, in which layouts, under what names, and the piece's settings — announce themselves immediately and synchronously with the write, as `:piece-structure-changed`, and never reach this pipeline ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6). Settings are the one input that legitimately travels both ways: a setting like beam thickness or the music font is part of what the piece *is* and also governs how it is *drawn*, so it announces itself structurally *and* invalidates here.
+**These invalidations are the whole notification channel for the music.** A change to the musical content emits no structural event of any kind — its notification *is* the invalidation sequence this pipeline produces, asynchronously and at whatever granularity the recalculation determines. That is one half of a complete division: changes to the things that *contain* the music — which musicians a piece has, what they play, on how many staves, in which layouts, under what names, and the piece's settings — announce themselves immediately and synchronously with the write, as `:piece-structure-changed`, and never reach this pipeline ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6). Settings are the one input that legitimately travels both ways: a setting like beam thickness or the default music font is part of what the piece *is* and also governs how it is *drawn*, so it announces itself structurally *and* invalidates here.
 
 ```mermaid
 flowchart TD
@@ -804,7 +806,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 - **Clojure STM**: Transaction system coordinating multi-stage updates
 - **gRPC Streaming**: Bi-directional communication for real-time invalidation events
 - **SMuFL Font Metadata**: Glyph dimension data essential for spatial requirement calculations
-- **JavaFX Canvas**: Client rendering surface for visual element realisation
+- **JavaFX-composited raster tiles**: Client rendering surface — Skija rasterises the score into fixed-size tiles on the GPU, and JavaFX composites them as ordinary nodes ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md))
 - **Skija Graphics**: High-performance graphics rendering for complex musical elements
 
 ### Performance Characteristics

@@ -93,11 +93,13 @@ The cascade determines which specific glyph from the class is actually rendered:
 
 Each level overrides the one above. Most users never touch this --- the house style default handles everything. Power users and historical-notation specialists control it precisely.
 
+**A selection names a glyph and the font it comes from.** A piece has a default music font, which supplies every glyph no level of the cascade assigns elsewhere, and the user may define deviations for any number of glyphs: all the dynamics from another SMuFL font, say, or a single notehead. A deviation is made at any level of the cascade like a choice of glyph, and the two combine freely --- `:gClef8vbOld` for this piece's G clefs, drawn from a font other than the default. [ADR-0047](0047-Font-Management.md) §The Default Music Font and Glyph Deviations specifies the fonts' side: registration, metrics, and the manifest of every font a piece draws on.
+
 #### Font Availability Filtering
 
-The choices presented to the user are the intersection of the class membership and the active font's glyph inventory. Glyphs defined in the spec but absent from the active font do not appear as choices. No error, no placeholder --- the font's capabilities are respected silently.
+The choices offered from each registered font are the intersection of the class membership and that font's glyph inventory. A glyph a font lacks is not offered from that font; the same glyph from another registered font may be. No error, no placeholder --- each font's capabilities are respected silently.
 
-Available glyphs = (members of SMuFL class `union` `:additional-glyphs`) `intersect` active font's glyph inventory.
+Available glyphs from font *F* = (members of SMuFL class `union` `:additional-glyphs`) `intersect` *F*'s glyph inventory.
 
 ### Two Selection Patterns
 
@@ -344,7 +346,7 @@ SMuFL defines 25 notehead set classes. Partial sets are usable --- the cascade f
 
 **Tier 3 (basic coverage).** Leland, Finale Engraver, Finale Jazz, Finale Legacy, Finale Broadway, and Finale Ash cover the essentials for standard notation but lack specialist glyphs. Users choosing these fonts will see reduced choices in selectors; font availability filtering handles this gracefully.
 
-**Low glyph count is not an error.** When a user switches to Finale Ash (297 glyphs), the glyph selectors shrink to show only what Ash provides. Notation elements whose current glyph selection is not available in the new font fall back through the cascade to the default glyph for their class. If the default glyph is also absent, the element is rendered using a fallback glyph from the same class that the font does provide.
+**Low glyph count is not an error.** When a user makes Finale Ash (297 glyphs) a piece's default music font, the glyph selectors for that font shrink to show only what Ash provides. Notation elements whose current glyph selection is not available in the new font fall back through the cascade to the default glyph for their class. If the default glyph is also absent, the element is rendered using a fallback glyph from the same class that the font does provide.
 
 The 11-font bundle provides five distinct traditional engraved aesthetics (Bravura, Finale Maestro, Leland, Sebastian, Finale Engraver), three handwritten styles (Petaluma, Finale Jazz, Finale Broadway), one scholarly style (Leipzig), and two lower-coverage fonts with distinctive character (Finale Ash, Finale Legacy). Users can also load additional SMuFL fonts through the font management UI ([ADR-0047](0047-Font-Management.md)).
 
@@ -377,7 +379,8 @@ Converting `gClef8vb` to `:g-clef-8vb` would be more idiomatic Clojure but would
 - Users can choose alternative visual styles for any notation element through a uniform mechanism. The same cascade applies to clefs, noteheads, articulations, and all other elements.
 - House styles become meaningful for glyph selection: an organisation can define defaults that all pieces inherit.
 - The glyph selection mechanism is entirely data-driven. Adding support for a new notation element category requires defining its class association and default glyph, not new code.
-- Font availability filtering ensures users only see valid choices. Switching to a low-coverage font never produces errors or missing glyphs --- the UI adapts silently.
+- Font availability filtering ensures users only see valid choices. Choosing a low-coverage font as the default music font never produces errors or missing glyphs --- the UI adapts silently.
+- Glyphs are not tied to one font: any number of them may be drawn from other SMuFL fonts than the piece's default, through the same cascade.
 - Historical notation support (mensural, plainchant, Kievan) is achieved through `:additional-glyphs` without special-casing in the architecture.
 
 **Negative**

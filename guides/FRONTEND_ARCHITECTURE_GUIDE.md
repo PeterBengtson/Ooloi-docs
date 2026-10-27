@@ -30,6 +30,7 @@
 5. [Event Architecture](#5-event-architecture)
 6. [The JAT Boundary](#6-the-jat-boundary)
    - [6.6 Teardown: Why the Application Does Not Drain the Pool](#66-teardown-why-the-application-does-not-drain-the-pool)
+   - [6.7 Rendering and the JAT: Rules for the Score Viewport](#67-rendering-and-the-jat-rules-for-the-score-viewport)
 7. [Rendering Pipeline](#7-rendering-pipeline)
 8. [Fetch Coordination and Viewport Logic](#8-fetch-coordination-and-viewport-logic)
 9. [Localisation Architecture](#9-localisation-architecture)
@@ -57,8 +58,8 @@ The frontend executes those decisions — and execution in this context is serio
 The frontend is a computationally strong system in its own right. It:
 
 * Maintains multi‑layer caches of rendering data.
-* Builds GPU command buffers for complex vector graphics.
-* Performs parallel computation for picture construction and data preparation.
+* Records Skija Pictures from paintlists and rasterises them into tiles on the GPU.
+* Performs parallel computation for Picture recording and data preparation.
 * Transforms UI gestures into granular backend API calls.
 * Manages distributed event streams and collaboration state.
 
@@ -541,7 +542,7 @@ When UI structure is expressed as pure data, most of it can be constructed and i
 JavaFX enforces a single UI thread. By keeping specification pure and deferring all object creation to clearly defined materialisation boundaries — the renderer the UI Manager creates and mounts for content, `show-window!` for lifecycle — the architecture makes the JAT boundary explicit. There is one production bridge (`fx/run-later!`, see Section 6), and it is visible. This clarity prevents accidental blocking, hidden cross‑thread mutation, and subtle race conditions.
 
 **Backend‑authoritative rendering ([ADR‑0038](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)).**
-The backend produces authoritative paintlists. The frontend turns those into GPU pictures. Because UI description and rendering preparation are separated from semantic authority, the frontend can aggressively cache, batch, parallelise, and discard derived state without risking semantic drift. If all frontend state is dropped and reconstructed from backend data, the visible result must be identical. The spec → materialisation model reinforces that guarantee.
+The backend produces authoritative paintlists. The frontend turns those into Pictures and tiles. Because UI description and rendering preparation are separated from semantic authority, the frontend can aggressively cache, batch, parallelise, and discard derived state without risking semantic drift. If all frontend state is dropped and reconstructed from backend data, the visible result must be identical. The spec → materialisation model reinforces that guarantee.
 
 **Plugin compatibility.**
 Plugins operate at the same declarative level as core code. They contribute specs, commands, settings, and UI fragments as data. They do not receive privileged access to mutable widget graphs. This keeps extension boundaries clean. A plugin can describe what it wants; the frontend infrastructure decides how and when that description becomes concrete JavaFX objects. Crucially, because specs are pure data, a backend plugin running in a remote server process can describe a window to the frontend across the wire — the spec is serialised, transmitted, and materialised without the plugin ever importing a JavaFX class. An imperative widget API would make this impossible. The declarative model is therefore not a stylistic choice; it is the structural foundation of Ooloi's plugin architecture.
@@ -652,7 +653,7 @@ cljfx supports functions as `:fx/type` values. Each Ooloi custom component funct
 | Component | Encapsulated layout |
 |-----------|---------------------|
 | `ooloi-button-bar` | Right-aligned HBox with a spacer Region; consistent button padding |
-| `ooloi-layout-pane` | Plain ScrollPane carrying the `"scroll-pane"` base class — the one way to describe a scroll pane in application code. Named for its role, not its control type: this is the Layout window's viewport, the surface that grows zoom, panning and eventually the Skija canvas. Distinct from `ooloi-vscroll-pane`, whose `:fit-to-width` and panel border make it a titled panel that happens to scroll, and which therefore cannot serve a canvas needing horizontal scrolling |
+| `ooloi-layout-pane` | Plain ScrollPane carrying the `"scroll-pane"` base class — the one way to describe a scroll pane in application code. Named for its role, not its control type: this is the Layout window's viewport, carrying zoom and panning while the score itself is not yet drawn. It does not grow into the score viewport, which is not a ScrollPane around content sized to the whole score but a fixed-size region of tiles with its own logical scroll position (§6.7). Distinct from `ooloi-vscroll-pane`, whose `:fit-to-width` and panel border make it a titled panel that happens to scroll, and which therefore cannot serve content needing horizontal scrolling |
 | `ooloi-vscroll-pane` | Optionally titled ScrollPane with a muted border; title style via `TITLE_4`. Guarded when titled: `:text-key` + `:locale`, or `:raw-text` |
 | `ooloi-labelled-field` | HBox label + control; with optional `:description`, label + VBox[control, muted wrapped description] (tri-partite). Control-agnostic; reusable in editors and dialogs. `:error?` is a fact about the field rather than the widget in it — the argument the description already makes — so it is accepted here and passed to the `:control`, which knows how to show it. The label is not restyled: what is wrong is the value, and the label only names the field |
 | `ooloi-range-field` | HBox with label, low/high sub-labels and text fields |
@@ -1124,7 +1125,7 @@ The backend side of this contract — where a change is detected and how it beco
 * **The containers of the music, and how they are configured** — which musicians a piece has, what they play, on how many staves, in which layouts, under what names, and the piece's settings. A change here emits `:piece-structure-changed` for that piece, and the piece window refetches the whole structural snapshot.
 * **The music itself** — pitches, measures, voices, items. A change here emits no structure event at all. Its notification is deferred entirely to the invalidations that come out of the asynchronous formatting pipeline, which name the stale regions of the visual hierarchy — the mechanism §5.3 below traces.
 
-That is the whole division. The structural channel answers *what the piece is*; the pipeline channel answers *what the music looks like*, and neither can express the other's changes. One write can legitimately drive both: a setting such as beam thickness or the music font is part of the piece's configuration *and* changes how the music is drawn, so it travels down both channels — refreshing what the window says about the piece, and separately what the score looks like.
+That is the whole division. The structural channel answers *what the piece is*; the pipeline channel answers *what the music looks like*, and neither can express the other's changes. One write can legitimately drive both: a setting such as beam thickness or the default music font is part of the piece's configuration *and* changes how the music is drawn, so it travels down both channels — refreshing what the window says about the piece, and separately what the score looks like.
 
 A note on vocabulary: "structural" covers more than containment — besides a piece's makeup it covers its configuration. Read it as *everything about a piece that is not the music*.
 
@@ -1148,8 +1149,8 @@ Consider a concrete interaction: the user changes a pitch.
 4. **Frontend reaction.**
    The Rendering Data Manager marks corresponding paintlists invalid and schedules a fetch.
 
-5. **Fetch and repaint.**
-   Fresh paintlists are requested. GPU pictures are regenerated from authoritative data. The viewport repaints.
+5. **Fetch and redraw.**
+   Fresh paintlists are requested. The Pictures and tiles built from the old ones are dropped and rebuilt off the JAT, from authoritative data. The JAT installs the finished tiles on its next pulse.
 
 ```
   Key press ──▶ Command ──▶ Polymorphic API
@@ -1165,12 +1166,13 @@ Consider a concrete interaction: the user changes a pitch.
                     │   FRONTEND                  │
                     │   RDM: mark stale           │
                     │     → fetch paintlists      │
-                    │     → regen GPU pictures    │
-                    │     → repaint (JAT)         │
+                    │     → re-record Pictures    │
+                    │     → rasterise tiles (GPU) │
+                    │     → install tiles (JAT)   │
                     └────────────────────────────┘
 ```
 
-At no point does the frontend attempt to predict engraving side effects. It performs heavy computation — caching, picture generation, parallel batching — but the semantic decision has already been made upstream.
+At no point does the frontend attempt to predict engraving side effects. It performs heavy computation — caching, Picture recording, tile rasterisation, parallel batching — but the semantic decision has already been made upstream.
 
 Because events are explicit and category-based, the same mechanism works when the mutation originates from another collaborator across the network. The frontend does not distinguish between local and remote invalidation. The transport layer changes; the architectural contract does not.
 
@@ -1208,12 +1210,12 @@ The JAT is for materialisation and short-lived UI updates. It is not for computa
 Heavy work runs elsewhere:
 
 * Backend communication (including gRPC calls in collaborative mode).
-* Rendering data preparation and picture construction.
+* Rendering data preparation, Picture recording, and tile rasterisation and readback.
 * Cache management and invalidation bookkeeping.
 * File I/O and persistence.
 * Layout recalculation triggered by backend invalidation.
 
-When invalidation events arrive (Section 5), the frontend may perform substantial parallel processing before repaint. None of that blocks the JAT. Only the final step — attaching new pictures to the scene graph — crosses the boundary.
+When invalidation events arrive (Section 5), the frontend may perform substantial parallel processing before redrawing. None of that blocks the JAT. Only the final step — installing finished tiles in the scene graph — crosses the boundary. §6.7 states the rules for the score viewport in full.
 
 The effect is a UI that remains responsive even while large orchestral scores are being recomputed or streamed from a remote backend.
 
@@ -1237,8 +1239,8 @@ Putting the pieces together:
 2. The intent is converted into a backend API call.
 3. Backend work happens off the UI thread.
 4. Invalidation events are published.
-5. Rendering data is recomputed in worker pools.
-6. `fx/run-later!` schedules the minimal UI update required.
+5. Rendering data is recomputed off the JAT: paintlists fetched, Pictures recorded on the pool, tiles rasterised on the GPU render thread.
+6. `fx/run-later!` hands over the minimal UI update required — for the score, finished tiles to install.
 
 This rhythm — compute off-thread, materialise on-thread — is steady throughout the system.
 
@@ -1310,6 +1312,24 @@ Those releases run on the pool, and the pass does not join them window by window
 
 The rule this rests on — that where in-flight work must survive teardown, the wait belongs with whoever started it, and that a cross-cutting drain is a weaker thing wearing the same clothes — is specified in [ADR-0028 §Teardown](../ADRs/0028-Hierarchical-Rendering-Pipeline.md), together with the reasons a shared-resource wait cannot substitute for the per-owner waits it would replace.
 
+### 6.7 Rendering and the JAT: Rules for the Score Viewport
+
+The score viewport is where the JAT boundary is under the most pressure, because it is where the most work happens. Three requirements govern it, specified in [ADR-0038](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) §Governing Requirements: the GUI never freezes or stutters (R1); score content scrolls at an even 30 fps (R2); and JavaFX UI may overlap the score freely (R3). What follows is what they mean for anyone writing frontend code near the score.
+
+**The JAT does four things per pulse, and nothing else.** It moves the tile `Group` by one translate, applying the current scroll position. It installs tiles that have finished. It shows a low-resolution tile or a placeholder wherever a tile is not ready. And it handles input, forwarding intent — scroll, zoom, selection — to the tile scheduler. Its work per pulse is bounded by the number of visible tiles.
+
+**Nothing that renders runs on the JAT.** It never records a Skija Picture, never rasterises, never reads pixels back from the GPU, never touches a GPU context, never waits on another thread, a network call or a lock, and never does work proportional to the size of the score. Pictures are recorded on the shared Claypoole pool; tiles are rasterised and read back on a dedicated GPU render thread, which owns its GPU context because a context may be used from only one thread at a time; finished tiles reach the JAT through a single `fx/run-later!`.
+
+**The score is not a ScrollPane.** A `ScrollPane` would route every scroll change through layout on the JAT and imply a content node hundreds of pages tall. The viewport is a fixed-size region holding the tile `Group`, with scrollbars bound to a logical scroll position the viewport holds; the scrollbars and the `AnimationTimer` that applies the scroll drive the same position.
+
+**cljfx owns the container, never the tiles.** The tile `Group` carries no CSS classes and no managed layout, and the cljfx renderer never diffs it. Tile nodes come from a fixed pool and are recycled; nothing creates or destroys them while scrolling. Code that reaches into the tile `Group` through a spec is a mistake, whatever it is trying to do.
+
+**A tile is shown only if what it was drawn from is still current.** Each tile records the paintlists it was built from, and the JAT installs it only if each is still, by `identical?`, the one the Rendering Data Manager holds. Paintlists are immutable values, so the value is its own version and no counter exists. A tile already on screen stays there until its replacement is installed.
+
+**Overlapping UI goes above the tile Group.** Palettes, rulers, in-window notifications and drag feedback are ordinary JavaFX nodes placed above the tiles in the scene graph, and JavaFX composites them over the score (R3). They consume their own input before it reaches the score. Placeholders and regions without a paintlist are inert: a click there selects nothing.
+
+**Small notation previews** — an engraving parameter in a settings window, a font in the font chooser — use the same drawing code as the score on a Skija CPU raster surface, render on a worker thread, and arrive by `fx/run-later!` as a JavaFX `Image`. They need no GPU context, so they work even where GPU initialisation has failed (ADR-0038 §Small Notation Previews).
+
 ---
 
 ## 7. Rendering Pipeline
@@ -1318,7 +1338,7 @@ Rendering is where Ooloi’s frontend does some of its heaviest work.
 
 The backend decides what the score *is*. The frontend decides how to turn that decision into pixels — efficiently, incrementally, and at scale.
 
-The rendering pipeline is therefore not decorative. It is a disciplined transformation layer that converts authoritative structural descriptions into GPU-ready pictures.
+The rendering pipeline is therefore not decorative. It is a disciplined transformation layer that converts authoritative structural descriptions into tiles rasterised on the GPU.
 
 ### 7.1 Backend Paintlist Authority
 
@@ -1343,58 +1363,62 @@ This separation is crucial: engraving logic lives in one place only.
 
 Between paintlists and the screen sits the **Rendering Data Manager (RDM)**.
 
-The RDM has one responsibility: manage derived rendering state.
+The RDM has one responsibility: hold the backend's paintlists and know which of them are current.
 
 It:
 
+* Stores paintlists by VPD, at the page, system, staff and measure levels.
 * Tracks which VPD regions are valid or stale.
-* Maintains caches of paintlists and GPU pictures.
-* Coordinates background recomputation.
-* Schedules minimal UI updates.
+* Is a pure data cache: its atoms are updated off the JAT, and nothing about it requires the JAT.
 
-When invalidation events arrive (Section 5), the RDM does not immediately redraw everything. It marks affected regions stale and determines what needs to be fetched or regenerated.
+It holds no Pictures and no tiles. Those belong to the rendering layer, which derives them from the RDM's paintlists.
+
+When invalidation events arrive (Section 5), nothing is redrawn at once. The affected regions are marked stale, and what needs to be fetched or rebuilt is decided by viewport priority.
 
 This is where parallelism becomes practical. Large orchestral scores can be split into regions. Only what is visible — or about to become visible — is prioritised. Work is batched and scheduled off the JAT.
 
-The RDM is computationally intense but semantically humble. It derives everything from backend authority.
+The RDM is semantically humble: everything it holds comes from backend authority.
 
-### 7.3 Two-Level Cache
+### 7.3 Three-Level Cache
 
-Rendering uses two distinct cache layers:
+Rendering uses three distinct cache layers ([ADR-0038](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) §Three-Level Cache Architecture):
 
 1. **Paintlists (authoritative input)**
-   Cached as structured drawing instructions received from the backend.
+   Cached in the Rendering Data Manager as structured drawing instructions received from the backend.
 
-2. **GPU pictures (derived output)**
-   Cached as Skia/JavaFX picture objects ready for fast redraw.
+2. **Pictures (derived)**
+   Skija Pictures recorded from paintlists, one per system or measure. A Picture is a recording of canvas calls: replaying it re-issues the drawing, which is far cheaper than re-walking a paintlist, but it is not pixels.
+
+3. **Tiles (derived)**
+   Fixed-size squares of the page, rasterised on the GPU from the Pictures that intersect them and composited by JavaFX. These are the pixels.
 
 The distinction matters.
 
-Paintlists represent engraving decisions. GPU pictures represent a performance optimisation.
+Paintlists represent engraving decisions. Pictures and tiles represent performance optimisations.
 
-If GPU pictures are discarded, they can be regenerated from paintlists. If paintlists are invalidated, they are refetched from the backend. At no point does the frontend invent structural data.
+If tiles are discarded, they can be rasterised again from Pictures; if Pictures are discarded, they can be recorded again from paintlists. If paintlists are invalidated, they are refetched from the backend. At no point does the frontend invent structural data.
 
 This layered caching enables:
 
-* Fast scrolling
-* Zoom-level independence
-* Incremental redraw
-* Memory proportional to viewport, not score size
+* Fast scrolling: tiles already on screen are composited, not redrawn
+* Zoom-level independence: a zoom change needs new tiles, not new Pictures or new paintlists
+* Incremental redraw: only tiles newly exposed or invalidated are rasterised
+* Memory for the derived layers proportional to the viewport, not the score
 
-The frontend may hold large caches, but every layer is derived and therefore disposable.
+The frontend may hold large caches, but every layer below the paintlists is derived and therefore disposable.
 
 ```
-                    Rendering Data Manager
-  ┌─────────┐   ┌─────────────┐   ┌─────────────┐   ┌──────────┐
-  │         │   │ Paintlists  │   │     GPU     │   │          │
-  │ Backend │──▶│  (cache 1)  │──▶│   Pictures  │──▶│ Viewport │
-  │         │   │             │   │  (cache 2)  │   │          │
-  └─────────┘   └──────┬──────┘   └──────┬──────┘   └──────────┘
-                       │                 │
-                  authoritative      derived,
-                  refetch from       disposable,
-                  backend if         regenerate
-                  invalidated        from cache 1
+           Rendering Data Manager
+  ┌─────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌──────────┐
+  │         │   │ Paintlists  │   │  Pictures   │   │    Tiles    │   │          │
+  │ Backend │──▶│  (level 1)  │──▶│  (level 2)  │──▶│  (level 3)  │──▶│ Viewport │
+  │         │   │             │   │             │   │             │   │          │
+  └─────────┘   └──────┬──────┘   └──────┬──────┘   └──────┬──────┘   └──────────┘
+                       │                 │                 │
+                  authoritative      derived,          derived,
+                  refetch from       disposable,       disposable,
+                  backend if         re-record         re-rasterise
+                  invalidated        from level 1      from level 2
 ```
 
 ### 7.4 The Litmus Test
@@ -1405,9 +1429,9 @@ A simple test governs the rendering pipeline:
 
 This is not theoretical. It is a practical invariant.
 
-Because paintlists are authoritative and GPU pictures are derived, the frontend can:
+Because paintlists are authoritative and Pictures and tiles are derived, the frontend can:
 
-* Drop caches aggressively under memory pressure.
+* Drop Pictures and tiles aggressively under memory pressure.
 * Switch transport modes (local ↔ remote) without reinterpretation.
 * Reconstruct state after collaboration merges.
 
@@ -1458,6 +1482,8 @@ Instead, it maintains a prioritised queue driven by viewport relevance:
 
 When the user scrolls, zooms, or jumps to another location, priority shifts accordingly.
 
+Fetching also runs coarse to fine. For a region entering view, the dimensions of its pages and systems are requested before their contents: backend calls return them without anything inside, they are small and fast, and they are cached locally. So even a fling gives every page it passes its final shape almost at once. The viewport never waits for any of this: a region shows a placeholder in the same pulse it scrolls into view, takes its systems' real rectangles when the dimensions arrive, and is replaced in place by real content when that is ready ([ADR-0038](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) §Progressive Refinement). Because placeholders use real dimensions, nothing on the page moves when content lands.
+
 This design ensures that:
 
 * Visible content is always prepared first.
@@ -1468,15 +1494,15 @@ The backend may be capable of describing the entire score at once. The frontend 
 
 ### 8.3 Viewport-Proportional Memory
 
-Memory usage scales with the viewport, not with total score size.
+The derived caches scale with the viewport, not with total score size. Paintlists scale with what has been viewed.
 
 This principle has practical consequences:
 
-* GPU pictures for off-screen regions can be evicted.
-* Paintlists for distant regions can be dropped or deprioritised.
-* Re-fetching is cheaper than retaining everything indefinitely.
+* Pictures and tiles for off-screen regions can be evicted.
+* Paintlists are not evicted for memory pressure. They accumulate as the user moves through the score, up to the whole piece, and stay valid until an invalidation names them. They go when the user closes the piece or layout that holds them.
+* Distant regions are fetched at low priority, or only when the user navigates there.
 
-Because all rendering state is derived (Section 7), eviction is safe. The frontend can always reconstruct what it needs from backend authority.
+Because Pictures and tiles are derived (Section 7), evicting them is safe: the frontend can always rebuild them from the paintlists it holds, and refetch paintlists from backend authority.
 
 The combination of VPD-based addressing and viewport-driven prioritisation means that even extremely large scores behave like local, bounded scenes.
 
@@ -1488,9 +1514,9 @@ The frontend reacts by:
 
 * Determining which VPD regions are newly visible.
 * Scheduling fetches for missing paintlists.
-* Regenerating GPU pictures at the appropriate scale.
+* Rasterising tiles at the appropriate scale.
 
-Zoom independence is particularly important. A zoom change may require regeneration of GPU pictures (because scale affects picture resolution), but it does not require semantic recomputation in the backend. The two concerns remain separate.
+Zoom independence is particularly important. A Picture is a recording of drawing and has no resolution of its own, so a zoom change needs new tiles but neither new Pictures nor new paintlists, and certainly no semantic recomputation in the backend. Until sharp tiles at the new scale are ready, a low-resolution tile level is shown scaled. The two concerns remain separate.
 
 This reinforces a recurring architectural theme:
 
@@ -2393,7 +2419,7 @@ This is the anchor that makes everything else possible.
 
 The frontend is the execution layer at the end of the decision pipeline.
 
-It performs heavy computation: caching, picture construction, viewport coordination, GPU submission, parallel preparation. None of that grants semantic authority. Rendering is always a transformation of authoritative paintlists ([ADR‑0038](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)).
+It performs heavy computation: caching, Picture recording, tile rasterisation on the GPU, viewport coordination, parallel preparation. None of that grants semantic authority. Rendering is always a transformation of authoritative paintlists ([ADR‑0038](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)).
 
 The frontend may be computationally strong. It remains structurally subordinate to backend semantics.
 
@@ -2411,7 +2437,7 @@ All JavaFX object creation and mutation occur on the JavaFX Application Thread.
 
 Heavy computation does not.
 
-The bridge between background work and UI materialisation is explicit (`fx/run-later!`). Because the boundary is visible, threading remains predictable. Rendering preparation, backend communication, and cache management happen off-thread. Materialisation happens deliberately.
+The bridge between background work and UI materialisation is explicit (`fx/run-later!`). Because the boundary is visible, threading remains predictable. Rendering preparation, backend communication, and cache management happen off-thread; for the score, nothing that renders runs on the JAT at all, which only installs finished tiles (§6.7). Materialisation happens deliberately.
 
 Responsiveness emerges from that discipline.
 
@@ -2449,9 +2475,9 @@ The declarative layer remains inspectable. The imperative layer remains containe
 
 All frontend caches are derived.
 
-Paintlists are authoritative input. GPU pictures are derived output. Viewport-specific state is derived perspective.
+Paintlists are authoritative input. Pictures and tiles are derived output. Viewport-specific state is derived perspective.
 
-Because nothing in the frontend is the origin of musical truth, caches can be evicted, recomputed, and reprioritised safely. Memory scales with viewport rather than score size. Collaboration does not require reinterpretation.
+Because nothing in the frontend is the origin of musical truth, caches can be evicted, recomputed, and reprioritised safely. The derived caches scale with the viewport rather than the score. Collaboration does not require reinterpretation.
 
 Derived state can always be discarded and rebuilt without loss.
 
@@ -2479,7 +2505,9 @@ The reason is architectural, not cosmetic. UI specifications are pure data that 
 
 AtlantaFX follows the GitHub Primer semantic colour model. Tokens describe purpose, not appearance: `-color-fg-muted` is "de-emphasised foreground text," not "medium grey." The same token resolves to different concrete values in dark and light mode automatically.
 
-Two narrow exceptions exist: pre-theme rendering (the splash screen, which displays before any AtlantaFX stylesheet is loaded) and theme-aware transparency overlays whose blending cannot be expressed as a single semantic token. Both are documented explicitly and not imitable by general UI code.
+Within JavaFX UI, two narrow exceptions exist: pre-theme rendering (the splash screen, which displays before any AtlantaFX stylesheet is loaded) and theme-aware transparency overlays whose blending cannot be expressed as a single semantic token. Both are documented explicitly and not imitable by general UI code.
+
+**The rule governs JavaFX UI, and stops at the Skija surfaces.** Score pages, notation previews and print output are drawn by Skija and are outside the theme system: they may use any colour, whether the score's own or one the user chooses. JavaFX UI laid over the score is still JavaFX UI and follows the rule. See [ADR‑0042](../ADRs/0042-UI-Specification-Format.md) §Theme-Independent Styling.
 
 ### 13.10 Renderer Spec Is the Locale-Reactivity Boundary
 

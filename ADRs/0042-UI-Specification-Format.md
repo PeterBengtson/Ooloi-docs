@@ -1337,6 +1337,8 @@ All UI styling in Ooloi must work identically in dark and light mode without cod
 
 **Why this matters for plugins:** UI specifications are pure data (maps) that cross boundaries — a backend plugin sends a cljfx spec over gRPC, and the frontend renders it. If a plugin hardcodes `#888888` for muted text, it breaks in one theme. If it uses `"text-muted"` as a style class, it works in every theme the frontend supports. Theme independence is not cosmetic — it is a serialization and interoperability requirement.
 
+**The theme governs JavaFX UI, and stops at the Skija surfaces.** Score pages, notation previews and print output are drawn by Skija ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)) and are outside the theme system: they may use any colour, whether the score's own, carried in its paintlists, or one the user chooses. Nothing in this section constrains them. JavaFX UI laid over a score — palettes, rulers, notifications — is still JavaFX UI, and follows the rule in full. Frontend source remains under the grep invariant test below, so a colour literal that Skija-side code does carry, such as a placeholder texture's, is marked `;; colour-literal-allowed:` with its reason like any other.
+
 #### Two Levels of Styling
 
 **Level 1 — Style Classes (preferred).** AtlantaFX's [`Styles`](https://mkpaz.github.io/atlantafx/apidocs/atlantafx.base/atlantafx/base/theme/Styles.html) class provides named string constants for typography, severity, elevation, borders, and interactive states. These map to CSS classes that AtlantaFX themes define. Use style classes whenever possible.
@@ -1785,11 +1787,13 @@ Tile-based editors (instrument library, staff editor) use `styles/selected-style
 
 #### Documented Exceptions
 
-Two narrow cases permit literal colour values. Every occurrence must carry a `;; colour-literal-allowed: <reason>` comment — the grep invariant test enforces both the comment and its non-empty reason.
+Three cases permit literal colour values in frontend source. Every occurrence must carry a `;; colour-literal-allowed: <reason>` comment — the grep invariant test enforces both the comment and its non-empty reason.
 
 1. **Pre-theme rendering (splash screen).** The splash renders before AtlantaFX themes are loaded. It uses hardcoded CSS strings for branding colours that are constant regardless of theme: `:style "-fx-background-color: #1a1a2e;"` for the background, `:style "-fx-text-fill: white; ..."` for the progress label, and `:color "#000000cc"` for the drop shadow effect. These are cljfx spec properties, not Java API calls — but the colour values themselves are intentionally non-adaptive.
 
 2. **Theme-aware transparency overlays.** The About window's translucent background implements both light and dark appearances directly using `rgba()` values that are chosen per-theme at construction time. This is legitimate because transparency blending over arbitrary content cannot be expressed as a single semantic token — the overlay must know the target luminance. The theme-branching logic lives in the shared `overlay-style` helper in `ui_manager.clj`; `about.clj` calls the helper rather than duplicating the literals. A custom `-color-scrim-*` semantic token could be introduced if a photographic scrim state becomes needed elsewhere, but currently adds indirection without semantic value.
+
+3. **Skija surfaces.** Colours drawn by Skija — on score pages, notation previews and print output — are outside the theme system (§Theme-Independent Styling). Most arrive as data, in paintlists or from the user, and appear in no source file; a literal that Skija-side code does carry is marked like the two cases above.
 
 #### Font Handling
 

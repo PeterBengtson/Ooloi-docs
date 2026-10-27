@@ -254,7 +254,7 @@ The two prefix glyphs are applied through the generic `:window/title-decorators`
 
 ### 6. Piece Settings: the Piece Preferences window
 
-Each piece carries its own settings — the configuration that travels with the piece: accidental behaviour, staff spacing, the music font, notehead mappings, and the rest. These are **piece settings** ([ADR-0016](0016-Settings.md)): declared with `defsetting` in *shared* code, so their declarations — default, validator, category — are available to backend and frontend alike, while their **values** are held in the piece's STM-managed state and, because the frontend reads no piece data directly ([ADR-0040](0040-Single-Authority-State-Model.md)), are reached only through the polymorphic API over gRPC. The distinction matters: what a setting *is* is shared knowledge; what a particular piece has it *set to* is the backend's alone. Piece settings live on the Piece, so their VPD is always `[]`:
+Each piece carries its own settings — the configuration that travels with the piece: accidental behaviour, staff spacing, the default music font and any glyphs drawn from other fonts, notehead mappings, and the rest. These are **piece settings** ([ADR-0016](0016-Settings.md)): declared with `defsetting` in *shared* code, so their declarations — default, validator, category — are available to backend and frontend alike, while their **values** are held in the piece's STM-managed state and, because the frontend reads no piece data directly ([ADR-0040](0040-Single-Authority-State-Model.md)), are reached only through the polymorphic API over gRPC. The distinction matters: what a setting *is* is shared knowledge; what a particular piece has it *set to* is the backend's alone. Piece settings live on the Piece, so their VPD is always `[]`:
 
 ```clojure
 (SRV/get-keyless-accidentals [] piece-id)
@@ -280,7 +280,7 @@ The window also remembers how it was arranged — which of its tiles are open, a
 Two independent event flows keep the windows and the score correct, and their separation is deliberate:
 
 - Because `:settings` is a **structural** slot of the Piece, a setting write emits **`:piece-structure-changed`** exactly as a rename does ([ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a), and every window subscribed to that piece refetches the structural snapshot the values ride in. **One event serves every consumer of a setting's value.** The Piece Window's numeral labels ([ADR-0054](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md) §6) and the Preferences window's own controls read the same projected entries, so neither can display a value the other has already been told has changed. It is also what makes two Preferences windows on two clients agree: a collaborator's write reaches both through a refetch each already performs, with nothing added for the purpose. This event never triggers paintlist fetching.
-- The **visual consequence** of a setting change travels separately, as ordinary cache-invalidation. Having changed the setting, the backend issues the invalidations the change entails, and those flow through the normal Fetch Coordinator pipeline ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md), [ADR-0031](0031-Frontend-Event-Driven-Architecture.md)): changing the music font invalidates the whole piece and the score is recomputed, while changing one notehead mapping invalidates only the affected noteheads. The granularity is the backend's decision, carried as identifiers of what is stale, not as a delta ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)).
+- The **visual consequence** of a setting change travels separately, as ordinary cache-invalidation. Having changed the setting, the backend issues the invalidations the change entails, and those flow through the normal Fetch Coordinator pipeline ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md), [ADR-0031](0031-Frontend-Event-Driven-Architecture.md)): changing the default music font invalidates the whole piece and the score is recomputed, while drawing one notehead from another font, or changing one notehead mapping, invalidates only the affected noteheads. The granularity is the backend's decision, carried as identifiers of what is stale, not as a delta ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)).
 
 The structure event refreshes what a window says the *piece is*; the invalidation events refresh the *score*. Neither does the other's work.
 
@@ -353,7 +353,7 @@ sequenceDiagram
 
 ### A settings change: two channels, for the piece and for the score
 
-Changing the music font in the Piece Preferences window refreshes every window subscribed to that piece over one channel — the Preferences window included, watching the piece window's refetched state — and recomputes the score over a second, entirely separate one.
+Changing the default music font in the Piece Preferences window refreshes every window subscribed to that piece over one channel — the Preferences window included, watching the piece window's refetched state — and recomputes the score over a second, entirely separate one.
 
 ```mermaid
 sequenceDiagram
@@ -366,7 +366,7 @@ sequenceDiagram
     participant FC as Fetch Coordinator
     participant SC as Score view
 
-    U->>PP: change the music font
+    U->>PP: change the default music font
     PP->>SRV: SRV/set-music-font [] piece-id value
     SRV->>BE: ExecuteMethod
     Note over BE: STM — :settings is a structural slot,<br/>so the write announces itself
@@ -385,7 +385,7 @@ sequenceDiagram
         SRV->>BE: ExecuteMethod
         BE-->>SRV: paintlists
         SRV-->>FC: paintlists
-        FC->>SC: repaint
+        FC->>SC: new paintlists — Pictures and tiles rebuilt off the JAT (ADR-0038)
     end
 ```
 

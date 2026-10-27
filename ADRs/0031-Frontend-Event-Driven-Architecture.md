@@ -4,6 +4,8 @@
 
 Implemented
 
+The rendering-layer material — what becomes of a fetched paintlist once it is in the Rendering Data Manager, and the fetching of page and system dimensions before their contents — is an addition specified with [ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md), and is not yet implemented.
+
 ## Table of Contents
 
 - [Context](#context)
@@ -48,7 +50,7 @@ The frontend must handle two fundamentally different event sources with incompat
 - **Origin:** JavaFX event system, UI interactions, application state changes
 - **Timing:** Synchronous, immediate, deterministic
 - **Scope:** Local to the frontend process
-- **Examples:** Mouse clicks, keyboard input, canvas repaints, window focus, drag operations, timer events
+- **Examples:** Mouse clicks, keyboard input, animation pulses, window focus, drag operations, timer events
 - **Error mode:** Local exceptions, handled immediately
 
 ### Backend Events (via gRPC)
@@ -445,7 +447,7 @@ UI Manager event handlers execute on Claypoole future threads (background), not 
 - **Background-safe work** (atom updates, stale marking, queueing fetches) — executes directly on the Claypoole thread. No `fx/run-later!` needed.
 - **Scene graph mutations** (theme application, notification display, cursor overlay updates) — dispatched to the JAT via `fx/run-later!`.
 
-This separation is critical: the Rendering Data Manager is a pure data cache (atoms) and does not require JAT affinity. Only the subsequent scene graph repaint uses `fx/run-later!`.
+This separation is critical: the Rendering Data Manager is a pure data cache (atoms) and does not require JAT affinity. Nothing that renders runs on the JAT either: Pictures and tiles are produced off it, and the JAT only installs finished tiles ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) §Frontend Rendering Threading Model).
 
 Integrant component (`:ooloi.frontend.components/event-bus`), depending only on the thread pool. The UI Manager and Event Router both receive it as an Integrant dependency.
 
@@ -472,10 +474,10 @@ Integrant component (`:ooloi.frontend.components/event-bus`), depending only on 
 - Paintlists support both semantic elements (font glyphs, computed musical curves) and user-edited graphics (arbitrary bezier paths with control points, detached from musical semantics)
 - Paintlists include spatial information: bounding boxes for glyphs, paths for curves (enables hit-testing)
 - Tracks staleness at each hierarchy level (implementation may use explicit flags, sentinel values like nil, or data presence/absence)
-- Paintlists converted to JavaFX/Skija-efficient representations for rendering
+- Holds paintlists only: the rendering layer records them into Skija Pictures and rasterises those into tiles ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) §Three-Level Cache Architecture)
 - Handles lookup via VPD, invalidation at any hierarchy level
 - Not an Integrant component - data structure with operations
-- Complete rendering cache stored locally - no eviction
+- Complete rendering cache stored locally - no eviction for memory pressure; a piece's or layout's paintlists go when the user closes it
 - Structure specified in ADR-0022
 
 #### 4. Fetch Coordinator
@@ -487,7 +489,8 @@ Integrant component (`:ooloi.frontend.components/event-bus`), depending only on 
   - High: Viewport + missing (visible demand loads - placeholders showing)
   - Normal: Prefetch (scrolling toward, buffered viewport)
   - Low: Background (opportunistic)
-- When fetch completes, updates Rendering Data Manager on background thread, then schedules scene graph repaint via `fx/run-later!`
+- Coarse to fine: for a region entering view, the dimensions of its pages and systems are requested before their contents. Dimensions come from backend calls that return them without contents; they are small, fast to fetch, and cached locally, so a fast scroll gives each page its final shape almost at once ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) §Progressive Refinement)
+- When fetch completes, updates Rendering Data Manager on background thread, and the new paintlist is made known to the tile scheduler, off the JAT (ADR-0038)
 - Fetching is pull-based: Client requests specific hierarchy level when needed
 - Backend returns complete paintlist data for requested level
 - Shared Claypoole pool (max 4 concurrent fetches) services queues, CRITICAL drains before others
@@ -503,10 +506,10 @@ Components that react to events via frontend event bus subscriptions mediated by
 The UI Manager subscribes to the categories whose reactions it mediates, and dispatches to these subsystems. It is not a wildcard subscriber, and it is not the only one: windows take their own local subscriptions through `:window/subscriptions` (ADR-0042), `undo-redo` subscribes to `:backend` for its own cache, and the `notify-all-events!` development aid subscribes to every category at once. What the mediation rule means is narrower — a *rendering* subsystem (Rendering Data Manager, Fetch Coordinator, playback, presence) does not subscribe on its own behalf; the UI Manager receives and dispatches to it.
 
 #### 6. JavaFX Scene
-- Render pass checks data staleness at hierarchy elements (detects whether paintlist is current or needs refetch)
+- Hosts the score as published tiles and placeholders; Skija rendering is not performed by the Scene. Pictures are recorded and tiles rasterised off the JAT, and the JAT only installs finished tiles, once per pulse ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) §Frontend Rendering Threading Model)
 - Standard JavaFX event handlers for user input (clicks, drags, keyboard)
-- Hit-testing: Spatial queries on visible paintlists (bounding box intersection for glyphs, path proximity for curves) return paintlist VPDs. Uses timewalk (ADR-0014) to resolve VPDs to musical elements. Enables all graphical interactions: selection, editing, dragging, deletion.
-- Skija rendering from local paintlist data (glyphs and curves)
+- Hit-testing: Spatial queries on visible paintlists (bounding box intersection for glyphs, path proximity for curves) return paintlist VPDs. Uses timewalk (ADR-0014) to resolve VPDs to musical elements. Enables all graphical interactions: selection, editing, dragging, deletion. Placeholders and regions without a Level 1 paintlist are inert: hit-testing ignores them, whatever is drawn there
+- JavaFX UI — palettes, rulers, notifications, drag feedback — may sit above the tiles and consumes its own input before it reaches the score
 - No knowledge of backend event routing
 - Pattern specified in ADR-0022
 
@@ -593,8 +596,12 @@ graph TB
         NOTIFY[Notification Manager<br/>toasts, banners]
     end
 
+    subgraph "Rendering Layer (off the JAT)"
+        TS[Tile Scheduler<br/>Picture recording on the pool<br/>GPU render thread: tiles]
+    end
+
     subgraph "JavaFX Application Thread"
-        SCENE[JavaFX Scene<br/>Skija rendering<br/>Hit-testing<br/>User interactions]
+        SCENE[JavaFX Scene<br/>Tiles and placeholders<br/>Hit-testing<br/>User interactions]
     end
 
     gRPC -->|events| ER
@@ -612,8 +619,11 @@ graph TB
     gRPC -->|paintlist data| FC
     FC -->|update data<br/>background thread| RDM
 
-    RDM -->|paintlist lookup| SCENE
-    SCENE -->|demand load| FC
+    RDM -->|paintlists| TS
+    TS -->|missing regions| FC
+    TS -->|finished tiles<br/>fx/run-later!| SCENE
+    SCENE -->|scroll and zoom intent| TS
+    RDM -->|paintlist lookup<br/>hit-testing| SCENE
     SCENE -->|user gestures| gRPC
 
     style ER fill:#cce5ff,stroke:#0066cc,stroke-width:2px,color:#000
@@ -622,6 +632,7 @@ graph TB
     style UM fill:#d4edda,stroke:#28a745,stroke-width:2px,color:#000
     style RDM fill:#ffe6cc,stroke:#cc6600,stroke-width:2px,color:#000
     style FC fill:#ffe6cc,stroke:#cc6600,stroke-width:2px,color:#000
+    style TS fill:#ffe6cc,stroke:#cc6600,stroke-width:2px,color:#000
     style SCENE fill:#e6e6e6,stroke:#666,stroke-width:2px,color:#000
 ```
 
@@ -638,6 +649,8 @@ sequenceDiagram
     participant RDM as Rendering<br/>Data Manager
     participant FC as Fetch<br/>Coordinator
     participant BG as Background<br/>Thread
+    participant TS as Tile<br/>Scheduler
+    participant RT as GPU Render<br/>Thread
     participant JAT as JavaFX<br/>App Thread
 
     U2->>BE: Edit measure 47
@@ -654,10 +667,14 @@ sequenceDiagram
     BG->>BE: gRPC: fetch-measure-view(VPD)
     BE->>BG: Paintlist data (glyphs + curves)
     BG->>RDM: Update paintlist at VPD
-    BG->>JAT: fx/run-later!
-    JAT->>JAT: Invalidate Picture, trigger repaint
+    BG->>TS: New paintlist (off the JAT)
+    TS->>TS: Drop Pictures and tiles built from the old one
+    TS->>RT: Queue affected tiles (Pictures re-recorded on the pool)
+    RT->>RT: Rasterise, flush, read back
+    RT->>JAT: fx/run-later! finished tiles
+    JAT->>JAT: Next pulse: publish tiles whose paintlists are current
 
-    Note over U2,JAT: Total latency: 86-157ms<br/>(batch 50-100ms + fetch 20-40ms + render 16ms)
+    Note over U2,JAT: Total latency: 86-157ms<br/>(batch 50-100ms + fetch 20-40ms + tile production and publication ~16ms, a hypothesis for the ADR-0038 harness)
 ```
 
 #### State Diagram: Paintlist Lifecycle
@@ -869,7 +886,7 @@ write announces *that the piece changed*; what it looks like afterwards is not c
 announcement. Any repaint the change entails travels independently as `:piece-invalidation` (→
 `:cache-invalidation`) and reaches the Fetch Coordinator by the ordinary route. The structural
 announcement itself **never triggers paintlist fetching**, and the two must never be conflated: a
-music-font change and a musician rename produce the same structural event and entirely different
+change of default music font and a musician rename produce the same structural event and entirely different
 invalidations.
 
 ---
@@ -1063,7 +1080,7 @@ are in [§Event Type Taxonomy](#event-type-taxonomy); end-to-end walkthroughs ar
 | Event | Consumer | Reaction |
 |---|---|---|
 | `:piece-structure-changed` · `:piece-dirty-changed` | that piece's **window** | refetch the structural projection, apply latest-wins, re-render the panes, recompose the title |
-| `:piece-invalidation` | **Fetch Coordinator**, via the Rendering Data Manager | mark the named VPDs stale, fetch fresh paintlists by viewport priority, invalidate Pictures, repaint |
+| `:piece-invalidation` | **Fetch Coordinator**, via the Rendering Data Manager | mark the named VPDs stale, fetch fresh paintlists by viewport priority; the rendering layer rebuilds the affected Pictures and tiles off the JAT, and the JAT publishes them |
 | `:piece-collaboration-*` | **presence overlay** | move avatars, collaborative cursors and selection highlights over already-rendered content |
 | `:piece-playback-*` | **playback controller** | move the timeline cursor, highlight active measures, update transport controls |
 | `:piece-validation-error` · `:piece-operation-failed` | **notification manager** | localise through `tr`, raise a toast or banner |
@@ -1088,34 +1105,34 @@ the JAT.
 #### Example 1: Collaborative Edit (Measure-Level Change)
 
 1. Another user edits measure 47
-2. Backend broadcasts `:piece-invalidation` event with `:piece-id` "symphony-123", `:vpd` [:layouts 0 :page-views 2 :staff-views 0 :measure-views 47]
+2. Backend sends a `:piece-invalidation` event to the clients subscribed to the piece, with `:piece-id` "symphony-123", `:vpd` [:layouts 0 :page-views 2 :system-views 1 :staff-views 0 :measure-views 47]
 3. Event Router receives via gRPC stream
-4. Derives category `:cache-invalidation` from event type
-5. Routes to category aggregator for :cache-invalidation
-6. Aggregator batches for 50-100ms
-7. Window expires → flush batch → `eb/publish!` to frontend event bus
-8. UI Manager's `:cache-invalidation` handler marks MeasureView at VPD as stale in Rendering Data Manager
-9. Fetch Coordinator receives request, checks viewport
-10. Measure 47 is visible → CRITICAL priority fetch (stale data visible to user)
-11. Background thread makes gRPC API call for MeasureView paintlist at that VPD
-12. Fetch completes → updates rendering data on background thread
-13. `fx/run-later!` invalidates Picture, triggers canvas region repaint
-14. JavaFX repaint event renders with new data via Skija
+4. The `:piece-` prefix routes it per-piece, to that piece's invalidation queue (§Per-Piece Event Routing)
+5. The queue coalesces for 50-100ms
+6. Window expires → flush batch → its consumer
+7. The UI Manager marks the MeasureView at VPD as stale in the Rendering Data Manager and queues a fetch
+8. Fetch Coordinator receives request, checks viewport
+9. Measure 47 is visible → CRITICAL priority fetch (stale data visible to user)
+10. Background thread makes gRPC API call for MeasureView paintlist at that VPD
+11. Fetch completes → updates rendering data on background thread; the tile scheduler learns of it, off the JAT
+12. The Pictures and tiles built from the old paintlist are dropped; Pictures are re-recorded on the pool, and the GPU render thread rasterises and reads back the affected tiles
+13. `fx/run-later!` hands the finished tiles to the JAT
+14. On its next pulse the JAT publishes each tile whose paintlists are still current; until then the previous tiles stay on screen
 
-**Latency:** ~86-157ms (batch 50-100ms + fetch 20-40ms + render 16ms)
+**Latency:** ~86-157ms (batch 50-100ms + fetch 20-40ms + tile production and publication ~16ms, a hypothesis for the ADR-0038 harness)
 
 #### Example 2: User Scrolls Viewport (Demand Loading)
 
 1. User scrolls (native JavaFX scroll event on JAT)
-2. Viewport Manager updates visible region
-3. Checks rendering data for newly-visible hierarchy elements
-4. Finds MeasureViews 50-55 not loaded (stale or missing)
-5. Fetch Coordinator queues HIGH priority requests for those MeasureView paintlists (visible placeholders)
-6. Renders placeholders while fetching
-7. Background threads make gRPC API calls for each MeasureView paintlist
+2. In the same pulse the JAT moves the tiles and shows the best representation available for each region now in view — a tile, a low-resolution tile, or a placeholder
+3. The tile scheduler determines the newly visible regions and checks rendering data for them
+4. Finds the page holding MeasureViews 50-55 not loaded, and its dimensions not cached
+5. Fetch Coordinator queues HIGH priority requests: that page's and its systems' dimensions first, then their paintlists
+6. Dimensions arrive → placeholders take each system's real rectangle, so the page has its final shape
+7. Background threads make gRPC API calls for the paintlists
 8. Fetches complete → update rendering data with glyphs and curves on background thread
-9. `fx/run-later!` invalidates Pictures, triggers repaint
-10. Real content replaces placeholders
+9. Pictures are recorded and tiles produced off the JAT; `fx/run-later!` hands finished tiles to the JAT
+10. Real content replaces placeholders in place; nothing on the page moves
 
 **Note:** No backend events involved - pure frontend demand loading
 
@@ -1197,10 +1214,10 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 
 **Opening a Layout Window:**
 1. User opens layout window (within an already-opened piece)
-2. UI component begins loading viewport (triggers initial fetches via Fetch Coordinator)
-3. Fetch Coordinator queues HIGH priority requests for visible paintlists
+2. UI component begins loading viewport (triggers initial fetches via Fetch Coordinator); placeholders show at once
+3. Fetch Coordinator queues HIGH priority requests: page and system dimensions for the visible region, then its paintlists
 4. Background threads fetch paintlists at appropriate hierarchy levels (Page/System/Staff/Measure)
-5. Paintlists arrive → update Rendering Data Manager on background thread → `fx/run-later!` triggers repaint
+5. Paintlists arrive → update Rendering Data Manager on background thread → Pictures and tiles are produced off the JAT → `fx/run-later!` hands finished tiles to the JAT
 
 **Closing a Piece:**
 1. User closes piece window
@@ -1224,13 +1241,13 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 - **In-viewport collaborative edit:** ≤150ms p95 from event receipt to painted frame
   - Batch window: 50-100ms
   - Fetch (if needed): 20-40ms  
-  - fx/run-later! + render: <20ms
+  - Tile production + publication: <20ms
 
 - **Scroll-triggered fetch:** ≤100ms p95 from scroll to painted frame
   - No batching (immediate)
-  - Fetch: 20-40ms
-  - fx/run-later! + render: <20ms
-  - Placeholders shown during fetch
+  - Fetch: 20-40ms, page and system dimensions first
+  - Tile production + publication: <20ms
+  - Placeholders shown in the same pulse the region scrolls into view, never waiting on the fetch
 
 - **Cursor updates:** 33ms batching → 30fps collaborative cursor movement
 
@@ -1275,10 +1292,10 @@ The architecture's paintlist spatial data + VPD mapping enables these rich, cont
 - Paintlist contents: Each paintlist includes its VPD, spatial information (bounding boxes for glyphs, paths for curves), and rendering data. Supports both semantic elements (computed from musical data, linked to notation semantics) and user-edited graphics (arbitrary bezier paths with control points, detached from musical semantics - enables Illustrator-level editing). All elements within a paintlist belong to that paintlist's VPD. This enables bidirectional mapping: VPD → rendering (forward) and screen coordinates → VPD (reverse via hit-testing).
 - Staleness tracking: Each hierarchy element tracks whether its paintlist data is current or stale. Implementation may use explicit validity flags, sentinel values (nil), or data presence/absence - the architecture requires only that staleness is detectable during rendering.
 - Backend-computed via ADR-0028 rendering pipeline
-- Paintlists converted to JavaFX/Skija-efficient representations
+- Paintlists recorded into Skija Pictures and rasterised into tiles by the rendering layer (ADR-0038); both are derived and evictable
 - Addressed via VPD (same system as musical hierarchy)
 - Event VPD determines which paintlist to invalidate/fetch
-- Complete rendering cache stored locally - no eviction policy needed
+- Complete rendering cache stored locally - no eviction for memory pressure; a piece's or layout's paintlists go when the user closes it
 
 *UI State:*
 - Window positions, sizes
@@ -1348,13 +1365,13 @@ This creates a **write-once, read-many** pattern where paintlist data is fetched
 7. **Connection Model:** Connection-oriented - each gRPC stream connection is fresh
 8. **Echo Suppression:** Not used - all clients must see backend-computed layout results
 9. **VPD Granularity:** Fetch at exact level specified by event VPD. Paintlists are independent at each hierarchy level, not nested. API supports fetching any specific paintlist.
-10. **Data Storage:** Complete rendering cache (paintlists, not semantic data) stored locally, converted to JavaFX/Skija-efficient representations. Staleness tracked at each hierarchy level (implementation may use explicit flags, sentinel values, or data presence). No eviction — memory is cheap. The frontend stores renderable views, not piece semantics — the backend remains the sole authority for musical content.
-11. **Data Structure:** Four atoms, one per hierarchy level (PageViews, SystemViews, StaffViews, MeasureViews). Each atom contains `{vpd-key → paintlist-data}` for O(1) lookup/update. The RDM is a pure data cache — atom updates happen on background threads (stale marking from UI Manager handler, paintlist updates from Fetch Coordinator). Only the subsequent scene graph repaint uses `fx/run-later!`. Atoms provide thread-safe functional updates via `swap!`. Different hierarchy levels don't contend since each has separate atom.
+10. **Data Storage:** Complete rendering cache (paintlists, not semantic data) stored locally; the rendering layer derives Skija Pictures and tiles from it (ADR-0038). Staleness tracked at each hierarchy level (implementation may use explicit flags, sentinel values, or data presence). No eviction for memory pressure — memory is cheap; a piece's or layout's paintlists go when the user closes it. The frontend stores renderable views, not piece semantics — the backend remains the sole authority for musical content.
+11. **Data Structure:** Four atoms, one per hierarchy level (PageViews, SystemViews, StaffViews, MeasureViews). Each atom contains `{vpd-key → paintlist-data}` for O(1) lookup/update. The RDM is a pure data cache — atom updates happen on background threads (stale marking from UI Manager handler, paintlist updates from Fetch Coordinator). Nothing that renders runs on the JAT, which only installs finished tiles (ADR-0038). Atoms provide thread-safe functional updates via `swap!`. Different hierarchy levels don't contend since each has separate atom.
 12. **Cross-Category Ordering:** Accept that events from the same STM transaction may arrive in different categories at different times. A single backend transaction can produce events in multiple categories (e.g. `:cache-invalidation` + `:notification`). These enter separate category aggregators with independent time windows and flush independently. Intra-transaction events in different categories are **not** ordered relative to each other. The frontend event bus delivers each category's batch independently via Claypoole futures. This is imperceptible to users — a notification arriving one batch window before or after its associated invalidation has no observable effect. Stricter cross-category sequencing would require coalescing all categories into a single publish, losing parallelism benefits. Not worth the complexity.
-13. **Viewport Definition:** Buffered viewport (visible + N measures ahead/behind). Updates discretely when scroll settles (~100ms debounce), not continuously. Strict viewport causes fetch thrashing during scroll, risking visible blanks. Buffered costs minimal memory (few MB per piece) but maintains latency targets and smooth scrolling. Discrete updates prevent flooding prefetch queue.
+13. **Viewport Definition:** Buffered viewport (visible + N measures ahead/behind). Updates discretely when scroll settles (~100ms debounce), not continuously. Strict viewport causes fetch thrashing during scroll, risking visible blanks. Buffered costs minimal memory (few MB per piece) but maintains latency targets and smooth scrolling. Discrete updates prevent flooding prefetch queue. The debounce governs the buffered prefetch margin only: a region entering view is requested as it appears, its page and system dimensions first, so even a fling shows the shape of every page it passes (ADR-0038 §Progressive Refinement).
 14. **Category Aggregator Implementation:** Single ScheduledExecutorService (1 thread) manages all category flushes. Per-category Clojure atom (vector) accumulates events from Event Router threads. Atomic drain via `reset-vals!` ensures no events are lost between read and clear. Schedule flush at fixed delay per category (50-100ms invalidations, 33ms cursors, 16ms playback). On flush: atomic drain → single `eb/publish!` with drained events to frontend event bus. Rationale: No core.async dependency. Atoms accept concurrent `swap!` from multiple Event Router threads. Single scheduler thread means no concurrent flushes per category (no AtomicBoolean guard needed). Predictable timing via fixed delays. Alternative considered: core.async channels with alts! timeout - more elegant but adds dependency and scheduler complexity. Atoms + scheduled executor is simpler, sufficient for event rates (tens/sec), and fits Integrant lifecycle cleanly.
 15. **Fetch Batching Semantics:** Start unbatched - one VPD → one gRPC call. No range coalescing initially. Rationale: gRPC call overhead is negligible compared to network latency (20-40ms). Single-VPD fetches are simpler to implement, instrument, and debug. Easier to track per-VPD latency and hit rates. Batching adds complexity (how to group? timeout vs count threshold? error handling for partial batches?). If profiling later shows network overhead is significant, add contiguous-range coalescing behind feature flag without changing API. Start simple - optimize when data proves necessary.
-16. **Fetch Priorities Within Viewport:** Four priority levels: CRITICAL (in-viewport stale from invalidations), HIGH (in-viewport missing from demand loads), NORMAL (buffered prefetch), LOW (background opportunistic). Implementation: 4 priority queues with event-driven dispatch on shared Claypoole pool (max 4 concurrent fetches). CRITICAL always drains before others. Rationale for 4 levels vs 3: Implementation cost trivial (one additional queue). Distinction matters under load: when fetch pool saturated + viewport invalidation + viewport demand load occur together, stale data (shows wrong notes) is more perceptually confusing than missing data (shows understood placeholder). Users interpret stale as "broken", placeholder as "loading". With 4-6 threads at 20-40ms latency, capacity is 100-150 fetches/sec. Typical load 10-50/sec means conflict is rare, but when it occurs CRITICAL preemption provides better UX. If profiling shows CRITICAL/HIGH distinction unused, can collapse to 3 levels later. Considerations: Monitor queue depth metrics per priority. If CRITICAL queue never has >1 item, may be overengineered. If HIGH queue regularly blocks CRITICAL, distinction is valuable.
+16. **Fetch Priorities Within Viewport:** Four priority levels: CRITICAL (in-viewport stale from invalidations), HIGH (in-viewport missing from demand loads), NORMAL (buffered prefetch), LOW (background opportunistic). Implementation: 4 priority queues with event-driven dispatch on shared Claypoole pool (max 4 concurrent fetches). CRITICAL always drains before others. Within a priority, a region entering view has its page and system dimensions requested before its contents (ADR-0038 §Progressive Refinement). Rationale for 4 levels vs 3: Implementation cost trivial (one additional queue). Distinction matters under load: when fetch pool saturated + viewport invalidation + viewport demand load occur together, stale data (shows wrong notes) is more perceptually confusing than missing data (shows understood placeholder). Users interpret stale as "broken", placeholder as "loading". With 4-6 threads at 20-40ms latency, capacity is 100-150 fetches/sec. Typical load 10-50/sec means conflict is rare, but when it occurs CRITICAL preemption provides better UX. If profiling shows CRITICAL/HIGH distinction unused, can collapse to 3 levels later. Considerations: Monitor queue depth metrics per priority. If CRITICAL queue never has >1 item, may be overengineered. If HIGH queue regularly blocks CRITICAL, distinction is valuable.
 
 17. **Testing Strategy:** Multiple test levels for comprehensive coverage. **Deterministic (unit tests):** Mock gRPC streams using test doubles, verify event routing logic, category aggregation, and `fx/run-later!` invocations without network. **Integration tests:** Replay recorded event streams to test realistic event sequences and timing patterns. **End-to-end tests:** Real backend with gRPC transport, measure p95 latencies against targets (≤150ms collaborative edits, ≤100ms scroll-triggered fetches). **Soak testing:** Synthetic edit workloads at 30-60 events/sec for 10-15 minutes to verify batch aggregation, memory stability, and fetch queue behavior under sustained load. Rationale: Unit tests provide fast feedback on logic correctness. Integration tests catch timing bugs and event cascade issues. End-to-end tests validate performance targets. Soak tests expose resource leaks and queue saturation. Multi-level approach balances speed, realism, and confidence.
 
@@ -1385,7 +1402,7 @@ Can be consumed directly by Grafana (native JSON data source support) for unifie
 
 21. **Subscription State Management:** the Event Router records what this client holds for each piece, in one place. **State Structure:** `{:piece-holds (atom {piece-id {:handler f :open? true :in-flight 0 :subscribed-over pool}})}` — one entry per piece, carrying the local handler, the hold's admission state, and, as `:subscribed-over`, the connection its wire subscription was issued over. The key's presence *is* the subscription; its value is the connection, compared by identity. `(subscribed-pieces event-router)` derives the set of subscribed piece-ids from those entries; nothing stores that set. **Subscribe Operation:** proxy the subscription request to the backend via gRPC, then record `:subscribed-over` on the piece's entry, and return the result to the caller. **Unsubscribe Operation:** proxy the revocation to the backend, but only over the connection that issued the subscription and only while that is still the client's current one; dissoc the key either way, and return the result. **API Surface:** two pairs, one per side of the wire — the mechanical test of *Two kinds of subscription* made structural, so a call site names which it performs. `(subscribe-to-piece event-router piece-id)` issues this client's piece subscription: it proxies to the backend and records the piece-id. `(unsubscribe-from-piece event-router piece-id)` revokes it, proxies to the backend, and updates the record. `(add-piece-handler! event-router piece-id handler)` registers `handler` against that piece-id so the Event Router dispatches that piece's per-piece events (currently `:piece-structure-changed`) directly to it — not via a shared category — and `(remove-piece-handler! event-router piece-id)` drops it. The handler pair never touches the wire, and neither pair constrains the other. All four implemented in `ooloi.frontend.components.event-router` namespace. **A piece window composes none of them directly** — it takes a *piece hold*, which pairs them and closes them as one act (§The piece hold); the four remain the primitives that hold is built from. **Rationale:** the record exists for transport switching, not for recovery. `switch-to!` consults it as an outbound precondition — a switch from the in-process backend to a remote one is refused while local pieces remain open, since local pieces are save-state-bearing and must be closed deliberately ([ADR-0036](0036-Collaborative-Sessions-and-Hybrid-Transport.md) §Frontend Reconnection) — and clears it on every completed switch, because piece-ids are issued by, and meaningful only against, the backend that issued them. What a completed switch clears is each hold's `:subscribed-over`, not the holds: the subscriptions died with the connection, while the windows stand until the close pass takes them. The state requires no persistence, subscriptions being session-scoped and not surviving a change of backend. **One record, not two.** A set of piece-ids kept beside the holds would say the same thing twice, and the two would eventually disagree — every such record has to be updated in step with the other, by every operation, for ever, and the failure is silent: the two halves are read in different places and neither knows the other is stale. Deriving the set from the holds removes the possibility rather than the symptom. **The two operations are deliberately asymmetric, and it is not an oversight.** `unsubscribe-from-piece` makes its backend call only over the connection that issued the subscription, and says nothing on the wire otherwise — whether because the client has been torn down, or because a transport switch has replaced that connection with another backend's. Either way the subscription is reclaimed by the server's identity-aware cancel-handler backstop ([ADR-0024](0024-gRPC-Concurrency-and-Flow-Control-Architecture.md) §Connection Lifecycle), so a skipped revocation leaks nothing, and where the backend has gone there is nothing left to leak. `subscribe-to-piece` carries no such guard, and must not acquire one by symmetry: a skipped *subscribe* leaves a piece window permanently without events, silently and for the rest of the session, which is strictly worse than the exception a guard would suppress. Guard the operation whose failure is harmless; let the one whose failure is not be loud.
 
-22. **Component API Surfaces:** Clear API boundaries between components enable testing and future evolution. **Frontend Event Bus API:** `(create-event-bus pool)` returns `{:pool pool :subscribers (atom {})}`. `(subscribe! bus category handler-fn)` registers handler for a category. `(unsubscribe! bus category handler-fn)` removes handler. `(publish! bus category events)` dispatches events to all category subscribers via Claypoole futures. **Rendering Data Manager API:** `(create-rendering-data-manager)` returns `{:page-views (atom {}) :system-views (atom {}) :staff-views (atom {}) :measure-views (atom {})}`. `(mark-stale! rdm vpd)` marks paintlist at VPD as stale, returns nil. `(update-paintlist! rdm vpd paintlist)` updates paintlist at VPD, returns nil. `(get-paintlist rdm vpd)` gets paintlist at VPD, returns paintlist or nil if missing/stale. `(is-stale? rdm vpd)` checks if paintlist at VPD is stale, returns boolean. RDM is a pure data cache (atoms) — updates happen on background threads; only the subsequent scene graph repaint uses `fx/run-later!`. **Fetch Coordinator API:** `(queue-fetch! fc vpd priority)` queues paintlist fetch at priority level (`:critical`, `:high`, `:normal`, `:low`), returns nil immediately, fetch happens asynchronously on background thread, completion updates RDM on background thread and schedules repaint via `fx/run-later!`. **Event Router API:** `(subscribe-to-piece event-router piece-id)` issues this client's piece subscription — proxies to the backend, records the connection it went out over; `(unsubscribe-from-piece event-router piece-id)` revokes it over that same connection while it is still current, and clears the record either way. `(subscribed-pieces event-router)` reads back which pieces are subscribed. `(add-piece-handler! event-router piece-id handler)` registers `handler` for per-piece dispatch of that piece's events to the window; `(remove-piece-handler! event-router piece-id)` drops it. The handler pair is local and never touches the wire. **The piece hold sits above these four** (§The piece hold): `(take-piece-hold! event-router piece-id handler)` opens one, `(when-held [event-router piece-id] & body)` runs work under it, and `(release-piece-hold! event-router piece-id)` refuses, drains, revokes and drops. A per-piece consumer uses the hold; the four below it are what the hold performs. Rationale: Explicit API surfaces enable component testing in isolation with mocks, clear contracts for future maintainers, API evolution without implementation coupling. These APIs are minimal — only operations needed by collaborating components. Internal operations (aggregator flushing, thread pool management) remain encapsulated.
+22. **Component API Surfaces:** Clear API boundaries between components enable testing and future evolution. **Frontend Event Bus API:** `(create-event-bus pool)` returns `{:pool pool :subscribers (atom {})}`. `(subscribe! bus category handler-fn)` registers handler for a category. `(unsubscribe! bus category handler-fn)` removes handler. `(publish! bus category events)` dispatches events to all category subscribers via Claypoole futures. **Rendering Data Manager API:** `(create-rendering-data-manager)` returns `{:page-views (atom {}) :system-views (atom {}) :staff-views (atom {}) :measure-views (atom {})}`. `(mark-stale! rdm vpd)` marks paintlist at VPD as stale, returns nil. `(update-paintlist! rdm vpd paintlist)` updates paintlist at VPD, returns nil. `(get-paintlist rdm vpd)` gets paintlist at VPD, returns the stored paintlist whether or not it is stale, or nil if missing. `(is-stale? rdm vpd)` checks if paintlist at VPD is stale, returns boolean. RDM is a pure data cache (atoms) — updates happen on background threads, and nothing that renders runs on the JAT (ADR-0038). **Fetch Coordinator API:** `(queue-fetch! fc vpd piece-id priority)` queues paintlist fetch at priority level (`:critical`, `:high`, `:normal`, `:low`), returns nil immediately, fetch happens asynchronously on background thread, completion updates RDM on background thread and makes the new paintlist known to the tile scheduler, off the JAT. **Event Router API:** `(subscribe-to-piece event-router piece-id)` issues this client's piece subscription — proxies to the backend, records the connection it went out over; `(unsubscribe-from-piece event-router piece-id)` revokes it over that same connection while it is still current, and clears the record either way. `(subscribed-pieces event-router)` reads back which pieces are subscribed. `(add-piece-handler! event-router piece-id handler)` registers `handler` for per-piece dispatch of that piece's events to the window; `(remove-piece-handler! event-router piece-id)` drops it. The handler pair is local and never touches the wire. **The piece hold sits above these four** (§The piece hold): `(take-piece-hold! event-router piece-id handler)` opens one, `(when-held [event-router piece-id] & body)` runs work under it, and `(release-piece-hold! event-router piece-id)` refuses, drains, revokes and drops. A per-piece consumer uses the hold; the four below it are what the hold performs. Rationale: Explicit API surfaces enable component testing in isolation with mocks, clear contracts for future maintainers, API evolution without implementation coupling. These APIs are minimal — only operations needed by collaborating components. Internal operations (aggregator flushing, thread pool management) remain encapsulated.
 
 ### Outstanding
 
@@ -1405,7 +1422,7 @@ None - all implementation questions resolved.
 - **ADR-0052: Change Detection and Event Generation** - The backend side: how a piece mutation becomes the `:piece-structure-changed` event the Event Router routes — detected at the VPD write funnel and coalesced to one event per transaction.
 - **ADR-0024: gRPC Flow Control** - Per-client drainer pattern guarantees FIFO event delivery. Event Router benefits from backpressure handling. Drop-oldest queue prevents memory exhaustion.
 - **ADR-0028: Hierarchical Rendering Pipeline** - Backend computes MeasureView structures with glyphs and curves. Computed by 6-stage rendering pipeline with fan-out/fan-in pattern.
-- **ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution** - Rendering Data Manager stores backend paintlists. GPU-accelerated Skija execution implements terminal frontend principle. Event Router → bus → UI Manager → RDM → Fetch Coordinator → Skija rendering flow.
+- **ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution** - Rendering Data Manager stores backend paintlists. GPU-accelerated Skija execution implements terminal frontend principle. Event Router → bus → UI Manager → RDM → Fetch Coordinator → tile scheduler → Pictures and tiles, off the JAT; the JAT only publishes finished tiles. Specifies the frontend rendering threading model, the three cache levels and progressive refinement.
 
 **Supporting:**
 - **ADR-0014: Timewalk** - Temporal traversal for hit-testing and element discovery. Frontend uses timewalk to resolve clicks to VPDs for backend operations.
