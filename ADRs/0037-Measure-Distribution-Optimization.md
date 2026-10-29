@@ -635,7 +635,7 @@ This is **derivation, not optimisation**:
 - Contained: within a fixed break configuration, a change to one stack alters only its own system's ratios
 - Near-zero computational cost: O(gaps) per system, with a walk over the held gaps' kinks for `r′`
 
-**Notes on the cost**: the system's cost is the badness of its single adjustment ratio `r`, combined into demerits (see the segment cost model under [Optimization Characterization](#optimization-characterization)), not a sum over its gaps or stacks. `r′` never enters it: the stretch dial changes where a stretched system's room goes, never what the system costs, so it can never move a break. The preamble, gutter, postamble and no-break widths affect the cost only through the available width, and so through `r`.
+**Notes on the cost**: the system's cost is the badness of its single adjustment ratio `r`, combined into demerits (see the segment cost model under [Optimization Characterization](#optimization-characterization)), not a sum over its gaps or stacks. `r′` never enters it: the stretch dial changes where a stretched system's room goes, never what the system costs, so it can never move a system break. The preamble, gutter, postamble and no-break widths affect the cost only through the available width, and so through `r`.
 
 **Relationship to Knuth-Plass**: a spring is Knuth–Plass glue with a blocking width; where no gap is blocked or prestretched, the springs are glue exactly. See [Relationship to Knuth-Plass](#relationship-to-knuth-plass).
 
@@ -1282,7 +1282,8 @@ The following implementation performs **Stage 3: System Breaking** - distributin
 
     ;; Stretching: ordinary gaps stretch from r = 0; each prestretched gap
     ;; joins at its kink. The first piece is the fast path. A positive :ideal
-    ;; for every stack guarantees a positive slope once all kinks are passed.
+    ;; for every stack, and a positive stretch weight wherever an ideal width
+    ;; is positive, guarantee a positive slope once all kinks are passed.
     :else
     (loop [width natural
            r0 0N
@@ -1898,7 +1899,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 9. **Performance** - O(N×K) segment evaluations, each O(1) except where prestretched gaps take part
 10. **Rational arithmetic** - No floating-point drift across platforms
 11. **Predictability** - Users can mentally model system behavior
-12. **A stretch dial that never moves a break** - Which gaps take a stretched system's room is a setting applied in Stage 4, after the breaker has priced the room: it changes no cost, ratio or break, so it can be moved alone
+12. **A stretch dial that never moves a system break** - Which gaps take a stretched system's room is a setting applied in Stage 4, after the breaker has priced the room: it changes no cost, ratio or system break, so it can be moved alone
 
 **Neutral:**
 

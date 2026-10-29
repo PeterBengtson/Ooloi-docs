@@ -291,7 +291,7 @@ The first flow is about the piece; the second is about the music. That is the di
 
 #### Spacing settings show what they can move
 
-Settings that shape horizontal spacing differ in one way that matters to the user more than any other: what moving one can move ([ADR-0055](0055-Horizontal-Spacing.md#spacing-settings)). One read in Stage 1 or 2 changes what the music reserves, and can move notes and line breaks; one read only in Stage 4 shares out room the breaker has already priced, and can move notes within a system but never a break; one read only in Stage 5 spends room already given, and moves neither. Each such setting declares which of the three it is, beside its category ([ADR-0016](0016-Settings.md)), and the window shows it beside the setting's control. Like everything else the window presents, it comes from the declaration, so no fetch carries it.
+Settings that shape horizontal spacing differ in one way that matters to the user more than any other: what moving one can move ([ADR-0055](0055-Horizontal-Spacing.md#spacing-settings)). One read in Stage 1 or 2 changes what the music reserves, and can move notes and line breaks; one read only in Stage 4 shares out room the breaker has already priced, and can move notes within a system but never a line break; one read only in Stage 5 spends room already given, and moves neither a note nor a line break. Any of them can change a system's height, and with it where pages break. Each such setting declares which of the three it is, beside its category ([ADR-0016](0016-Settings.md)), and the window shows it beside the setting's control. Like everything else the window presents, it comes from the declaration, so no fetch carries it.
 
 ### 7. Piece-owned windows
 
