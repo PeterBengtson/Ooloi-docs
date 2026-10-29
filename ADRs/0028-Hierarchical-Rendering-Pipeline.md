@@ -113,7 +113,7 @@ flowchart LR
 
 Stage 1 processes individual measures in parallel (fan-out per measure), with each measure independently calculating its rhythmic content, the geometry of its atoms, and cached visual representations. Each rhythmic position forms an "engraving atom" - noteheads, stems, accidentals, articulations positioned relative to each other as an indivisible unit. All glyph positions within an atom are relative to the atom's origin point (see [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)), enabling atoms to be repositioned without internal recomputation.
 
-Each atom has a left and a right contour: for every band of height, its leftmost and rightmost ink relative to its origin, the left edge of its principal notehead column ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). Stage 1 also records each staff's rhythm, declares as geometry the constraints spanning several columns that the measure implies, and supplies the geometry of the decorations the measure needs when it starts a system. It computes no widths: each gap's ideal and blocking width, and the `gutter_width` delta (additional space needed when the measure appears first on a system, typically 0N, see [ADR-0037](0037-Measure-Distribution-Optimization.md#the-gutter-system-start-width-delta)), are formed in Stage 2. Plugin atom hooks fire for each notational element, producing atoms with contours and cached paintlists, and may declare constraints. A measure draws, before its closing barline, a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)). Once calculated, atoms remain immutable until measure content, or that clef, changes.
+Each atom has a left and a right contour: for every band of height, its leftmost and rightmost ink relative to its origin, the left edge of its principal notehead column ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). Stage 1 also records each staff's rhythm, declares as geometry the constraints spanning several columns that the measure implies, and supplies the geometry of the decorations the measure needs when it starts a system. It computes no widths: each gap's ideal and blocking width, and the `gutter_width` delta (additional space needed when the measure appears first on a system, typically 0N, see [ADR-0037](0037-Measure-Distribution-Optimization.md#the-gutter-system-start-width-delta)), are formed in Stage 2. Plugin atom hooks fire for each notational element, producing atoms with contours and cached paintlists, and may declare constraints. A measure draws, before its closing barline, a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)). Once calculated, atoms remain immutable until measure content or that clef changes, or a font or a setting that changes glyph geometry, such as a ledger line's minimum protrusion ([ADR-0055](0055-Horizontal-Spacing.md#minimum-protrusion)).
 
 **Stage 1 is width-complete**: It supplies all horizontal space requirements, including spanner anchors, as geometry and declared constraints, from which Stage 2 forms the complete width information Stage 3 needs for optimal distribution.
 
@@ -127,7 +127,7 @@ Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break p
 
 ### Pipeline Stage 4: Atom Positioning (Fan-Out per Measure)
 
-Stage 4 applies each system's adjustment ratio from Stage 3 to position atoms at their actual coordinates (fan-out per measure, parallel processing). Each gap takes the width its spring gives at that ratio (`g_j(r)`, [ADR-0037 §Gaps as Springs](0037-Measure-Distribution-Optimization.md#gaps-as-springs)), and atoms are assigned final x,y coordinates from the resulting column positions. Cached paintlists from Stage 1 are positioned at absolute coordinates. Atoms are repositioned, not recreated - their internal geometry remains immutable. Output: positioned atoms ready for Stage 5 spanners.
+Stage 4 positions atoms at their actual coordinates from each system's adjustment ratio (fan-out per measure, parallel processing). Each gap takes the width its spring gives (`g_j(r)`, [ADR-0037 §Gaps as Springs](0037-Measure-Distribution-Optimization.md#gaps-as-springs)): under compression at the system's ratio from Stage 3, and under stretching with the system's room shared out by the stretch dial ([ADR-0055](0055-Horizontal-Spacing.md#the-stretch-dial)), which never moves a break. Atoms are assigned final x,y coordinates from the resulting column positions. Cached paintlists from Stage 1 are positioned at absolute coordinates. Atoms are repositioned, not recreated - their internal geometry remains immutable. Output: positioned atoms ready for Stage 5 spanners.
 
 ### Pipeline Stage 5: Spanners and Margins (Fan-Out per Musician)
 
@@ -160,7 +160,7 @@ Stage 6 determines page break points by a dynamic programme over the system sequ
 
 1. **Translation without recomputation**: Moving an atom horizontally or vertically requires only updating its origin coordinate. No internal geometry recalculation occurs.
 
-2. **Trivial cache invalidation**: Stage 1 reruns for a measure only when its content changes, or the clef the next measure begins with, which it draws before its closing barline ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)): a clef change taking effect at the start of measure M changes M−1's Stage 1 output, and with it M−1's width. Layout changes (system width, page height, style spacing adjustments) never trigger Stage 1 recomputation.
+2. **Trivial cache invalidation**: Stage 1 reruns for a measure only when its content changes; when the clef the next measure begins with changes, which it draws before its closing barline ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)), so that a clef change taking effect at the start of measure M changes M−1's Stage 1 output, and with it M−1's width; or when a font, or a setting that changes glyph geometry such as a ledger line's minimum protrusion, changes the measure's atoms ([ADR-0055](0055-Horizontal-Spacing.md#minimum-protrusion)). Layout changes (system width, page height, spacing parameters) never trigger Stage 1 recomputation.
 
 3. **Rendering becomes pure projection**: At paintlist generation time, atoms are translated to their final positions. No structural decisions remain - only coordinate transformation.
 
@@ -170,11 +170,14 @@ Stage 6 determines page break points by a dynamic programme over the system sequ
 | System width change | Nothing | Nothing | Redistribute systems | Position atoms | Reconnect + gutter | Nothing |
 | Page height change | Nothing | Nothing | Nothing | Nothing | Nothing | Rebreak pages |
 | Style change (spacing) | Nothing | Reconcile | Redistribute systems | Position atoms | Reconnect + gutter | May rebreak pages |
+| Stretch dial change | Nothing | Stretch weights only | Nothing | Position atoms | Reconnect + gutter | May rebreak pages |
+| Style change (forms or fonts) | Recompute measures whose glyph geometry changes | Reconcile | Redistribute systems | Position atoms | Reconnect + gutter | May rebreak pages |
+| Placement setting (Stage 5 only) | Nothing | Nothing | Nothing | Nothing | Re-place within atoms + reconnect | May rebreak pages |
 | Add/remove instrument | Recompute affected | Reconcile all | Redistribute systems | Position atoms | Reconnect | Rebreak pages |
 
 An edit to measure M recomputes Stage 1 for M alone, with two exceptions: a clef or key signature change also recomputes every later measure it governs, and a clef change at M's start recomputes M−1, which draws it before its closing barline ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)).
 
-**Invariant enforcement**: Atoms are immutable data structures. Once Stage 1 produces an atom, its internal geometry cannot be modified. Stages 4 and 5 consume atoms; they do not mutate them. Stage 5's authority to adjust geometry the earlier stages produced, within declared ranges, is recorded in [ADR-0013](0013-Slur-Formatting.md#the-pipeline-is-one-way-and-what-stage-5-may-change); how that authority reconciles with this invariant is [open there](0013-Slur-Formatting.md#whether-stage-5-modification-touches-atom-internal-geometry).
+**Invariant enforcement**: Atoms are immutable data structures. Once Stage 1 produces an atom, its internal geometry cannot be modified. Stages 4 and 5 consume atoms; they do not mutate them. Stage 5 does adjust elements belonging to an atom to the space Stage 4 gives, such as an accidental's distance from its notehead, a ledger line's length or a stem's, within ranges the atom declares, and places loose elements such as a *pizz.* beside it ([ADR-0013](0013-Slur-Formatting.md#the-pipeline-is-one-way-and-what-stage-5-may-change)). It does so with offsets of its own, positioned data applied to the atom when it is drawn: what is drawn is the atom with Stage 5's offsets, and the cached atom is never modified ([ADR-0013](0013-Slur-Formatting.md#modifications-are-offsets)).
 
 ### Plugin Architecture Integration
 
@@ -285,7 +288,7 @@ Cello:       [measure 5 content]  ←
 
 **Caching Strategy:**
 
-- Atom geometry and contours (Stage 1) are cached and only recomputed when measure content changes; each stack's springs, summary and gutter (Stage 2) are recomputed when content in the stack or a spacing parameter changes ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2))
+- Atom geometry and contours (Stage 1) are cached and only recomputed when measure content, a font or a setting that changes glyph geometry changes; each stack's springs, summary and gutter (Stage 2) are recomputed when content in the stack or a spacing parameter changes ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2))
 - Result rasters are cached and reused until invalidated
 - MeasureStackFormatter data persists across optimization iterations in Stage 3
 
@@ -373,6 +376,7 @@ Independent measure analysis can run in parallel during Stage 1. Stage 4 atom po
 - Changing time signatures → positioning only (atoms unchanged)
 - Changing system/page layout → positioning only (atoms unchanged) + gutter decorations
 - All width/height/spacing style changes → positioning only (atoms unchanged)
+- Changing a font, or a setting that changes glyph geometry such as a ledger line's minimum protrusion → atom recalculation + positioning
 
 Memory access patterns prove favourable as each processing unit operates on distinct memory regions during parallel operations, minimising cache conflicts and false sharing between processors.
 
@@ -446,7 +450,7 @@ Only one formatting operation runs at a time. Cancellation uses global operation
 
 ## Caching and Incremental Processing
 
-Pipeline results are cached until local edits change them. The atom-relative geometry invariant ensures that Stage 1 (the most expensive computation) runs only when measure content changes - never for layout adjustments.
+Pipeline results are cached until local edits change them. The atom-relative geometry invariant ensures that Stage 1 (the most expensive computation) runs only when measure content, a font or a setting that changes glyph geometry changes - never for layout adjustments.
 
 Invalidation works hierarchically: musical events trigger measure recalculation, which may trigger system recalculation, which may trigger page recalculation.
 
@@ -476,7 +480,7 @@ flowchart TD
     style L fill:#e8f5e8,color:#000
 ```
 
-**Stage 1 Caching**: Spatial analysis results persist until any element affecting measure content changes. Measures that remain completely unchanged never require recalculation. Layout changes (system width, page dimensions, spacing styles) do not invalidate Stage 1 results because atom geometry is relative to origin.
+**Stage 1 Caching**: Spatial analysis results persist until any element affecting measure content changes. Measures that remain completely unchanged never require recalculation. Layout changes (system width, page dimensions, spacing styles) do not invalidate Stage 1 results because atom geometry is relative to origin. A font, or a setting that changes glyph geometry such as a ledger line's minimum protrusion, does: it changes the atoms themselves.
 
 **Conditional Processing**: Later pipeline stages process only measures that underwent earlier stage recalculation. Unchanged measures retain their cached results unless positioning changes affect their coordinates.
 
@@ -582,7 +586,8 @@ Stage 1 — the expensive one — from changes for which Stage 1's results remai
 repositioning is owed. A mark that records *where* but not *why* cannot express that difference, so
 the pipeline would have to re-run Stage 1 conservatively on every mark, and the atom-relative geometry
 invariant would buy nothing. The kinds therefore partition that table's rows: a content edit, a
-system-width change, a page-height change, a style or spacing change, an instrument added or removed.
+system-width change, a page-height change, a style or spacing change, a change to the stretch dial, a
+change of forms or fonts, a change to a setting read only in Stage 5, an instrument added or removed.
 The exact vocabulary is settled when the engine is built and can be driven by tests; that it must
 exist is settled here.
 
@@ -717,7 +722,7 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 7. **Transparent Distribution**: Type fidelity across gRPC boundaries eliminates serialization impedance, enabling plugins and musical logic to operate identically in local or distributed modes.
 
-8. **Efficient Spatial Computation**: The atom-relative geometry invariant ensures Stage 1 runs only for content changes. Layout adjustments (system breaking, page breaking, spacing changes) never trigger atom recomputation - only repositioning.
+8. **Efficient Spatial Computation**: The atom-relative geometry invariant ensures Stage 1 runs only for changes of content, of fonts, or of settings that change glyph geometry. Layout adjustments (system breaking, page breaking, spacing changes) never trigger atom recomputation - only repositioning.
 
 9. **Layout-Independent Atoms**: Atoms are self-contained geometric units. All internal coordinates are relative to origin, enabling translation without recomputation.
 
@@ -814,7 +819,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 - **API Responsiveness**: 36μs roundtrip measured on 2017 MacBook Pro proves gRPC separation adds negligible latency
 - **Memory Efficiency**: Lazy rendering data generation reduces memory footprint for large scores
 - **Parallel Scaling**: Linear performance improvement with available CPU cores during formatting stages
-- **Engraving Atom Efficiency**: Atom-relative geometry ensures Stage 1 recomputation only for content changes, never for layout changes
+- **Engraving Atom Efficiency**: Atom-relative geometry ensures Stage 1 recomputation only for changes of content, fonts or glyph geometry, never for layout changes
 
 ## Notes
 
@@ -824,6 +829,6 @@ The mandatory plugin compliance ensures that fundamental notation formatting (ch
 
 The six-stage approach recognises that atom formation with extent calculation, vertical reconciliation, system breaking, atom positioning, connecting element generation, and page breaking represent distinct computational problems that benefit from separation and targeted optimisation, with all formatting logic implemented through canonical and custom plugins as first-class citizens.
 
-The atom-relative geometry invariant ensures that the expensive Stage 1 computation runs only when musical content changes. Layout adjustments - however dramatic - require only repositioning of pre-computed atoms, enabling responsive editing even during extensive reformatting operations.
+The atom-relative geometry invariant ensures that the expensive Stage 1 computation runs only when musical content, a font or a setting that changes glyph geometry changes. Layout adjustments - however dramatic - require only repositioning of pre-computed atoms, enabling responsive editing even during extensive reformatting operations.
 
 The gutter model ensures that system-start decorations (courtesy accidentals, tie continuations) are accommodated with complete information, as the preamble and postamble do for the clefs and key signatures that start a system and the cautionaries that end one, enabling distribution that is optimal for the stated cost function without feedback loops, heuristics, or iteration. The semantic model remains closed after ADR-0035; Stage 5 adds only graphical decorations that do not affect musical meaning.

@@ -29,6 +29,7 @@ Implemented
     - [A gesture is a network-transparent ACID transaction](#a-gesture-is-a-network-transparent-acid-transaction)
   - [5. The window title](#5-the-window-title)
   - [6. Piece Settings: the Piece Preferences window](#6-piece-settings-the-piece-preferences-window)
+    - [Spacing settings show what they can move](#spacing-settings-show-what-they-can-move)
   - [7. Piece-owned windows](#7-piece-owned-windows)
   - [8. Everything under undo/redo](#8-everything-under-undoredo)
 - [Sequence Diagrams](#sequence-diagrams)
@@ -287,6 +288,10 @@ The structure event refreshes what a window says the *piece is*; the invalidatio
 A dedicated per-setting event was considered and rejected. It would carry the changed key and its new value so a Preferences window could refresh one control without a refetch — but the refetch happens regardless, driven by the same write, and the projection it returns already carries every setting's value. The second event would deliver, more precisely, information the first has already brought. The cost of the coarser channel is over-signalling — a write to any setting refetches the whole projection — and [ADR-0016](0016-Settings.md) accepts it deliberately: piece settings change rarely, and the projection carries no measures, voices or items.
 
 The first flow is about the piece; the second is about the music. That is the division [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §6 draws for change detection generally — changes to the things that *contain* the music announce themselves structurally, while changes to the music itself emit no structure event and defer to the asynchronous formatting pipeline. Settings sit across that line on purpose: they are part of what a piece *is*, and many of them also govern how it is *drawn*.
+
+#### Spacing settings show what they can move
+
+Settings that shape horizontal spacing differ in one way that matters to the user more than any other: what moving one can move ([ADR-0055](0055-Horizontal-Spacing.md#spacing-settings)). One read in Stage 1 or 2 changes what the music reserves, and can move notes and line breaks; one read only in Stage 4 shares out room the breaker has already priced, and can move notes within a system but never a break; one read only in Stage 5 spends room already given, and moves neither. Each such setting declares which of the three it is, beside its category ([ADR-0016](0016-Settings.md)), and the window shows it beside the setting's control. Like everything else the window presents, it comes from the declaration, so no fetch carries it.
 
 ### 7. Piece-owned windows
 

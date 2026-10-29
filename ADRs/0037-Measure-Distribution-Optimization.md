@@ -108,7 +108,7 @@ Accepted
 │                                    ▼                                    │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
 │  │  Stage 4: ATOM POSITIONING (Fan-out per Measure)                │    │
-│  │  Apply each system's r to its gaps, compute coordinates         │    │
+│  │  Fill each system's width through its gaps' springs             │    │
 │  │  g_j = max(b_j, w_j + r × k_j)                                  │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 │                                    │                                    │
@@ -189,7 +189,7 @@ With vertical coordination complete, the problem reduces to:
 - Output: System break decisions and the adjustment ratio of each system
 
 **Stage 4: Atom Positioning**
-Applies each system's adjustment ratio from Stage 3 to every gap in it, positioning atoms at their actual coordinates. Non-connecting visual elements (noteheads, accidentals, dynamics) are positioned from the resulting gap widths. These elements do not influence distribution.
+Fills each system's width through the springs of its gaps, positioning atoms at their actual coordinates: under compression at the adjustment ratio from Stage 3, and under stretching with the room shared out by the stretch dial ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)). Non-connecting visual elements (noteheads, accidentals, dynamics) are positioned from the resulting gap widths. These elements do not influence distribution.
 
 **Stage 5: Spanners and Margins**
 Ties, slurs, and spanning attachments compute geometry based on finalized atom positions from Stage 4. They adapt to the determined layout rather than influencing it. For measures at system-start positions, Stage 5 adds graphical decorations (courtesy accidentals, tie continuations) within the reserved gutter space. Determines actual system heights from vertical extent of connecting elements.
@@ -231,7 +231,7 @@ g_j(r) = max(b_j, w_j + r × k_j)        k_j = σ × w_j when r ≥ 0, max(0, w_
 r = least r with Σ g_j(r) = available
 ```
 
-This is not optimization: `Σ g_j` is continuous, piecewise linear and non-decreasing in `r`, and `r` is found exactly. Under stretching, every gap that is free to stretch does so in proportion to its ideal width, so rhythmic proportions are kept among those gaps; a gap held open by an accidental keeps its blocking width until the rest of the system catches up with it. Under compression, every gap gives up the same share of its room above its minimum.
+This is not optimization: `Σ g_j` is continuous, piecewise linear and non-decreasing in `r`, and `r` is found exactly. Under stretching, every gap that is free to stretch does so in proportion to its ideal width, so rhythmic proportions are kept among those gaps; a gap held open by an accidental keeps its blocking width until the rest of the system catches up with it. Under compression, every gap gives up the same share of its room above its minimum. These are the springs the breaker prices. Which gaps take a stretched system's room is a setting, the stretch dial, which Stage 4 applies to the room this ratio gives the system; it never changes `r`, the cost or the breaks ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)).
 
 **Segment cost model**:
 The cost of a system is Knuth–Plass's. It is judged by its **adjustment ratio** `r`: how far its gaps are stretched or compressed, measured against how far they can go. In the glue model of Knuth and Plass, `r` is one division:
@@ -307,6 +307,8 @@ The calibration gives `r` its meaning at both ends, and TeX's constants (`c`, `e
 
 How the calibration applies under the alternative fitting rules is stated under [Fitting Rules](#fitting-rules).
 
+**The stretch dial leaves the calibration alone.** The dial decides which gaps take a stretched system's room, and acts in Stage 4 on the room the breaker has already priced ([ADR-0055](0055-Horizontal-Spacing.md#the-stretch-dial)). It never changes `r`, the cost or the breaks, so `σ`, the tolerance and TeX's constants keep the meanings above at every setting of the dial, and none of them has to be moved with it.
+
 ## Decision
 
 ### Architectural Position
@@ -316,7 +318,7 @@ Measure distribution optimization (system breaking) is Stage 3 of the hierarchic
 The algorithm implements **capacity-constrained segmentation with spring-based width allocation**:
 1. Dynamic programming (Stage 3) determines optimal system break points, accounting for preamble and gutter space at system starts, postamble space at system ends and no-break space at the boundaries inside a system
 2. Each system's adjustment ratio is solved exactly from its gaps' springs within the available space (after preamble, gutter, postamble and no-break reservation)
-3. Atom positioning (Stage 4) applies each system's adjustment ratio to its gaps to compute actual positions
+3. Atom positioning (Stage 4) fills each system through its gaps' springs to compute actual positions, under stretching with the room shared out by the stretch dial
 4. System heights (Stage 5) are computed from final geometry
 5. Page breaking (Stage 6) is a second dynamic programme, over systems with actual heights, whose cost function is not yet specified
 
@@ -354,7 +356,7 @@ stacks ;; Vector of stack maps
 - `:gutter` — additional space required when this measure appears first on a system (default 0N); this space is reserved for graphical decorations (courtesy accidentals, tie continuations, a start repeat moved there by a break) and does not scale
 - `:no-break-width` — the no-break material at the stack's closing boundary: what its closing barline adds mid-system beyond the form it takes at a system's end, in which it enters the stack. That is the start part of a combined repeat `:||:`, or a start repeat at the boundary, which is a plain barline at a break; for any other barline it is 0N. Cancellation naturals of a key change the next measure begins with are no-break material too, if house style omits them at a system start ([ADR-0055 H10](0055-Horizontal-Spacing.md#h10-no-break-material-and-the-system-start)). It is fixed space, counted only when the boundary falls inside a system, and does not scale
 
-Stage 4 needs every gap's `w_j` and `b_j`, not only the summary; both stay cached with the stack (see [Caching and Incremental Recompute](#caching-and-incremental-recompute)).
+Stage 4 needs every gap's `w_j` and `b_j`, and its stretch weight `s_j` for the stretch dial ([ADR-0055](0055-Horizontal-Spacing.md#the-stretch-dial)), not only the summary; they stay cached with the stack (see [Caching and Incremental Recompute](#caching-and-incremental-recompute)).
 
 The gutter is *additional* to the measure's width, not part of it. When a measure appears first on a system, the system must accommodate `gutter[s] + actual[s]` for that measure.
 
@@ -391,6 +393,8 @@ g_j(r) = max(b_j, w_j + r × max(0, w_j − b_j))  when r < 0
 A gap is **ordinary** when `b_j ≤ w_j`. It is **prestretched** when `b_j > w_j`: the atoms need more room than the durations call for, as when a short note is followed by one carrying an accidental. A prestretched gap holds its blocking width under every compression, and under stretching up to its **kink**, `κ_j = (b_j − w_j) / (σ × w_j)`, where its spring catches up with the collision; beyond that it stretches like any other gap. The accidental takes the room it needs and no more, and once the system is loose enough it costs nothing.
 
 This is the engraver's principle, that everything belonging to a note, accidentals included, should fit within its proportional allocation, made exact: where it cannot fit, the allocation yields only as far as the collision requires.
+
+These are the springs Stage 3 prices, and those Stage 4 places a system with under compression. Under stretching, Stage 4 places it with the stretch the stretch dial gives each gap, `σ × s_j`, which at the dial's 0 is `σ × w_j` ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)).
 
 **Why not one scale factor.** A single proportional scale factor per system requires `b_j ≤ w_j` for every gap and gives every gap the same proportional stretch and shrink. It cannot represent a prestretched gap, and a gap whose minimum equals its ideal blocks compression of its whole system. It is kept as an alternative under [Fitting Rules](#fitting-rules).
 
@@ -450,7 +454,7 @@ Overlapping constraints are applied in a fixed order (by first gap, then by last
                              (add-kinks (sorted-map) prestretched sigma) sigma)]
         (reduce (fn [gs i]
                   (update gs i (fn [{:keys [w b] :as g}]
-                                 (assoc g :b (gap-width w b r-d sigma)))))
+                                 (assoc g :b (gap-width w b w r-d sigma)))))
                 gaps
                 (range j k))))))
 ```
@@ -506,7 +510,7 @@ System layout for a system of stacks `[s, t)`:
 └───────────┴──────────┴─────────────┴─────┴─────────────┴────────────┘
       ↑          ↑           ↑                                 ↑
       │          │           │                                 └─ postamble[t] (does not scale)
-      │          │           └─ actual[i] = Σ g_j(r) over the gaps of stack i
+      │          │           └─ actual[i] = Σ of stack i's gap widths, as Stage 4 places them
       │          │
       │          └─ gutter[s] (does not scale)
       │
@@ -535,7 +539,7 @@ nobreak = Σ no_break[i] for s ≤ i ≤ t − 2    ;; Boundaries inside the sys
 available = system_width - preamble - gutter - postamble - nobreak
 r = least r with Σ g_j(r) = available       ;; One ratio for every gap in the system
 
-actual[i] = Σ g_j(r) over stack i's gaps     ;; Each gap by its own spring
+actual[i] = Σ of stack i's gap widths        ;; Each gap by its own spring, as Stage 4 places it
 ```
 
 **Verification:**
@@ -611,26 +615,27 @@ Where no change takes effect at stack `t`, `postamble[t] = 0N`. At the end of th
 
 ### Width Allocation: Applying the Adjustment Ratio
 
-Once breaks are chosen, every gap of a system `[s, t)` receives the width its spring gives at the system's adjustment ratio, within the space remaining after preamble, gutter and postamble reservation and the no-break widths of the boundaries inside the system:
+Once breaks are chosen, every gap of a system `[s, t)` receives the width its spring gives, within the space remaining after preamble, gutter and postamble reservation and the no-break widths of the boundaries inside the system. Under compression, and at the system's natural width, that is its width at the system's adjustment ratio `r` from Stage 3. Under stretching, Stage 4 shares the same room out through the stretch dial ([ADR-0055](0055-Horizontal-Spacing.md#the-stretch-dial)): each gap stretches by `σ × s_j`, `s_j` being its stretch weight, at the least ratio `r′` at which the gaps fill the available width, found by the same exact solver. At the dial's 0 every `s_j = w_j`, and `r′ = r`.
 
 ```
 available = system_width - preamble[s] - gutter[s] - postamble[t] - nobreak(s, t)
 r = least r with Σ g_j(r) = available          (from Stage 3)
-actual_j = g_j(r) = max(b_j, w_j + r × k_j)
+actual_j = g_j(r) = max(b_j, w_j + r × k_j)     when r ≤ 0
+actual_j = max(b_j, w_j + r′ × σ × s_j)          when r > 0, r′ the least ratio at which these fill available
 ```
 
 The preamble, gutter, postamble and no-break widths are fixed overhead; none participates.
 
 This is **derivation, not optimisation**:
-- Deterministic: `r` is the exact solution of a piecewise-linear equation, already computed by Stage 3
+- Deterministic: `r` is the exact solution of a piecewise-linear equation, computed by Stage 3, and `r′` the exact solution of the system's own, by the same solver
 - No gap falls below its blocking width, by construction: the `max` is part of the spring, not a defensive clamp
-- Under stretching, every gap free to stretch keeps its proportion to its ideal width; a gap held open by an accidental keeps its blocking width until the system has caught up with it
+- Under stretching, the stretch dial decides which gaps take the room: at 0 every gap free to stretch keeps its proportion to its ideal width, and at 1 only the white space between noteheads stretches; a gap held open by an accidental keeps its blocking width until the system has caught up with it
 - Under compression, every gap gives up the same share of its room above its minimum
 - No iteration, no convergence, no tuning beyond the documented parameters
-- Contained: within a fixed break configuration, a change to one stack alters only its own system's adjustment ratio
-- Near-zero computational cost: O(gaps) per system
+- Contained: within a fixed break configuration, a change to one stack alters only its own system's ratios
+- Near-zero computational cost: O(gaps) per system, with a walk over the held gaps' kinks for `r′`
 
-**Notes on the cost**: the system's cost is the badness of its single adjustment ratio, combined into demerits (see the segment cost model under [Optimization Characterization](#optimization-characterization)), not a sum over its gaps or stacks. The preamble, gutter, postamble and no-break widths affect the cost only through the available width, and so through `r`.
+**Notes on the cost**: the system's cost is the badness of its single adjustment ratio `r`, combined into demerits (see the segment cost model under [Optimization Characterization](#optimization-characterization)), not a sum over its gaps or stacks. `r′` never enters it: the stretch dial changes where a stretched system's room goes, never what the system costs, so it can never move a break. The preamble, gutter, postamble and no-break widths affect the cost only through the available width, and so through `r`.
 
 **Relationship to Knuth-Plass**: a spring is Knuth–Plass glue with a blocking width; where no gap is blocked or prestretched, the springs are glue exactly. See [Relationship to Knuth-Plass](#relationship-to-knuth-plass).
 
@@ -1016,20 +1021,20 @@ Three rules keep it so:
 
 Stage 3 operates over a sequence of measure stacks whose width metrics are **already finalized upstream**. In addition, Ooloi caches the following per **measure stack**:
 
-* its gaps' ideal and blocking widths, `w_j` and `b_j`, after the reduction of constraints spanning several columns (Stages 1–2)
+* its gaps' ideal and blocking widths, `w_j` and `b_j`, after the reduction of constraints spanning several columns, and their stretch weights `s_j` (Stages 1–2)
 * its summary for Stage 3: `min`, `natural`, `ideal`, `ordinary-ideal` and its prestretched gaps
 * `gutter_width` — additional space for system-start decorations
 * `no_break_width` — what its closing barline adds when the boundary after it falls inside a system
-* `actual_width` — realized width after Stages 3–4 (each system's adjustment ratio applied to its gaps by Stage 4)
+* `actual_width` — realized width after Stages 3–4 (each system's room shared out among its gaps by Stage 4)
 
-This cache is authoritative at the Stage 3-4 boundary: Stage 3 consumes the summaries, gutters and no-break widths, together with the preamble and postamble for each candidate system, and produces break assignments and adjustment ratios; Stage 4 applies each system's ratio to its gaps to produce `actual` positions; Stage 5 consumes `actual` and never influences Stages 3-4.
+This cache is authoritative at the Stage 3-4 boundary: Stage 3 consumes the summaries, gutters and no-break widths, together with the preamble and postamble for each candidate system, and produces break assignments and adjustment ratios; Stage 4 fills each system through its gaps' springs to produce `actual` positions; Stage 5 consumes `actual` and never influences Stages 3-4.
 
 #### Cached Invariants
 
 For each stack `i` in a system `[s, t)` with adjustment ratio `r`:
 
 * `r ≥ −1`, so every gap of the stack is at or above its blocking width, and `actual_width_i ≥ min_width_i`
-* `actual_width_i = Σ g_j(r)` over the stack's gaps
+* `actual_width_i` is the sum of the stack's gap widths as Stage 4 places them
 * the system's actual widths sum to `available = system_width - preamble[s] - gutter[s] - postamble[t] - nobreak(s, t)`
 
 The cache additionally implies that per-stack metrics are **stable across edits** unless the edited content is in that stack, or in a neighbour joined to it by a constraint across the barline, or is a clef change taking effect at the start of the next measure: the stack's measure draws that clef before its closing barline ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)), so the change alters its Stage 1 output and its width.
@@ -1081,7 +1086,7 @@ Visual judgement, together with measurements taken on the same scores:
 
 The test material is chosen for where the difficulty lies: chromatic passages in short values, bars that mix long values with runs of very short ones, vocal scores with dense lyrics, tight orchestral pages, music of gradually changing density, and parts with page turns. Parts with page turns evaluate Stage 6 and the separation of system breaking from page breaking ([Joint System and Page Breaking](#joint-system-and-page-breaking)), not Stage 3 alone. The references are printed engravings, not the output of other programs.
 
-These measurements also decide the **badness exponent and the constants** of the segment cost model — the coefficient, exponent, cap, per-system penalty `l` and tolerance, starting from TeX's values ([Optimization Characterization](#optimization-characterization)) — and the **stretchability `σ`**, starting from `1/2` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). The constants and `σ` are judged together: TeX's constants are meaningful only under the calibration, and `σ` sets the stretch at which a system counts as badly as one at its collision limit.
+These measurements also decide the **badness exponent and the constants** of the segment cost model — the coefficient, exponent, cap, per-system penalty `l` and tolerance, starting from TeX's values ([Optimization Characterization](#optimization-characterization)) — and the **stretchability `σ`**, starting from `1/2` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)). The constants and `σ` are judged together: TeX's constants are meaningful only under the calibration, and `σ` sets the stretch at which a system counts as badly as one at its collision limit. They also decide the stretch dial's default, starting from 1 ([ADR-0055](0055-Horizontal-Spacing.md#the-stretch-dial)), which is judged on its own: it never changes what a system costs.
 
 ### Exact Re-optimisation After an Edit
 
@@ -1155,11 +1160,11 @@ A fitting rule is a choice of elasticity.
 1. **Proportional, normalised by the tightest gap**. Stretch `σ × w_j`, shrink `(1 − max ρ) × w_j` with `ρ = max_j(b_j / w_j)` over the segment, carried as a running extremum, and feasibility `r ≥ −1`. One scale factor per system, so ratios between ideal widths are kept under compression as well as under stretching. It requires `b_j ≤ w_j` for every gap, and one gap at its minimum blocks compression of its whole system.
 2. **Even**. Every gap has the same stretch and shrink. Under stretching, short values gain proportionally more and the hierarchy flattens; under compression, they lose proportionally more and it sharpens. Shrink is normalised by the gap with the least room, as in rule 1.
 3. **Duration-weighted shrink**. Shrink `κ × v(d_j) × w_j`, weighted by a function of the gap's duration so that, for example, shorter values compress first. Under springs no cap is needed: a gap that reaches its minimum blocks there and the others carry on. Gaps then block at different ratios, so the shrinking side acquires kinks of its own and is solved like the stretching side; `r = −1` needs a definition of its own, for example the ratio at which the last gap blocks. The weighting `v` and the scale `κ` are decided with the rule.
-4. **Air-only stretch**. Stretch proportional to the space between bare noteheads, `σ × (w_j − n)` with `n` a notehead's width, rather than to the whole ideal width, so that long values take most of any stretching. This is LilyPond's default (`Spacing_spanner::note_spacing` in `lily/spacing-basic.cc`).
+4. **Air-only stretch**. Stretch proportional to the space between bare noteheads, `σ × (w_j − n)` with `n` a notehead's width, rather than to the whole ideal width, so that long values take most of any stretching. This is LilyPond's default (`Spacing_spanner::note_spacing` in `lily/spacing-basic.cc`). It is the stretch dial at 1, which decides where a stretched system's room goes, in Stage 4, without entering the price ([ADR-0055](0055-Horizontal-Spacing.md#the-stretch-dial)). As a rule for pricing it is not adopted: the breaker would then judge a system's looseness by where the dial puts the room, and the dial would move breaks.
 
-Whether the hierarchy should sharpen or flatten under compression, and which values should take the stretch, are engraving questions, decided by the empirical validation rather than by the model. The baseline is the rule this ADR's formulas and code carry; none of the alternatives is chosen until the validation decides.
+Whether the hierarchy should sharpen or flatten under compression is an engraving question, decided by the empirical validation rather than by the model; which values take the stretch is the stretch dial, a setting whose default the validation decides. The baseline is the rule this ADR's formulas and code carry for pricing; none of the alternatives is chosen until the validation decides.
 
-**All of them keep the DP exact.** Each system's cost still depends on the segment alone, and `r` is the solution of a piecewise-linear equation built from prefix sums and the segment's kinks. Under the baseline and rules 1, 2 and 4 the shrinking side is one division; rule 3 makes it piecewise, solved exactly by the same walk as the stretching side. Under any rule, Stage 4 applies the system's adjustment ratio through each gap's own spring.
+**All of them keep the DP exact.** Each system's cost still depends on the segment alone, and `r` is the solution of a piecewise-linear equation built from prefix sums and the segment's kinks. Under the baseline and rules 1, 2 and 4 the shrinking side is one division; rule 3 makes it piecewise, solved exactly by the same walk as the stretching side. Under any rule, Stage 4 fills the system through each gap's own spring, under stretching as the stretch dial shapes it.
 
 **Who pays.** The adjustment ratio is one value for the whole system, so when a bar needs more room than its proportions give it (a run of thirty-second notes between a half note and a quarter, say), the cost is shared by every gap in the system according to its elasticity, including gaps several bars away. An engraver might prefer the long notes of the same bar to pay. That is a choice between consistency, where the same duration is treated alike across the system, and locality, where each bar settles its own debts. Locality belongs where ideal widths are formed, in Stage 2, before any fitting begins ([ADR-0055](0055-Horizontal-Spacing.md#h18-locality-within-a-bar)), and needs no change to Stage 3. The baseline is consistency; the validation decides whether locality is needed.
 
@@ -1220,12 +1225,14 @@ The following implementation performs **Stage 3: System Breaking** - distributin
                               ;; gap is at (1 + σ) × w at r = 1
 
 (defn gap-width
-  "Width of a gap with ideal width w and blocking width b at adjustment
-   ratio r, under the baseline springs: stretch σ × w, shrink max(0, w − b)."
-  [w b r sigma]
+  "Width of a gap with ideal width w, blocking width b and stretch weight s
+   at adjustment ratio r: stretch σ × s, shrink max(0, w − b). Stage 3 prices
+   with s = w, the baseline springs; Stage 4 places a stretched system with
+   the stretch dial's weight."
+  [w b s r sigma]
   (if (neg? r)
     (max b (+ w (* r (max 0N (- w b)))))
-    (max b (+ w (* r sigma w)))))
+    (max b (+ w (* r sigma s)))))
 
 (defn stack-summary
   "Summarises a sequence of gaps {:w ideal, :b blocking} for Stage 3
@@ -1242,23 +1249,27 @@ The following implementation performs **Stage 3: System Breaking** - distributin
           gaps))
 
 (defn add-kinks
-  "Adds prestretched gaps to a sorted map {kink Σw}, where a gap's kink is
-   (b − w) / (σ × w), the ratio at which it starts to stretch. A gap of zero
-   ideal width is fixed space: it never stretches and has no kink."
+  "Adds prestretched gaps to a sorted map {kink Σs}. Each gap is [w b],
+   priced with stretch weight s = w, or [w b s]: its kink is (b − w) / (σ × s),
+   the ratio at which it starts to stretch, and from there it stretches by
+   σ × s. A gap of zero weight is fixed space: it never stretches and has no
+   kink."
   [kinks prestretched sigma]
-  (reduce (fn [m [w b]]
-            (if (zero? w)
-              m
-              (update m (/ (- b w) (* sigma w)) (fnil + 0N) w)))
+  (reduce (fn [m [w b s]]
+            (let [s (or s w)]
+              (if (zero? s)
+                m
+                (update m (/ (- b w) (* sigma s)) (fnil + 0N) s))))
           kinks
           prestretched))
 
 (defn solve-ratio
   "The least adjustment ratio r at which a segment's gaps fill `available`,
-   or nil when they cannot (available < Σ min). min, natural and
-   ordinary-ideal are the segment's sums; kinks is its sorted map {kink Σw}.
-   Exact: rationals in, rational out."
-  [available min natural ordinary-ideal kinks sigma]
+   or nil when they cannot (available < Σ min). min and natural are the
+   segment's sums, ordinary-stretch the stretch weight of its ordinary gaps
+   (their ideal width, when Stage 3 prices a segment); kinks is its sorted
+   map {kink Σs}. Exact: rationals in, rational out."
+  [available min natural ordinary-stretch kinks sigma]
   (cond
     (< available min) nil
 
@@ -1275,13 +1286,13 @@ The following implementation performs **Stage 3: System Breaking** - distributin
     :else
     (loop [width natural
            r0 0N
-           slope (* sigma ordinary-ideal)
+           slope (* sigma ordinary-stretch)
            ks (seq kinks)]
-      (let [[k w] (first ks)
+      (let [[k s] (first ks)
             reach (when k (+ width (* slope (- k r0))))]
         (if (or (nil? k) (<= available reach))
           (+ r0 (/ (- available width) slope))
-          (recur reach k (+ slope (* sigma w)) (next ks)))))))
+          (recur reach k (+ slope (* sigma s)) (next ks)))))))
 
 (defn badness
   "Badness of a system with adjustment ratio r: c × |r|^e, capped at b_max.
@@ -1476,7 +1487,7 @@ The DP algorithm subtracts preamble, gutter, postamble and no-break widths from 
 
 The walk visits only the kinks below `r`. A balanced tree over the kinks carrying running sums of `w` would find the piece in O(log P) for `P` prestretched gaps in the segment; the linear walk is specified for clarity, since a segment holds few prestretched gaps and `r` passes few of them within any reasonable tolerance.
 
-Every quantity is a rational, so `r` is exact and identical on every platform. The same function serves Stage 2, which uses it to reduce [constraints spanning several columns](#constraints-spanning-several-columns).
+Every quantity is a rational, so `r` is exact and identical on every platform. The same function serves Stage 2, which uses it to reduce [constraints spanning several columns](#constraints-spanning-several-columns), and Stage 4, which uses it with each gap's stretch weight in place of its ideal width to place a stretched system under the stretch dial ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)).
 
 ### Segment Cost Computation
 
@@ -1501,16 +1512,38 @@ d = (l + b)² ± p²
   ...)
 ```
 
-This is the canonical cost definition under the ADR's contract, not an optimisation of a more complex one. The `r` it uses is the ratio every gap of the system actually receives in Stage 4.
+This is the canonical cost definition under the ADR's contract, not an optimisation of a more complex one. The `r` it uses is the ratio every gap of the system receives in Stage 4 under compression, and under stretching with the stretch dial at 0; at other settings the dial shares the same room out differently and never changes `r` ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)).
 
 ### Width Allocation Implementation
 
 ```clojure
+(defn placement-ratio
+  "The ratio at which Stage 4 places a system's gaps. Under compression, and
+   at the system's natural width, it is the system's adjustment ratio r from
+   Stage 3. Under stretching the stretch dial shares out the room r gives the
+   system through each gap's stretch weight :s, so the ratio is solved afresh
+   over the system's gaps by the same exact solver. all-gaps holds the
+   system's gaps {:w ideal, :b blocking, :s stretch weight}."
+  [all-gaps r sigma]
+  (if (<= r 0)
+    r
+    (let [available (reduce + 0N (map (fn [{:keys [w b]}] (gap-width w b w r sigma)) all-gaps))
+          ordinary (filter (fn [{:keys [w b]}] (<= b w)) all-gaps)
+          prestretched (keep (fn [{:keys [w b s]}] (when (> b w) [w b s])) all-gaps)]
+      (solve-ratio available
+                   (reduce + 0N (map :b all-gaps))
+                   (reduce + 0N (map (fn [{:keys [w b]}] (max w b)) all-gaps))
+                   (reduce + 0N (map :s ordinary))
+                   (add-kinks (sorted-map) prestretched sigma)
+                   sigma))))
+
 (defn allocate-widths
-  "Allocates actual gap widths for one system from its adjustment ratio r.
+  "Allocates actual gap widths for one system from its adjustment ratio r,
+   at the ratio placement-ratio gives.
 
    Used after break selection to compute final positions for rendering.
-   system-gaps is a vector, per stack, of that stack's gaps {:w ideal, :b blocking}.
+   system-gaps is a vector, per stack, of that stack's gaps
+   {:w ideal, :b blocking, :s stretch weight}.
    preamble and postamble are the system's preamble[s] and postamble[t]; the
    first stack contributes :gutter, and every stack but the last its
    :no-break-width, at the boundary after it. All are reserved space outside
@@ -1525,8 +1558,9 @@ This is the canonical cost definition under the ADR's contract, not an optimisat
   [system-stacks system-gaps preamble postamble r sigma]
   (let [gutter (get (first system-stacks) :gutter 0N)
         no-break (conj (mapv #(get % :no-break-width 0N) (butlast system-stacks)) 0N)
+        placed-r (placement-ratio (into [] cat system-gaps) r sigma)
         gaps (mapv (fn [stack-gaps]
-                     (mapv (fn [{:keys [w b]}] (gap-width w b r sigma)) stack-gaps))
+                     (mapv (fn [{:keys [w b s]}] (gap-width w b s placed-r sigma)) stack-gaps))
                    system-gaps)]
     {:preamble preamble
      :gutter gutter
@@ -1538,7 +1572,7 @@ This is the canonical cost definition under the ADR's contract, not an optimisat
 
 **Why this approach**:
 
-1. **Derivation, not optimisation**: `r` is already known; each gap's width is one formula
+1. **Derivation, not optimisation**: `r` is already known, and under stretching the dial's ratio is one more exact solve; each gap's width is one formula
 2. **Collision-safe by construction**: no gap falls below its blocking width, so there is no clamp to trust
 3. **Reservation correctness**: System-start decorations, system-end cautionaries and the no-break material inside the system have exactly their required space
 4. **Deterministic**: Same input always produces same output with no floating-point variation
@@ -1587,6 +1621,7 @@ Each stack carries `:gutter` and `:no-break-width` (default 0N). Preamble width 
 The implementation fits each system by its gaps' springs. This is derivation (the exact solution of a piecewise-linear equation), not optimisation (an iterative solver):
 
 - **Ratio**: `r` is the least value with `Σ g_j(r) = available`: one division when shrinking, and when stretching until a prestretched gap starts to stretch
+- **Placement**: under stretching, Stage 4 shares the system's room out through the stretch dial's weights, solving its own ratio with the same function (`placement-ratio`); `r`, the cost and the breaks are unchanged
 - **Reservation**: `available = system_width - preamble[s] - gutter[s] - postamble[t] - nobreak(s, t)`
 - **No clamp**: `g_j(r) = max(b_j, w_j + r × k_j)` never falls below the blocking width
 - **Fast**: O(gaps) per system to apply, essentially zero cost
@@ -1863,6 +1898,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 9. **Performance** - O(N×K) segment evaluations, each O(1) except where prestretched gaps take part
 10. **Rational arithmetic** - No floating-point drift across platforms
 11. **Predictability** - Users can mentally model system behavior
+12. **A stretch dial that never moves a break** - Which gaps take a stretched system's room is a setting applied in Stage 4, after the breaker has priced the room: it changes no cost, ratio or break, so it can be moved alone
 
 **Neutral:**
 
@@ -1872,7 +1908,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 4. **Policy-free core** - Algorithm is purely geometric by default; editorial preferences can be added via optional `break-penalty-fn` without modifying the core
 5. **Gutter and no-break storage** - Each stack carries `gutter` and `no-break-width` (typically 0N), and the DP one more prefix sum; overhead is minimal
 6. **Global breaks** - The break configuration is a global optimum, so an edit can change system breaks anywhere between the forced breaks around it, before the edit as well as after it. Breaks stay where they are only where the user fixes them, with forced breaks or frozen systems; keeping the user oriented is presentation ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece))
-7. **Springs, not one scale factor** - Stage 4 applies each system's adjustment ratio gap by gap, and each stack's input to Stage 3 includes a short list of its prestretched gaps besides its sums
+7. **Springs, not one scale factor** - Stage 4 fills each system gap by gap, and each stack's input to Stage 3 includes a short list of its prestretched gaps besides its sums
 
 **Future Considerations:**
 
@@ -1893,7 +1929,7 @@ Stages 3 and 4 are mathematics over springs; they contain no engraving rules. Ev
 - a **constraint spanning several columns**: lyrics, text, and neighbouring atoms in one staff that other staves separate by further columns, reduced to blocking widths before breaking ([Constraints Spanning Several Columns](#constraints-spanning-several-columns));
 - a **variant at a break**: the preamble, gutter and postamble, and the no-break width of each boundary, known before breaking.
 
-A horizontal rule that cannot be expressed in one of these forms is a design problem to be resolved, not a pass to be added. It follows that no column moves after fitting (Stage 5 places and adjusts elements within the space the columns leave); that settings which would choose between heuristics have nothing to choose between, leaving parameters of the model (`σ`, the elasticity) that express taste; and that user interventions enter as inputs, constraints or modified springs, so they survive every recomputation: a dragged column, for example, is a transfer of ideal width between its two gaps, which moves that column alone and, unless it takes a gap's ideal width below its blocking width, leaves the system's adjustment ratio and breaks unchanged. When the validation shows the baseline to be wrong, the fix is a new input or a new term in the cost or the elasticity, never a correction applied after the fact. [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) organises the rules by the form each takes and the stage that produces it.
+A horizontal rule that cannot be expressed in one of these forms is a design problem to be resolved, not a pass to be added. It follows that no column moves after fitting (Stage 5 places and adjusts elements within the space the columns leave); that settings which would choose between heuristics have nothing to choose between, leaving parameters of the model (`σ`, the elasticity, the stretch dial) that express taste; and that user interventions enter as inputs, constraints or modified springs, so they survive every recomputation: a dragged column, for example, is a transfer of ideal width between its two gaps, which moves that column alone and, unless it takes a gap's ideal width below its blocking width, leaves the system's adjustment ratio and breaks unchanged. When the validation shows the baseline to be wrong, the fix is a new input or a new term in the cost or the elasticity, never a correction applied after the fact. [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) organises the rules by the form each takes and the stage that produces it.
 
 ## References
 

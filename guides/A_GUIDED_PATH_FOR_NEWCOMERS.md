@@ -244,10 +244,10 @@ The earlier post, ["The Rendering Pipeline: Ooloi's Core Architecture"](https://
 
 Six stages:
 
-- **Stage 1** (fan-out): Atom formation. Each measure forms its atoms and their contours, the outlines Stage 2 measures. Results are immutable and persist until the measure's content changes, or the clef the next measure begins with, which the measure draws before its closing barline.
+- **Stage 1** (fan-out): Atom formation. Each measure forms its atoms and their contours, the outlines Stage 2 measures. Results are immutable and persist until the measure's content changes, or the clef the next measure begins with, which the measure draws before its closing barline, or a font or a setting that changes glyph geometry, such as a ledger line's minimum protrusion.
 - **Stage 2** (fan-in): Raster and springs. The staves' rhythms are merged into one raster of columns, every gap between columns becomes a spring with an ideal and a blocking width, and each measure stack is summarised for Stage 3: its minimum, natural and ordinary ideal widths as sums, its prestretched gaps, its gutter, and its no-break width, what the boundary after it adds only when that boundary falls inside a system.
 - **Stage 3** (single): System breaking. Dynamic programming over the measure sequence. Determines optimal system breaks and each system's adjustment ratio.
-- **Stage 4** (fan-out): Atom positioning. Applies each system's adjustment ratio to its gaps; computes absolute coordinates.
+- **Stage 4** (fan-out): Atom positioning. Fills each system's width through its gaps' springs: at the system's adjustment ratio under compression, and under stretching with the room shared out by the stretch dial, which never moves a break; computes absolute coordinates.
 - **Stage 5** (fan-out per musician): Spanners and margins. Ties, slurs, beams, hairpins, and glissandi are drawn once final positions are known. Gutter decorations (courtesy accidentals, tie continuations) are added here. System heights become definitive at this stage.
 - **Stage 6** (single): Page breaking. Dynamic programming over the system sequence using actual heights from Stage 5.
 

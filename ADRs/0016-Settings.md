@@ -180,6 +180,15 @@ knows where it belongs, and no window has to guess.
 are read, neither alphabetical nor incidental — so the author of a group controls how it reads. The
 defaults registry must therefore preserve that order.
 
+**A spacing setting declares what it can move.** A setting that shapes horizontal spacing also
+declares which of three kinds it is, by the pipeline stage that reads it: one that can move notes and
+line breaks, one that can move notes within a system but never a break, or one that moves neither
+([ADR-0055](0055-Horizontal-Spacing.md#spacing-settings)). It is recorded in the defaults registry
+beside the category, and a settings window shows it beside the setting
+([ADR-0053](0053-Piece-Window-and-Piece-Preferences.md#spacing-settings-show-what-they-can-move)).
+Like the category, it is declared rather than inferred: nothing in a setting's value or its name
+reveals which stage reads it.
+
 #### Validation Architecture
 
 The validation system provides declarative constraints alongside setting definitions:

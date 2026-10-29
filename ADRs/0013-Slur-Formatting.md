@@ -8,6 +8,7 @@ Accepted
 
 - [Context](#context)
 - [The Pipeline Is One-Way, and What Stage 5 May Change](#the-pipeline-is-one-way-and-what-stage-5-may-change)
+  - [Modifications Are Offsets](#modifications-are-offsets)
 - [Musical Slur Characteristics (Based on Traditional Engraving)](#musical-slur-characteristics-based-on-traditional-engraving)
   - [Visual Examples](#visual-examples)
 - [Decision](#decision)
@@ -21,7 +22,6 @@ Accepted
   - [Edge Cases](#edge-cases)
 - [Open Questions](#open-questions)
   - [Standard shapes versus computed curves](#standard-shapes-versus-computed-curves)
-  - [Whether stage-5 modification touches atom-internal geometry](#whether-stage-5-modification-touches-atom-internal-geometry)
   - [Discrete stage-5 decisions during a drag](#discrete-stage-5-decisions-during-a-drag)
 - [Rationale](#rationale)
   - [Algorithm Choices](#algorithm-choices)
@@ -61,13 +61,19 @@ By the time stage 5 executes, the following are determined and authoritative ([A
 
 What stages 1–4 deliberately do **not** determine is geometry that depends on the spatial relationships between positioned noteheads: slur curves, tie arcs, beam slants, hairpin wedges. The *structure* is fully known; the *geometry* is stage 5's work. Put from the engraver's side: connecting elements are drawn in response to established spacing. **They adapt to geometry; they do not determine it.**
 
-**Stage 5 does not propagate upstream.** It sends no parameters back for re-computation, triggers no re-run of an earlier stage, and closes no feedback loop. What it *may* do is adjust the geometric artifacts earlier stages produced to the concrete space Stage 4 has given — a stem length, an articulation's vertical offset, a ledger line's length, an element's offset from its atom — within declared tolerances, as a single deterministic downstream act. It never changes note spacing: the rhythmic positioning raster is fixed once Stage 4 has applied the system's adjustment ratio, and any horizontal room an element needs is declared before Stage 3, as a constraint spanning several columns ([ADR-0037](0037-Measure-Distribution-Optimization.md)). The same inputs always produce the same modification, and the modification and the spanner geometry are both outputs of the same forward pass.
+**Stage 5 does not propagate upstream.** It sends no parameters back for re-computation, triggers no re-run of an earlier stage, and closes no feedback loop. What it *may* do is adjust the geometric artifacts earlier stages produced to the concrete space Stage 4 has given — a stem length, an articulation's vertical offset, a ledger line's length, an element's offset from its atom — within declared tolerances, as a single deterministic downstream act. It never changes note spacing: the rhythmic positioning raster is fixed once Stage 4 has placed the system's columns, and any horizontal room an element needs is declared before Stage 3, as a constraint spanning several columns ([ADR-0037](0037-Measure-Distribution-Optimization.md)). The same inputs always produce the same modification, and the modification and the spanner geometry are both outputs of the same forward pass.
 
 This is not a limitation but the precondition. The whitespace available to a slur is computed from stage-4 geometry; stage 5's authority to adjust that geometry is what lets it enlarge the whitespace when a slur needs it, without reopening anything upstream. Shortening a stem and enlarging the space above it are the same act described two ways.
 
 The permitted modifications, their ranges, and the cost function that decides when to apply one belong to the Slur and Tie Geometry ADR. Three constraints on them are fixed here: every modification is **bounded** by an engraving-acceptable range, none is **recursive**, and none moves the **rhythmic positioning raster**.
 
-Because no column moves after stage 4, a modification inside an atom must stay within the extent the atom's contours reserved, so stage 1 reserves the envelope of each declared range, and the ranges must be available to it ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). That binds the Slur and Tie Geometry ADR, and beaming, which has no ADR of its own. A ledger line is the exception: its contour holds the shortest acceptable length, and stage 5 lengthens it only into space stage 4 has given.
+Because no column moves after stage 4, a modification inside an atom must stay within the extent the atom's contours reserved, so stage 1 reserves the envelope of each declared range, and the ranges must be available to it ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). That binds the Slur and Tie Geometry ADR, and beaming, which has no ADR of its own. Elements with a minimum form are the exception: a ledger line's contour holds its shortest acceptable length and an accidental's its tightest offset from its notehead, and stage 5 expands them only into space stage 4 has given ([ADR-0055](0055-Horizontal-Spacing.md#minimum-protrusion)).
+
+### Modifications Are Offsets
+
+[ADR-0028](0028-Hierarchical-Rendering-Pipeline.md#atom-relative-geometry-invariant)'s atoms are immutable: once stage 1 produces an atom, its internal geometry is never modified. Stage 5 nonetheless adjusts elements belonging to atoms (a stem's length, an articulation's offset, an accidental's distance from its notehead, a ledger line's length) and places loose elements such as a *pizz.* beside them. Every such adjustment is an offset within a range the atom declared in stage 1, and it is stage 5's own output: positioned data applied to the atom when it is drawn, never written into the cached atom. What is drawn is the atom with stage 5's offsets.
+
+A beamed note's stem length, which depends on the beam's slant and so on final notehead positions, is such an output, and so is any adjustment of an unbeamed stem. The cached atom holds the range, stage 5 the value chosen within it, and the same inputs always give the same offsets.
 
 ## Musical Slur Characteristics (Based on Traditional Engraving)
 
@@ -281,7 +287,7 @@ This ADR establishes the basic algorithm. The following cases require the progre
 
 ## Open Questions
 
-Three questions are open in a way that could change what this ADR specifies, and are recorded here so the implementation does not settle them by accident.
+Two questions are open in a way that could change what this ADR specifies, and are recorded here so the implementation does not settle them by accident.
 
 ### Standard shapes versus computed curves
 
@@ -292,12 +298,6 @@ That bears directly on a goal this ADR already states: *similar spans should pro
 It would also invert the escalation ladder. The fast path today is *compute an elastica, then test for collisions*. Under the standard-shape reading it becomes *select a shape, scale and rotate it to the endpoint geometry, then test* — a lookup and an affine transform in place of a numerical fit, with computed geometry reserved for the hairy cases where no standard shape fits.
 
 The question is empirical and the experiment is cheap: what fraction of the slurs in a professional corpus can a set of *N* standard shapes match within a stated tolerance? If the fraction is high, the standard set is the default and computation is the escalation. If it is low, computation is the default and this question is closed. Nothing in this ADR should be read as settling it.
-
-### Whether stage-5 modification touches atom-internal geometry
-
-[ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)'s atom-relative geometry invariant states that atoms are immutable — "once Stage 1 produces an atom, its internal geometry cannot be modified. Stages 4 and 5 consume atoms; they do not mutate them" — and lists stem geometry among an atom's contents. Yet the modification authority above includes stem length.
-
-These are reconcilable, and the reconciliation needs stating rather than assuming: a **beamed** note's stem length is not knowable in stage 1, because it depends on beam slant, which depends on final notehead positions. Such a stem length is therefore a stage-5 output rather than an atom property, and adjusting it mutates nothing stage 1 produced. Whether that account is exactly right — and where the boundary falls for unbeamed stems, whose lengths *are* determined earlier — is the open part.
 
 ### Discrete stage-5 decisions during a drag
 

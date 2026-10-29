@@ -25,6 +25,11 @@ The architecture is decided: the forms in which horizontal engraving rules reach
   - [Formatter Conditions and Plugins](#formatter-conditions-and-plugins)
   - [Variants at a Break](#variants-at-a-break)
   - [Elasticity by Gap Class](#elasticity-by-gap-class)
+  - [Spacing Settings](#spacing-settings)
+    - [Minimum Protrusion](#minimum-protrusion)
+    - [The Stretch Dial](#the-stretch-dial)
+    - [Accidental Position](#accidental-position)
+    - [Stays Nearer Its Own Note](#stays-nearer-its-own-note)
   - [User Inputs](#user-inputs)
   - [Inspection](#inspection)
   - [Invariants and Property Tests](#invariants-and-property-tests)
@@ -39,7 +44,7 @@ The architecture is decided: the forms in which horizontal engraving rules reach
 
 ### Scope
 
-[ADR-0028](0028-Hierarchical-Rendering-Pipeline.md) defines the six-stage rendering pipeline. [ADR-0037](0037-Measure-Distribution-Optimization.md) begins where Stage 3 receives a summary of each measure stack. It treats every gap between neighbouring columns as a spring with an ideal width and a blocking width, fits the springs of each candidate system, chooses the breaks, and has Stage 4 apply each system's adjustment ratio to its gaps.
+[ADR-0028](0028-Hierarchical-Rendering-Pipeline.md) defines the six-stage rendering pipeline. [ADR-0037](0037-Measure-Distribution-Optimization.md) begins where Stage 3 receives a summary of each measure stack. It treats every gap between neighbouring columns as a spring with an ideal width and a blocking width, fits the springs of each candidate system, chooses the breaks, and has Stage 4 fill each system through its gaps' springs.
 
 This ADR specifies how Stages 1 and 2 produce those springs from the music: what an atom's horizontal geometry is, how columns and gaps are formed, how each gap's ideal and blocking widths are derived, which rules become constraints spanning several columns, and which material differs at a break. It ends at ADR-0037's [Interface Contract](0037-Measure-Distribution-Optimization.md#interface-contract) and does not restate the model beyond it.
 
@@ -113,7 +118,7 @@ Elasticity is not a fifth form: it is a parameter of ADR-0037's model, which may
 - declares, as geometry, the constraints spanning several columns that its own content implies: which atoms or glyphs, and of what kind (ties, lyrics, elements that reserve room, plugin reservations);
 - supplies the geometry of the decorations a measure needs when it starts a system: courtesy accidentals for tied-to notes, tie continuations, a start repeat that may move there; and of its closing barline both as it ends a system and as it stands mid-system ([The Bar Boundary](#the-bar-boundary)).
 
-Stage 1's results depend on the measure's content, the fonts that supply its glyphs and the settings that change glyph geometry. They never depend on the duration table, the anchoring duration, the clearance table, spacing distances such as the minimum tie length, `σ`, or anything in another measure, with one exception: a measure draws before its closing barline a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with, and that clef is part of its cache key ([The Bar Boundary](#the-bar-boundary)). That is what keeps Stage 1 parallel, and its caches valid when any spacing parameter changes.
+Stage 1's results depend on the measure's content, the fonts that supply its glyphs and the settings that change glyph geometry, such as the minimum protrusions of ledger lines ([Minimum Protrusion](#minimum-protrusion)). They never depend on the duration table, the anchoring duration, the clearance table, spacing distances such as the minimum tie length, `σ`, the stretch dial, or anything in another measure, with one exception: a measure draws before its closing barline a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with, and that clef is part of its cache key ([The Bar Boundary](#the-bar-boundary)). That is what keeps Stage 1 parallel, and its caches valid when any spacing parameter changes.
 
 **Stage 2** runs per measure stack, in two steps. First, for each stack, it:
 
@@ -128,13 +133,13 @@ Then, across neighbouring stacks, it:
 6. reduces the constraints that cross a barline, over the gaps of every stack they span;
 7. computes each stack's gutter, and the no-break width of its closing boundary, from Stage 1's geometry ([Variants at a Break](#variants-at-a-break));
 8. applies the user's column transfers, and the transfers barline drags make between neighbouring stacks ([User Inputs](#user-inputs));
-9. produces ADR-0037's stack summaries, and keeps every gap's `w` and `b`, with their provenance, for Stage 4 and for [inspection](#inspection).
+9. produces ADR-0037's stack summaries, and keeps every gap's `w` and `b`, and its stretch weight `s` ([The Stretch Dial](#the-stretch-dial)), with their provenance, for Stage 4 and for [inspection](#inspection).
 
 **Provenance.** For every blocking width, Stage 2 records what set it: the staff or row of text and the pair of glyph classes that meet, or the constraint spanning several columns that raised it, with its `r_D`. For every ideal width it records how it was formed: the table entries it lies between, the controlling duration, each optical correction, and any transfer. Nothing in the pipeline reads provenance, so it changes no width (Invariant 9).
 
 Beyond its own stack, Stage 2 reads only finished output of earlier work: the anchoring duration, where it is derived from the music ([H2](#h2-the-anchoring-duration)); the previous stack's closing barline, where the leading gap begins and whose start repeat the gutter reserves at a system start ([The Bar Boundary](#the-bar-boundary)); and, in its second step, the first step's gaps of the stacks a constraint spans. All three are forward dependencies; nothing flows back.
 
-A change to the duration table, the anchoring duration, the clearance table, a spacing distance or `σ` re-runs Stage 2 and Stage 3. It re-runs no Stage 1 geometry.
+A change to the duration table, the anchoring duration, the clearance table, a spacing distance or `σ` re-runs Stage 2 and Stage 3. It re-runs no Stage 1 geometry. A change to the stretch dial re-runs only Stage 2's stretch weights and the stages from Stage 4 on: it changes no summary, so it never re-runs Stage 3 and never moves a system break.
 
 ### Atoms and Contours
 
@@ -166,17 +171,17 @@ All of it is local to one atom in one staff, which is why it belongs to Stage 1 
 
 Contours replace ADR-0028's four-directional extents. A box overstates the blocking width wherever a glyph's corner is empty: the notch of an accidental, the open side of a flag, a displaced notehead. Each overstatement makes a gap prestretched that need not be, and the spacing turns irregular for geometry no reader sees. LilyPond computes the minimum distance between neighbouring columns from horizontal skylines, profiles of the same kind ([Prior Art](#prior-art)).
 
-**Ledger lines** are part of the atom and its contours. SMuFL's `legerLineExtension` sets how far a ledger line projects beyond its notehead: in Bravura 0.4 staff spaces on each side, so a ledger line under a black notehead 1.18 staff spaces wide is 1.98 wide. At close spacing the ledger lines of neighbouring notes would touch, and engravers shorten them. A ledger line therefore has a minimum form, the shortest acceptable ledger line, from which the blocking width is computed; Stage 5 lengthens it into the space Stage 4 gives, up to its full extension ([H6](#h6-ledger-lines)).
+**Ledger lines** are part of the atom and its contours. The full extension `E` sets how far a ledger line projects beyond its notehead: SMuFL's `legerLineExtension` unless the piece overrides it ([ADR-0047](0047-Font-Management.md#per-font-metadata)), in Bravura 0.4 staff spaces on each side, so a ledger line under a black notehead 1.18 staff spaces wide is 1.98 wide. At close spacing the ledger lines of neighbouring notes would touch, and engravers shorten them. A ledger line therefore has a minimum form, the shortest acceptable ledger line, which the minimum protrusions set ([Minimum Protrusion](#minimum-protrusion)) and from which the blocking width is computed; Stage 5 lengthens it into the space Stage 4 gives, up to its full extension ([H6](#h6-ledger-lines)).
 
-**Immutability.** Atoms are cached with their contours. Stage 4 positions them; Stage 5 adjusts elements to the space Stage 4 gives and never moves an atom or a column. It may adjust geometry the earlier stages produced, such as a stem length or an articulation's offset, within declared ranges, in one bounded pass that is not recursive and never moves the rhythmic raster ([ADR-0013](0013-Slur-Formatting.md#the-pipeline-is-one-way-and-what-stage-5-may-change)). What ADR-0013 leaves open is how that reconciles with ADR-0028's immutability of atoms. Its account is that a beamed note's stem length is a Stage 5 output rather than a property of the atom; whether that is exactly right, and where the boundary falls for unbeamed stems, is not settled ([ADR-0013](0013-Slur-Formatting.md#whether-stage-5-modification-touches-atom-internal-geometry)).
+**Immutability.** Atoms are cached with their contours. Stage 4 positions them; Stage 5 adjusts elements to the space Stage 4 gives and never moves an atom or a column. It may adjust geometry the earlier stages produced, such as a stem length, an articulation's offset, an accidental's distance from its notehead or a ledger line's length, within ranges the atom declares in Stage 1, in one bounded pass that is not recursive and never moves the rhythmic raster ([ADR-0013](0013-Slur-Formatting.md#the-pipeline-is-one-way-and-what-stage-5-may-change)). Every such adjustment is an offset, Stage 5's own output applied to the atom when it is drawn, so the cached atom is never modified ([ADR-0013](0013-Slur-Formatting.md#modifications-are-offsets)).
 
 **What Stage 5 may change.** No column moves after Stage 4, so every horizontal adjustment Stage 5 makes is of one of three kinds, and each element's formatter declares which applies to it ([Formatter Conditions and Plugins](#formatter-conditions-and-plugins)):
 
 - **Within a reserved envelope.** An adjustment bounded by a declared range stays, band by band, within the horizontal extent Stage 1's contours reserved for it. The contour reserves the envelope of the range: for a stem, every height its tip and any flag can reach; for an articulation, every position it can take.
-- **From a minimum form into given space.** An element whose comfortable form is wider than the least it can acceptably take declares both. Its contour holds the minimum form, so the blocking widths reflect what the music needs at its tightest. Stage 5 expands it toward its comfortable form only into space Stage 4 has given, checked against everything already placed. A tight system gets the minimum form and a loose one the comfortable form, and nothing flows back. Ledger lines are of this kind, lengthening toward their full extension, and so is an accidental taking its comfortable distance from its notehead where the system leaves room. The minimum and comfortable forms are geometry, set by column assembly and glyph metrics, never by the clearance table or any other spacing parameter, so Stage 1 stays independent of them (Invariant 4).
+- **From a minimum form into given space.** An element whose comfortable form is wider than the least it can acceptably take declares both. Its contour holds the minimum form, so the blocking widths reflect what the music needs at its tightest. Stage 5 expands it toward its comfortable form only into space Stage 4 has given, checked against everything already placed. A tight system gets the minimum form and a loose one the comfortable form, and nothing flows back. Ledger lines are of this kind, lengthening toward their full extension, and so is an accidental taking its comfortable distance from its notehead where the system leaves room and the accidental position allows it ([Accidental Position](#accidental-position)). The minimum and comfortable forms are geometry, set by column assembly, glyph metrics and the settings that change glyph geometry, never by the clearance table or any other spacing parameter, so Stage 1 stays independent of the spacing parameters (Invariant 4).
 - **Into whatever room exists.** An element whose condition is loose, such as a text box, reserves nothing, and Stage 5 places it wherever the space allows, checked against everything already placed.
 
-Where two expansions compete for the same space, as the ledger lines of neighbouring notes do, or an accidental and the previous note's ledger line, they share it by a fixed rule, so the result is deterministic whatever order Stage 5 meets them in ([H22](#h22-minimum-forms)).
+Where two expansions compete for the same space, as the ledger lines of neighbouring notes do, or an accidental and the previous note's ledger line, they share it by a fixed rule, so the result is deterministic whatever order Stage 5 meets them in: equal shares, except that between an accidental with its own ledger lines and the previous note's ledger lines facing it the accidental position decides ([H22](#h22-minimum-forms), [Accidental Position](#accidental-position)).
 
 This is not an exception to the rule that no column moves: a minimum form never asks for room, it only takes room the springs have already given. A tight system loses nothing it needed, and a loose one gains the comfortable forms without a pass back to Stage 3.
 
@@ -350,15 +355,102 @@ ADR-0037 specifies their structure: the preamble and postamble computed on deman
 
 ### Elasticity by Gap Class
 
-ADR-0037's baseline elasticity applies to every gap: stretch `σ × w`, shrink `max(0, w − b)`. A class of gap may need elasticity of its own. A barline gap that yields "only in cramped conditions" is the first candidate, and it is a matter of shrinking: a shrink weight per class is ADR-0037's alternative 3, generalised from duration to class. A stretchability per class is possible too, but it changes ADR-0037's interface: each prestretched pair carries its own `σ`, and the ordinary sum becomes `Σ σ_j × w_j`. Until [H11](#h11-elasticity-by-gap-class) is settled, the baseline applies to every class.
+ADR-0037's baseline elasticity applies to every gap: stretch `σ × w`, shrink `max(0, w − b)`. A class of gap may need elasticity of its own. A barline gap that yields "only in cramped conditions" is the first candidate, and it is a matter of shrinking: a shrink weight per class is ADR-0037's alternative 3, generalised from duration to class. A stretchability per class is possible too, but it changes ADR-0037's interface: each prestretched pair carries its own `σ`, and the ordinary sum becomes `Σ σ_j × w_j`. Until [H11](#h11-elasticity-by-gap-class) is settled, the baseline applies to every class. The stretch dial is not elasticity in this sense: it never reaches Stage 3, and decides only how Stage 4 shares out a stretched system's room ([The Stretch Dial](#the-stretch-dial)).
+
+### Spacing Settings
+
+The defaults are meant to give musical results on their own, and settings let the user move them. Each setting does one job, and none needs another adjusted to it for the spacing to stay correct: any of them may be moved alone. What a setting can change follows from the stage that reads it:
+
+- **Read in Stage 1 or 2**, it changes what the music reserves, and can move notes and breaks.
+- **Read only in Stage 4**, it shares out room the breaker has already priced, and can move notes within a system but never a break.
+- **Read only in Stage 5**, it spends room the springs have already given, and moves neither.
+
+This is the difference a user most needs to see before moving a setting, so each spacing setting declares which of the three it is ([ADR-0016](0016-Settings.md)), the settings window shows it beside the setting ([ADR-0053](0053-Piece-Window-and-Piece-Preferences.md#spacing-settings-show-what-they-can-move)), and inspection names the setting behind what it marks ([Inspection](#inspection)).
+
+Their values belong to the house style, and their defaults are entries in the register of [the exploration](#the-exploration).
+
+#### Minimum Protrusion
+
+How far a ledger line must still protrude from its notehead when something is in its way is a setting, one for each kind of end:
+
+- **Minimum protrusion, accidental side**, `B`: an end of a ledger line that faces its own note's accidental, where the accidental's profile meets the line's band within the vertical clearance.
+- **Minimum protrusion, neighbour side**, `B′`: every other end that faces a neighbouring atom (its accidental, its ledger lines or its notehead), including a left end with no accidental of its own at that height.
+
+Each is a measurement in staff spaces from 0 up to the full extension `E`, or the state `:full`. `E` is the font's `legerLineExtension` unless the piece overrides it ([ADR-0047](0047-Font-Management.md#per-font-metadata)). `:full` resolves to `E` whatever `E` is, now or later, so a line set never to shorten never does; a number above `E` resolves to `E`. A value is resolved when it is read, and reading never rewrites the stored setting. Together the two are [H6](#h6-ledger-lines)'s shortest acceptable ledger line.
+
+![Ledger lines and accidentals: three settings, four staves](../img/hegazy-gourlay/ledger-settings.gif)
+
+*Ledger lines and accidentals, as a bar of chromatic sixteenths is dragged from its tightest to loose and back. Each stave changes one setting from the stave above. Stave 1 sets the minimum protrusion on the accidental side to the full extension; stave 2 lets those lines shorten to 0.16; stave 3 keeps each sharp from ending nearer the previous note than its own; stave 4 keeps every sharp tight to its notehead. A conceptual model, not rendered by Ooloi: Bravura's metrics and the sharp's cut-outs are real, every other value is a placeholder.*
+
+**Stage 1.** The minimum protrusions are forms, read by column assembly ([H5](#h5-column-assembly)), not spacing parameters, so Stage 1 depends on them and stays independent of the spacing parameters (Invariant 4). For each note with an accidental, Stage 1:
+
+1. places the accidental at its tightest offset, as close to its notehead as both the least distance between them ([H22](#h22-minimum-forms)) and its own ledger lines at `B` allow, band by band against the accidental's profile as its cut-outs refine it;
+2. records its comfortable offset, outside full-length lines on its side and at its comfortable distance from the notehead;
+3. builds the atom's contours with the accidental at its tightest offset, its own-side lines at whatever extent the tight accidental leaves them, up to `E`, and every end that faces a neighbour at `B′`.
+
+A line passing one of the accidental's cut-outs therefore keeps more of its length than one beside its full width. At `B = :full` the tightest and comfortable offsets coincide, and the accidental always stands outside full-length lines. The distance between an accidental and its own ledger lines belongs to the atom's geometry, set by column assembly: the clearance table governs pairs of atoms ([H4](#h4-clearances)), and Stage 1 reads none of it.
+
+**What it moves.** Through the contours, the minimum protrusions set blocking widths, so they change spacing and can move breaks: they are settings Stages 1 and 2 read ([Spacing Settings](#spacing-settings)). With Bravura's metrics and the placeholder clearances of the figure, a sharp's gap between two notes at one staff position needs 2.796 staff spaces with `B` at 0.16, and 3.036 at `:full`. Stage 5 lengthens each end into the room Stage 4 gives, from its minimum up to `E` ([What Stage 5 may change](#atoms-and-contours)).
+
+**The rhythmic raster.** Where neighbouring notes' ledger lines would collide, the lines give way and the notes keep the positions their durations give them. No rule looks back at the previous note for this. The lines reserve only their minimum forms, so they never push notes apart; Stage 5 lengthens each end into the room the springs gave, clear of everything already placed; and two ends facing each other at one height share the space between them by [H22](#h22-minimum-forms)'s fixed rule, keeping the minimum clearance between them. `B′` is the setting for this behaviour: below `E` the raster holds and the lines give way, and at `:full` the lines claim their room and the notes move apart instead.
+
+#### The Stretch Dial
+
+When a system is looser than its ideal widths, which gaps take the room is a setting, the stretch dial `λ`, a rational from 0 to 1. At 0 the whole distance from one note to the next stretches, every gap in proportion to its ideal width, as ADR-0037's springs price it. At 1 only the white space stretches, the part of each duration's space beyond the notehead at its start: long values, which are mostly white space, take most of the room, and short ones stay together. Between the two, they share it. Under compression the dial does nothing.
+
+![The stretch dial at 0, 0.5 and 1](../img/hegazy-gourlay/stretch-dial.gif)
+
+*The stretch dial at 0, 0.5 and 1, as one bar's barline is dragged from its tightest to loose and back. The gauges show the breaker's ratio, the same in every row: the dial decides only where the room goes. A conceptual model, not rendered by Ooloi: Bravura's metrics are real, every other value is a placeholder.*
+
+**The stretch weight.** Stage 2 gives every gap a stretch weight `s` beside its ideal and blocking widths. For a gap leaving a column with duration, with `S` the space of its controlling duration and `f = (t(c′) − t(c)) / d_ctrl` the part of that duration it spans ([Ideal Widths](#ideal-widths)):
+
+```
+s = max(0, w − f × min(λ × n, S − ε))
+```
+
+`n` is the width of the black notehead the piece draws, taken from the font that supplies it ([ADR-0047](0047-Font-Management.md#per-font-metadata)). `ε` is a floor, so that no duration's weight falls below `f × ε` and very short values never become rigid. A gap after material without duration has `s = w` until [H11](#h11-elasticity-by-gap-class) decides otherwise, and fixed space has `s = 0`.
+
+- At 0, `s = w` exactly: the dial at 0 is the springs ADR-0037 prices.
+- At 1, a gap that spans its controlling duration's whole space and holds nothing else has `s = max(ε, S − n)`: its white space.
+- The notehead is taken once from each controlling duration's space, shared among the gaps it controls in proportion to time, so how much that space stretches does not depend on how other staves' onsets divide it into gaps.
+- Whatever else a gap's ideal width holds (optical corrections, transfers, width overrides) stretches in full.
+- A gap of zero ideal width never stretches.
+- The weight depends on durations, the dial and `n`, never on attachments, as Invariant 2 requires of ideal widths.
+
+**Where it acts.** The dial never reaches Stage 3. The breaker prices every candidate system with the springs as they stand at 0 ([ADR-0037](0037-Measure-Distribution-Optimization.md#calibrating-the-adjustment-ratio)), so `σ`, the tolerance and TeX's constants keep their meaning at every setting of the dial, and the dial can never move a system break. Stage 4 then shares each stretched system's room out through the weights: each gap stretches by `σ × s`, at the ratio at which the system's gaps fill the width the breaker gave it, found by the same exact solver ([ADR-0037](0037-Measure-Distribution-Optimization.md#width-allocation-applying-the-adjustment-ratio)). Pricing through the dial's springs instead would let the dial change how loose a system counts, and so move breaks in passages whose appearance it does not change; `σ` or the tolerance would then have to be moved with it.
+
+**Values.** The dial starts at 1, LilyPond's default (`Spacing_spanner::note_spacing` in `lily/spacing-basic.cc`: "Stretch proportional to the space between canonical bare noteheads"), which floors the stretch at 0.1, and `ε` starts at that 0.1. Both are recorded in the house-style register with source, date and status, and the plates decide them ([The Exploration](#the-exploration)). Whether a column whose controlling value is a rest needs a width of its own in place of `n` is open, alongside the rest and notehead widths of [H3](#h3-optical-corrections).
+
+#### Accidental Position
+
+When Stage 4 has given a gap more than its blocking width, who receives the spare room on an accidental's side is a setting, the accidental position, with two values:
+
+- **`:out`**, out past the ledger lines: the accidental's own-side ledger lines take the room first, and the accidental moves away from its notehead with them, up to its comfortable offset ([Minimum Protrusion](#minimum-protrusion)); then the previous note's ledger lines facing it lengthen, up to `E`. Whatever is left stays as white space.
+- **`:tight`**, tight to its notehead: the accidental stays at its tightest offset in every system, its own-side lines keep whatever extent it leaves them, and the room goes to the previous note's facing lines.
+
+The accidental position is read only in Stage 5, so it spends room the springs have already given and never moves a note or a break ([Spacing Settings](#spacing-settings)); changing it changes only what Stage 5 draws (Invariant 16). In this one competition, between an accidental with its own ledger lines and the previous note's ledger lines facing it, it takes the place of [H22](#h22-minimum-forms)'s equal shares, which remain the rule elsewhere, as between two ledger lines at one height. The rule depends only on the geometry of one gap: an atom's expansions on its left belong to the gap on its left, and those on its right to the gap on its right, so the result never depends on the order in which Stage 5 meets them (Invariant 5). The accidental's distance from its notehead is a Stage 5 offset like any other ([Atoms and Contours](#atoms-and-contours)). Which position is the default is for the plates.
+
+#### Stays Nearer Its Own Note
+
+Whether an accidental may end up nearer the previous notehead than its own is a setting: a switch, on or off, with a ratio `k` behind it. With `d_own` the distance from the accidental to its own notehead, and `d_prev` the distance from the previous atom's notehead to the accidental, the setting, when on, requires
+
+```
+d_prev ≥ k × d_own
+```
+
+The previous atom is the one at the previous column in the same staff. It holds the noteheads of every voice at its onset, so a notehead of another voice standing just before the accidental counts, as it does for the eye. How the two distances are measured is [H23](#h23-stays-nearer-its-own-note).
+
+**Where it acts.** The setting is read only in Stage 5. Where the condition binds, Stage 5 moves the accidental towards its notehead and shortens its own-side ledger lines, never below `B` ([Minimum Protrusion](#minimum-protrusion)): it narrows the choice the accidental position makes within the accidental's range ([Accidental Position](#accidental-position)), and moves no note or break (Invariant 16). Where even the tightest offset cannot meet the condition, the accidental stays at its tightest offset and the failure is reported for inspection: Stage 5 cannot create room. At `B = :full` the tightest and comfortable offsets coincide, and the setting has nothing to give.
+
+**Values.** `k` starts at 1. Whether the setting is on by default is for the plates.
 
 ### User Inputs
 
 **Column drags.** The user sees the columns on the page and can drag them. A drag is stored as a transfer of ideal width between the column's two neighbouring gaps: the gap on the side the column moves toward loses `Δ`, and the gap on the other side gains it.
 
-- **The transfer.** Under the baseline elasticity, with both gaps ordinary, moving a column by `δ` at ratio `r` takes `Δ = δ / (1 + σr)` when the system is stretched and `Δ = δ / (1 + r)` when it is compressed. In general, as when a neighbouring gap is prestretched, `Δ` is the least transfer that moves the column by `δ` under ADR-0037's springs, found exactly.
+- **The transfer.** With both gaps ordinary, moving a column by `δ` takes `Δ = δ / (1 + σr)` when the system is stretched, `r` being the ratio at which Stage 4 places it under the stretch dial ([The Stretch Dial](#the-stretch-dial)), and `Δ = δ / (1 + r)` when it is compressed. In general, as when a neighbouring gap is prestretched, `Δ` is the least transfer that moves the column by `δ` under the springs Stage 4 places the system with, found exactly.
 - **The clamp.** A drag is clamped at the current ratio, so that neither gap becomes narrower than its blocking width. At `r = −1` every gap is at its blocking width and no column can move.
-- **What changes.** While both gaps' ideal widths stay at or above their blocking widths, the stack's summary is unchanged: a transfer leaves `Σ w`, `Σ` shrink and `Σ` stretch where they were. Every candidate system's ratio, and so the breaks, stay as they were, and only the dragged column moves.
+- **What changes.** While both gaps' ideal widths stay at or above their blocking widths, the stack's summary is unchanged: a transfer leaves `Σ w`, `Σ` shrink and `Σ` stretch where they were. Every candidate system's ratio, and so the breaks, stay as they were, and only the dragged column moves. The stretch dial's weights follow ideal widths one for one, so a transfer also leaves their sum where it was, and with it the ratio at which Stage 4 places a stretched system, unless the losing gap's weight reaches zero; the system's other columns then move a little, and the breaks still hold.
 - **When the summary changes.** Under stretching, the clamp can let the losing gap's ideal width fall below its blocking width, while its width at the current ratio stays above it. This system's ratio is still unchanged, but the gap is now prestretched and the stack's summary changes, so the breaks may change. It is a real request for more room.
 
 Each transfer is attached to its column, identified by measure, rhythmic position and kind, since a clef change can share an onset with a note, and for a grace column by its offset as well, since a grace group has several columns at one onset ([H19](#h19-order-of-kinds-at-one-onset)). Stage 2 applies it after the reductions, and clamps it there so that no ideal width falls below zero, ADR-0037's precondition: the gaps it was made against may have changed since. A reduction raises blocking widths only, so every constraint holds whatever the ideal widths, and a transfer can neither break one nor change what a reduction reserved. A transfer persists until the user removes it, or until an edit removes it as part of itself: when its column no longer exists, or when its measure is reformatted ([H14](#h14-removal-of-column-transfers)).
@@ -366,11 +458,12 @@ Each transfer is attached to its column, identified by measure, rhythmic positio
 ```clojure
 (defn drag->transfer
   "The ideal width moved between a column's neighbouring gaps when the user
-   drags it by delta (positive to the right) in a system with adjustment
-   ratio r: the left gap gains it and the right gap loses it. Both gaps
-   ordinary, baseline elasticity with stretchability sigma. nil at r = -1,
-   where no column can move. The caller clamps delta so that neither gap
-   becomes narrower than its blocking width."
+   drags it by delta (positive to the right) in a system placed at ratio r,
+   under stretching the ratio at which the stretch dial places it: the left
+   gap gains it and the right gap loses it. Both gaps ordinary, with
+   stretchability sigma and stretch weights that follow their ideal widths.
+   nil at r = -1, where no column can move. The caller clamps delta so that
+   neither gap becomes narrower than its blocking width."
   [delta r sigma]
   (cond
     (>= r 0) (/ delta (+ 1 (* sigma r)))
@@ -394,10 +487,11 @@ While a drag lasts its system is frozen; whether the freeze remains afterwards i
 
 Inspection shows the springs and why each has its widths. Its overlays are drawn from the cached results of Stages 2 to 4, with Stage 2's provenance ([Stages 1 and 2](#stages-1-and-2)). The backend generates them as paintlists, as it does everything that is drawn ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)); the frontend only requests and draws them.
 
-- **The raster lane** shows each gap's spring, free or held; what holds a held one, from provenance; the ratio at which it is released, its kink; and each gap's share of the system's adjustment.
+- **The raster lane** shows each gap's spring, free or held; what holds a held one, from provenance; the ratio at which it is released, its kink; and each gap's share of the system's adjustment, which under stretching is the share the stretch dial gives it.
 - **A lane per staff and per row of text** shows, for each pair of consecutive atoms, the distance given, the least distance needed and the ideal the pair would have alone, marked slack, tight or violated. Invariant 1 excludes a violation; the mark exists so that a failure is seen.
-- **Minimum forms** are marked where Stage 5 drew an element short of its comfortable form, with how much of the way it got, so that a ledger line or accidental cut back by a tight system is visible as such.
-- **The system's width as a function of `r`**, with its kinks and the tolerance.
+- **Minimum forms** are marked where Stage 5 drew an element short of its comfortable form, with how much of the way it got, what it gave way to (an accidental, a neighbouring ledger line, a notehead) and which setting set its minimum, so that a ledger line or accidental cut back by a tight system is visible as such.
+- **Accidentals held nearer their own notes** by the setting are marked, and so are those for which it could not be met ([Stays Nearer Its Own Note](#stays-nearer-its-own-note)).
+- **The system's width as a function of `r`**, as the breaker prices it, with its kinks and the tolerance.
 
 In a full score, lanes are shown only for the staves that bind, or on demand. A layer for engravers states the same things in engraving terms, without `r`: how much room a gap has given up or gained, what holds it, and at what looseness it would be released. Line style distinguishes the gap classes: duration springs, clearance springs, fixed space, and grace springs if grace notes form columns ([H7](#h7-grace-notes)). Inspection never offers to disable the reduction of constraints spanning several columns ([ADR-0037](0037-Measure-Distribution-Optimization.md#constraints-spanning-several-columns)).
 
@@ -408,19 +502,26 @@ The boundary between Stages 1–2 and Stage 3 is specified by properties, tested
 1. **No collision at any feasible ratio, before or after Stage 5.** For any rational `r ≥ −1`, placing the columns by ADR-0037's `g_j(r)` leaves no two contours of one staff or row of text overlapping with their minimum clearances, whether or not their atoms are neighbours, and no two columns at different onsets closer than the minimum separation. The same holds for what Stage 5 draws: an adjustment within its declared range keeps an atom's ink inside its contours; an element Stage 5 expands from its minimum form stays within the space Stage 4 gave, clear of everything already placed; and a loose element is placed clear of everything already placed ([Atoms and Contours](#atoms-and-contours)). The test draws the adjustments from their declared ranges, and the expansions from the full range between minimum and comfortable forms.
 2. **Attachments never change duration space.** With durations and stem directions fixed, adding or removing accidentals, articulations or ledger lines, or displacing noteheads, changes no controlling duration and no ideal width of a gap leaving a column with duration. A grace group, if grace notes form columns ([H7](#h7-grace-notes)), may divide the duration space before its main note among its own gaps, but never changes its total.
 3. **The duration table is monotone and sub-linear.** Its width never decreases as the duration grows, and its width divided by duration never increases.
-4. **Stage 1 is independent of spacing parameters.** Changing the duration table, the anchoring duration, the clearance table, a spacing distance or `σ` changes no Stage 1 output, minimum and comfortable forms included.
+4. **Stage 1 is independent of spacing parameters.** Changing the duration table, the anchoring duration, the clearance table, a spacing distance, `σ` or the stretch dial changes no Stage 1 output, minimum and comfortable forms included. Settings that change glyph geometry, such as the minimum protrusions, are inputs to Stage 1, not spacing parameters.
 5. **Determinism.** Identical content gives identical contours, summaries and gap lists, whatever the order in which staves, measures and stacks are processed, and whatever sequence of edits produced the piece. A cache returns only what recomputation from the piece would give, and no value computed before an edit, the anchoring duration included, is otherwise an input to a result computed after it ([ADR-0037](0037-Measure-Distribution-Optimization.md#layout-is-a-function-of-the-piece)). Stage 5's expansions of minimum forms are identical whatever the order in which it meets them ([H22](#h22-minimum-forms)).
 6. **Scale invariance.** Widths are in staff spaces at the system's staff size; changing that size changes none of them. A staff drawn at reduced size contributes contours scaled by its ratio, and text sized in absolute units is converted at the system's size.
 7. **Drag neutrality.** A transfer that keeps both gaps' ideal widths at or above their blocking widths leaves the stack's `:min`, `:natural`, `:ideal`, `:ordinary-ideal` and `:prestretched` unchanged.
 8. **Sound reduction.** After Stage 2, every constraint spanning several columns holds at every `r ≥ −1`.
 9. **Provenance is inert.** Recording provenance or not changes no width, summary, ratio or break.
 10. **Minimum forms never ask for room.** Replacing an element's comfortable form by a wider one, with its minimum form unchanged, changes no width, summary, ratio or break; only what Stage 5 draws.
+11. **The stretch dial never moves a break.** Changing it changes no summary, no ratio or cost Stage 3 computes, and no break; for a system at or below its natural width it changes nothing at all.
+12. **The dial at 0 is the priced springs.** At 0 every gap's stretch weight equals its ideal width, and Stage 4 places every system at the ratio the breaker priced.
+13. **Minimum protrusions only reserve.** Raising `B` or `B′` never narrows a blocking width, and changes no ideal width or stretch weight.
+14. **The full extension holds.** At `B = :full`, no ledger-line end that faces its own note's accidental is drawn shorter than `E`.
+15. **Every end at or beyond its minimum.** Every ledger-line end is drawn at or above its minimum protrusion, in every system.
+16. **Stage 5 settings never move a note.** Changing a setting read only in Stage 5, such as the accidental position or stays nearer its own note, changes no width, summary, ratio or break; only what Stage 5 draws.
+17. **An accidental stays nearer its own note where it can.** With that setting on, every accidental in every system has `d_prev ≥ k × d_own`, unless even its tightest offset cannot give it; such an accidental stands at its tightest offset, and the failure is reported.
 
 ## The Exploration
 
 The architecture is fixed so that the exploration can only change values and inputs, never add a pass. It is how the open items close.
 
-- **Parameters are data.** The duration table, the anchoring rule, the clearance table, the optical corrections, the elasticities and the minimum and comfortable forms live in a house-style structure. Each value records its source, its date and its status: provisional, verified against the literature, or measured.
+- **Parameters are data.** The duration table, the anchoring rule, the clearance table, the optical corrections, the elasticities, the stretch dial's default and its floor `ε`, and the minimum and comfortable forms live in a house-style structure. Each value records its source, its date and its status: provisional, verified against the literature, or measured.
 - **The reference is printed engraving.** Editions in the plate-engraving tradition are measured: the staff space from the staff lines; the distance from one notehead's left edge to the next, and the white space between them; each for every duration, in loose and in tight systems of the same edition. Each measurement records the edition, page and system. The output of other notation programs is not used.
 - **The procedure** is measurement, then a value in the house-style data, then the register entry updated with its date and evidence. The property tests hold throughout.
 
@@ -452,6 +553,7 @@ What it decides is listed in [Open Items](#open-items). Several items share evid
 | [H20](#h20-drags-as-edits) | Drags as edits | User input | — | Settled: design, with ADR-0015, ADR-0028 and ADR-0038 |
 | [H21](#h21-barline-drag-modes) | Barline drag modes | User input | — | Design |
 | [H22](#h22-minimum-forms) | Minimum forms | Contour | 1, 5 | Literature and measurement |
+| [H23](#h23-stays-nearer-its-own-note) | Stays nearer its own note | Contour; blocking width in its variant | 5; 2 in its variant | Design and measurement |
 
 ### H1: The duration table
 
@@ -502,7 +604,14 @@ The rules for seconds in chords, offsets between voices (including which voice i
 
 ### H6: Ledger lines
 
-The shortest acceptable ledger line, which is the ledger line's minimum form and from which blocking widths are computed, and how Stage 5 lengthens ledger lines into the space Stage 4 gives, up to their full extension. Neighbouring ledger lines that compete for the same space share it by [H22](#h22-minimum-forms)'s rule.
+The shortest acceptable ledger line: the values of the two minimum protrusions ([Minimum Protrusion](#minimum-protrusion)), which form the ledger line's minimum and from which blocking widths are computed; and how Stage 5 lengthens ledger lines into the space Stage 4 gives, up to their full extension. Neighbouring ledger lines that compete for the same space share it by [H22](#h22-minimum-forms)'s rule.
+
+Two further settings are candidates, each read only in Stage 5 and each only ever shortening a line, so neither asks for room (Invariant 10):
+
+- **An even stack**: all of a note's ledger lines on one side take the shortest extent among them, so a lower line is never shorter than the one above it. It gives up the length a line gains under an accidental's cut-out.
+- **Symmetric ends**: each ledger line is shortened equally at both ends.
+
+Whether either is needed, and its default, is for the plates.
 
 ### H7: Grace notes
 
@@ -551,7 +660,7 @@ Whether any class of gap, the barline gap first, needs elasticity of its own:
 
 Two further candidates:
 
-- **The clearance gap after material without duration.** Under the baseline it stretches by `σ` times its ideal clearance and shrinks with everything else, so the space after a barline or a clef change grows as a system loosens. A measure-width override scales it too ([ADR-0037](0037-Measure-Distribution-Optimization.md#editorial-control-mechanisms)).
+- **The clearance gap after material without duration.** Under the baseline it stretches by `σ` times its ideal clearance and shrinks with everything else, so the space after a barline or a clef change grows as a system loosens. A measure-width override scales it too ([ADR-0037](0037-Measure-Distribution-Optimization.md#editorial-control-mechanisms)). Under the stretch dial it keeps `s = w` until this item decides otherwise ([The Stretch Dial](#the-stretch-dial)).
 - **The grace class**, with no stretchability ([H7](#h7-grace-notes)). A gap with `σ = 0` has no kink, so a held grace gap is never released, and ADR-0037's `add-kinks` would have to pass over it as it passes over a gap of zero ideal width. Under stretching, the span from the note before a grace group to its main note then grows by `σ` times the group's ideal width less than the same span without the group, unless the rest of the preceding gap takes over the group's stretch.
 
 The share bars of the inspection view, each gap's share of the system's adjustment ([Inspection](#inspection)), are the instrument for judging them.
@@ -585,7 +694,7 @@ The two candidates for sharing compression behave differently:
 - **ADR-0037's baseline** shrinks each gap in proportion to its room above its minimum. White space then shrinks fairly evenly, and the ratios between notehead distances flatten.
 - **Its alternative 3 with `v ≡ 1`** keeps the distance ratios exactly until gaps block, and squeezes the white space around short notes hardest.
 
-Which one engravers kept is measurable in printed editions: the same values in loose and tight systems of one edition, with distance and white space each measured. The choice belongs to ADR-0037; the evidence comes from here.
+Which one engravers kept is measurable in printed editions: the same values in loose and tight systems of one edition, with distance and white space each measured. The choice belongs to ADR-0037; the evidence comes from here. Under stretching the same question is a setting, the stretch dial ([The Stretch Dial](#the-stretch-dial)), whose default the same measurements decide.
 
 ### H17: The controlling-duration rule
 
@@ -630,12 +739,19 @@ Which of a barline drag's two modes ([User Inputs](#user-inputs)), the transfer 
 
 Which elements besides ledger lines have a minimum form, what each element's minimum and comfortable forms are, and the fixed rule by which expansions that compete for the same space share it ([Atoms and Contours](#atoms-and-contours)).
 
-- **Ledger lines**: the shortest acceptable length, and the full extension SMuFL's `legerLineExtension` gives ([H6](#h6-ledger-lines)).
-- **Accidentals**: the least and the comfortable distance from an accidental to its notehead, set by column assembly ([H5](#h5-column-assembly)). Whether accidentals in a stack also have a compact and a comfortable arrangement, or only their distance from the noteheads gives way, is part of this item.
+- **Ledger lines**: the minimum protrusions on either side ([Minimum Protrusion](#minimum-protrusion)) and the full extension `E` ([H6](#h6-ledger-lines)).
+- **Accidentals**: the least and the comfortable distance from an accidental to its notehead, set by column assembly ([H5](#h5-column-assembly)). Whether accidentals in a stack also have a compact and a comfortable arrangement, or only their distance from the noteheads gives way, is part of this item. So is which ledger-line ends count as facing a note's own accidental when accidentals are stacked in a chord.
 - **Other candidates**: dots and their distance from the notehead, articulation offsets beside the note, and the arpeggio sign's distance from the chord.
-- **Sharing.** Competing expansions, such as the ledger lines of neighbouring notes, or an accidental and the previous note's ledger line, share the free space by a rule that depends only on the geometry, never on the order in which Stage 5 meets them (Invariant 5). Starting point: each expansion receives an equal share of the free space, and whatever one of them cannot use, because it reaches its comfortable form first, goes to the other.
+- **Sharing.** Competing expansions, such as the ledger lines of neighbouring notes, share the free space by a rule that depends only on the geometry, never on the order in which Stage 5 meets them (Invariant 5). Starting point: each expansion receives an equal share of the free space, and whatever one of them cannot use, because it reaches its comfortable form first, goes to the other. Between an accidental with its own ledger lines and the previous note's ledger lines facing it, the accidental position decides instead ([Accidental Position](#accidental-position)).
 
 The same measurements of loose and tight systems that settle [H1](#h1-the-duration-table) show how far ledger lines and accidentals give way in printed engravings.
+
+### H23: Stays nearer its own note
+
+Two questions remain about the setting ([Stays Nearer Its Own Note](#stays-nearer-its-own-note)):
+
+- **How nearness is measured.** By bounding boxes, as the figure does, or by profiles, band by band; and which notehead counts where the previous atom is a chord.
+- **A variant that adds space.** The setting could instead be enforced in Stage 2, so that the tightest configuration already meets it: as a blocking width, or as a constraint spanning several columns where the two atoms are not neighbours. With `W` the accidental's ink width and `d_own` its distance from its notehead at its tightest offset, the distance between the two atoms' origins must be at least the right edge of the previous notehead plus `W + (1 + k) × d_own`. It fits [the four forms](#the-four-forms) and needs no new pass, but it reserves room, so it moves notes and can move breaks. The setting would then have three values: off, by shortening ledger lines, and by adding space. It is the only way the condition can be met at `B = :full`.
 
 ## Consequences
 
@@ -644,12 +760,13 @@ The same measurements of loose and tight systems that settle [H1](#h1-the-durati
 1. **One place for every rule.** Every horizontal rule is located by its form and the stage that produces it, and Stages 3 and 4 stay free of engraving rules.
 2. **A safe exploration.** Values change; passes do not. The property tests guard the invariants while values are tuned.
 3. **Exact geometry.** Contours give blocking widths without spurious prestretched gaps, and an accidental takes exactly the room its collision needs.
-4. **Stage 1 stays heavy, parallel and cached.** None of its work depends on spacing parameters, so tuning them never repeats it.
+4. **Stage 1 stays heavy, parallel and cached.** None of its work depends on spacing parameters, so tuning them never repeats it. Settings that change forms, such as the minimum protrusions, are not spacing parameters: changing one re-runs Stage 1 for the measures whose forms it changes.
 5. **Determinism.** Tables of rationals and linear interpolation replace logarithms and floating point.
 6. **Drags rarely reflow.** A dragged column moves alone, and the breaks hold, unless a gap's ideal width falls below its blocking width.
 7. **Plugins are first-class in both phases.** They reserve room in Stage 1 and place within it in Stage 5.
 8. **Spacing can be inspected.** Provenance and the overlays show why every gap has its widths, and change none of them.
 9. **Adaptive without feedback.** Minimum forms let a tight system take compact forms and a loose one comfortable forms, with no pass back to Stage 3: the blocking widths reflect what the music needs at its tightest, and Stage 5 spends only room the springs have already given.
+10. **A stretch dial that never moves a break.** Which gaps take a stretched system's room is a setting Stage 4 applies after the breaker has priced the room, so it can be moved alone, with nothing else to adjust and no change to the casting off.
 
 **Negative:**
 
@@ -669,6 +786,9 @@ The same measurements of loose and tight systems that settle [H1](#h1-the-durati
   - Ideal and blocking widths are formed in Stage 2, from Stage 1's rhythm and contours.
   - The atom hook may declare constraints spanning several columns, and minimum forms.
   - A measure reads the clef the next measure begins with, which it draws before its closing barline ([The Bar Boundary](#the-bar-boundary)).
+  - A change to the stretch dial re-runs Stage 2's stretch weights and the stages from Stage 4 on, never Stage 1 or Stage 3 ([The Stretch Dial](#the-stretch-dial)).
+  - Stage 1 re-runs for a measure when its content changes, when the clef the next measure begins with changes, and when a font or a setting that changes its glyph geometry changes, such as a minimum protrusion; a spacing parameter alone never re-runs it.
+  - A setting read only in Stage 5, such as the accidental position or stays nearer its own note, re-runs Stage 5 and what follows it, never an earlier stage ([Spacing Settings](#spacing-settings)).
 - **ADR-0037:**
   - Its `ADR-00XX` references point here.
   - Where it places ideal widths, blocking widths or the gutter in Stage 1, they become Stages 1–2: Stage 1 supplies the geometry, Stage 2 the widths. This affects Ideal Width Semantics, The Gutter, The Preamble, Fitting Rules (including its note on who pays) and How Complete Information Enables Optimality.
@@ -677,8 +797,10 @@ The same measurements of loose and tight systems that settle [H1](#h1-the-durati
   - What a repeat barline adds mid-system is no-break material: each stack carries its closing boundary's no-break width, and the available width of a system subtracts those of its interior boundaries ([The Bar Boundary](#the-bar-boundary)).
   - Its preamble shows the clef and the key in force, and omits a key or time signature change the system's first measure draws itself.
   - A barline drag either transfers ideal width between its measure and the next or sets its measure's width override ([User Inputs](#user-inputs)).
+  - Under stretching, Stage 4 places a system through the stretch dial's weights, at a ratio of its own; the ratio, cost and breaks Stage 3 computes are unchanged ([The Stretch Dial](#the-stretch-dial)).
+  - Its alternative 4, air-only stretch, is the stretch dial at 1, applied in Stage 4; as a rule for pricing it is not adopted.
 - **ADR-0015:** a continuous gesture, such as a drag, is one undo step however many transactions it takes ([ADR-0015](0015-Undo-and-Redo.md#continuous-gestures-one-undo-step)).
-- **ADR-0013:** Stage 5 places elements within the space Stage 4 gives ([ADR-0013](0013-Slur-Formatting.md#the-pipeline-is-one-way-and-what-stage-5-may-change)). Every adjustment it makes inside an atom either stays within the envelope the atom's contours reserved or, for an element with a minimum form, expands only into space Stage 4 has given, so the declared ranges and the minimum and comfortable forms must be available to Stage 1 ([Atoms and Contours](#atoms-and-contours)). How the adjustments reconcile with ADR-0028's immutability of atoms is [open in ADR-0013](0013-Slur-Formatting.md#whether-stage-5-modification-touches-atom-internal-geometry).
+- **ADR-0013:** Stage 5 places elements within the space Stage 4 gives ([ADR-0013](0013-Slur-Formatting.md#the-pipeline-is-one-way-and-what-stage-5-may-change)). Every adjustment it makes inside an atom either stays within the envelope the atom's contours reserved or, for an element with a minimum form, expands only into space Stage 4 has given, so the declared ranges and the minimum and comfortable forms must be available to Stage 1 ([Atoms and Contours](#atoms-and-contours)). The adjustments are offsets, Stage 5's own output applied when the atom is drawn, so the cached atom is never modified ([ADR-0013](0013-Slur-Formatting.md#modifications-are-offsets)).
 
 ## Alternatives Considered
 
@@ -705,7 +827,7 @@ The same measurements of loose and tight systems that settle [H1](#h1-the-durati
     - uses the most frequent of these;
     - never goes above `base-shortest-duration`, 3/16 by default (`scm/define-grobs.scm`).
   - `set_column_rods` in the same file sets the minimum distance from each column to every earlier column whose overhang can still reach it.
-  - In `lily/spacing-basic.cc`, a musical column's spring takes its length from the shortest duration playing there, in proportion to the time to the next column, and stretches in proportion to the space between bare noteheads.
+  - In `lily/spacing-basic.cc`, a musical column's spring takes its length from the shortest duration playing there, in proportion to the time to the next column, and stretches in proportion to the space between bare noteheads: `fraction × max(0.1, len − increment)`, with `len` the shortest duration's space, `fraction` the part of it up to the next column, and `increment`, `spacing-increment` (1.2 by default), serving as "canonical notehead width". The same increment is the duration table's step per doubling (`Spacing_options::get_duration_space` in `lily/spacing-options.cc`).
   - `Note_spacing::get_spacing` in `lily/note-spacing.cc`:
     - takes a gap's minimum from horizontal skylines;
     - adjusts its ideal by the actual width of the left notehead or rest;
