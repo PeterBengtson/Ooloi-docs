@@ -263,6 +263,8 @@ Backend's 6-stage pipeline produces all drawing instructions:
 - Bezier curve control points for slurs, ties, beams
 - All spatial relationships and collision avoidance
 
+Glyph geometry comes from profiles the backend computes when a font is registered, from outlines read without rendering ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#outlines-read-and-never-rendered)): the backend needs no renderer for glyph geometry.
+
 **Frontend receives these as data** via gRPC API calls and renders them faithfully.
 
 **Paintlist properties:**
@@ -845,6 +847,7 @@ Measurements are taken on the slowest supported hardware: for macOS a base M1 (A
 - [ADR-0047: Font Management](0047-Font-Management.md) - Each glyph comes from the piece's default music font or a font a setting names; a change of either relays out what it affects, and its Pictures and tiles go by the ordinary route; typefaces are released only after the caches built from them
 - [ADR-0050: Platform Support Policy](0050-Platform-Support-Policy.md) - Supported platforms and their GPU paths; the slowest supported Mac is the harness's reference
 - [ADR-0054: Automatic Semantic Naming and Numbering of Musicians and Instruments](0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md) - The engraved score and extracted parts compose their numbered labels from the stored numbers through the same shared composer the Piece Window uses, so page and tree cannot disagree
+- [ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md) - Glyph profiles computed on the backend at font registration, from outlines read without rendering
 
 ## Notes
 

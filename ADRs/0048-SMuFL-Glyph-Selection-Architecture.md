@@ -93,7 +93,7 @@ The cascade determines which specific glyph from the class is actually rendered:
 
 Each level overrides the one above. Most users never touch this --- the house style default handles everything. Power users and historical-notation specialists control it precisely.
 
-**A selection names a glyph and the font it comes from.** A piece has a default music font, which supplies every glyph no level of the cascade assigns elsewhere, and the user may define deviations for any number of glyphs: all the dynamics from another SMuFL font, say, or a single notehead. A deviation is made at any level of the cascade like a choice of glyph, and the two combine freely --- `:gClef8vbOld` for this piece's G clefs, drawn from a font other than the default. [ADR-0047](0047-Font-Management.md) §The Default Music Font and Glyph Deviations specifies the fonts' side: registration, metrics, and the manifest of every font a piece draws on.
+**A selection names a glyph and the font it comes from.** A piece has a default music font, which supplies every glyph no level of the cascade assigns elsewhere, and the user may define deviations for any number of glyphs: all the dynamics from another SMuFL font, say, or a single notehead. A deviation is made at any level of the cascade like a choice of glyph, and the two combine freely --- `:gClef8vbOld` for this piece's G clefs, drawn from a font other than the default. [ADR-0047](0047-Font-Management.md) §The Default Music Font and Glyph Deviations specifies the fonts' side: registration, metrics, and the manifest of every font a piece draws on. Profiles are read for the glyph the selection resolves to, from the font that supplies it, never for the class default ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)).
 
 #### Font Availability Filtering
 
@@ -262,7 +262,7 @@ Glyph counts include both standard glyphs (from `glyphBBoxes`) and optional glyp
 | Font | Total | Style |
 |---|---|---|
 | **November 2** | **1,465** | **Traditional engraved (commercial --- recommended)** |
-| Bravura | 3,416 | Traditional engraved (SMuFL reference) |
+| Bravura | 3,434 | Traditional engraved (SMuFL reference) |
 | Finale Maestro | 2,728 | Traditional engraved (classic Finale) |
 | Petaluma | 1,877 | Handwritten (Real Book jazz) |
 | Sebastian | 1,036 | Traditional engraved (distinct character) |
@@ -401,6 +401,7 @@ Converting `gClef8vb` to `:g-clef-8vb` would be more idiomatic Clojure but would
 - [ADR-0016: Settings](0016-Settings.md) --- piece settings store piece-level glyph selection overrides
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) --- resolves logical keyword to glyph at render time by walking the cascade
 - [ADR-0045: Instrument Library](0045-Instrument-Library.md) --- references logical clef keywords in staff definitions; unaffected by glyph selection
+- [ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md) --- glyph profiles, read for the glyph a selection resolves to, from the font that supplies it
 
 ### External References
 

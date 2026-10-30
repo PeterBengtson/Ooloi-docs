@@ -234,6 +234,8 @@ Effective obstacle = Obstacle ⊕ SlurProfile(t)
 
 In plain terms: take each obstacle (notehead, stem, accidental) and inflate it outward by the slur's half-thickness at the corresponding curve parameter *t*. If the centreline clears the inflated obstacles, the actual thick slur clears the actual obstacles.
 
+The obstacles are the glyphs’ top and bottom profiles ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#four-profiles-per-glyph)), not their bounding boxes: slurs, ties and their clearances are placed against the ink. ADR-0056’s Figure 5 shows the difference: the lowest slur from outlines has its apex 0.55 staff spaces lower than from boxes.
+
 With copper plate rounded endpoints (§6), the slur half-thickness *r(t)* is never zero — even at the endpoints, the inflation equals the end cap radius. This eliminates the degenerate zero-width case that arises with pointed endpoints, making the clearance computation well-behaved everywhere along the curve.
 
 **Practical simplification**: for simple placement (elastica within available space), treating the slur thickness as uniform at its maximum gives conservative clearance — if the centreline clears the maximally-inflated obstacles, the actual slur certainly clears. The exact Minkowski profile matters most in tight passages where the progressive solver has escalated to constrained optimisation, and the precise clearance at the thick midsection vs the thinner endpoints makes a difference.
@@ -353,6 +355,7 @@ Some stage-5 decisions are discrete: a beam's slant is quantised, a stem length 
 - **Slur and Tie Geometry** (forthcoming, not yet numbered) — Follow-up: progressive solver, collision detection, nested/overlapping slurs, cross-system breaks, tie geometry, and the complete phase-5 processing sequence
 - **[ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md)** — Slur formatting is part of pipeline stage 5 (Spanners and Margins)
 - **[ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md)** — Stage 1's contours reserve the envelope of every adjustment stage 5 makes inside an atom; ledger lines enter spacing at their shortest acceptable length
+- **[ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md)** — Stage 5 places slurs, ties and their clearances against the glyphs’ top and bottom profiles
 - **[ADR-0038: Backend-Authoritative Rendering](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)** — Rendering boundary constraints: the slur algorithm consumes resolved semantics and layout decisions without introducing new semantic state or backward causality
 - **[ADR-0015: Undo and Redo](0015-Undo-and-Redo.md)** — A drag is one undo step however many updates stage 5 sees during it
 - **[ADR-0014: Timewalk](0014-Timewalk.md)** — Timewalking provides the point collection algorithm

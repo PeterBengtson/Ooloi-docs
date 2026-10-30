@@ -53,9 +53,10 @@ The font registry is an Integrant component with a standard lifecycle. Its state
 | `:font-bytes` | `byte[]` | Raw font file data |
 | `:skija-typeface` | `Typeface` | Skija typeface, created via `Typeface/makeFromData` |
 | `:javafx-family` | `String` | Family name as returned by `Font.loadFont` |
-| `:metadata` | `map` | Parsed SMuFL JSON: glyphs, anchors, bounding boxes, engraving defaults |
+| `:metadata` | `map` | Parsed SMuFL JSON (glyphs, anchors, bounding boxes, engraving defaults), with the glyph profiles computed from the font’s outlines at registration ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)) |
 | `:source` | keyword | One of `:bundled`, `:local`, `:user-supplied` |
 | `:version` | `String` | Font version string extracted from the font's name table |
+| `:content-hash` | `String` | Content hash of the font file; keys its glyph profiles and is recorded in the piece font manifest ([Piece Font Manifest and Version Matching](#piece-font-manifest-and-version-matching)) |
 
 The component initialises by loading all bundled fonts, then running the local discovery scan. It halts by releasing Skija typeface resources.
 
@@ -76,10 +77,11 @@ The font registry consumes two distinct layers of SMuFL metadata: spec-level met
 
 #### Per-Font Metadata
 
-Each SMuFL font ships with a companion `metadata.json` file conforming to the SMuFL specification. The registry parses this JSON at registration time and stores the result alongside the font. The parsed metadata includes:
+Each SMuFL font ships with a companion `metadata.json` file conforming to the SMuFL specification. The registry parses this JSON at registration time, computes the glyphs' profiles from the font's outlines, and stores both alongside the font. The metadata includes:
 
 - **Glyph names → codepoints**: the mapping from canonical SMuFL names to Unicode Private Use Area codepoints.
-- **Glyph bounding boxes**: per-glyph extents in staff spaces, consumed by the rendering pipeline for spatial calculations.
+- **Glyph bounding boxes**: per-glyph extents in staff spaces, checked against the glyphs’ profiles at registration ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#invariants-and-property-tests)).
+- **Glyph profiles**: computed from the outlines at registration ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)), keyed by the font file’s content hash and the profile algorithm’s version. Layout reads glyph geometry from them.
 - **Anchor points**: stem attachments, optical centres, and other positioning data.
 - **Engraving defaults**: the staff line thickness, stem width, beam spacing and similar values the font's designer recommends.
 
@@ -113,7 +115,7 @@ Ooloi ships with eleven SMuFL-compliant notation fonts as JAR resources in `shar
 
 | Font | Style | Developer | License |
 |---|---|---|---|
-| Bravura (v1.392) | Traditional engraved (SMuFL reference) | Steinberg | SIL OFL |
+| Bravura (v1.482) | Traditional engraved (SMuFL reference) | Steinberg | SIL OFL |
 | Finale Maestro | Traditional engraved (classic Finale) | MakeMusic | SIL OFL |
 | Finale Engraver | Traditional engraved (Urtext influence) | MakeMusic | SIL OFL |
 | Finale Legacy | Traditional engraved (Petrucci style) | MakeMusic | SIL OFL |
@@ -151,7 +153,7 @@ After loading bundled fonts, the registry scans for locally installed SMuFL-comp
 
 A font file found in an OS font directory with matching metadata in a SMuFL directory is a fully discoverable SMuFL font. A font file without metadata but matching a known SMuFL font family name (e.g., Bravura, Petaluma, Leland) is flagged as a potential SMuFL font but cannot be fully registered without its metrics. Metadata found without a corresponding font file is ignored.
 
-When the scan finds a font already present in the registry (same family name), the registry compares version strings. If the local version differs from the bundled version, the registry **does not substitute it**. On first detection, it posts a **permanent alert notification** informing the user that a different version was found locally. Clicking the notification opens the font management UI, where the user chooses which version to use.
+When the scan finds a font already present in the registry (same family name), the registry compares version strings and content hashes. If the local font differs from the bundled one in either, the registry **does not substitute it**. On first detection, it posts a **permanent alert notification** informing the user that a different version, or a different file with the same version string, was found locally. Clicking the notification opens the font management UI, where the user chooses which version to use.
 
 The notification persists until resolved. If the user **dismisses** the notification without making a choice, it reappears at the next startup — the unresolved version difference has not gone away. If the user **opens the font management UI and makes an explicit version choice**, that choice is persisted and the notification does not reappear. The font management UI remains accessible at any time for the user to change the decision later.
 
@@ -171,9 +173,11 @@ Backend layout computation and frontend drawing resolve every glyph to the same 
 
 ### Piece Font Manifest and Version Matching
 
-Each piece records every notation font its layout draws on — the default music font and every font a deviation names — each by family name and exact version string. This is a **hard constraint**, not advisory metadata.
+Each piece records every notation font its layout draws on — the default music font and every font a deviation names — each by family name, exact version string and the content hash of its font file. This is a **hard constraint**, not advisory metadata.
 
-When a client opens a piece, the registry checks that every font in the manifest is available locally at its exact version. If any is missing or differs, the piece **cannot be rendered**. The client receives a clear error identifying each required font and version, not a degraded or approximate rendering.
+When a client opens a piece, the registry checks that every font in the manifest is available locally at its exact version and with the same content hash. If any is missing or differs in either, the piece **cannot be rendered**. The client receives a clear error identifying each required font and version, not a degraded or approximate rendering.
+
+The content hash is recorded because a font file can change without its version string changing, and glyph profiles are keyed by the file ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#frozen-as-data)): a mismatched hash is refused exactly as a mismatched version is.
 
 This is the only honest position given the rendering architecture. The backend computes layout — glyph positions, stem lengths, beam angles, spacing — from a specific font version's metrics. A different version of the same font may have different stem widths, altered anchor points, or changed bounding boxes. Rendering with a mismatched version produces subtly incorrect output with no visible cause. Refusing to render is better than rendering incorrectly.
 
@@ -255,6 +259,7 @@ The benefit — making bundled SMuFL fonts available to other applications — d
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) — consumer of font metrics for spatial calculations
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) — notification system for local font discovery alerts
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) — rendering invariant: backend layout and frontend drawing must agree on which font supplies each glyph; a change of font invalidates Pictures and tiles through the ordinary route
+- [ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md) — glyph profiles, computed from the outlines at registration and stored with the per-font metadata, keyed by the font file’s content hash
 
 ### External References
 

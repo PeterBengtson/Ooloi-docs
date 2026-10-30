@@ -27,6 +27,7 @@ The architecture is decided: the forms in which horizontal engraving rules reach
   - [Elasticity by Gap Class](#elasticity-by-gap-class)
   - [Spacing Settings](#spacing-settings)
     - [Minimum Protrusion](#minimum-protrusion)
+    - [Opening Width](#opening-width)
     - [The Stretch Dial](#the-stretch-dial)
     - [Accidental Position](#accidental-position)
     - [Stays Nearer Its Own Note](#stays-nearer-its-own-note)
@@ -85,7 +86,7 @@ Before measuring anything, an engraver makes a few judgements that govern everyt
 
 Three authorities answer different questions:
 
-- **SMuFL metadata**: can this exist without collision? The bounding boxes, cut-outs and anchors of the font that supplies each glyph ([ADR-0006](0006-SMuFL.md), [ADR-0047](0047-Font-Management.md)), read as exact rationals. Engraving values such as staff line thickness and stem width are piece settings, not font properties (ADR-0047 §Per-Font Metadata).
+- **SMuFL metadata**: can this exist without collision? The outlines ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)), bounding boxes and anchors of the font that supplies each glyph ([ADR-0006](0006-SMuFL.md), [ADR-0047](0047-Font-Management.md)), read as exact rationals. Engraving values such as staff line thickness and stem width are piece settings, not font properties (ADR-0047 §Per-Font Metadata).
 - **The engraving literature**, Gould (2011) and Ross (1970): would this be considered correct engraving? Proportions, clearances and conventions. Values recorded from them here are provisional until verified against the books, with page references ([H15](#h15-verification-against-gould-and-ross)).
 - **Printed editions in the plate-engraving tradition**: does it look as engravers made it? They are the arbiter wherever the first two leave a choice ([The Exploration](#the-exploration)). The output of other notation programs is not a reference.
 
@@ -162,14 +163,15 @@ All of it is local to one atom in one staff, which is why it belongs to Stage 1 
 
 **Contours.** Each atom has a left and a right profile. For every horizontal band of height, the profiles give the leftmost and the rightmost ink in that band, relative to the origin.
 
-- Profiles are built from the glyphs' SMuFL bounding boxes, refined by their cut-outs (the `cutOutNE`, `cutOutSE`, `cutOutSW` and `cutOutNW` anchors, which mark rectangular regions at a box's corners that hold no ink), with stems and ledger lines as rectangles.
-- In Bravura, 165 glyphs carry cut-outs, among them the common accidentals: the sharp has all four, the flat its two on the right.
+- Profiles come from the glyphs’ outlines, read from the font files and frozen as data ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)), with stems and ledger lines as rectangles from engraving values.
+- SMuFL’s cut-outs are a cross-check at registration and a statement of the designer’s intent ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#smufl-cut-outs)).
 - Bands are kept per glyph class (notehead, accidental, dot, stem, flag, ledger line, articulation and so on): where two classes share a height, each keeps its own extreme, because clearances depend on the pair of classes that meet.
 - Profiles are step functions with rational breakpoints.
 - An atom in a staff drawn at reduced size contributes profiles scaled by that staff's size.
 - An element with a minimum form contributes its minimum form ([What Stage 5 may change](#atoms-and-contours), below).
+- **Openings.** Before Stage 1 builds an atom’s contours, it fills every opening in a glyph’s profile whose mouth is narrower than the opening width `h`, measured along the band axis: a closing of the step function, which fills a notch to the level of its lips. Openings at least `h` wide remain for tucking ([Opening Width](#opening-width)).
 
-Contours replace ADR-0028's four-directional extents. A box overstates the blocking width wherever a glyph's corner is empty: the notch of an accidental, the open side of a flag, a displaced notehead. Each overstatement makes a gap prestretched that need not be, and the spacing turns irregular for geometry no reader sees. LilyPond computes the minimum distance between neighbouring columns from horizontal skylines, profiles of the same kind ([Prior Art](#prior-art)).
+Contours replace ADR-0028's four-directional extents. A box overstates the blocking width wherever a glyph's corner is empty: the notch of an accidental, the open side of a flag, a displaced notehead. A box with cut-outs still overstates it elsewhere ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md), Figures 1 and 3). Each overstatement makes a gap prestretched that need not be, and the spacing turns irregular for geometry no reader sees. LilyPond computes the minimum distance between neighbouring columns from horizontal skylines, profiles of the same kind, built from glyph outlines (`lily/stencil-integral.cc`), as Ooloi’s profiles are ([Prior Art](#prior-art)).
 
 **Ledger lines** are part of the atom and its contours. The full extension `E` sets how far a ledger line projects beyond its notehead. It is a piece setting, into which a font's `legerLineExtension` can be imported ([ADR-0047](0047-Font-Management.md#per-font-metadata)); Bravura's is 0.4 staff spaces on each side, so a ledger line under a black notehead 1.18 staff spaces wide is 1.98 wide. At close spacing the ledger lines of neighbouring notes would touch, and engravers shorten them. A ledger line therefore has a minimum form, the shortest acceptable ledger line, which the minimum protrusions set ([Minimum Protrusion](#minimum-protrusion)) and from which the blocking width is computed; Stage 5 lengthens it into the space Stage 4 gives, up to its full extension ([H6](#h6-ledger-lines)).
 
@@ -382,19 +384,25 @@ Each is a measurement in staff spaces from 0 up to the full extension `E`, or th
 
 ![Ledger lines and accidentals: three settings, four staves](../img/hegazy-gourlay/ledger-settings.gif)
 
-*Ledger lines and accidentals, as a bar of chromatic sixteenths is dragged from its tightest to loose and back. Each stave changes one setting from the stave above. Stave 1 sets the minimum protrusion on the accidental side to the full extension; stave 2 lets those lines shorten to 0.16; stave 3 keeps each sharp from ending nearer the previous note than its own; stave 4 keeps every sharp tight to its notehead. A conceptual model, not rendered by Ooloi: Bravura's metrics and the sharp's cut-outs are real, every other value is a placeholder.*
+*Ledger lines and accidentals, as a bar of chromatic sixteenths is dragged from its tightest to loose and back. Each stave changes one setting from the stave above. Stave 1 sets the minimum protrusion on the accidental side to the full extension; stave 2 lets those lines shorten to 0.16; stave 3 keeps each sharp from ending nearer the previous note than its own; stave 4 keeps every sharp tight to its notehead. A conceptual model, not rendered by Ooloi: Bravura's metrics and the sharp's cut-outs are real, every other value is a placeholder. The animation is computed from boxes with cut-outs, not from the outline profiles of [ADR-0056](0056-Glyph-Geometry-from-Outlines.md).*
 
 **Stage 1.** The minimum protrusions are forms, read by column assembly ([H5](#h5-column-assembly)), not spacing parameters, so Stage 1 depends on them and stays independent of the spacing parameters (Invariant 4). For each note with an accidental, Stage 1:
 
-1. places the accidental at its tightest offset, as close to its notehead as both the least distance between them ([H22](#h22-minimum-forms)) and its own ledger lines at `B` allow, band by band against the accidental's profile as its cut-outs refine it;
+1. places the accidental at its tightest offset, as close to its notehead as both the least distance between them ([H22](#h22-minimum-forms)) and its own ledger lines at `B` allow, band by band against the accidental’s outline profile ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md));
 2. records its comfortable offset, outside full-length lines on its side and at its comfortable distance from the notehead;
 3. builds the atom's contours with the accidental at its tightest offset, its own-side lines at whatever extent the tight accidental leaves them, up to `E`, and every end that faces a neighbour at `B′`.
 
-A line passing one of the accidental's cut-outs therefore keeps more of its length than one beside its full width. At `B = :full` the accidental always stands outside full-length lines, and its tightest and comfortable offsets differ only where its comfortable distance from its notehead exceeds its least ([H22](#h22-minimum-forms)). The distance between an accidental and its own ledger lines belongs to the atom's geometry, set by column assembly: the clearance table governs pairs of atoms ([H4](#h4-clearances)), and Stage 1 reads none of it.
+A line passing where the accidental’s ink is narrower therefore keeps more of its length than one beside its full width. At `B = :full` the accidental always stands outside full-length lines, and its tightest and comfortable offsets differ only where its comfortable distance from its notehead exceeds its least ([H22](#h22-minimum-forms)). The distance between an accidental and its own ledger lines belongs to the atom's geometry, set by column assembly: the clearance table governs pairs of atoms ([H4](#h4-clearances)), and Stage 1 reads none of it.
 
-**What it moves.** Through the contours, the minimum protrusions set blocking widths, so they change spacing and can move system breaks: they are settings Stages 1 and 2 read ([Spacing Settings](#spacing-settings)). With Bravura's metrics and the placeholder clearances of the figure, a sharp's gap between two notes at one staff position needs 2.796 staff spaces with `B` at 0.16, and 3.036 at `:full`. Stage 5 lengthens each end into the room Stage 4 gives, from its minimum up to `E` ([What Stage 5 may change](#atoms-and-contours)).
+**What it moves.** Through the contours, the minimum protrusions set blocking widths, so they change spacing and can move system breaks: they are settings Stages 1 and 2 read ([Spacing Settings](#spacing-settings)). With Bravura's metrics and the placeholder clearances of the figure, a sharp's gap between two notes at one staff position needs 2.796 staff spaces with `B` at 0.16, and 3.036 at `:full`. These amounts are computed from boxes with cut-outs, and change with outline profiles ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#consequences)). Stage 5 lengthens each end into the room Stage 4 gives, from its minimum up to `E` ([What Stage 5 may change](#atoms-and-contours)).
 
 **The rhythmic raster.** Where neighbouring notes' ledger lines would collide, the lines give way and the notes keep the positions their durations give them. No rule looks back at the previous note for this. The lines reserve only their minimum forms, so they never push notes apart; Stage 5 lengthens each end into the room the springs gave, clear of everything already placed; and two ends facing each other at one height share the space between them by [H22](#h22-minimum-forms)'s fixed rule, keeping the minimum clearance between them. `B′` is the setting for this behaviour: below `E` the raster holds and the lines give way, and at `:full` the lines claim their room and the notes move apart instead.
+
+#### Opening Width
+
+Outline profiles let a glyph tuck into any opening in its neighbour: from outlines, both of C6’s ledger lines slip into the sharp of C♯6, one of them between its bars, 0.04 staff spaces short of its stem ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#where-two-glyphs-meet), Figure 4). Engravers use some openings and not others. Which ones a neighbour may use is a setting, the opening width `h`, a measurement in staff spaces: Stage 1 fills every opening narrower than `h` before it builds an atom’s contours ([Atoms and Contours](#atoms-and-contours)).
+
+The opening width is a form, read in Stage 1 like the minimum protrusions, so it can move notes and system breaks ([Spacing Settings](#spacing-settings)), and Stage 1 stays independent of the spacing parameters (Invariant 4). The profiles [ADR-0056](0056-Glyph-Geometry-from-Outlines.md#frozen-as-data) caches are pure geometry: changing `h` changes contours, never the cached profiles, and never invalidates them. Its value is [H25](#h25-the-opening-width).
 
 #### The Stretch Dial
 
@@ -556,6 +564,8 @@ What it decides is listed in [Open Items](#open-items). Several items share evid
 | [H21](#h21-barline-drag-modes) | Barline drag modes | User input | — | Design |
 | [H22](#h22-minimum-forms) | Minimum forms | Contour | 1, 5 | Literature and measurement |
 | [H23](#h23-stays-nearer-its-own-note) | Stays nearer its own note | Contour; blocking width in its variant | 5; 2 in its variant | Design and measurement |
+| [H24](#h24-lines-under-their-own-accidental) | Lines under their own accidental | Contour | 5; 1 in its variant | Design |
+| [H25](#h25-the-opening-width) | The opening width | Contour | 1 | Measurement, with ADR-0056 |
 
 ### H1: The duration table
 
@@ -610,7 +620,7 @@ The shortest acceptable ledger line: the values of the two minimum protrusions (
 
 Two further settings are candidates, each read only in Stage 5 and each only ever shortening a line, so neither asks for room (Invariant 10):
 
-- **An even stack**: all of a note's ledger lines on one side take the shortest extent among them, so a lower line is never shorter than the one above it. It gives up the length a line gains under an accidental's cut-out.
+- **An even stack**: all of a note's ledger lines on one side take the shortest extent among them, so a lower line is never shorter than the one above it. It gives up the length a line gains where an accidental’s outline leaves room.
 - **Symmetric ends**: each ledger line is shortened equally at both ends.
 
 Whether either is needed, and its default, is for the plates.
@@ -756,6 +766,19 @@ Two questions remain about the setting ([Stays Nearer Its Own Note](#stays-neare
 - **Where there is no previous notehead.** What the setting does where the previous atom is a rest, and where a barline or a system start comes between the accidental and the previous atom.
 - **A variant that adds space.** The setting could instead be enforced in Stage 2, so that the tightest configuration already meets it: as a blocking width, or as a constraint spanning several columns where the two atoms are not neighbours. With `W` the accidental's ink width and `d_own` its distance from its notehead at its tightest offset, the distance between the two atoms' origins must be at least the right edge of the previous notehead plus `W + (1 + k) × d_own`. It fits [the four forms](#the-four-forms) and needs no new pass, but it reserves room, so it moves notes and can move breaks. The setting would then have three values: off, by shortening ledger lines, and by adding space. At `B = :full`, once the difference between the accidental's comfortable and least distances from its notehead is spent, it is the only way left to meet the condition.
 
+### H24: Lines under their own accidental
+
+A candidate setting, a switch, on or off: a note’s own-side ledger lines are drawn at full length under a tight accidental, which stands over them. One question must be settled before it is specified, because its two answers are read in different stages:
+
+- **Keep the tightest offset.** The accidental stays at its tightest offset, where stave 4 of the ledger-settings figure places it, and its own-side lines are drawn at full length under it. The setting is read only in Stage 5, so no note or system break moves (Invariant 16).
+- **Come in to the least distance.** With the lines no longer in its way, the accidental comes in to its least distance from its notehead ([H22](#h22-minimum-forms)). The setting is then a form, read in Stage 1: contours change, and notes and system breaks can move.
+
+With the figure’s placeholders, the least distance is 0.2 staff spaces and stave 4’s tightest offset 0.31, a difference of 0.11.
+
+### H25: The opening width
+
+The value of the opening width `h` ([Opening Width](#opening-width)), and whether it differs by glyph class, for the plates to decide; and whether a font designer’s declared cut-outs are honoured as openings regardless of `h` ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#open-items), G6).
+
 ## Consequences
 
 **Positive:**
@@ -840,6 +863,7 @@ Two questions remain about the setting ([Stays Nearer Its Own Note](#stays-neare
     - the default `same-direction-correction` is 0.25.
   - `merge_springs` in `lily/spring.cc` combines the staves' springs by averaging their ideal distances, taking the largest minimum, and keeping the ideal at least 0.3 above it.
   - `Separation_item::set_distance` in `lily/separation-item.cc` turns the distance between neighbouring skylines into a minimum distance between columns.
+  - `lily/stencil-integral.cc` and `lily/open-type-font.cc` build skylines from a glyph’s FreeType outline, adding its Bézier curves in short segments, with a quantisation unit of 0.2.
   - Grace notes:
     - `Moment` has a main part and a grace part (`lily/include/moment.hh`). Grace music starts at minus its own length in the grace part and runs forward to the main note's moment (`lily/grace-music.cc`, `lily/grace-iterator.cc`).
     - By default each grace time step has a musical column of its own in the main spacing. The springs between grace columns come from `GraceSpacing`, with values of 1.6 and 0.8 in place of 2.0 and 1.2, under a source comment that grace notes should not stretch much (`lily/spacing-basic.cc`). Grace notes are ignored when the shortest duration is found (`lily/spacing-spanner.cc`).
@@ -848,7 +872,7 @@ Two questions remain about the setting ([Stays Nearer Its Own Note](#stays-neare
 - **Hegazy and Gourlay** (1987): springs that pass through boxes and attach to the left edges of noteheads, blocking widths, and prestretched springs ([ADR-0037](0037-Measure-Distribution-Optimization.md#the-spring-model)). Their example is a pair of flats that stops a spring from shrinking as the measure is compressed.
 - **Gourlay, "Spacing a Line of Music"** (1987): cited by Hegazy and Gourlay for the logarithmic dependence of ideal spacing on duration, and by LilyPond's source. Not consulted directly.
 - **Wanske, *Musiknotation*** (1988): cited by LilyPond's source for the stem-direction correction. Not consulted directly.
-- **SMuFL**: glyph bounding boxes, the cut-out anchors and the engraving defaults, among them `legerLineExtension`. Bravura's metadata supplies the figures quoted here.
+- **SMuFL**: glyph bounding boxes, the cut-out anchors and the engraving defaults, among them `legerLineExtension`. Bravura's metadata supplies the figures quoted here. The cut-out anchors are a cross-check at registration ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#smufl-cut-outs)).
 
 ## References
 
@@ -866,12 +890,13 @@ Two questions remain about the setting ([Stays Nearer Its Own Note](#stays-neare
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) (drags as edits; inspection as paintlists)
 - [ADR-0047: Font Management](0047-Font-Management.md)
 - [ADR-0048: SMuFL Glyph Selection Architecture](0048-SMuFL-Glyph-Selection-Architecture.md)
+- [ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md)
 - Gould, E. *Behind Bars: The Definitive Guide to Music Notation*, Faber Music (2011)
 - Ross, T. *The Art of Music Engraving and Processing*, Hansen Books (1970)
 - Hegazy, W.A. and Gourlay, J.S. "Optimal line breaking in music", Technical Report OSU-CISRC-8/87-TR33, The Ohio State University (1987)
 - Gourlay, J.S. "Spacing a Line of Music", Technical Report OSU-CISRC-10/87-TR35, The Ohio State University (1987)
 - Wanske, H. *Musiknotation: Von der Syntax des Notenstichs zum EDV-gesteuerten Notensatz*, Schott (1988)
 - SMuFL specification, W3C Music Notation Community Group: https://www.w3.org/2021/03/smufl14/
-- LilyPond source: `lily/spacing-options.cc`, `lily/spacing-spanner.cc`, `lily/spacing-basic.cc`, `lily/note-spacing.cc`, `lily/spring.cc`, `lily/separation-item.cc`, `lily/spacing-loose-columns.cc`, `lily/include/moment.hh`, `lily/grace-music.cc`, `lily/grace-iterator.cc`, `ly/music-functions-init.ly`, `scm/define-grobs.scm`
+- LilyPond source: `lily/spacing-options.cc`, `lily/spacing-spanner.cc`, `lily/spacing-basic.cc`, `lily/note-spacing.cc`, `lily/spring.cc`, `lily/separation-item.cc`, `lily/stencil-integral.cc`, `lily/open-type-font.cc`, `lily/spacing-loose-columns.cc`, `lily/include/moment.hh`, `lily/grace-music.cc`, `lily/grace-iterator.cc`, `ly/music-functions-init.ly`, `scm/define-grobs.scm`
 - LilyPond Snippets, "Positioning grace notes with floating space" (2.25.81 and later), https://lilypond.org/doc/v2.27/Documentation/snippets/rhythms-_002d-positioning-grace-notes-with-floating-space; LilyPond issues 6876, https://gitlab.com/lilypond/lilypond/-/issues/6876, and 2630, https://gitlab.com/lilypond/lilypond/-/issues/2630
 - MNX, W3C Music Notation Community Group, rhythmic position object: https://w3c-cg.github.io/mnx/docs/mnx-reference/objects/rhythmic-position/

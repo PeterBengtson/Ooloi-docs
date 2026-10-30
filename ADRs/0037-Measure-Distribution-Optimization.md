@@ -1901,6 +1901,10 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 11. **Predictability** - Users can mentally model system behavior
 12. **A stretch dial that never moves a system break** - Which gaps take a stretched system's room is a setting applied in Stage 4, after the breaker has priced the room: it changes no cost, ratio or system break, so it can be moved alone
 
+**Negative:**
+
+1. **Breaks that align protrusions** - System breaks are chosen before system heights exist, so the breaker cannot avoid breaks that align protruding symbols of adjacent systems, which force those systems apart vertically ([Joint System and Page Breaking](#joint-system-and-page-breaking)). LilyPond avoids such breaks (Han-Wen Nienhuys, in a comment of 1 July 2015 on Dorico’s development diary, part 11). The cost is accepted as the price of the one-way pipeline; any mitigation belongs to Stage 6 ([Page Breaking: Second Pass (Stage 6)](#page-breaking-second-pass-stage-6)).
+
 **Neutral:**
 
 1. **Two-pass approach** - System and page breaking separated, not jointly optimized
@@ -1937,6 +1941,7 @@ A horizontal rule that cannot be expressed in one of these forms is a design pro
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) (pipeline architecture, Stage 3 system breaking position, gutter model, closed semantic model)
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (accidental algorithm that closes the semantic model; tied-note bypass rules inform gutter requirements)
 - [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) (upstream computation of each gap's ideal and blocking widths, the gutter, and the reduction of constraints spanning several columns)
+- [ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md) (glyph geometry frozen as data, so that a font file or an algorithm version is the only thing that changes it)
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) (the layout never feeds back into a musical edit; frozen systems; orientation as presentation)
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) (continuous gestures as one undo step; changes an edit makes to layout data are undone with it)
 - [ADR-0014: Timewalk](0014-Timewalk.md) (temporal traversal providing measure discovery)
