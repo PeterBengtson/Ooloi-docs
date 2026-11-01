@@ -178,7 +178,6 @@ Reading outlines and freezing their profiles keeps what each alternative had to 
 
 - **Registration does more work.** A SMuFL font has a few thousand glyphs; reading them and storing four profiles each is a one-off cost per font file.
 - **The algorithm’s version is part of layout.** Improving it changes pages and must be announced as such.
-- **Contour figures in [ADR-0055](0055-Horizontal-Spacing.md#minimum-protrusion) change.** Its worked numbers, such as the 2.796 and 3.036 staff spaces of a sharp’s gap, are computed from boxes with cut-outs, as it notes. Bravura’s real sharp is narrower in places, so the amounts shift; the behaviour does not.
 - **More room to tuck is not better engraving.** Finer contours let a program tuck further than an engraver would. Restraint comes from [ADR-0055](0055-Horizontal-Spacing.md)’s clearances and its [opening width](0055-Horizontal-Spacing.md#opening-width), not from coarser geometry.
 
 ## Open Items

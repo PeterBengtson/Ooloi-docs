@@ -6,6 +6,10 @@ Accepted
 
 The architecture is decided: the forms in which horizontal engraving rules reach Stage 3, what Stages 1 and 2 compute and in which form, and the invariants that hold between them. Values and several policies are open. Each is an entry in [Open Items](#open-items), which is amended in place as [the exploration](#the-exploration) settles it. One open item reaches beyond values: a stretchability per class of gap would change ADR-0037's interface ([H11](#h11-elasticity-by-gap-class)).
 
+![Ledger lines and accidentals from outline profiles: sharps, flats and naturals](../img/hegazy-gourlay/ledger-outlines-mixed.gif)
+
+*Ledger lines and accidentals from outline profiles, as a bar of chromatic sixteenths with sharps, flats and naturals is dragged from its tightest to loose and back. The springs place the notes, and ledger lines give way on both sides of every accidental as far as its ink requires. Minimum protrusion 0.16 on both sides; the accidental tight to its notehead; stays nearer its own note on, at k = 1. A conceptual model, not rendered by Ooloi: Bravura's glyphs, drawn from the font's outlines, its outline profiles and its engraving defaults are real; the clearances, the opening width and the duration widths are placeholders.*
+
 ## Table of Contents
 
 - [Context](#context)
@@ -384,7 +388,7 @@ Each is a measurement in staff spaces from 0 up to the full extension `E`, or th
 
 ![Ledger lines and accidentals: three settings, four staves](../img/hegazy-gourlay/ledger-settings.gif)
 
-*Ledger lines and accidentals, as a bar of chromatic sixteenths is dragged from its tightest to loose and back. Each stave changes one setting from the stave above. Stave 1 sets the minimum protrusion on the accidental side to the full extension; stave 2 lets those lines shorten to 0.16; stave 3 keeps each sharp from ending nearer the previous note than its own; stave 4 keeps every sharp tight to its notehead. A conceptual model, not rendered by Ooloi: Bravura's metrics and the sharp's cut-outs are real, every other value is a placeholder. The animation is computed from boxes with cut-outs, not from the outline profiles of [ADR-0056](0056-Glyph-Geometry-from-Outlines.md).*
+*Ledger lines and accidentals, as a bar of chromatic sixteenths is dragged from its tightest to loose and back. Each stave changes one setting from the stave above. Stave 1 sets the minimum protrusion on the accidental side to the full extension; stave 2 lets those lines shorten to 0.16; stave 3 keeps each sharp from ending nearer the previous note than its own; stave 4 keeps every sharp tight to its notehead. A conceptual model, not rendered by Ooloi: Bravura's glyphs, drawn from the font's outlines, its outline profiles and its engraving defaults are real; every other value is a placeholder. Stave 4 is the bar of the sharps figure below, with the same values.*
 
 **Stage 1.** The minimum protrusions are forms, read by column assembly ([H5](#h5-column-assembly)), not spacing parameters, so Stage 1 depends on them and stays independent of the spacing parameters (Invariant 4). For each note with an accidental, Stage 1:
 
@@ -394,7 +398,15 @@ Each is a measurement in staff spaces from 0 up to the full extension `E`, or th
 
 A line passing where the accidental’s ink is narrower therefore keeps more of its length than one beside its full width. At `B = :full` the accidental always stands outside full-length lines, and its tightest and comfortable offsets differ only where its comfortable distance from its notehead exceeds its least ([H22](#h22-minimum-forms)). The distance between an accidental and its own ledger lines belongs to the atom's geometry, set by column assembly: the clearance table governs pairs of atoms ([H4](#h4-clearances)), and Stage 1 reads none of it.
 
-**What it moves.** Through the contours, the minimum protrusions set blocking widths, so they change spacing and can move system breaks: they are settings Stages 1 and 2 read ([Spacing Settings](#spacing-settings)). With Bravura's metrics and the placeholder clearances of the figure, a sharp's gap between two notes at one staff position needs 2.796 staff spaces with `B` at 0.16, and 3.036 at `:full`. These amounts are computed from boxes with cut-outs, and change with outline profiles ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#consequences)). Stage 5 lengthens each end into the room Stage 4 gives, from its minimum up to `E` ([What Stage 5 may change](#atoms-and-contours)).
+![Ledger lines and accidentals from outline profiles: sharps, flats and naturals](../img/hegazy-gourlay/ledger-outlines-mixed.gif)
+
+*Ledger lines and accidentals from outline profiles, as at the head of this ADR: each accidental is met by its own outline, with no rule for any glyph, and ledger lines give way on both sides of it.*
+
+![Ledger lines and sharps from outline profiles](../img/hegazy-gourlay/ledger-outlines-sharps.gif)
+
+*The same with sharps only, A5 to C7. At the tightest, C6's ledger lines enter the sharp of C♯6 from the left and C♯6's own lines from the right, where only the sharp's stems have ink: the upper pair between its crossbars. Each stops at its clearance from the ink. Values as in the figure at the head of this ADR.*
+
+**What it moves.** Through the contours, the minimum protrusions set blocking widths, so they change spacing and can move system breaks: they are settings Stages 1 and 2 read ([Spacing Settings](#spacing-settings)). With Bravura's outline profiles and the placeholder clearances of the four-stave figure above, a sharp's gap between two notes at one staff position needs 2.576 staff spaces with `B` at 0.16, and 2.675 at `:full`. Stage 5 lengthens each end into the room Stage 4 gives, from its minimum up to `E` ([What Stage 5 may change](#atoms-and-contours)).
 
 **The rhythmic raster.** Where neighbouring notes' ledger lines would collide, the lines give way and the notes keep the positions their durations give them. No rule looks back at the previous note for this. The lines reserve only their minimum forms, so they never push notes apart; Stage 5 lengthens each end into the room the springs gave, clear of everything already placed; and two ends facing each other at one height share the space between them by [H22](#h22-minimum-forms)'s fixed rule, keeping the minimum clearance between them. `B′` is the setting for this behaviour: below `E` the raster holds and the lines give way, and at `:full` the lines claim their room and the notes move apart instead.
 
@@ -410,7 +422,7 @@ When a system is looser than its ideal widths, which gaps take the room is a set
 
 ![The stretch dial at 0, 0.5 and 1](../img/hegazy-gourlay/stretch-dial.gif)
 
-*The stretch dial at 0, 0.5 and 1, as one bar's barline is dragged from its tightest to loose and back. The gauges show the breaker's ratio, the same in every row: the dial decides only where the room goes. A conceptual model, not rendered by Ooloi: Bravura's metrics are real, every other value is a placeholder.*
+*The stretch dial at 0, 0.5 and 1, as one bar's barline is dragged from its tightest to loose and back. The gauges show the breaker's ratio, the same in every row: the dial decides only where the room goes. A conceptual model, not rendered by Ooloi: the glyphs are Bravura's, drawn from the font's outlines, and Bravura's metrics and engraving defaults are real; every other value is a placeholder. The blocking widths are computed from the glyphs' bounding boxes, not from the outline profiles of [ADR-0056](0056-Glyph-Geometry-from-Outlines.md).*
 
 **The stretch weight.** Stage 2 gives every gap a stretch weight `s` beside its ideal and blocking widths. For a gap leaving a column with duration, with `S` the space of its controlling duration and `f = (t(c′) − t(c)) / d_ctrl` the part of that duration it spans ([Ideal Widths](#ideal-widths)):
 
@@ -773,7 +785,7 @@ A candidate setting, a switch, on or off: a note’s own-side ledger lines are d
 - **Keep the tightest offset.** The accidental stays at its tightest offset, where stave 4 of the ledger-settings figure places it, and its own-side lines are drawn at full length under it. The setting is read only in Stage 5, so no note or system break moves (Invariant 16).
 - **Come in to the least distance.** With the lines no longer in its way, the accidental comes in to its least distance from its notehead ([H22](#h22-minimum-forms)). The setting is then a form, read in Stage 1: contours change, and notes and system breaks can move.
 
-With the figure’s placeholders, the least distance is 0.2 staff spaces and stave 4’s tightest offset 0.31, a difference of 0.11.
+With the figure’s outline profiles and placeholders, the least distance and stave 4’s tightest offset are both 0.2 staff spaces: the sharp’s own lines do not hold it away from its notehead.
 
 ### H25: The opening width
 
