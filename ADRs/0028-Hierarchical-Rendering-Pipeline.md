@@ -127,7 +127,7 @@ Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break p
 
 ### Pipeline Stage 4: Atom Positioning (Fan-Out per Measure)
 
-Stage 4 positions atoms at their actual coordinates from each system's adjustment ratio (fan-out per measure, parallel processing). Each gap takes the width its spring gives (`g_j(r)`, [ADR-0037 §Gaps as Springs](0037-Measure-Distribution-Optimization.md#gaps-as-springs)): under compression at the system's ratio from Stage 3, and under stretching with the system's room shared out by the stretch dial ([ADR-0055](0055-Horizontal-Spacing.md#the-stretch-dial)), which never moves a break. Atoms are assigned final x,y coordinates from the resulting column positions. Cached paintlists from Stage 1 are positioned at absolute coordinates. Atoms are repositioned, not recreated - their internal geometry remains immutable. Output: positioned atoms ready for Stage 5 spanners.
+Stage 4 positions atoms at their actual coordinates from each system's adjustment ratio (fan-out per measure, parallel processing). Each gap takes the width its spring gives (`g_j(r)`, [ADR-0037 §Gaps as Springs](0037-Measure-Distribution-Optimization.md#gaps-as-springs)): under compression at the system's ratio from Stage 3, and under stretching with the system's room shared out through the gaps' stretch weights ([ADR-0055](0055-Horizontal-Spacing.md#the-stretch-weight)), which never move a break. Atoms are assigned final x,y coordinates from the resulting column positions. Cached paintlists from Stage 1 are positioned at absolute coordinates. Atoms are repositioned, not recreated - their internal geometry remains immutable. Output: positioned atoms ready for Stage 5 spanners.
 
 ### Pipeline Stage 5: Spanners and Margins (Fan-Out per Musician)
 
@@ -170,7 +170,7 @@ Stage 6 determines page break points by a dynamic programme over the system sequ
 | System width change | Nothing | Nothing | Redistribute systems | Position atoms | Reconnect + gutter | Nothing |
 | Page height change | Nothing | Nothing | Nothing | Nothing | Nothing | Rebreak pages |
 | Style change (spacing) | Nothing | Reconcile | Redistribute systems | Position atoms | Reconnect + gutter | May rebreak pages |
-| Stretch dial change | Nothing | Stretch weights only | Nothing | Position atoms | Reconnect + gutter | May rebreak pages |
+| Change to a setting read only for the stretch weights | Nothing | Stretch weights only | Nothing | Position atoms | Reconnect + gutter | May rebreak pages |
 | Style change (forms or fonts) | Recompute measures whose glyph geometry changes | Reconcile | Redistribute systems | Position atoms | Reconnect + gutter | May rebreak pages |
 | Placement setting (Stage 5 only) | Nothing | Nothing | Nothing | Nothing | Re-place within atoms + reconnect | May rebreak pages |
 | Add/remove instrument | Recompute affected | Reconcile all | Redistribute systems | Position atoms | Reconnect | Rebreak pages |
@@ -586,8 +586,8 @@ Stage 1 — the expensive one — from changes for which Stage 1's results remai
 repositioning is owed. A mark that records *where* but not *why* cannot express that difference, so
 the pipeline would have to re-run Stage 1 conservatively on every mark, and the atom-relative geometry
 invariant would buy nothing. The kinds therefore partition that table's rows: a content edit, a
-system-width change, a page-height change, a style or spacing change, a change to the stretch dial, a
-change of forms or fonts, a change to a setting read only in Stage 5, an instrument added or removed.
+system-width change, a page-height change, a style or spacing change, a change to a setting read only
+for the stretch weights, a change of forms or fonts, a change to a setting read only in Stage 5, an instrument added or removed.
 The exact vocabulary is settled when the engine is built and can be driven by tests; that it must
 exist is settled here.
 
