@@ -870,11 +870,22 @@ The value of the opening width `h` ([Opening Width](#opening-width)), and whethe
 
 A clef, key or time change is ink before the column that follows it, and its settings govern its distance to whatever follows it ([The Space Around a Barline](#the-space-around-a-barline)). Its stretch `k_D` is 0. Open, to be settled with reference models of key and time signatures:
 
-- **The defaults** of the standard distance, the least distance at normal width and the least distance at full compression after a clef change before a note, a clef change before a barline, a key change and a time change: twelve values.
+- **The defaults** of the standard distance, the least distance at normal width and the least distance at full compression after a clef change before a note, a clef change before a barline, a key change and a time change: twelve values. LilyPond's values are a reference ([Prior Art](#prior-art)). Translated into these settings they give candidates, not decisions:
+
+  | After | LilyPond's `space-alist` entry | Candidate `D` / `m` / `m_min` |
+  | --- | --- | --- |
+  | A clef change, before a note | `(next-note . (extra-space . 1.0))` | 1.0 / 0.5 / 0.25 |
+  | A clef change, before a barline | `(staff-bar . (extra-space . 0.7))` | 0.7 / – / 0.5 |
+  | A key change | `(first-note . (shrink-space . 2.5))` | 2.5 / 1.5 / 1.25 |
+  | A time change | `(first-note . (semi-shrink-space . 2.0))` | 2.0 / 1.25 / 1.0 |
+
+  LilyPond measures each distance from the right edge of the item to the next column, which its code suggests is the notehead's left edge. At the ideal width it keeps the padded outlines at least 0.3 apart, and its rods hold them a default padding of 0.1 apart at the limit; the candidate least distances add the padding LilyPond gives the item (1.0 after a key signature, 0.8 after a time signature) and the following ink to those two figures. A key signature has no `next-note` entry, so its 2.5 holds within a measure as at a measure's start. Translated the same way, LilyPond's barline gives 0.9 / 0.5–0.6 / 0.3–0.4 against this ADR's 1.0 / 0.5 / 0.25, so the candidates are a starting place, within about a tenth of a staff space.
+- **The stretch after a clef change.** LilyPond agrees that the space after a key or time change does not stretch, since its shrinkable spaces have no stretchability, but lets the whole space after a clef within a line stretch: `k_D` 1 in these terms, where this ADR has 0.
+- **Items in a row.** An item that follows a change is ink before the notehead, so the change's least distance at normal width governs its distance to that item: a key change's to a following time change, a clef's to a key change. LilyPond keys these distances by the pair of items, and its values differ from one least distance per kind by up to about a staff space: from a clef to a time change 1.52 against a clef's candidate 0.5, and from a key change to a time change 1.15 against 1.5. Whether one distance per kind is enough, or a row needs something other than a table of pairs, is open.
 - **After a barline.** A change attached to its note reaches its standard distance through its minimum form, widened in Stage 5 into the room the springs give. Within a measure the previous note's white gives that room. After a barline the gap is sized from the change at its least distance, so at normal width it leaves no room to widen into, and the change would stand at its compressed distance from its note until the system stretches. Whether the gap after a barline should take the change at its standard distance for its ideal width, against Invariant 10 there, or the change should reach it otherwise, is open.
 - **A staff with no atom at the change's onset.** A key change appears in every staff, but a staff may have a bar rest there, which is not on the raster, or a note held through the change; a part may have nothing else in the measure. What the change belongs to in such a staff, and in a measure with no column at its onset, is open.
 - **Changes as walls**, or whether ink high above or far below the staff may pass over them.
-- **The least distance to a stroke after a change**, as after a barline, or not.
+- **The least distance to a stroke after a change**, as after a barline, or not. On Bravura's outlines only the percussion clefs, the natural and the digit 1 have a straight edge on their right side, the digit's set 0.19 in from its rightmost ink; the G, F and C clefs, sharps, flats and the other time-signature glyphs have none. After key and time changes the candidate least distances exceed 0.5. The least distance to a stroke could therefore apply after every kind of item, as a property of strokes rather than of barlines, and bind only after a percussion clef.
 
 ## Consequences
 
@@ -963,6 +974,7 @@ A clef, key or time change is ink before the column that follows it, and its set
     - adjusts its ideal by the actual width of the left notehead or rest;
     - measures to the barline when one follows (`space-to-barline`).
   - `BarLine`'s `space-alist` gives the next note a `semi-fixed-space` of 0.9 (internals reference, version 2.26). `Staff_spacing::get_spacing` in `lily/staff-spacing.cc` makes half of a semi-fixed space fixed, and both its stretchability and its compressibility the other half.
+  - The `space-alist` entries in `scm/define-grobs.scm` key each distance by the item that follows: `Clef` gives a following note `extra-space` 1.0, a barline 0.7, a key signature 0.82 and a time signature 1.52; `KeySignature` gives the first note `shrink-space` 2.5 and a time signature 1.15; `TimeSignature` gives the first note `semi-shrink-space` 2.0; `BarLine` gives a key signature 1.0 and a time signature 0.75. `Staff_spacing::get_spacing` measures each from the item's right edge, uses `next-note` only within a line and `first-note` otherwise and where no `next-note` entry exists, makes the shrinkable kinds unstretchable, and keeps a gap of at least 0.3 beyond the padded outlines; `generate_springs` in `lily/spacing-spanner.cc` sets the rods' default padding at 0.1.
   - `Note_spacing::stem_dir_correction` in the same file as `Note_spacing::get_spacing` adds space for an up-stem followed by a down-stem and removes it for the reverse, citing Wanske, p. 138:
     - the default `stem-spacing-correction` is 0.5, scaled by how far the stems overlap;
     - the default `same-direction-correction` is 0.25.
