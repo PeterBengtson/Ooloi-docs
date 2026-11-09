@@ -13,6 +13,7 @@ Under implementation
   - [Metadata Loading](#metadata-loading)
     - [Per-Font Metadata](#per-font-metadata)
     - [Spec-Level Metadata](#spec-level-metadata)
+    - [Required Anchor Data](#required-anchor-data)
   - [Bundled Fonts](#bundled-fonts)
   - [Local Font Discovery](#local-font-discovery)
   - [User-Supplied Fonts](#user-supplied-fonts)
@@ -107,9 +108,19 @@ Independent of any specific font, the SMuFL specification defines three JSON fil
 
 **Font availability filtering.** Not every SMuFL font implements every glyph. When the user is presented with visual alternatives for a notation element, the choices offered from each registered font are the intersection of the element's SMuFL class membership and that font's glyph inventory (from its per-font metadata). A glyph a font lacks is simply not offered from that font; the same glyph from another registered font may be. No error, no placeholder — each font's capabilities are respected silently.
 
+#### Required Anchor Data
+
+SMuFL makes every key of a font's metadata optional except `fontName` and `fontVersion`. Ooloi requires more, because high-quality engraving needs high-quality metadata. Layout attaches stems to noteheads, flags to stems, and other glyphs to the notes they belong to at the points the font's designer gives in `glyphsWithAnchors`: never at points taken from another font, and never at a default the specification suggests in their absence. A glyph's anchors, like its metrics, come from the font that supplies it.
+
+**Stem and flag attachments are required.** A font must give stem attachments on its noteheads (`stemUpSE`, `stemDownNW`) and flag attachments on its flags (`stemUpNW`, `stemDownSW`). A font whose metadata has none of either kind is rejected: it is not registered, whether bundled, found by the local scan or supplied by the user, and the user is told what its metadata lacks. Leipzig is an example: a SMuFL font whose metadata gives stem attachments for its noteheads but no attachment for any of its flags. It is not bundled, and Ooloi does not use it.
+
+**A glyph without an anchor its use needs is withheld from that use.** Where a font gives a required kind for some glyphs and not others, and for every other anchor a use reads (a repeat offset to join a tessellating line, a notehead origin to align a notehead that has a side bearing, the corners of a grace-note slash, split-stem attachments), a glyph that lacks the anchor is treated, for that use, as a glyph the font does not have (the font availability filtering above). A font without the grace-note slash anchors offers its eighth-note flag for notes, but not for slashed grace notes. Registration records, for each font, what it withholds and why.
+
+**Cut-outs are not required.** They are not a source of geometry ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#smufl-cut-outs)), so a font without them loses nothing.
+
 ### Bundled Fonts
 
-Ooloi ships with eleven SMuFL-compliant notation fonts as JAR resources in `shared/resources/smufl-fonts/`, each with its companion SMuFL metadata JSON. Companion text fonts for lyrics, expression markings, and other text-alongside-music live in `shared/resources/music-text-fonts/`.
+Ooloi ships with ten SMuFL-compliant notation fonts as JAR resources in `shared/resources/smufl-fonts/`, each with its companion SMuFL metadata JSON. Companion text fonts for lyrics, expression markings, and other text-alongside-music live in `shared/resources/music-text-fonts/`.
 
 **Bundled notation fonts:**
 
@@ -125,11 +136,10 @@ Ooloi ships with eleven SMuFL-compliant notation fonts as JAR resources in `shar
 | Finale Jazz | Handwritten (bold jazz) | MakeMusic | SIL OFL |
 | Finale Broadway | Handwritten (theatre/copyist) | MakeMusic | SIL OFL |
 | Finale Ash | Handwritten (legendary AshMusic) | MakeMusic | SIL OFL |
-| Leipzig (v5.2.96) | Scholarly/musicological | RISM Digital | SIL OFL |
 
 Bravura is the canonical fallback: it is always available, always loads first, and is the default music font of a piece whose house style names no other.
 
-Bundled fonts are the tested, known-good pairing with the rendering pipeline. A specific version of each font is validated against the layout engine before each Ooloi release. Upgrading a bundled font is an application release, not a user action — the TeX model applies here. Knuth does not let users swap in a different Computer Modern and expect the same line breaks; the font and the layout engine are a tested pair.
+Bundled fonts are the tested, known-good pairing with the rendering pipeline. A specific version of each font is validated against the layout engine before each Ooloi release, its metadata included: every bundled font carries the required anchor data ([Required Anchor Data](#required-anchor-data)). Upgrading a bundled font is an application release, not a user action — the TeX model applies here. Knuth does not let users swap in a different Computer Modern and expect the same line breaks; the font and the layout engine are a tested pair.
 
 ### Local Font Discovery
 
@@ -151,7 +161,7 @@ After loading bundled fonts, the registry scans for locally installed SMuFL-comp
 | **Windows** | `%LOCALAPPDATA%/SMuFL/Fonts/<name>/<name>.json` | `%COMMONPROGRAMFILES%/SMuFL/Fonts/<name>/<name>.json` |
 | **Linux** | `$XDG_DATA_HOME/SMuFL/Fonts/<name>/<name>.json` | `$XDG_DATA_DIRS/SMuFL/Fonts/<name>/<name>.json` |
 
-A font file found in an OS font directory with matching metadata in a SMuFL directory is a fully discoverable SMuFL font. A font file without metadata but matching a known SMuFL font family name (e.g., Bravura, Petaluma, Leland) is flagged as a potential SMuFL font but cannot be fully registered without its metrics. Metadata found without a corresponding font file is ignored.
+A font file found in an OS font directory with matching metadata in a SMuFL directory is a fully discoverable SMuFL font; it is registered only if its metadata carries the required anchor data ([Required Anchor Data](#required-anchor-data)). A font file without metadata but matching a known SMuFL font family name (e.g., Bravura, Petaluma, Leland) is flagged as a potential SMuFL font but cannot be fully registered without its metrics. Metadata found without a corresponding font file is ignored.
 
 When the scan finds a font already present in the registry (same family name), the registry compares version strings and content hashes. If the local font differs from the bundled one in either, the registry **does not substitute it**. On first detection, it posts a **permanent alert notification** informing the user that a different version, or a different file with the same version string, was found locally. Clicking the notification opens the font management UI, where the user chooses which version to use.
 
@@ -161,7 +171,7 @@ Discovery without silent substitution. Nothing changes without an explicit user 
 
 ### User-Supplied Fonts
 
-The font management UI allows the user to load additional SMuFL fonts from arbitrary file paths. These go through the same registration pipeline: load bytes, register with Skija and JavaFX, parse metadata, validate SMuFL compliance, add to registry. No system installation is required — Skija loads typefaces from byte arrays, not from the OS font system.
+The font management UI allows the user to load additional SMuFL fonts from arbitrary file paths. These go through the same registration pipeline: load bytes, parse metadata, validate SMuFL compliance and the required anchor data ([Required Anchor Data](#required-anchor-data)), register with Skija and JavaFX, add to registry. A font that fails validation is registered with neither, since JavaFX keeps a loaded font for the lifetime of the JVM. No system installation is required — Skija loads typefaces from byte arrays, not from the OS font system.
 
 The user-supplied fonts the registry knows are persisted in application settings and registered again at startup. If one is no longer available at its stored path, it is not registered and a notification says so; a piece that draws glyphs from it cannot be rendered until it is available again (§Piece Font Manifest and Version Matching).
 
@@ -235,9 +245,11 @@ The benefit — making bundled SMuFL fonts available to other applications — d
 - Local font discovery respects the user's agency — newer versions and alternative fonts are surfaced, not ignored — without introducing silent rendering changes. Dismissed notifications reappear until the user makes an explicit choice; resolved choices are permanent.
 - In multi-user environments, exact font version matching guarantees all participants see identical rendering. There is no class of "works on my machine" font drift.
 - The font registry is a clean Integrant component with no global state; it can be started and stopped in tests.
+- Every glyph is attached at the points its own designer gave it.
 
 **Negative**
 
+- Some SMuFL fonts cannot be used, and some offer fewer glyphs than they contain. SMuFL leaves every anchor optional: a font without stem or flag attachments is rejected, and a glyph without an anchor its use needs is withheld from that use ([Required Anchor Data](#required-anchor-data)).
 - Upgrading bundled fonts requires an Ooloi release. Users who want a newer version of a bundled font before the next release must use the local font path and explicitly opt in.
 - The local font scan adds startup time proportional to the number of fonts installed on the system. The scan should be bounded (check known directories, match known family names or metadata files, do not parse every installed font).
 - JavaFX's `Font.loadFont` registers fonts globally for the JVM lifetime. If multiple font versions of the same family are loaded (bundled and user-supplied), JavaFX's family name resolution may be ambiguous. The registry must manage this — either by loading only the versions an open piece's manifest names, or by qualifying family names.

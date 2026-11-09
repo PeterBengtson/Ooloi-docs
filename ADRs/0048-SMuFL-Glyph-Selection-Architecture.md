@@ -253,9 +253,11 @@ These are added to the unified class registry alongside classes from `classes.js
 
 ### Font Coverage
 
-Ooloi bundles 11 SMuFL fonts. The tables below also include [November 2](https://www.klemm-music.de/notation/november2/) --- a commercial font (not bundled) that Ooloi recommends as its primary notation font. Notation examples throughout Ooloi's documentation use November 2. It is available separately from Klemm Music Technology.
+Ooloi bundles 10 SMuFL fonts. The tables below also include [November 2](https://www.klemm-music.de/notation/november2/) --- a commercial font (not bundled) that Ooloi recommends as its primary notation font. Notation examples throughout Ooloi's documentation use November 2. It is available separately from Klemm Music Technology.
 
 Glyph counts include both standard glyphs (from `glyphBBoxes`) and optional glyphs (from `optionalGlyphs`). Data extracted from the companion metadata JSON files shipped with each font.
+
+The counts are of glyphs present. A glyph that lacks an anchor its use needs is withheld from that use ([ADR-0047](0047-Font-Management.md#required-anchor-data)), so a font can offer fewer glyphs than it contains.
 
 #### Overview
 
@@ -266,7 +268,6 @@ Glyph counts include both standard glyphs (from `glyphBBoxes`) and optional glyp
 | Finale Maestro | 2,728 | Traditional engraved (classic Finale) |
 | Petaluma | 1,877 | Handwritten (Real Book jazz) |
 | Sebastian | 1,036 | Traditional engraved (distinct character) |
-| Leipzig | 749 | Scholarly/musicological |
 | Finale Jazz | 713 | Handwritten (bold jazz) |
 | Finale Engraver | 534 | Traditional engraved (Urtext influence) |
 | Leland | 490 | Traditional engraved (SCORE-inspired) |
@@ -278,23 +279,23 @@ Glyph counts include both standard glyphs (from `glyphBBoxes`) and optional glyp
 
 Values show glyphs present / class size. Full coverage is highlighted in bold.
 
-| Class (size) | Nov 2 | Bravura | Maestro | Petaluma | Sebastian | Leipzig | Leland | Engraver | Jazz | Legacy | Broadway | Ash |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `clefsG` (13) | 11 | **13** | **13** | **13** | 6 | 9 | 7 | 5 | 3 | 5 | 3 | 3 |
-| `clefsF` (8) | **8** | **8** | **8** | **8** | 5 | 6 | 5 | 5 | 3 | 5 | 3 | 3 |
-| `clefsC` (7) | 6 | **7** | **7** | **7** | 2 | 5 | 2 | 2 | 1 | 1 | 1 | 1 |
-| `clefs` (49) | 37 | 48 | 47 | **49** | 23 | 31 | 23 | 18 | 12 | 16 | 12 | 10 |
-| `rests` (22) | 14 | **22** | **22** | **22** | **22** | **22** | 19 | 19 | 15 | 20 | 15 | 14 |
-| `articulations` (36) | 28 | **36** | 28 | 28 | 26 | 30 | 26 | 28 | 26 | 28 | 26 | 26 |
-| `dynamics` (42) | 40 | 41 | 41 | **42** | **42** | 30 | 34 | 35 | 36 | 33 | 36 | 31 |
-| `pauses` (21) | 20 | **21** | 20 | **21** | 19 | 20 | 12 | 4 | 4 | 5 | 5 | 5 |
-| `ornaments` (55) | 33 | **55** | **55** | **55** | 53 | 25 | 42 | 11 | 10 | 13 | 10 | 7 |
-| `octaves` (25) | 12 | **25** | **25** | **25** | 17 | 23 | 16 | 16 | 12 | 16 | 12 | 9 |
-| `stemDecorations` (32) | 28 | **32** | **32** | 27 | 21 | 8 | 6 | 7 | 6 | 7 | 6 | 6 |
-| `figuredBass` (35) | 0 | **35** | 32 | 33 | 30 | 25 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `accidentalsStandard` (12) | 11 | **12** | **12** | **12** | **12** | **12** | **12** | 7 | 7 | 7 | 7 | 7 |
+| Class (size) | Nov 2 | Bravura | Maestro | Petaluma | Sebastian | Leland | Engraver | Jazz | Legacy | Broadway | Ash |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `clefsG` (13) | 11 | **13** | **13** | **13** | 6 | 7 | 5 | 3 | 5 | 3 | 3 |
+| `clefsF` (8) | **8** | **8** | **8** | **8** | 5 | 5 | 5 | 3 | 5 | 3 | 3 |
+| `clefsC` (7) | 6 | **7** | **7** | **7** | 2 | 2 | 2 | 1 | 1 | 1 | 1 |
+| `clefs` (49) | 37 | 48 | 47 | **49** | 23 | 23 | 18 | 12 | 16 | 12 | 10 |
+| `rests` (22) | 14 | **22** | **22** | **22** | **22** | 19 | 19 | 15 | 20 | 15 | 14 |
+| `articulations` (36) | 28 | **36** | 28 | 28 | 26 | 26 | 28 | 26 | 28 | 26 | 26 |
+| `dynamics` (42) | 40 | 41 | 41 | **42** | **42** | 34 | 35 | 36 | 33 | 36 | 31 |
+| `pauses` (21) | 20 | **21** | 20 | **21** | 19 | 12 | 4 | 4 | 5 | 5 | 5 |
+| `ornaments` (55) | 33 | **55** | **55** | **55** | 53 | 42 | 11 | 10 | 13 | 10 | 7 |
+| `octaves` (25) | 12 | **25** | **25** | **25** | 17 | 16 | 16 | 12 | 16 | 12 | 9 |
+| `stemDecorations` (32) | 28 | **32** | **32** | 27 | 21 | 6 | 7 | 6 | 7 | 6 | 6 |
+| `figuredBass` (35) | 0 | **35** | 32 | 33 | 30 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `accidentalsStandard` (12) | 11 | **12** | **12** | **12** | **12** | **12** | 7 | 7 | 7 | 7 | 7 |
 
-**Reading the table.** November 2 has strong coverage of clefs, dynamics, pauses, and stem decorations but lacks figured bass and specialist rests. Bravura and Finale Maestro have near-complete coverage across all core classes. Petaluma is surprisingly comprehensive for a handwritten font. Sebastian and Leipzig provide good coverage of the essentials. The Finale handwritten fonts (Jazz, Broadway, Ash) cover the basics but lack specialist glyphs. Leland's metadata reports only 490 glyphs --- likely understating the actual font (MuseScore's default); its coverage of core classes is nonetheless adequate.
+**Reading the table.** November 2 has strong coverage of clefs, dynamics, pauses, and stem decorations but lacks figured bass and specialist rests. Bravura and Finale Maestro have near-complete coverage across all core classes. Petaluma is surprisingly comprehensive for a handwritten font. Sebastian provides good coverage of the essentials. The Finale handwritten fonts (Jazz, Broadway, Ash) cover the basics but lack specialist glyphs. Leland's metadata reports only 490 glyphs --- likely understating the actual font (MuseScore's default); its coverage of core classes is nonetheless adequate.
 
 #### Notehead Sets
 
@@ -308,7 +309,6 @@ SMuFL defines 25 notehead set classes. Partial sets are usable --- the cascade f
 | Petaluma | 22 | 3 | 0 | Missing: Sacred Harp, names-pitch partial, names-solfege partial |
 | Sebastian | 15 | 6 | 4 | Good coverage of standard and variant sets |
 | Leland | 4 | 7 | 14 | Default, slash, triangle sets |
-| Leipzig | 3 | 7 | 15 | Default, slash sets |
 | Finale Engraver | 2 | 15 | 8 | Default partial (14/25), Sacred Harp partial |
 | Finale Jazz | 2 | 14 | 9 | Default partial, slash sets |
 | Finale Legacy | 2 | 14 | 9 | Default partial, slash sets |
@@ -326,7 +326,6 @@ SMuFL defines 25 notehead set classes. Partial sets are usable --- the cascade f
 | Finale Maestro | **12** | 401 | Extensive microtonal coverage |
 | Petaluma | **12** | 162 | Good: standard + Sagittal + quartertone |
 | Sebastian | **12** | 49 | Standard + some extended |
-| Leipzig | **12** | 38 | Standard + quartertone |
 | Leland | **12** | 34 | Standard + quartertone |
 | Finale Engraver | 7 | 21 | Missing 5 standard accidentals |
 | Finale Jazz | 7 | 20 | Missing 5 standard accidentals |
@@ -342,13 +341,13 @@ SMuFL defines 25 notehead set classes. Partial sets are usable --- the cascade f
 
 **Tier 1 (full-coverage).** Bravura, Finale Maestro, and Petaluma provide comprehensive coverage suitable for any notation task. Bravura is the most complete, Petaluma is the most complete handwritten font.
 
-**Tier 2 (good coverage).** Sebastian and Leipzig cover all core notation needs and provide reasonable specialist support. Sebastian has notably strong notehead set coverage (15/25 full). Leipzig excels at figured bass and scholarly notation.
+**Tier 2 (good coverage).** Sebastian covers all core notation needs and provides reasonable specialist support, with notably strong notehead set coverage (15/25 full).
 
 **Tier 3 (basic coverage).** Leland, Finale Engraver, Finale Jazz, Finale Legacy, Finale Broadway, and Finale Ash cover the essentials for standard notation but lack specialist glyphs. Users choosing these fonts will see reduced choices in selectors; font availability filtering handles this gracefully.
 
 **Low glyph count is not an error.** When a user makes Finale Ash (297 glyphs) a piece's default music font, the glyph selectors for that font shrink to show only what Ash provides. Notation elements whose current glyph selection is not available in the new font fall back through the cascade to the default glyph for their class. If the default glyph is also absent, the element is rendered using a fallback glyph from the same class that the font does provide.
 
-The 11-font bundle provides five distinct traditional engraved aesthetics (Bravura, Finale Maestro, Leland, Sebastian, Finale Engraver), three handwritten styles (Petaluma, Finale Jazz, Finale Broadway), one scholarly style (Leipzig), and two lower-coverage fonts with distinctive character (Finale Ash, Finale Legacy). Users can also load additional SMuFL fonts through the font management UI ([ADR-0047](0047-Font-Management.md)).
+The 10-font bundle provides five distinct traditional engraved aesthetics (Bravura, Finale Maestro, Leland, Sebastian, Finale Engraver), three handwritten styles (Petaluma, Finale Jazz, Finale Broadway), and two lower-coverage fonts with distinctive character (Finale Ash, Finale Legacy). Users can also load additional SMuFL fonts through the font management UI ([ADR-0047](0047-Font-Management.md)).
 
 ---
 

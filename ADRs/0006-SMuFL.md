@@ -25,7 +25,7 @@ Ooloi requires a standardised and comprehensive system for rendering musical sym
 
 We will adopt the Standard Music Font Layout (SMuFL) as the primary system for musical symbol rendering in Ooloi. SMuFL organises musical symbols in fonts according to a published standard, using the Unicode Private Use Area, with accompanying JSON metadata describing glyph bounding boxes, anchor points, and engraving defaults.
 
-Bravura is the canonical default and fallback font. Ooloi bundles eleven SMuFL fonts covering traditional engraved, handwritten, and scholarly styles (see [ADR-0047: Font Management](0047-Font-Management.md) for the full list). Users may also load additional SMuFL-compliant fonts through the font management UI.
+Bravura is the canonical default and fallback font. Ooloi bundles ten SMuFL fonts covering traditional engraved and handwritten styles (see [ADR-0047: Font Management](0047-Font-Management.md) for the full list). Users may also load additional SMuFL-compliant fonts through the font management UI, provided their metadata carries the anchor data Ooloi requires ([ADR-0047](0047-Font-Management.md#required-anchor-data)).
 
 ## Rationale
 
