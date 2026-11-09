@@ -59,7 +59,7 @@ The model is divided as [ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)'s pi
 
 | Stage | In the model | Reads |
 | --- | --- | --- |
-| 1 | Atoms: contours by glyph class, each accidental at its tightest offset, ledger lines at their minimum forms | The forms: the minimum protrusions, the full extension, the opening width, the distances within an atom |
+| 1 | Atoms: contours from the outline profiles, each accidental at its tightest offset, ledger lines at their minimum forms | The forms: the minimum protrusions, the full extension, the opening width, the distances within an atom |
 | 2 | The raster and its springs: columns from every staff's onsets; gaps by class; ideal widths; blocking widths from contours compared within each staff, the largest across the staves; constraints spanning several columns, reduced as ADR-0037 reduces them; stretch weights | The duration table, the clearances, the settings of the space around a barline |
 | 3 | Left out: the model computes one system, whose ratio or width is given | |
 | 4 | Positions, through the springs ([ADR-0037](0037-Measure-Distribution-Optimization.md)) | The ratio or the width; settings read only for the stretch weights, such as the stretch of the space after a barline |

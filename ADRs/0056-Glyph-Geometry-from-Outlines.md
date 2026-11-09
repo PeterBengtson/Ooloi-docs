@@ -123,7 +123,7 @@ Cut-outs are not a source of any geometry. They are kept for two purposes:
 
 ### Where Two Glyphs Meet
 
-The nearest two glyphs can come horizontally is found band by band. Where the right profile of the glyph on the left and the left profile of the glyph on the right share a band of height, the difference between them is how far apart their origins must be in that band; the largest such difference over all shared bands is their contact distance. [ADR-0055](0055-Horizontal-Spacing.md) adds the clearance for the pair of glyph classes that meet and builds blocking widths from it. Vertical contact, used by Stage 5, is the same computation with the bottom and top profiles across bands of width.
+The nearest two glyphs can come horizontally is found band by band. Where the right profile of the glyph on the left and the left profile of the glyph on the right share a band of height, the difference between them is how far apart their origins must be in that band; the largest such difference over all shared bands is their contact distance. [ADR-0055](0055-Horizontal-Spacing.md) adds its clearances and builds blocking widths from them. Vertical contact, used by Stage 5, is the same computation with the bottom and top profiles across bands of width.
 
 ![Contact between C6 and the sharp of C♯6, from boxes, from cut-outs and from outlines](../img/glyph-geometry/fig4-contact-sharp-after-notehead.svg)
 
@@ -195,7 +195,7 @@ Reading outlines and freezing their profiles keeps what each alternative had to 
 
 ### Related ADRs
 
-- [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) — builds atoms’ contours from the left and right profiles; owns the opening width, the clearances and their glyph classes
+- [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) — builds atoms’ contours from the left and right profiles; owns the opening width and the clearances
 - [ADR-0047: Font Management](0047-Font-Management.md) — registers fonts, loads their metadata and stores the profiles with it; the piece font manifest pins font versions
 - [ADR-0048: SMuFL Glyph Selection Architecture](0048-SMuFL-Glyph-Selection-Architecture.md) — decides which glyph is drawn, and so whose profiles are read
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) — contours replace its four-directional extents; Stage 5 reads the vertical profiles

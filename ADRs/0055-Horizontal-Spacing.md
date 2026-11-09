@@ -124,7 +124,7 @@ Elasticity is not a fifth form: it is a parameter of ADR-0037's model, which may
 - declares, as geometry, the constraints spanning several columns that its own content implies: which atoms or glyphs, and of what kind (ties, lyrics, elements that reserve room, plugin reservations);
 - supplies the geometry of the decorations a measure needs when it starts a system: courtesy accidentals for tied-to notes, tie continuations, a start repeat that may move there; and of its closing barline both as it ends a system and as it stands mid-system ([The Bar Boundary](#the-bar-boundary)).
 
-Stage 1's results depend on the measure's content, the fonts that supply its glyphs and the settings that change glyph geometry, such as the minimum protrusions of ledger lines ([Minimum Protrusion](#minimum-protrusion)). They never depend on the duration table, the anchoring duration, the clearance table, spacing distances such as the minimum tie length or the barline's distances, `σ`, the floor `ε`, or anything in another measure, with one exception: a measure draws before its closing barline a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with, and that clef is part of its cache key ([The Bar Boundary](#the-bar-boundary)). That is what keeps Stage 1 parallel, and its caches valid when any spacing parameter changes.
+Stage 1's results depend on the measure's content, the fonts that supply its glyphs and the settings that change glyph geometry, such as the minimum protrusions of ledger lines ([Minimum Protrusion](#minimum-protrusion)). They never depend on the duration table, the anchoring duration, the clearances, spacing distances such as the minimum tie length or the barline's distances, `σ`, the floor `ε`, or anything in another measure, with one exception: a measure draws before its closing barline a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with, and that clef is part of its cache key ([The Bar Boundary](#the-bar-boundary)). That is what keeps Stage 1 parallel, and its caches valid when any spacing parameter changes.
 
 **Stage 2** runs per measure stack, in two steps. First, for each stack, it:
 
@@ -141,11 +141,11 @@ Then, across neighbouring stacks, it:
 8. applies the user's column transfers, and the transfers barline drags make between neighbouring stacks ([User Inputs](#user-inputs));
 9. produces ADR-0037's stack summaries, and keeps every gap's `w` and `b`, and its stretch weight `s` ([The Stretch Weight](#the-stretch-weight)), with their provenance, for Stage 4 and for [inspection](#inspection).
 
-**Provenance.** For every blocking width, Stage 2 records what set it: the staff or row of text and the pair of glyph classes that meet, or the constraint spanning several columns that raised it, with its `r_D`. For every ideal width it records how it was formed: the table entries it lies between, the controlling duration, each optical correction, and any transfer. Nothing in the pipeline reads provenance, so it changes no width (Invariant 9).
+**Provenance.** For every blocking width, Stage 2 records what set it: the staff or row of text, the ink that meets and the clearance that applied, or the constraint spanning several columns that raised it, with its `r_D`. For every ideal width it records how it was formed: the table entries it lies between, the controlling duration, each optical correction, and any transfer. Nothing in the pipeline reads provenance, so it changes no width (Invariant 9).
 
 Beyond its own stack, Stage 2 reads only finished output of earlier work: the anchoring duration, where it is derived from the music ([H2](#h2-the-anchoring-duration)); the previous stack's closing barline, where the leading gap begins and whose start repeat the gutter reserves at a system start ([The Bar Boundary](#the-bar-boundary)); and, in its second step, the first step's gaps of the stacks a constraint spans. All three are forward dependencies; nothing flows back.
 
-A change to the duration table, the anchoring duration, the clearance table, a spacing distance or `σ` re-runs Stage 2 and Stage 3. It re-runs no Stage 1 geometry. A change to a setting read only for the stretch weights, such as the floor `ε` or the stretch of the space after a barline, re-runs only Stage 2's stretch weights and the stages from Stage 4 on: it changes no summary, so it never re-runs Stage 3 and never moves a system break.
+A change to the duration table, the anchoring duration, the clearances, a spacing distance or `σ` re-runs Stage 2 and Stage 3. It re-runs no Stage 1 geometry. A change to a setting read only for the stretch weights, such as the floor `ε` or the stretch of the space after a barline, re-runs only Stage 2's stretch weights and the stages from Stage 4 on: it changes no summary, so it never re-runs Stage 3 and never moves a system break.
 
 ### Atoms and Contours
 
@@ -171,7 +171,7 @@ All of it is local to one atom in one staff, which is why it belongs to Stage 1 
 
 - Profiles come from the glyphs’ outlines, read from the font files and frozen as data ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)), with stems and ledger lines as rectangles from engraving values.
 - SMuFL’s cut-outs are a cross-check at registration and a statement of the designer’s intent ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#smufl-cut-outs)).
-- Bands are kept per glyph class (notehead, accidental, dot, stem, flag, ledger line, articulation and so on): where two classes share a height, each keeps its own extreme, because clearances depend on the pair of classes that meet.
+- Ink is compared as ink, whatever glyph it comes from. A contour keeps apart only the ink a rule names: noteheads and dots, for rhythmic order, and ledger lines and accidentals, which meet only in the line's own band ([Blocking Widths](#blocking-widths)).
 - Profiles are step functions with rational breakpoints.
 - An atom in a staff drawn at reduced size contributes profiles scaled by that staff's size.
 - An element with a minimum form contributes its minimum form ([What Stage 5 may change](#atoms-and-contours), below).
@@ -186,7 +186,7 @@ Contours replace ADR-0028's four-directional extents. A box overstates the block
 **What Stage 5 may change.** No column moves after Stage 4, so every horizontal adjustment Stage 5 makes is of one of three kinds, and each element's formatter declares which applies to it ([Formatter Conditions and Plugins](#formatter-conditions-and-plugins)):
 
 - **Within a reserved envelope.** An adjustment bounded by a declared range stays, band by band, within the horizontal extent Stage 1's contours reserved for it. The contour reserves the envelope of the range: for a stem, every height its tip and any flag can reach; for an articulation, every position it can take.
-- **From a minimum form into given space.** An element whose comfortable form is wider than the least it can acceptably take declares both. Its contour holds the minimum form, so the blocking widths reflect what the music needs at its tightest. Stage 5 expands it toward its comfortable form only into space Stage 4 has given, checked against everything already placed. A tight system gets the minimum form and a loose one the comfortable form, and nothing flows back. Ledger lines are of this kind, lengthening toward their full extension, and so is an accidental taking its comfortable distance from its notehead where the system leaves room and the accidental position allows it ([Accidental Position](#accidental-position)). The minimum and comfortable forms are geometry, set by column assembly, glyph metrics and the settings that change glyph geometry, never by the clearance table or any other spacing parameter, so Stage 1 stays independent of the spacing parameters (Invariant 4).
+- **From a minimum form into given space.** An element whose comfortable form is wider than the least it can acceptably take declares both. Its contour holds the minimum form, so the blocking widths reflect what the music needs at its tightest. Stage 5 expands it toward its comfortable form only into space Stage 4 has given, checked against everything already placed. A tight system gets the minimum form and a loose one the comfortable form, and nothing flows back. Ledger lines are of this kind, lengthening toward their full extension, and so is an accidental taking its comfortable distance from its notehead where the system leaves room and the accidental position allows it ([Accidental Position](#accidental-position)). The minimum and comfortable forms are geometry, set by column assembly, glyph metrics and the settings that change glyph geometry, never by the clearances or any other spacing parameter, so Stage 1 stays independent of the spacing parameters (Invariant 4).
 - **Into whatever room exists.** An element whose condition is loose, such as a text box, reserves nothing, and Stage 5 places it wherever the space allows, checked against everything already placed.
 
 Where two expansions compete for the same space, as the ledger lines of neighbouring notes do, or an accidental and the previous note's ledger line, they share it by a fixed rule, so the result is deterministic whatever order Stage 5 meets them in: equal shares, except that between an accidental with its own ledger lines and the previous note's ledger lines facing it the accidental position decides ([H22](#h22-minimum-forms), [Accidental Position](#accidental-position)).
@@ -201,9 +201,9 @@ Stage 1 can reserve envelopes and minimum forms only if the declared ranges and 
 
 **Gaps** run from one column's right attachment point (for an atom, its origin) to the next column's origin or left attachment point. Each gap has a **class**, given by the columns at its ends, which decides how its widths are derived:
 
-- **A gap leaving a column with duration** carries that column's duration space, up to the next column with a later onset ([Ideal Widths](#ideal-widths)). A bar's last note has its space up to the barline, which belongs to its measure ([The Space Around a Barline](#the-space-around-a-barline)). The gap's blocking width is the contour distance with the minimum clearance between the glyph classes that meet.
+- **A gap leaving a column with duration** carries that column's duration space, up to the next column with a later onset ([Ideal Widths](#ideal-widths)). A bar's last note has its space up to the barline, which belongs to its measure ([The Space Around a Barline](#the-space-around-a-barline)). The gap's blocking width comes from the contours ([Blocking Widths](#blocking-widths)).
 - **A gap leaving a barline** runs from its right attachment point to the next origin, and the barline's settings give its widths: an ideal width of the standard distance to the origin, raised only as far as the ink before the origin requires, and a blocking width from the least distances ([The Space Around a Barline](#the-space-around-a-barline)).
-- **A gap leaving a breath mark or a caesura** runs from its right attachment point to the next origin. Its ideal width is the contour distance with the ideal clearance between the glyph classes that meet, and its blocking width the contour distance with the minimum clearance, both from the clearance table ([H4](#h4-clearances)).
+- **A gap leaving a breath mark or a caesura** runs from its right attachment point to the next origin. Its ideal width is the contour distance with the ideal clearance after a breath mark or caesura, and its blocking width the contour distance with the clearance between ink and ink ([H4](#h4-clearances)).
 - **Every gap between columns at different onsets** has a blocking width of at least a minimum separation ([H4](#h4-clearances)), so that two onsets never print at the same place, even where no staff has atoms at both.
 - **The class also selects the gap's elasticity** ([Elasticity by Gap Class](#elasticity-by-gap-class)).
 
@@ -290,38 +290,51 @@ A correction may depend on durations, stem directions, beams and the widths of n
 
 ### Blocking Widths
 
-**Between two atoms of one staff at neighbouring columns**, the blocking width is the least distance between their origins at which no ink of the left atom, with the minimum clearance for the pair of glyph classes that meet, reaches ink of the right atom at the same height. Bands of height count as meeting when they come within a vertical clearance of each other, so that ink at slightly different heights is still kept apart. Ink with a minimum form counts in that form. A ledger line and an accidental meet only where the accidental's ink lies in the line's own band: Stage 1 cuts the line against the accidental's outline and Stage 5 lengthens it into the room the springs give, so no vertical clearance applies between them ([Minimum Protrusion](#minimum-protrusion)).
+**Between two atoms of one staff at neighbouring columns**, the blocking width is the least distance between their origins at which no ink of the left atom comes nearer than the clearance between ink and ink to ink of the right atom at the same height. Bands of height count as meeting when they come within a vertical clearance of each other, so that ink at slightly different heights is still kept apart. Ink with a minimum form counts in that form. A ledger line and an accidental meet only where the accidental's ink lies in the line's own band: Stage 1 cuts the line against the accidental's outline and Stage 5 lengthens it into the room the springs give, so no vertical clearance applies between them, and they keep a clearance of their own ([Minimum Protrusion](#minimum-protrusion), [H4](#h4-clearances)).
 
-**Rhythmic order.** Within a staff, a note's noteheads never begin before the previous note's noteheads and dots end: the right atom's noteheads keep a clearance from the left atom's noteheads and augmentation dots, at whatever height they stand. It is a rule of rhythmic order rather than of collision, so the vertical clearance plays no part in it, and a dotted note's dots count as part of its width. Only the right atom's noteheads count: its accidental may still tuck under or over the left atom, as far as their contours allow. Ledger lines count in neither atom, since they reserve only their minimum forms. Like every distance between contours, it is a blocking width between neighbouring columns, and a constraint spanning several columns where other staves place columns between the two atoms ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)). Its clearances, after a notehead and after a dot, are entries in the clearance table ([H4](#h4-clearances)).
+**Rhythmic order.** Within a staff, a note's noteheads never begin before the previous note's noteheads and dots end: the right atom's noteheads keep a clearance from the left atom's noteheads and augmentation dots, at whatever height they stand. It is a rule of rhythmic order rather than of collision, so the vertical clearance plays no part in it, and a dotted note's dots count as part of its width. Only the right atom's noteheads count: its accidental may still tuck under or over the left atom, as far as their contours allow. Ledger lines count in neither atom, since they reserve only their minimum forms. Like every distance between contours, it is a blocking width between neighbouring columns, and a constraint spanning several columns where other staves place columns between the two atoms ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)). Its clearance is one value, whether a notehead or a dot ends the left atom ([H4](#h4-clearances)).
 
 **Atoms that are not neighbours.** An atom's ink can reach past its neighbour where the neighbour has none at that height, as a high articulation can over a low note. For every atom, Stage 2 also constrains each earlier atom of the same staff whose right profile can still reach it past the atoms between. It walks back until none can, as LilyPond does ([Prior Art](#prior-art)). These are constraints spanning several columns.
 
-**Clearances** form a table by pair of glyph classes, in staff spaces, for legibility and not merely for avoiding collision ([H4](#h4-clearances)). Each pair has a minimum, used for every blocking width, and, where a gap's ideal width is a clearance, an ideal value as well. Two further values complete it: the vertical clearance between bands, and the minimum separation between columns at different onsets.
+**Clearances** are named by the situation they serve, in staff spaces, for legibility and not merely for avoiding collision ([H4](#h4-clearances)): between ink and ink, for every blocking width; between a ledger line and an accidental, which meet only in the line's own band; rhythmic order's; and, where a gap's ideal width is a clearance, the ideal clearance after a breath mark or caesura. Two further values complete them: the vertical clearance between bands, and the minimum separation between columns at different onsets. None is keyed by the glyphs that meet: the outline profiles already say where each glyph's ink is, so a new symbol needs no entry.
 
 **A gap's blocking width** is the largest over the staves, and rows of text, that have atoms at both of its columns, and at least the minimum separation between onsets. A staff with an atom at the left column and none at the right meets its next atom further on. That distance spans several gaps and is a constraint ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)).
 
 ```clojure
+(defn- ledger-and-accidental?
+  "Whether one band is a ledger line's and the other an accidental's."
+  [a b]
+  (= #{:ledger-line :accidental} (hash-set (:role a) (:role b))))
+
 (defn- bands-meet?
+  "Whether two bands meet: within the vertical clearance vpad of each other,
+   except a ledger line and an accidental, which meet only where they share
+   height."
   [a b vpad]
-  (and (< (:y0 a) (+ (:y1 b) vpad))
-       (< (:y0 b) (+ (:y1 a) vpad))))
+  (let [pad (if (ledger-and-accidental? a b) 0 vpad)]
+    (and (< (:y0 a) (+ (:y1 b) pad))
+         (< (:y0 b) (+ (:y1 a) pad)))))
 
 (defn blocking-width
   "The least distance between the origins of two atoms of one staff at which
-   no ink of the left atom, with its clearance, reaches ink of the right atom.
-   right-profile is the left atom's: bands {:y0 :y1 :x :class}, x its
-   rightmost ink in the band, one band per glyph class at each height.
-   left-profile is the right atom's, x its leftmost ink, negative where ink
-   lies left of its origin. Elements with a minimum form appear in that form.
-   clearance gives the minimum clearance for a pair of glyph classes (H4);
-   vpad is the vertical clearance within which bands at different heights
-   still meet. Exact."
-  [right-profile left-profile clearance vpad]
+   no ink of the left atom comes nearer than its clearance to ink of the right
+   atom. right-profile is the left atom's: bands {:y0 :y1 :x}, x its rightmost
+   ink in the band. left-profile is the right atom's, x its leftmost ink,
+   negative where ink lies left of its origin. Bands of ledger lines and
+   accidentals carry :role, :ledger-line or :accidental; this function reads
+   nothing else about what the ink is. Elements with a minimum form appear in
+   that form. clearance is the clearance between ink and ink,
+   ledger-clearance the clearance between a ledger line and an accidental
+   (H4), and vpad the vertical clearance within which bands at different
+   heights still meet. Exact."
+  [right-profile left-profile clearance ledger-clearance vpad]
   (reduce max 0N
           (for [r right-profile
                 l left-profile
                 :when (bands-meet? r l vpad)]
-            (+ (:x r) (clearance (:class r) (:class l)) (- (:x l))))))
+            (+ (:x r)
+               (if (ledger-and-accidental? r l) ledger-clearance clearance)
+               (- (:x l))))))
 ```
 
 ### Constraints Spanning Several Columns
@@ -401,7 +414,7 @@ Each is a measurement in staff spaces from 0 up to the full extension `E`, or th
 2. records its comfortable offset, outside full-length lines on its side and at its comfortable distance from the notehead;
 3. builds the atom's contours with the accidental at its tightest offset, its own-side lines at whatever extent the tight accidental leaves them, up to `E`, and every end that faces a neighbour at `B′`.
 
-A line passing where the accidental’s ink is narrower therefore keeps more of its length than one beside its full width. At `B = :full` the accidental always stands outside full-length lines, and its tightest and comfortable offsets differ only where its comfortable distance from its notehead exceeds its least ([H22](#h22-minimum-forms)). The distance between an accidental and its own ledger lines belongs to the atom's geometry, set by column assembly: the clearance table governs pairs of atoms ([H4](#h4-clearances)), and Stage 1 reads none of it.
+A line passing where the accidental’s ink is narrower therefore keeps more of its length than one beside its full width. At `B = :full` the accidental always stands outside full-length lines, and its tightest and comfortable offsets differ only where its comfortable distance from its notehead exceeds its least ([H22](#h22-minimum-forms)). The distance between an accidental and its own ledger lines belongs to the atom's geometry, set by column assembly: the clearances govern distances between atoms ([H4](#h4-clearances)), and Stage 1 reads none of them.
 
 ![Ledger lines and accidentals from outline profiles: sharps, flats and naturals](../img/hegazy-gourlay/ledger-outlines-mixed.gif)
 
@@ -589,7 +602,7 @@ The boundary between Stages 1–2 and Stage 3 is specified by properties, tested
 1. **No collision at any feasible ratio, before or after Stage 5.** For any rational `r ≥ −1`, placing the columns as Stage 4 does, by ADR-0037's `g_j(r)` or, under stretching, through the stretch weights, leaves no two contours of one staff or row of text overlapping with their minimum clearances, whether or not their atoms are neighbours, and no two columns at different onsets closer than the minimum separation. The same holds for what Stage 5 draws: an adjustment within its declared range keeps an atom's ink inside its contours; an element Stage 5 expands from its minimum form stays within the space Stage 4 gave, clear of everything already placed; and a loose element is placed clear of everything already placed ([Atoms and Contours](#atoms-and-contours)). The test draws the adjustments from their declared ranges, and the expansions from the full range between minimum and comfortable forms.
 2. **Attachments never change duration space.** With durations and stem directions fixed, adding or removing accidentals, articulations or ledger lines, or displacing noteheads, changes no controlling duration and no ideal width of a gap leaving a column with duration, except where the barline's least distance at normal width raises a measure's last gap to keep that ink clear of the barline ([The Space Around a Barline](#the-space-around-a-barline), [H9](#h9-the-last-note-before-a-barline)). A grace group, if grace notes form columns ([H7](#h7-grace-notes)), may divide the duration space before its main note among its own gaps, but never changes its total.
 3. **The duration table is monotone and sub-linear.** Its width never decreases as the duration grows, and its width divided by duration never increases.
-4. **Stage 1 is independent of spacing parameters.** Changing the duration table, the anchoring duration, the clearance table, a spacing distance, `σ` or `ε` changes no Stage 1 output, minimum and comfortable forms included. Settings that change glyph geometry, such as the minimum protrusions, are inputs to Stage 1, not spacing parameters.
+4. **Stage 1 is independent of spacing parameters.** Changing the duration table, the anchoring duration, the clearances, a spacing distance, `σ` or `ε` changes no Stage 1 output, minimum and comfortable forms included. Settings that change glyph geometry, such as the minimum protrusions, are inputs to Stage 1, not spacing parameters.
 5. **Determinism.** Identical content gives identical contours, summaries and gap lists, whatever the order in which staves, measures and stacks are processed, and whatever sequence of edits produced the piece. A cache returns only what recomputation from the piece would give, and no value computed before an edit, the anchoring duration included, is otherwise an input to a result computed after it ([ADR-0037](0037-Measure-Distribution-Optimization.md#layout-is-a-function-of-the-piece)). Stage 5's expansions of minimum forms are identical whatever the order in which it meets them ([H22](#h22-minimum-forms)).
 6. **Scale invariance.** Widths are in staff spaces at the system's staff size; changing that size changes none of them. A staff drawn at reduced size contributes contours scaled by its ratio, and text sized in absolute units is converted at the system's size.
 7. **Drag neutrality.** A transfer that keeps both gaps' ideal widths at or above their blocking widths leaves the stack's `:min`, `:natural`, `:ideal`, `:ordinary-ideal` and `:prestretched` unchanged.
@@ -612,7 +625,7 @@ The boundary between Stages 1–2 and Stage 3 is specified by properties, tested
 
 The architecture is fixed so that the exploration can only change values and inputs, never add a pass. It is how the open items close.
 
-- **Parameters are data.** The duration table, the anchoring rule, the clearance table, the optical corrections, the elasticities, the stretch weights' floor `ε`, the settings of the space around a barline, and the minimum and comfortable forms live in a house-style structure. Each value records its source, its date and its status: provisional, verified against the literature, or measured.
+- **Parameters are data.** The duration table, the anchoring rule, the clearances, the optical corrections, the elasticities, the stretch weights' floor `ε`, the settings of the space around a barline, and the minimum and comfortable forms live in a house-style structure. Each value records its source, its date and its status: provisional, verified against the literature, or measured.
 - **A principle begins with the eye.** The trained eye notices what looks wrong, or natural, and names the principle; the reference model shows its consequences in every case at once, and printed engraving is part of the same loop ([ADR-0057](0057-Reference-Model-of-the-Spacing-Pipeline.md#the-exploration)).
 - **The reference is printed engraving.** Editions in the plate-engraving tradition are measured: the staff space from the staff lines; the distance from one notehead's left edge to the next, and the white space between them; each for every duration, in loose and in tight systems of the same edition. Each measurement records the edition, page and system. The output of other notation programs is not used.
 - **The procedure** is measurement, then a value in the house-style data, then the register entry updated with its date and evidence. The property tests hold throughout.
@@ -689,13 +702,15 @@ Starting points from LilyPond:
 - **The adjustment of the ideal width by the actual width of the left notehead or rest.**
 - **Combining staves.** LilyPond averages the staves' ideal distances, takes the largest of their minimums, and keeps the result at least 0.3 above that minimum. Averaging dilutes a correction by the number of staves.
 
+LilyPond's exceptions for particular configurations, in the first item above, are reference points, not rules: a correction applies under one condition that holds for every configuration, as the proposal below does.
+
 **Proposed: an optical correction applies only as far as every staff agrees.** The stem-direction illusion is local to a staff, but a correction acts on a column every staff shares, so one staff's up-stem before a barline would move the barline in every staff. Needs (blocking widths, least distances, the least distance to a stroke) take the largest over the staves, as now. Optical corrections would take the smallest where all staves ask for one in the same direction, and none otherwise; a staff with no stem at that point asks for none. In single-staff music that is the full correction; in a score it vanishes unless every staff agrees. The same rule would govern the corrections between notes within a measure and the up-stem correction before a barline, which LilyPond makes half its stem-direction correction, up to a quarter space.
 
 ### H4: Clearances
 
-The table of clearances between pairs of glyph classes, minimum and ideal; the vertical clearance between bands; and the minimum separation between columns at different onsets. The space around a barline is not part of the table: the barline's settings govern it ([The Space Around a Barline](#the-space-around-a-barline)). Between a ledger line and an accidental the vertical clearance is 0: they meet only in the line's own band, as the minimum protrusions measure ([Minimum Protrusion](#minimum-protrusion)). The literature describes accidentals largely through examples rather than measurements, especially in chords.
+The values of the clearances ([Blocking Widths](#blocking-widths)): between ink and ink; between a ledger line and an accidental; rhythmic order's; the ideal clearance after a breath mark or caesura; the vertical clearance between bands; and the minimum separation between columns at different onsets. The space around a barline is not among them: the barline's settings govern it ([The Space Around a Barline](#the-space-around-a-barline)). Between a ledger line and an accidental the vertical clearance is 0: they meet only in the line's own band, as the minimum protrusions measure ([Minimum Protrusion](#minimum-protrusion)). The literature describes accidentals largely through examples rather than measurements, especially in chords.
 
-**Successive columns.** With noteheads alone, two heads a second apart in successive columns, the higher first, would be allowed 1.09 between origins by Bravura's outlines and the placeholder clearances, less than a notehead's width, because the clearance acts only within the vertical clearance. Rhythmic order holds them at 1.38, a notehead's width and the placeholder clearance ([Blocking Widths](#blocking-widths)). Its two clearances, after a notehead and after a dot, are open here with the rest of the table.
+**Successive columns.** With noteheads alone, two heads a second apart in successive columns, the higher first, would be allowed 1.09 between origins by Bravura's outlines and the placeholder clearances, less than a notehead's width, because the clearance acts only within the vertical clearance. Rhythmic order holds them at 1.38, a notehead's width and the placeholder clearance ([Blocking Widths](#blocking-widths)). Its clearance is open here with the rest.
 
 ### H5: Column assembly
 
@@ -730,7 +745,7 @@ This keeps what LilyPond's `strict-grace-spacing` intends, that grace notes do n
 
 Values whose ideal width lies below their blocking width are prestretched. They stay at their blocking width as the system stretches, until their kink, while everything else gains space. Whether a run of thirty-seconds should stay packed in this way, or the table should keep very short values above their blocking widths, is a matter of the table ([H1](#h1-the-duration-table)), settled by measurement.
 
-The tolerance bounds how far a system stretches. At tolerance 200, ADR-0037's documented starting point, no system chosen within the tolerance has `r` above about 1.26, so in such a system a gap whose kink lies above that is never released ([ADR-0037](0037-Measure-Distribution-Optimization.md#calibrating-the-adjustment-ratio)). A frozen system, and a system of a part broken without the tolerance because no segmentation of it met it, can stretch further. With an eighth as the anchoring duration and LilyPond's table, beamed thirty-seconds have an ideal width of 1.5. Before a note carrying a double flat the kink is about 1.77 even with no clearance, and with provisional clearances of 0.2 the gaps before flats (1.31) and sharps (1.44) are held too. The anchoring duration moves this ([H2](#h2-the-anchoring-duration)): with a sixteenth, a thirty-second is 1.8 and the double flat's kink lies between 1.14 and 1.58, so the gap is held unless its two clearances come to less than about 0.11; with a thirty-second, it is 2.4, and every such gap is released.
+The tolerance bounds how far a system stretches. At tolerance 200, ADR-0037's documented starting point, no system chosen within the tolerance has `r` above about 1.26, so in such a system a gap whose kink lies above that is never released ([ADR-0037](0037-Measure-Distribution-Optimization.md#calibrating-the-adjustment-ratio)). A frozen system, and a system of a part broken without the tolerance because no segmentation of it met it, can stretch further. With an eighth as the anchoring duration and LilyPond's table, beamed thirty-seconds have an ideal width of 1.5. Before a note carrying a double flat the kink is about 1.77 even with no clearance and no least distance between the accidental and its notehead ([H22](#h22-minimum-forms)); with both at a provisional 0.2 the gaps before flats (1.31) and sharps (1.44) are held too. The anchoring duration moves this ([H2](#h2-the-anchoring-duration)): with a sixteenth, a thirty-second is 1.8 and the double flat's kink lies between 1.14 and 1.58, so the gap is held unless the two come to less than about 0.11; with a thirty-second, it is 2.4, and every such gap is released.
 
 ### H9: The last note before a barline
 
@@ -868,7 +883,7 @@ With the figure’s outline profiles and placeholders, the least distance and st
 
 ### H25: The opening width
 
-The value of the opening width `h` ([Opening Width](#opening-width)), and whether it differs by glyph class, for the plates to decide; and whether a font designer’s declared cut-outs are honoured as openings regardless of `h` ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#open-items), G6).
+The value of the opening width `h` ([Opening Width](#opening-width)), for the plates to decide; and whether a font designer’s declared cut-outs are honoured as openings regardless of `h` ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#open-items), G6).
 
 ### H26: Changes before a note
 
@@ -945,7 +960,7 @@ A clef, key or time change is ink before the column that follows it, and its set
 
 1. **Bounding boxes.** Four extents per atom, measured from its centre. Rejected: they overstate blocking widths wherever a glyph's corner is empty, and create prestretched gaps from geometry no reader sees.
 2. **Accidentals adding to the ideal width.** Rejected: the note looks late, and the rhythm the ideal width encodes is distorted. Under springs an accidental takes room only when its collision requires it.
-3. **Clearance rules without geometry.** Fixed clearances by element type serve common cases, and fail in dense accidentals and in dotted textures of several voices. Rejected as the sole basis. Clearances are kept, applied between contours.
+3. **Clearance rules without geometry.** Fixed clearances by element type serve common cases, and fail in dense accidentals and in dotted textures of several voices. Rejected as the sole basis. Clearances are kept, applied between contours. They are named by the situation they serve, never keyed by the pair of glyphs that meet: such a table grows with every symbol, and the outline profiles already state where each glyph's ink is.
 4. **An anchoring duration per system.** Rejected: systems are chosen from the widths it would produce.
 5. **Horizontal adjustment in Stage 5.** Rejected:
    - A column belongs to every staff of its stack, and Stage 5 runs per musician without coordination.
