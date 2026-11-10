@@ -71,7 +71,7 @@ Because the model's structure is the implementation's, a rule shown to work in t
 ### One Model, Two Implementations
 
 - **The reference implementation**, in Python, computes the ADRs' figures and renders them with Skia, the rasteriser Ooloi draws with.
-- **The interactive implementation**, in JavaScript, runs in a browser with every setting live. It is self-contained, needing no library and no network, and it is public and free to download. It offers every bundled music font, all of them under the SIL Open Font License ([ADR-0047](0047-Font-Management.md#bundled-fonts)), and November 2, the commercial font Ooloi's documentation uses ([ADR-0048](0048-SMuFL-Glyph-Selection-Architecture.md)). For each it carries only the handful of glyphs its examples draw: their outlines, their profiles and their SMuFL metadata, with the font's engraving defaults. It never carries a font file, nor the outlines of any glyph its examples do not use, which matters most for a commercial font such as November 2.
+- **The interactive implementation**, in JavaScript, runs in a browser with every setting live. It is self-contained, needing no library and no network, and it is public and free to download. It offers every bundled music font, all of them under the SIL Open Font License ([ADR-0047](0047-Font-Management.md#bundled-fonts)). For each it carries only the handful of glyphs its examples draw: their outlines and their SMuFL metadata (bounding boxes and anchors), with the font's engraving defaults, and it computes their profiles from the outlines as the reference implementation does. It never carries a font file, nor the outlines of any glyph its examples do not use.
 - **Reference values hold them together.** The reference implementation writes what each stage computes for a set of inputs, as exact fractions, and the interactive implementation is checked against them for equality. The Clojure implementation's tests read the same values; Clojure's ratios are exact, so they too compare for equality.
 - **A rule changes everywhere at once.** A decided change goes into the ADR, the reference implementation and the interactive one together, and the checks fail until all of them agree. Two implementations written separately also check each other: a difference between them is a defect in one of them, or an ambiguity in the ADR.
 
@@ -141,7 +141,6 @@ A figure that exists to show an earlier state or a rejected alternative, such as
 | --- | --- | --- |
 | M1: The reference values | Their format, which cases they cover at each stage, and how the Clojure implementation's tests read them. | The first Clojure implementation of Stages 1 and 2 |
 | M2: Stage 5's reach | Whether slurs, ties and beams join the model once their ADRs specify them. | [ADR-0013](0013-Slur-Formatting.md) and the beaming decision |
-| M3: November 2's outlines in public | Whether the outlines of November 2, a commercial font, may be published with the interactive model. | Its publisher, Klemm Music Technology |
 
 ## References
 
@@ -153,7 +152,6 @@ A figure that exists to show an earlier state or a rejected alternative, such as
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) — the stages the model follows
 - [ADR-0013: Slur Formatting](0013-Slur-Formatting.md) — the one-way pipeline and what Stage 5 may change
 - [ADR-0047: Font Management](0047-Font-Management.md) — the bundled fonts and their licences
-- [ADR-0048: SMuFL Glyph Selection Architecture](0048-SMuFL-Glyph-Selection-Architecture.md) — November 2, the commercial font Ooloi's documentation uses
 
 ### External References
 
