@@ -171,7 +171,7 @@ All of it is local to one atom in one staff, which is why it belongs to Stage 1 
 
 - Profiles come from the glyphs’ outlines, read from the font files and frozen as data ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)), with stems and ledger lines as rectangles from engraving values.
 - SMuFL’s cut-outs are a cross-check at registration and a statement of the designer’s intent ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#smufl-cut-outs)).
-- Ink is compared as ink, whatever glyph it comes from. A contour keeps apart only the ink a rule names: noteheads and dots, for rhythmic order, and ledger lines and accidentals, which meet only in the line's own band ([Blocking Widths](#blocking-widths)).
+- Ink is compared as ink, whatever glyph it comes from. A contour keeps apart only the ink a rule names: noteheads and dots, for rhythmic order, and ledger lines and accidentals, which meet within a vertical reach of their own, by default only in the line's own band ([Blocking Widths](#blocking-widths)).
 - Profiles are step functions with rational breakpoints.
 - An atom in a staff drawn at reduced size contributes profiles scaled by that staff's size.
 - An element with a minimum form contributes its minimum form ([What Stage 5 may change](#atoms-and-contours), below).
@@ -290,13 +290,13 @@ A correction may depend on durations, stem directions, beams and the widths of n
 
 ### Blocking Widths
 
-**Between two atoms of one staff at neighbouring columns**, the blocking width is the least distance between their origins at which no ink of the left atom comes nearer than the clearance between ink and ink to ink of the right atom at the same height. Bands of height count as meeting when they come within a vertical clearance of each other, so that ink at slightly different heights is still kept apart. Ink with a minimum form counts in that form. A ledger line and an accidental meet only where the accidental's ink lies in the line's own band: Stage 1 cuts the line against the accidental's outline and Stage 5 lengthens it into the room the springs give, so no vertical clearance applies between them, and they keep a clearance of their own ([Minimum Protrusion](#minimum-protrusion), [H4](#h4-clearances)).
+**Between two atoms of one staff at neighbouring columns**, the blocking width is the least distance between their origins at which no ink of the left atom comes nearer than the clearance between ink and ink to ink of the right atom at the same height. Bands of height count as meeting when they come within a vertical clearance of each other, so that ink at slightly different heights is still kept apart. Ink with a minimum form counts in that form. A ledger line and an accidental meet only where the accidental's ink comes within a vertical reach of the line's height: Stage 1 cuts the line against the accidental's outline and Stage 5 lengthens it into the room the springs give, so the vertical clearance between bands does not apply between them, and they keep a clearance of their own ([Minimum Protrusion](#minimum-protrusion), [H4](#h4-clearances)). The reach is 0 by default, so they meet only in the line's own band and a line can run in between a sharp's crossbars; raised, the accidental's ink above and below the line counts as well, and the line stops short of it.
 
 **Rhythmic order.** Within a staff, a note's noteheads never begin before the previous note's noteheads and dots end: the right atom's noteheads keep a clearance from the left atom's noteheads and augmentation dots, at whatever height they stand. It is a rule of rhythmic order rather than of collision, so the vertical clearance plays no part in it, and a dotted note's dots count as part of its width. Only the right atom's noteheads count: its accidental may still tuck under or over the left atom, as far as their contours allow. Ledger lines count in neither atom, since they reserve only their minimum forms. Like every distance between contours, it is a blocking width between neighbouring columns, and a constraint spanning several columns where other staves place columns between the two atoms ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)). Its clearance is one value, whether a notehead or a dot ends the left atom ([H4](#h4-clearances)).
 
 **Atoms that are not neighbours.** An atom's ink can reach past its neighbour where the neighbour has none at that height, as a high articulation can over a low note. For every atom, Stage 2 also constrains each earlier atom of the same staff whose right profile can still reach it past the atoms between. It walks back until none can, as LilyPond does ([Prior Art](#prior-art)). These are constraints spanning several columns.
 
-**Clearances** are named by the situation they serve, in staff spaces, for legibility and not merely for avoiding collision ([H4](#h4-clearances)): between ink and ink, for every blocking width; between a ledger line and an accidental, which meet only in the line's own band; rhythmic order's; and, where a gap's ideal width is a clearance, the ideal clearance after a breath mark or caesura. Two further values complete them: the vertical clearance between bands, and the minimum separation between columns at different onsets. None is keyed by the glyphs that meet: the outline profiles already say where each glyph's ink is, so a new symbol needs no entry.
+**Clearances** are named by the situation they serve, in staff spaces, for legibility and not merely for avoiding collision ([H4](#h4-clearances)): between ink and ink, for every blocking width; between a ledger line and another note's accidental, which meet within the vertical reach between them; rhythmic order's; and, where a gap's ideal width is a clearance, the ideal clearance after a breath mark or caesura. Three further values complete them: the vertical clearance between bands, that vertical reach, and the minimum separation between columns at different onsets. None is keyed by the glyphs that meet: the outline profiles already say where each glyph's ink is, so a new symbol needs no entry.
 
 **A gap's blocking width** is the largest over the staves, and rows of text, that have atoms at both of its columns, and at least the minimum separation between onsets. A staff with an atom at the left column and none at the right meets its next atom further on. That distance spans several gaps and is a constraint ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)).
 
@@ -308,10 +308,10 @@ A correction may depend on durations, stem directions, beams and the widths of n
 
 (defn- bands-meet?
   "Whether two bands meet: within the vertical clearance vpad of each other,
-   except a ledger line and an accidental, which meet only where they share
-   height."
-  [a b vpad]
-  (let [pad (if (ledger-and-accidental? a b) 0 vpad)]
+   except a ledger line and an accidental, which meet within their vertical
+   reach ledger-vpad, by default 0: only where they share height."
+  [a b vpad ledger-vpad]
+  (let [pad (if (ledger-and-accidental? a b) ledger-vpad vpad)]
     (and (< (:y0 a) (+ (:y1 b) pad))
          (< (:y0 b) (+ (:y1 a) pad)))))
 
@@ -325,13 +325,14 @@ A correction may depend on durations, stem directions, beams and the widths of n
    nothing else about what the ink is. Elements with a minimum form appear in
    that form. clearance is the clearance between ink and ink,
    ledger-clearance the clearance between a ledger line and an accidental
-   (H4), and vpad the vertical clearance within which bands at different
-   heights still meet. Exact."
-  [right-profile left-profile clearance ledger-clearance vpad]
+   (H4), vpad the vertical clearance within which bands at different heights
+   still meet, and ledger-vpad the vertical reach within which a ledger line
+   and an accidental meet. Exact."
+  [right-profile left-profile clearance ledger-clearance vpad ledger-vpad]
   (reduce max 0N
           (for [r right-profile
                 l left-profile
-                :when (bands-meet? r l vpad)]
+                :when (bands-meet? r l vpad ledger-vpad)]
             (+ (:x r)
                (if (ledger-and-accidental? r l) ledger-clearance clearance)
                (- (:x l))))))
@@ -399,8 +400,8 @@ Their values belong to the house style, and their defaults are entries in the re
 
 How far a ledger line must still protrude from its notehead when something is in its way is a setting, one for each kind of end:
 
-- **Minimum protrusion, accidental side**, `B`: an end of a ledger line that faces its own note's accidental, where the accidental's profile meets the line's own band. Between a ledger line and an accidental the vertical clearance is 0: the line is measured against the accidental's outline at the line's height, and no table of pairs is needed.
-- **Minimum protrusion, neighbour side**, `B′`: every other end that faces a neighbouring atom (its accidental, its ledger lines or its notehead), including a left end with no accidental of its own at that height.
+- **Minimum protrusion, accidental side**, `B`: an end of a ledger line that faces its own note's accidental, where the accidental's profile meets the line within the vertical reach between them. The line is measured against the accidental's outline at the heights that reach covers, by default only the line's own, and no table of pairs is needed.
+- **Minimum protrusion, neighbour side**, `B′`: every other end, whether it faces a neighbouring atom (its accidental, its ledger lines or its notehead) or a barline, including a left end with no accidental of its own at that height.
 
 Each is a measurement in staff spaces from 0 up to the full extension `E`, or the state `:full`. `E` is a piece setting, into which a font's `legerLineExtension` can be imported ([ADR-0047](0047-Font-Management.md#per-font-metadata)). `:full` resolves to `E` whatever `E` is, now or later, so a line set never to shorten never does; a number above `E` resolves to `E`. A value is resolved when it is read, and reading never rewrites the stored setting. Together the two are [H6](#h6-ledger-lines)'s shortest acceptable ledger line.
 
@@ -410,11 +411,11 @@ Each is a measurement in staff spaces from 0 up to the full extension `E`, or th
 
 **Stage 1.** The minimum protrusions are forms, read by column assembly ([H5](#h5-column-assembly)), not spacing parameters, so Stage 1 depends on them and stays independent of the spacing parameters (Invariant 4). For each note with an accidental, Stage 1:
 
-1. places the accidental at its tightest offset, as close to its notehead as both the least distance between them ([H22](#h22-minimum-forms)) and its own ledger lines at `B` allow, band by band against the accidental’s outline profile ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md));
+1. places the accidental at its tightest offset, as close to its notehead as both the least distance between them ([H22](#h22-minimum-forms)) and its own ledger lines at `B` allow, band by band against the accidental’s outline profile ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)), within the vertical reach of its own lines;
 2. records its comfortable offset, outside full-length lines on its side and at its comfortable distance from the notehead;
 3. builds the atom's contours with the accidental at its tightest offset, its own-side lines at whatever extent the tight accidental leaves them, up to `E`, and every end that faces a neighbour at `B′`.
 
-A line passing where the accidental’s ink is narrower therefore keeps more of its length than one beside its full width. At `B = :full` the accidental always stands outside full-length lines, and its tightest and comfortable offsets differ only where its comfortable distance from its notehead exceeds its least ([H22](#h22-minimum-forms)). The distance between an accidental and its own ledger lines belongs to the atom's geometry, set by column assembly: the clearances govern distances between atoms ([H4](#h4-clearances)), and Stage 1 reads none of them.
+A line passing where the accidental’s ink is narrower therefore keeps more of its length than one beside its full width. At `B = :full` the accidental always stands outside full-length lines, and its tightest and comfortable offsets differ only where its comfortable distance from its notehead exceeds its least ([H22](#h22-minimum-forms)). The distance between an accidental and its own ledger lines belongs to the atom's geometry, set by column assembly, and so does how far above and below its own lines the accidental's ink counts, their vertical reach: the clearances govern distances between atoms ([H4](#h4-clearances)), the reach between a ledger line and another note's accidental among them, and Stage 1 reads none of them. A reach above 0 shortens the lines first, down to `B`; the accidental moves out, and the note takes more room, only where a line that short would still meet it.
 
 ![Ledger lines and accidentals from outline profiles: sharps, flats and naturals](../img/hegazy-gourlay/ledger-outlines-mixed.gif)
 
@@ -426,7 +427,7 @@ A line passing where the accidental’s ink is narrower therefore keeps more of 
 
 **What it moves.** Through the contours, the minimum protrusions set blocking widths, so they change spacing and can move system breaks: they are settings Stages 1 and 2 read ([Spacing Settings](#spacing-settings)). With Bravura's outline profiles and the placeholder clearances of the four-stave figure above, a sharp's gap between two notes at one staff position needs 2.576 staff spaces with `B` at 0.16, and 2.675 at `:full`. Stage 5 lengthens each end into the room Stage 4 gives, from its minimum up to `E` ([What Stage 5 may change](#atoms-and-contours)).
 
-**The rhythmic raster.** Where neighbouring notes' ledger lines would collide, the lines give way and the notes keep the positions their durations give them. No rule looks back at the previous note for this. The lines reserve only their minimum forms, so they never push notes apart; Stage 5 lengthens each end into the room the springs gave, clear of everything already placed; and two ends facing each other at one height share the space between them by [H22](#h22-minimum-forms)'s fixed rule, keeping the minimum clearance between them. `B′` is the setting for this behaviour: below `E` the raster holds and the lines give way, and at `:full` the lines claim their room and the notes move apart instead.
+**The rhythmic raster.** Where neighbouring notes' ledger lines would collide, the lines give way and the notes keep the positions their durations give them. No rule looks back at the previous note for this. The lines reserve only their minimum forms, so they never push notes apart; Stage 5 lengthens each end into the room the springs gave, clear of everything already placed; and two ends facing each other at one height share the space between them by [H22](#h22-minimum-forms)'s fixed rule, keeping the minimum clearance between them. `B′` is the setting for this behaviour: below `E` the raster holds and the lines give way, and at `:full` the lines claim their room and the notes move apart instead. An end facing a barline is lengthened only as far as the barline's least distance for ink allows at the system's ratio: `m` at normal width and above, and under compression a distance between `m` and `m_min` in proportion to the ratio (Invariant 18). The gap was sized with the end at `B′`, so that much room is always there.
 
 #### Opening Width
 
@@ -710,7 +711,7 @@ LilyPond's exceptions for particular configurations, in the first item above, ar
 
 ### H4: Clearances
 
-The values of the clearances ([Blocking Widths](#blocking-widths)): between ink and ink; between a ledger line and an accidental; rhythmic order's; the ideal clearance after a breath mark or caesura; the vertical clearance between bands; and the minimum separation between columns at different onsets. The space around a barline is not among them: the barline's settings govern it ([The Space Around a Barline](#the-space-around-a-barline)). Between a ledger line and an accidental the vertical clearance is 0: they meet only in the line's own band, as the minimum protrusions measure ([Minimum Protrusion](#minimum-protrusion)). The literature describes accidentals largely through examples rather than measurements, especially in chords.
+The values of the clearances ([Blocking Widths](#blocking-widths)): between ink and ink; between a ledger line and an accidental; rhythmic order's; the ideal clearance after a breath mark or caesura; the vertical clearance between bands; the vertical reach between a ledger line and another note's accidental; and the minimum separation between columns at different onsets. The space around a barline is not among them: the barline's settings govern it ([The Space Around a Barline](#the-space-around-a-barline)). The vertical reach is 0 by default, for a note's own accidental as for another's: a ledger line and an accidental meet only in the line's own band, as the minimum protrusions measure ([Minimum Protrusion](#minimum-protrusion)), and a line can run in between a sharp's crossbars. Whether a house style raises either, so that lines stop short of the accidental's ink above and below them, is for the plates. The literature describes accidentals largely through examples rather than measurements, especially in chords.
 
 **Successive columns.** With noteheads alone, two heads a second apart in successive columns, the higher first, would be allowed 1.09 between origins by Bravura's outlines and the placeholder clearances, less than a notehead's width, because the clearance acts only within the vertical clearance. Rhythmic order holds them at 1.38, a notehead's width and the placeholder clearance ([Blocking Widths](#blocking-widths)). Its clearance is open here with the rest.
 
@@ -860,7 +861,7 @@ Which of a barline drag's two modes ([User Inputs](#user-inputs)), the transfer 
 Which elements besides ledger lines have a minimum form, what each element's minimum and comfortable forms are, and the fixed rule by which expansions that compete for the same space share it ([Atoms and Contours](#atoms-and-contours)).
 
 - **Ledger lines**: the minimum protrusions on either side ([Minimum Protrusion](#minimum-protrusion)) and the full extension `E` ([H6](#h6-ledger-lines)).
-- **Accidentals**: the least and the comfortable distance from an accidental to its notehead, set by column assembly ([H5](#h5-column-assembly)). Whether accidentals in a stack also have a compact and a comfortable arrangement, or only their distance from the noteheads gives way, is part of this item. So is which ledger-line ends count as facing a note's own accidental when accidentals are stacked in a chord.
+- **Accidentals**: the least and the comfortable distance from an accidental to its notehead, and its distance and vertical reach from its own ledger lines, set by column assembly ([H5](#h5-column-assembly)). Whether accidentals in a stack also have a compact and a comfortable arrangement, or only their distance from the noteheads gives way, is part of this item. So is which ledger-line ends count as facing a note's own accidental when accidentals are stacked in a chord.
 - **Other candidates**: dots and their distance from the notehead, articulation offsets beside the note, and the arpeggio sign's distance from the chord.
 - **Sharing.** Competing expansions, such as the ledger lines of neighbouring notes, share the free space by a rule that depends only on the geometry, never on the order in which Stage 5 meets them (Invariant 5). Starting point: each expansion receives an equal share of the free space, and whatever one of them cannot use, because it reaches its comfortable form first, goes to the other. Between an accidental with its own ledger lines and the previous note's ledger lines facing it, the accidental position decides instead ([Accidental Position](#accidental-position)).
 
