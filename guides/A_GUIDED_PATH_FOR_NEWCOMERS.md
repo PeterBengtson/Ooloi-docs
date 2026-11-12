@@ -245,13 +245,13 @@ The earlier post, ["The Rendering Pipeline: Ooloi's Core Architecture"](https://
 Six stages:
 
 - **Stage 1** (fan-out): Atom formation. Each measure forms its atoms and their contours, built from the glyphs’ outlines, which Stage 2 measures. Results are immutable and persist until the measure's content changes, or the clef the next measure begins with, which the measure draws before its closing barline, or a font or a setting that changes glyph geometry, such as a ledger line's minimum protrusion.
-- **Stage 2** (fan-in): Raster and springs. The staves' rhythms are merged into one raster of columns, every gap between columns becomes a spring with an ideal and a blocking width, and each measure stack is summarised for Stage 3: its minimum, natural and ordinary ideal widths as sums, its prestretched gaps, its gutter, and its no-break width, what the boundary after it adds only when that boundary falls inside a system.
+- **Stage 2** (fan-in): Raster and springs. The staves' rhythms are merged into one raster of columns, every gap between columns becomes a spring with an ideal and a blocking width, and Stage 3 receives each stack's interior and three records for each barline: what the barline adds inside a system, at a system's end, and at a system's start.
 - **Stage 3** (single): System breaking. Dynamic programming over the measure sequence. Determines optimal system breaks and each system's adjustment ratio.
 - **Stage 4** (fan-out): Atom positioning. Fills each system's width through its gaps' springs: at the system's adjustment ratio under compression, and under stretching with the room shared out through the gaps' stretch weights, which never move a break; computes absolute coordinates.
-- **Stage 5** (fan-out per musician): Spanners and margins. Ties, slurs, beams, hairpins, and glissandi are drawn once final positions are known. Gutter decorations (courtesy accidentals, tie continuations) are added here. System heights become definitive at this stage.
+- **Stage 5** (fan-out per musician): Spanners and margins. Ties, slurs, beams, hairpins, and glissandi are drawn once final positions are known. System-start decorations (courtesy accidentals, tie continuations, glissando ends) are drawn here, in the room the start form reserves. System heights become definitive at this stage.
 - **Stage 6** (single): Page breaking. Dynamic programming over the system sequence using actual heights from Stage 5.
 
-The gutter model is the detail that enables Stage 3's breaks to be provably optimal for its cost function, given its inputs: every measure stack carries its summary, the additional space it needs when appearing at system start, and the no-break width of the boundary after it — the start part of a repeat barline, and cancellation naturals where house style omits them at a system start, counted only when the boundary falls inside a system — and the preamble and postamble of every candidate system are known before breaking, so Stage 3 has complete information when making break decisions.
+Complete information at a break is the detail that enables Stage 3's breaks to be provably optimal for its cost function, given its inputs: every barline's three records are known before breaking, so a system is the sum of its start record, its stacks' interiors, the mids of its inner barlines and its end record, and Stage 3 has complete information when making break decisions ([ADR-0058](../ADRs/0058-Variants-at-a-Break.md)).
 
 Plugins participate at two points: the atom hook in Stage 1, which produces an atom's contours and cached paintlist, and any constraints spanning several columns that the element implies, and the spanner hook in Stage 5, which generates connecting elements from final atom positions. Core notation elements and plugin-defined elements use identical interfaces.
 
@@ -267,11 +267,15 @@ The ADR is explicit that the algorithm is not novel, and its Prior Art section t
 
 How Stages 1 and 2 produce the springs ADR-0037 fits. Every horizontal engraving rule takes one of four forms — an ideal width, a blocking width, a constraint spanning several columns, or a variant at a break — and reaches Stage 3 in that form; a rule that fits none of them is a design problem, never a pass added after Stage 2. Atoms have origins, where the springs attach, and contours built from the glyphs’ outlines ([ADR-0056](../ADRs/0056-Glyph-Geometry-from-Outlines.md)); ideal widths come from an exact duration table, interpolated between its entries, in which space grows far more slowly than duration; blocking widths come from the contours and clearances. Its Context section asks for four sections of ADR-0037 to be read first — Gaps as Springs, the Interface Contract, Constraints Spanning Several Columns and its design principle — which is why it follows here. The architecture is decided; many values are open, each an entry in its Open Items, to be settled by measuring printed engravings.
 
-**35. [ADR-0038: Backend Authoritative Rendering and Terminal Frontend Execution](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**
+**35. [ADR-0058: Variants at a Break](../ADRs/0058-Variants-at-a-Break.md)**
+
+What differs where a system starts or ends. Every barline is a discretionary break with three records, for no break, a system's end and a system's start, so that a system's width is one sum: its start record, its stacks' interiors, the mids of the barlines inside it, and its end record. Prefatory blocks are rigid and come from one table for the piece, so identical preambles align down the page; only the approach to the first note is a spring, which also holds courtesy accidentals and tie continuations. Everything is known before breaking, which keeps the breaker free of engraving rules and its result exact.
+
+**36. [ADR-0038: Backend Authoritative Rendering and Terminal Frontend Execution](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**
 
 The frontend is *terminal*: it executes rendering decisions but never renegotiates, refines, or reinterprets them. The litmus test: discard all frontend rendering state, regenerate from backend → identical output. This is the property that makes distributed collaboration and multiple frontend implementations consistent without complex synchronisation. The ADR also specifies how that execution is done without the window ever stuttering: three cache levels — paintlists, Skija Pictures, raster tiles — a score viewport built of tiles that JavaFX composites, so its UI can overlap the score, and a threading model in which nothing that renders runs on the JavaFX Application Thread.
 
-**36. [ADR-0013: Slur Formatting](../ADRs/0013-Slur-Formatting.md)**
+**37. [ADR-0013: Slur Formatting](../ADRs/0013-Slur-Formatting.md)**
 
 Stage 5 in practice. Point collection via timewalking; shape determination via hull and Bézier; variable-thickness rendering following copper-plate engraving aesthetics. The problem statement is worth reading even if you are not implementing spanners, because it shows how the pipeline's prior stages provide complete information to Stage 5: atom positions, slur start and end points, items under the slur's span — all resolved before Stage 5 begins.
 
@@ -285,39 +289,39 @@ Read its section ["The Pipeline Is One-Way, and What Stage 5 May Change"](../ADR
 
 *How users interact with it, and how the UI is structured.*
 
-**37. [FRONTEND_README.md](../READMEs/FRONTEND_README.md)**
+**38. [FRONTEND_README.md](../READMEs/FRONTEND_README.md)**
 
 The component overview: event-bus, ui-manager, grpc-clients, event-router, fetch-coordinator, frontend-undo-manager. Short; establishes vocabulary before the architecture guide.
 
-**38. [ADR-0005: JavaFX and Skija](../ADRs/0005-JavaFX-and-Skija.md)**
+**39. [ADR-0005: JavaFX and Skija](../ADRs/0005-JavaFX-and-Skija.md)**
 
 JavaFX for the user interface and Skija, the Java bindings for Skia, for 2D rendering and for printing, so that screen and paper come from one rendering engine. Two later sections are worth knowing early: the position on native platform integration (where the toolkit falls short of a platform's convention, as with the macOS application menu, Ooloi goes to the platform layer rather than approximate it), and the copper-plate principle that strokes end round by default throughout.
 
-**39. [ADR-0031: Frontend Event-Driven Architecture](../ADRs/0031-Frontend-Event-Driven-Architecture.md)**
+**40. [ADR-0031: Frontend Event-Driven Architecture](../ADRs/0031-Frontend-Event-Driven-Architecture.md)**
 
 Three event layers: the frontend event bus (category-based pub/sub backed by the shared Claypoole thread pool), the backend event router (categorises and batches backend events for the bus), and JavaFX (UI input only). The threading model and handler isolation guarantee that a slow subscriber cannot block the publisher, and that one handler's failure does not affect others.
 
-**40. [ADR-0039: Localisation Architecture](../ADRs/0039-Localisation-Architecture.md)**
+**41. [ADR-0039: Localisation Architecture](../ADRs/0039-Localisation-Architecture.md)**
 
 GNU gettext `.po` files, `tr-declare` as first-class mechanism for translation key visibility, instant locale switching via event-driven architecture. Short. The critical architectural point: locale is application state, not startup configuration. The [Translator's Guide](TRANSLATORS_GUIDE.md) is the other side of this ADR — not part of this reading path, since it assumes no Clojure, but worth knowing exists before you add a user-facing string.
 
-**41. [ADR-0042: UI Specification Format](../ADRs/0042-UI-Specification-Format.md)**
+**42. [ADR-0042: UI Specification Format](../ADRs/0042-UI-Specification-Format.md)**
 
 Pure-data UI specification. cljfx specs, setting declarations, command descriptors. The per-window reactive renderer pattern, which every application window uses. The absolute invariant: the UI Manager manages Stages (outer window shell); window files manage content nodes (inner reactive content). These responsibilities never overlap.
 
-**42. [ADR-0043: Frontend Settings](../ADRs/0043-Frontend-Settings.md)**
+**43. [ADR-0043: Frontend Settings](../ADRs/0043-Frontend-Settings.md)**
 
 Lazy loading, atomic file writes, closed mutation surface. Short. Read in conjunction with ADR-0042.
 
-**43. [ADR-0053: Piece Window and Piece Preferences](../ADRs/0053-Piece-Window-and-Piece-Preferences.md)**
+**44. [ADR-0053: Piece Window and Piece Preferences](../ADRs/0053-Piece-Window-and-Piece-Preferences.md)**
 
 The central workspace, where Phases 5 and 8 meet in one component. A Piece Window is a live view of, and workspace over, one piece the backend owns; it holds no authoritative state and passes ADR-0038's litmus test. It is operated by direct manipulation, with no modes, and raises a dialog only to confirm an irreversible loss. Its two panes, Musicians and Layouts, are assembled by drag and drop, and each gesture is composed into one `SRV/atomic` batch — one `:piece-structure-changed` event, one undo step. The ADR also covers the window title with its dirty and shared marks, the per-piece Piece Preferences window, and the windows a piece owns, which close with it and reopen with it.
 
-**44. [ADR-0054: Automatic Semantic Naming and Numbering of Musicians and Instruments](../ADRs/0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md)**
+**45. [ADR-0054: Automatic Semantic Naming and Numbering of Musicians and Instruments](../ADRs/0054-Automatic-Semantic-Naming-and-Numbering-of-Musicians-and-Instruments.md)**
 
 Numbering as a consequence of the gesture rather than a task it leaves behind. When an instrument is dropped, cloned, deleted or reordered, the frontend composes the numbering with the structural edit and submits them together; the API itself never renumbers anything. Instruments are counted piece-wide by exact name, transposition included, so a Horn in F and a Horn in D are never numbered together, and a musician takes its number from its main instrument, which is why the first flautist can be Flute 1 and Piccolo 2 at once. A compact example of domain knowledge doing the user's clerical work.
 
-**45. [Guide: FRONTEND_ARCHITECTURE_GUIDE.md](FRONTEND_ARCHITECTURE_GUIDE.md)**
+**46. [Guide: FRONTEND_ARCHITECTURE_GUIDE.md](FRONTEND_ARCHITECTURE_GUIDE.md)**
 
 Read this after the individual ADRs, so that specific concepts arrive with context. The guide synthesises window lifecycle, event architecture, the rendering pipeline's frontend side, fetch coordination, localisation, and collaboration.
 

@@ -59,11 +59,11 @@ The model is divided as [ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)'s pi
 
 | Stage | In the model | Reads |
 | --- | --- | --- |
-| 1 | Atoms: contours from the outline profiles, each accidental at its tightest offset, ledger lines at their minimum forms | The forms: the minimum protrusions, the full extension, the opening width, the distances within an atom |
-| 2 | The raster and its springs: columns from every staff's onsets; gaps by class; ideal widths; blocking widths from contours compared within each staff, the largest across the staves; constraints spanning several columns, reduced as ADR-0037 reduces them; stretch weights | The duration table, the clearances, the settings of the space around a barline |
+| 1 | Atoms: contours from the outline profiles, each accidental at its tightest offset, ledger lines at their minimum forms; the first atom's system-start contour, and the minimum forms of continuations ending at it | The forms: the minimum protrusions, the full extension, the opening width, the distances within an atom |
+| 2 | The raster and its springs: columns from every staff's onsets; gaps by class; ideal widths; blocking widths from contours compared within each staff, the largest across the staves; constraints spanning several columns, reduced as ADR-0037 reduces them; stretch weights. The system as `start[s]`, its interiors and mids, and `end[t]`, with the preamble table's entries ([ADR-0058](0058-Variants-at-a-Break.md)) | The duration table, the clearances, the settings of the space around a barline, the distances inside the blocks |
 | 3 | Left out: the model computes one system, whose ratio or width is given | |
-| 4 | Positions, through the springs ([ADR-0037](0037-Measure-Distribution-Optimization.md)) | The ratio or the width; settings read only for the stretch weights, such as the stretch of the space after a barline |
-| 5 | Ledger lines lengthened into the room Stage 4 gave; the accidental position; stays nearer its own note | The accidental position; stays nearer its own note and its ratio |
+| 4 | Positions: blocks and rows at their fixed offsets, springs at the ratio ([ADR-0037](0037-Measure-Distribution-Optimization.md)) | The ratio or the width; settings read only for the stretch weights, such as the stretch of the space after a barline |
+| 5 | Ledger lines lengthened into the room Stage 4 gave; the accidental position; stays nearer its own note; the blocks at a break, courtesy accidentals and continuations drawn | The accidental position; stays nearer its own note and its ratio |
 | 6 | Left out | |
 
 Because the model's structure is the implementation's, a rule shown to work in the model has a place waiting for it in the implementation, and a rule that will not fit a stage's inputs and outputs is found before any code depends on it. ADR-0055's four forms hold in the model as in the implementation: a rule the model cannot express in one of them is a design problem, settled in the ADR ([The Four Forms](0055-Horizontal-Spacing.md#the-four-forms)).
@@ -82,7 +82,7 @@ How a principle is found, and how it becomes a rule. This extends [ADR-0055's ex
 - **The eye.** A principle begins with the trained eye, the project author's and that of the people following the project. Something looks wrong, or looks natural and organic, and naming why is how the principle is found.
 - **The model.** The principle becomes a rule in the model, and the model shows its consequences in every case at once. The eye adjusts the rule against those cases until the result reads as natural. This is the work engravers spend most of their time on, and a model that answers as the settings move is what makes it practical here. The model is flexible, and anything that helps the eye judge an open question can be added to it for a while: a control, an example, two rules side by side.
 - **The plate.** Printed engraving in the plate-engraving tradition, measured, is part of the same loop: it shows how engravers resolved the cases the eye is weighing, and it settles values ([ADR-0055](0055-Horizontal-Spacing.md#sources-of-truth)).
-- **More cases before the eye.** A principle found in one passage must hold in others. Presets put many passages in front of the eye, and ADR-0055's invariants, run on the model over generated passages, find the cases nobody thought to try.
+- **More cases before the eye.** A principle found in one passage must hold in others. Presets put many passages in front of the eye, and ADR-0055's invariants, run on the model over generated passages, find the cases nobody thought to try. For what differs at a break, the presets begin with the cases [ADR-0058](0058-Variants-at-a-Break.md#the-exploration) names, Ravel's *Ondine* first.
 
 **Rhythmic order shows the loop.** With contours alone, a sixteenth after a double-dotted half, stems up then down, may stand with its notehead among the dots and its accidental above the previous notehead, since none of their ink collides. The eye rejects it, and the principle is that a note's dots belong to its width. Applied in the model, the first form of the rule also stopped an accidental tucking under a dotted note, which the eye had accepted. Refined, the rule holds a notehead clear of the previous noteheads and dots and lets its accidental tuck. [ADR-0055](0055-Horizontal-Spacing.md#blocking-widths) states it.
 
@@ -92,11 +92,13 @@ Every figure about spacing or glyph geometry in the ADRs is computed by the mode
 
 A figure that exists to show an earlier state or a rejected alternative, such as bounding boxes in place of outlines, takes that state from the model as an option, kept for as long as the figure is. Figures already published on the blog stay as they were published.
 
+A figure an ADR needs before the model can compute it is a mock-up, and its caption says so; the model replaces it once it can, as [ADR-0058](0058-Variants-at-a-Break.md#the-exploration)'s figures are replaced.
+
 ### What the Model Is Not
 
 - **Not Ooloi's renderer.** Its figures say so: a conceptual model, not rendered by Ooloi. Ooloi never runs it.
 - **Not a source of values.** Its placeholders are named as placeholders; values come from the exploration and its register ([ADR-0055](0055-Horizontal-Spacing.md#the-exploration)).
-- **Not the whole pipeline.** It computes one system at a time, without breaking, and of Stage 5 only what spacing needs: ledger lines and accidentals. Slurs, ties and beams are outside it ([ADR-0013](0013-Slur-Formatting.md)).
+- **Not the whole pipeline.** It computes one system at a time, with its start and end as the records of its first and last barlines, without breaking, and of Stage 5 only what spacing needs: ledger lines, accidentals, the blocks at a break, and tie continuations and glissando ends at a system start ([ADR-0058](0058-Variants-at-a-Break.md)). Slurs, beams and other ties are outside it ([ADR-0013](0013-Slur-Formatting.md)).
 
 ## Invariants and Property Tests
 
@@ -130,7 +132,7 @@ A figure that exists to show an earlier state or a rejected alternative, such as
 ### Negative
 
 - **Three implementations to keep in step**: the reference, the interactive model and Ooloi itself. The reference values make every disagreement visible, but each rule is written more than once.
-- **The model covers part of the pipeline**: one system, no breaking, and of Stage 5 only ledger lines and accidentals. Conclusions drawn from it reach as far as it does.
+- **The model covers part of the pipeline**: one system, with its start and end, no breaking, and of Stage 5 only ledger lines, accidentals, the blocks at a break and the continuations at a system start. Conclusions drawn from it reach as far as it does.
 - **Placeholders can be mistaken for decisions.** Captions, and the model's own labels, say which values are which.
 - **Whatever the interactive model contains is published.**
 
@@ -139,7 +141,7 @@ A figure that exists to show an earlier state or a rejected alternative, such as
 | Item | Question | Settled by |
 | --- | --- | --- |
 | M1: The reference values | Their format, which cases they cover at each stage, and how the Clojure implementation's tests read them. | The first Clojure implementation of Stages 1 and 2 |
-| M2: Stage 5's reach | Whether slurs, ties and beams join the model once their ADRs specify them. | [ADR-0013](0013-Slur-Formatting.md) and the beaming decision |
+| M2: Stage 5's reach | Whether slurs, beams, and ties other than the continuations at a system start, join the model once their ADRs specify them. | [ADR-0013](0013-Slur-Formatting.md) and the beaming decision |
 
 ## References
 
@@ -151,6 +153,7 @@ A figure that exists to show an earlier state or a rejected alternative, such as
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) — the stages the model follows
 - [ADR-0013: Slur Formatting](0013-Slur-Formatting.md) — the one-way pipeline and what Stage 5 may change
 - [ADR-0047: Font Management](0047-Font-Management.md) — the bundled fonts and their licences
+- [ADR-0058: Variants at a Break](0058-Variants-at-a-Break.md) — a system's start and end as barline records, which the model computes; its figures are to be the model's
 
 ### External References
 

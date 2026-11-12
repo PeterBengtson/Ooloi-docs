@@ -87,9 +87,9 @@ flowchart LR
     B --> B2[Atoms with Contours<br/>Rhythm, Declared Constraints<br/>Cached Paintlists]
 
     C1[Atoms and Contours<br/>Per-Staff Rhythm] --> C
-    C --> C2[Unified Raster<br/>Gaps as Springs<br/>Stack Summaries]
+    C --> C2[Unified Raster<br/>Gaps as Springs<br/>Stack Interiors, Barline Records]
 
-    D1[Stack Summaries, Gutters<br/>System Width] --> D
+    D1[Stack Interiors, Barline Records<br/>System Width] --> D
     D --> D2[Break Decisions<br/>Adjustment Ratios]
 
     E1[Adjustment Ratios<br/>Gaps as Springs] --> E
@@ -113,17 +113,17 @@ flowchart LR
 
 Stage 1 processes individual measures in parallel (fan-out per measure), with each measure independently calculating its rhythmic content, the geometry of its atoms, and cached visual representations. Each rhythmic position forms an "engraving atom" - noteheads, stems, accidentals, articulations positioned relative to each other as an indivisible unit. All glyph positions within an atom are relative to the atom's origin point (see [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)), enabling atoms to be repositioned without internal recomputation.
 
-Each atom has a left and a right contour: for every band of height, its leftmost and rightmost ink relative to its origin, the left edge of its principal notehead column ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). These contours are the extents of this stage’s title, built from the glyphs’ profiles, which are computed from the fonts’ outlines when a font is registered ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)); Stage 5 reads the glyphs’ top and bottom profiles for vertical placement. Stage 1 also records each staff's rhythm, declares as geometry the constraints spanning several columns that the measure implies, and supplies the geometry of the decorations the measure needs when it starts a system. It computes no widths: each gap's ideal and blocking width, and the `gutter_width` delta (additional space needed when the measure appears first on a system, typically 0N, see [ADR-0037](0037-Measure-Distribution-Optimization.md#the-gutter-system-start-width-delta)), are formed in Stage 2. Plugin atom hooks fire for each notational element, producing atoms with contours and cached paintlists, and may declare constraints. A measure draws, before its closing barline, a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)). Once calculated, atoms remain immutable until measure content or that clef changes, or a font or a setting that changes glyph geometry, such as a ledger line's minimum protrusion ([ADR-0055](0055-Horizontal-Spacing.md#minimum-protrusion)).
+Each atom has a left and a right contour: for every band of height, its leftmost and rightmost ink relative to its origin, the left edge of its principal notehead column ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). These contours are the extents of this stage’s title, built from the glyphs’ profiles, which are computed from the fonts’ outlines when a font is registered ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)); Stage 5 reads the glyphs’ top and bottom profiles for vertical placement. Stage 1 also records each staff's rhythm, declares as geometry the constraints spanning several columns that the measure implies, and supplies, for every atom that can stand first in a system, its system-start contour (courtesy accidentals for tied-to notes) and the minimum forms of continuations ending at it, tie continuations and glissando ends ([ADR-0058](0058-Variants-at-a-Break.md)). It computes no widths: each gap's ideal and blocking width, and the records of each barline, are formed in Stage 2. Plugin atom hooks fire for each notational element, producing atoms with contours and cached paintlists, and may declare constraints. A measure draws, before its closing barline, a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)). Once calculated, atoms remain immutable until measure content or that clef changes, or a font or a setting that changes glyph geometry, such as a ledger line's minimum protrusion ([ADR-0055](0055-Horizontal-Spacing.md#minimum-protrusion)).
 
 **Stage 1 is width-complete**: It supplies all horizontal space requirements, including spanner anchors, as geometry and declared constraints, from which Stage 2 forms the complete width information Stage 3 needs for optimal distribution.
 
 ### Pipeline Stage 2: Raster Creation (Fan-In across Measure Stack)
 
-Stage 2 creates a unified rhythmic raster across the vertical measure stack (fan-in) from all measures at this temporal position. When measures have different rhythmic content, reconciliation produces synchronized vertical alignment with rational rhythmic positions (including tuplet divisions like 1/3, 2/3). Each gap between neighbouring columns becomes a spring: its ideal width from the durations sounding at its left column, its blocking width from the contours on either side, the largest across the staves. Constraints spanning several columns are reduced to blocking widths, those that cross a barline in a second step across neighbouring stacks, and the gutter and the no-break width of each stack's closing boundary are computed ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2)). The resulting MeasureStackFormatter keeps every gap's springs and the stack's summary for Stage 3 ([ADR-0037 §Interface Contract](0037-Measure-Distribution-Optimization.md#interface-contract)), establishing the solution space between physical feasibility (blocking widths) and musical intent (ideal widths). This unified raster with complete width metrics becomes the input for Stage 3 system breaking.
+Stage 2 creates a unified rhythmic raster across the vertical measure stack (fan-in) from all measures at this temporal position. When measures have different rhythmic content, reconciliation produces synchronized vertical alignment with rational rhythmic positions (including tuplet divisions like 1/3, 2/3). Each gap between neighbouring columns becomes a spring: its ideal width from the durations sounding at its left column, its blocking width from the contours on either side, the largest across the staves. Constraints spanning several columns are reduced to blocking widths, those that cross a barline in a second step across neighbouring stacks ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2)). Stage 2 builds the preamble table, and computes each stack's interior and each barline's three records, for no break, a system's end and a system's start ([ADR-0058](0058-Variants-at-a-Break.md)). The resulting MeasureStackFormatter keeps every gap's springs and the records for Stage 3 ([ADR-0037 §Interface Contract](0037-Measure-Distribution-Optimization.md#interface-contract)), establishing the solution space between physical feasibility (blocking widths) and musical intent (ideal widths). This unified raster with complete width metrics becomes the input for Stage 3 system breaking.
 
 ### Pipeline Stage 3: System Breaking (Single)
 
-Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2 (each measure stack's summary of its springs, its gutter, and the no-break width of its closing boundary), the algorithm evaluates candidate systems by subtracting from the available system width the preamble width (clef + key signature, computed on-demand) and gutter width at the system's start, the postamble width (cautionaries for a change taking effect at the start of the next system) at its end, and the no-break width at each boundary inside it (what a repeat barline adds there beyond its system-end form), then solving exactly for each system's adjustment ratio. Each system's cost is the Knuth–Plass demerits of its adjustment ratio (ADR-0037), producing breaks that are globally optimal for that cost function, given its inputs. Output: system break decisions and an adjustment ratio per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for complete algorithm including preamble computation and distribution mathematics.
+Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break points (single pass, not parallelizable). With complete information from Stage 2, each stack's interior and each barline's records, it reads the records and nothing else, with no on-demand computation: a candidate system takes its start record, its stacks' interiors, the mids of its inner barlines and its end record ([ADR-0058](0058-Variants-at-a-Break.md#what-stage-3-receives)). The algorithm subtracts their fixed widths from the available system width, then solves exactly for each system's adjustment ratio. Each system's cost is the Knuth–Plass demerits of its adjustment ratio (ADR-0037), producing breaks that are globally optimal for that cost function, given its inputs. Output: system break decisions and an adjustment ratio per system - no atom positioning yet. After this stage, horizontal distribution is determined but atoms remain unpositioned. See [ADR-0037](0037-Measure-Distribution-Optimization.md) for the complete algorithm and distribution mathematics, and [ADR-0058](0058-Variants-at-a-Break.md) for the records.
 
 ### Pipeline Stage 4: Atom Positioning (Fan-Out per Measure)
 
@@ -131,7 +131,7 @@ Stage 4 positions atoms at their actual coordinates from each system's adjustmen
 
 ### Pipeline Stage 5: Spanners and Margins (Fan-Out per Musician)
 
-Stage 5 renders connecting elements using finalized atom positions from Stage 4 (fan-out per musician, parallel processing). Each musician independently generates their spanners (ties, slurs, beams, hairpins, pedal markings, ottava lines) - no cross-musician coordination required. Spanners are musician-local: ties connect notes played by the same musician, beams within the same part. Left margins are created (instrument names, clefs, brackets, braces, key signatures). For measures at system start, graphical decorations are added within gutter space (courtesy accidentals, tie continuation arcs). Each musician determines their vertical space requirements - spanners may push staves apart. Output: system heights (maximum vertical extent across all musicians in each system).
+Stage 5 renders connecting elements using finalized atom positions from Stage 4 (fan-out per musician, parallel processing). Each musician independently generates their spanners (ties, slurs, beams, hairpins, pedal markings, ottava lines) - no cross-musician coordination required. Spanners are musician-local: ties connect notes played by the same musician, beams within the same part. Left margins are drawn (instrument names, clefs, brackets, braces, key signatures), at the positions Stage 4 gives. At a system start, courtesy accidentals and tie and glissando continuations are drawn into the room the leading gap's system-start form reserved ([ADR-0058](0058-Variants-at-a-Break.md#stages-4-and-5)). Each musician determines their vertical space requirements - spanners may push staves apart. Output: system heights (maximum vertical extent across all musicians in each system).
 
 **Stage 5 is height-complete**: System heights are definitive, providing Stage 6 with complete information for page breaking.
 
@@ -167,11 +167,11 @@ Stage 6 determines page break points by a dynamic programme over the system sequ
 | Change Type | Stage 1 | Stage 2 | Stage 3 | Stage 4 | Stage 5 | Stage 6 |
 |-------------|---------|---------|---------|---------|---------|---------|
 | Edit measure M | Recompute M, with the exceptions below | Reconcile M's stack | Redistribute systems | Position atoms | Reconnect spans | May rebreak pages |
-| System width change | Nothing | Nothing | Redistribute systems | Position atoms | Reconnect + gutter | Nothing |
+| System width change | Nothing | Nothing | Redistribute systems | Position atoms | Reconnect + system-start decorations | Nothing |
 | Page height change | Nothing | Nothing | Nothing | Nothing | Nothing | Rebreak pages |
-| Style change (spacing) | Nothing | Reconcile | Redistribute systems | Position atoms | Reconnect + gutter | May rebreak pages |
-| Change to a setting read only for the stretch weights | Nothing | Stretch weights only | Nothing | Position atoms | Reconnect + gutter | May rebreak pages |
-| Style change (forms or fonts) | Recompute measures whose glyph geometry changes | Reconcile | Redistribute systems | Position atoms | Reconnect + gutter | May rebreak pages |
+| Style change (spacing) | Nothing | Reconcile | Redistribute systems | Position atoms | Reconnect + system-start decorations | May rebreak pages |
+| Change to a setting read only for the stretch weights | Nothing | Stretch weights only | Nothing | Position atoms | Reconnect + system-start decorations | May rebreak pages |
+| Style change (forms or fonts) | Recompute measures whose glyph geometry changes | Reconcile | Redistribute systems | Position atoms | Reconnect + system-start decorations | May rebreak pages |
 | Placement setting (Stage 5 only) | Nothing | Nothing | Nothing | Nothing | Re-place within atoms + reconnect | May rebreak pages |
 | Add/remove instrument | Recompute affected | Reconcile all | Redistribute systems | Position atoms | Reconnect | Rebreak pages |
 
@@ -288,7 +288,7 @@ Cello:       [measure 5 content]  ←
 
 **Caching Strategy:**
 
-- Atom geometry and contours (Stage 1) are cached and only recomputed when measure content, a font or a setting that changes glyph geometry changes; each stack's springs, summary and gutter (Stage 2) are recomputed when content in the stack or a spacing parameter changes ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2))
+- Atom geometry and contours (Stage 1) are cached and only recomputed when measure content, a font or a setting that changes glyph geometry changes; each stack's springs and interior, and each barline's records (Stage 2), are recomputed when content beside them or a spacing parameter changes ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2)), with the preamble table cached once for the piece ([ADR-0058](0058-Variants-at-a-Break.md#the-preamble-table))
 - Result rasters are cached and reused until invalidated
 - MeasureStackFormatter data persists across optimization iterations in Stage 3
 
@@ -325,10 +325,10 @@ sequenceDiagram
     Note over U,C2: Phase 3: Asynchronous Pipeline Processing (100ms batch)
     B->>P: Queue affected elements for raster
     P->>P: Stage 1: Engraving atom formation<br/>(plugin atom hooks fire)
-    P->>P: Stage 2: Raster and springs per stack<br/>(ideal and blocking widths, constraints, gutter)
+    P->>P: Stage 2: Raster and springs per stack<br/>(ideal and blocking widths, constraints, barline records)
     P->>P: Stage 3: System breaking<br/>(Knuth-Plass optimal distribution)
     P->>P: Stage 4: Atom positioning<br/>(apply adjustment ratios to gaps)
-    P->>P: Stage 5: Spanners and margins<br/>(per-musician connecting elements + gutter decorations)
+    P->>P: Stage 5: Spanners and margins<br/>(per-musician connecting elements + system-start decorations)
     P->>P: Stage 6: Page breaking<br/>(if system heights changed)
     P->>B: Updated MeasureView{glyphs, curves}
 
@@ -374,7 +374,7 @@ Independent measure analysis can run in parallel during Stage 1. Stage 4 atom po
 - Changing note spacing → positioning only (atoms unchanged)
 - Adding accidentals → atom recalculation + positioning
 - Changing time signatures → positioning only (atoms unchanged)
-- Changing system/page layout → positioning only (atoms unchanged) + gutter decorations
+- Changing system/page layout → positioning only (atoms unchanged) + system-start decorations
 - All width/height/spacing style changes → positioning only (atoms unchanged)
 - Changing a font, or a setting that changes glyph geometry such as a ledger line's minimum protrusion → atom recalculation + positioning
 
@@ -728,7 +728,7 @@ Clients implement demand-driven rendering data fetching. Open layouts immediatel
 
 10. **Closed Semantic Model**: Rendering cannot affect musical semantics. Complete information enables optimal distribution without feedback loops or heuristics.
 
-11. **Optimal Distribution for the Stated Cost Function**: Stage 3 has complete knowledge (measure widths, system-start deltas for preamble and gutter, system-end postamble widths, and the no-break width of every boundary) enabling, in one pass, system breaking that is globally optimal for its cost function ([ADR-0037](0037-Measure-Distribution-Optimization.md)), given those inputs; Stage 6 has complete system heights for its page breaking, whose cost function is not yet specified.
+11. **Optimal Distribution for the Stated Cost Function**: Stage 3 has complete knowledge (every stack's interior and every barline's records, known before breaking) enabling, in one pass, system breaking that is globally optimal for its cost function ([ADR-0037](0037-Measure-Distribution-Optimization.md)), given those inputs; Stage 6 has complete system heights for its page breaking, whose cost function is not yet specified.
 
 ## Trade-offs
 
@@ -740,7 +740,7 @@ This architecture breaks the circular dependencies that collapse traditional not
 
 **System and page breaking are optimised separately**: Stage 3 chooses system breaks and Stage 6 chooses page breaks; the two are not optimised jointly. The number of systems is therefore chosen without the pages in view. Stage 6 can only choose which of the system boundaries Stage 3 produced become page boundaries: it cannot move a system break, for instance to place a rest at a page turn. Optimising both together would require the heights of systems that Stage 5 has not built, and so would have to work from estimates of those heights.
 
-**Gutter width accounting**: `gutter_width` is computed for every stack, Stage 1 supplying the geometry and Stage 2 the width, even though only system-start stacks will use it. This is minimal overhead (typically only tied-to notes at position 0) but represents computation that may not be used.
+**Record accounting**: every barline carries a start and an end record beside its mid-system one, Stage 1 supplying the geometry and Stage 2 the records, used only where a system starts or ends there ([ADR-0058](0058-Variants-at-a-Break.md)). The preamble table keeps this small, one entry per combination of clefs and keys, but it is computation that may not be used.
 
 **Cancellation semantics required**: Responsive editing under long-running calculations demands cooperative cancellation throughout the pipeline. This is additional coordination surface that must remain disciplined.
 
@@ -774,8 +774,8 @@ These are not accidental costs. They are the necessary consequences of solving t
 **Approach**: Compute each measure twice - once for mid-system positioning, once for system-start positioning.
 **Rejection Reasons**:
 - Doubles Stage 1 computation for every measure
-- Wasteful when only a small delta (gutter) differs between scenarios
-- The gutter model captures exactly the difference needed without full recomputation
+- Wasteful when only the material between a barline and the first column after it differs between scenarios
+- The barline records capture exactly the difference needed without full recomputation: the leading gap's system-start form is that difference, for one gap, from geometry computed once ([ADR-0058](0058-Variants-at-a-Break.md#the-approach-to-the-music-is-a-spring))
 - Memory overhead from storing two complete layouts per measure
 
 ### Alternative 4: Post-Hoc Spacing Adjustment
@@ -785,7 +785,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 - Introduces feedback loop: adjustment might change system breaks
 - Requires iteration or "good enough" heuristics
 - Non-deterministic results possible
-- The gutter model achieves the same visual result with complete information upfront
+- The barline records achieve the same visual result with complete information upfront ([ADR-0058](0058-Variants-at-a-Break.md))
 
 ## References
 
@@ -802,9 +802,10 @@ These are not accidental costs. They are the necessary consequences of solving t
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) - Frontend event routing consuming paintlists generated by this rendering pipeline
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) - Accidental decision algorithm; semantic model that is closed before rendering
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) - GPU-accelerated terminal frontend execution of paintlists produced by this rendering pipeline
-- [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) - Stage 3 algorithm computing the preamble and postamble on demand and consuming gutter_width values for system breaking
+- [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) - Stage 3 algorithm, reading every barline's records from Stage 2 for system breaking
 - [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) - How Stages 1 and 2 produce the springs Stage 3 fits: atoms and contours, the raster, ideal and blocking widths, constraints spanning several columns, and variants at a break
 - [ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md) - Glyph profiles from the fonts’ outlines: Stage 1 builds contours from the left and right profiles, and Stage 5 reads the top and bottom
+- [ADR-0058: Variants at a Break](0058-Variants-at-a-Break.md) - What differs where a system starts or ends: every barline's three records, produced in Stages 1 and 2 and read in Stage 3; the preamble table
 - [ADR-0052: Change Detection and Event Generation](0052-Change-Detection-and-Event-Generation.md) - The other half of the notification division: changes to the containers of the music announce themselves structurally and never reach this pipeline, while musical changes notify solely through the invalidations it produces
 
 ### Technical Dependencies
@@ -832,4 +833,4 @@ The six-stage approach recognises that atom formation with extent calculation, v
 
 The atom-relative geometry invariant ensures that the expensive Stage 1 computation runs only when musical content, a font or a setting that changes glyph geometry changes. Layout adjustments - however dramatic - require only repositioning of pre-computed atoms, enabling responsive editing even during extensive reformatting operations.
 
-The gutter model ensures that system-start decorations (courtesy accidentals, tie continuations) are accommodated with complete information, as the preamble and postamble do for the clefs and key signatures that start a system and the cautionaries that end one, enabling distribution that is optimal for the stated cost function without feedback loops, heuristics, or iteration. The semantic model remains closed after ADR-0035; Stage 5 adds only graphical decorations that do not affect musical meaning.
+The barline records ([ADR-0058](0058-Variants-at-a-Break.md)) ensure that everything a system start or end needs, the clefs and key signatures that start a system, the courtesy accidentals and tie continuations after them, and the cautionaries that end one, is accommodated with complete information, enabling distribution that is optimal for the stated cost function without feedback loops, heuristics, or iteration. The semantic model remains closed after ADR-0035; Stage 5 adds only graphical decorations that do not affect musical meaning.
