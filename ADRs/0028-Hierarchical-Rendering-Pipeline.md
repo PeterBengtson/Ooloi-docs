@@ -261,7 +261,7 @@ The MeasureStackFormatter provides vertical coordination across all staves at ea
 #### Layout Model Integration
 
 ```clojure
-(defrecord Layout [page-views stack-formatters])
+(defrecord Layout [id page-views stack-formatters name musician-uuids])
 
 ;; stack-formatters is a vector of MeasureStackFormatter records
 ;; indexed by measure position: [formatter-measure-1, formatter-measure-2, ...]
@@ -289,8 +289,7 @@ Cello:       [measure 5 content]  ←
 **Caching Strategy:**
 
 - Atom geometry and contours (Stage 1) are cached and only recomputed when measure content, a font or a setting that changes glyph geometry changes; each stack's springs and interior, and each barline's records (Stage 2), are recomputed when content beside them or a spacing parameter changes ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2)), with the preamble table cached once for the piece ([ADR-0058](0058-Variants-at-a-Break.md#the-preamble-table))
-- Result rasters are cached and reused until invalidated
-- MeasureStackFormatter data persists across optimization iterations in Stage 3
+- Stage 3 reads only the cached records, and each stack's actual width after Stage 4 is cached with them ([ADR-0037](0037-Measure-Distribution-Optimization.md#caching-and-incremental-recompute))
 
 #### Cross-Tree Consistency Guarantees
 
