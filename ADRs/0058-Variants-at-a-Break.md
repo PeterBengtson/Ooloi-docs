@@ -7,7 +7,7 @@ Accepted
 The decision is made: the material that differs where a system starts or ends, or exists only mid-system, is specified here as one decision, between [ADR-0055](0055-Horizontal-Spacing.md), whose Stages 1 and 2 produce it, and [ADR-0037](0037-Measure-Distribution-Optimization.md), whose Stage 3 reads it:
 
 - **Every barline is a discretionary break**, in TeX's sense. It carries three records: what it adds when no break falls there, when a system ends there, and when a system starts there. Each stack carries one more, its interior, the same in every layout. Stage 3 reads these records and nothing else.
-- **Prefatory blocks are rigid.** The preamble comes from one table for the piece, keyed by the clefs and keys in force, so identical preambles align down the page by construction.
+- **Prefatory blocks are rigid.** The preamble comes from one table per layout, keyed by the clefs and keys in force, so identical preambles align down the page by construction.
 - **There is no gutter and no separate no-break width.** Material at a break goes where it is anchored: to a barline's records or to the first note.
 - **The approach from the preamble to the first note is a spring**: the system-start form of the stack's leading gap, measured from the preamble's right edge as from a wall.
 
@@ -140,12 +140,12 @@ Each record is a few numbers: fixed width (rigid blocks, rows and fixed space), 
 
 ### The Preamble Table
 
-- **One table for the piece**, keyed by the clef and key signature in force on every staff: musical state, known before breaking. Stage 2 builds it from the clefs and keys in force at each measure.
+- **One table per layout**, keyed by the clef and key signature in force on every staff the layout presents: musical state, known before breaking. A block's columns are shared by the system's staves, so a part, presenting fewer of them, has narrower blocks than the score. Stage 2 builds each table from the clefs and keys in force at each measure.
 - **Each entry** holds the block's width, its glyphs' positions for Stages 4 and 5, and its paintlist.
 - **Each barline holds an index**: the entry for the clefs and keys in force at stack `k`. Stage 2 adds the entry's width to `start[k]`'s fixed width, so Stage 3 never consults the table; Stages 4 and 5 use the index to place and draw the block.
 - **The table is keyed by font and settings too**: the font file's content hash, as ADR-0056's profiles are, and the settings that govern the blocks' distances. An edit that changes a clef or key changes the indices of the barlines it governs, and adds an entry if the combination is new.
 - **Identical blocks hold by construction.** Every system with the same clefs and keys uses the same entry, laid out from the system's left edge, so the preambles align down the page because the data structure allows nothing else. What the row adds after the block follows it without moving it.
-- **Every barline needs its index, because breaking is global.** The breaker finds the best layout by evaluating every barline as a possible system start, so it needs a start record for every one. Only a greedy breaker knows its system starts in advance. The table is the structural sharing, made explicit: a piece has a handful of combinations, however many staves and measures it has.
+- **Every barline needs its index, because breaking is global.** The breaker finds the best layout by evaluating every barline as a possible system start, so it needs a start record for every one. Only a greedy breaker knows its system starts in advance. The table is the structural sharing, made explicit: a layout has a handful of combinations, however many staves and measures it has.
 
 ### Material Goes Where It Is Anchored
 
@@ -312,6 +312,7 @@ Each is a property test over generated pieces, as ADR-0055's are.
 | Preamble and postamble computed in Stage 3, on demand, by querying ChangeSets and measuring glyphs, cached by combination | Engraving work inside Stage 3, against [ADR-0037](0037-Measure-Distribution-Optimization.md#design-principle-no-engraving-rules-after-stage-2)'s design principle that Stages 3 and 4 are mathematics over springs |
 | Fields indexed by stack: the leading gap in its stack, the start form as a difference, the postamble attached to the stack after it, a no-break width on the boundary after a stack | The same values under three index conventions, each an off-by-one trap. The barline records state them under one, and Stage 3 derives the differences itself |
 | Storing the preamble in every stack | The preamble depends on the clefs and keys in force, not on the stack's content. A table makes identical blocks structural; storage is not the reason, since per-stack copies would share through the same cache |
+| One preamble table for the piece | A block's columns are shared by the system's staves, each distance the largest across them, so a part would get the score's widths |
 | Computing the preamble only for the stacks known to start systems | Requires the system starts before breaking, which only a greedy breaker has. The exact DP evaluates every barline as a possible start, so it needs every start record; the table makes that a lookup |
 | Minimum forms widened in Stage 5 | No room to borrow. The postamble has no spring beside it, and widening the preamble would take the first note's space |
 | A preamble that carries space after its ink | Duplicates the space the leading gap's start form supplies |

@@ -269,7 +269,7 @@ How Stages 1 and 2 produce the springs ADR-0037 fits. Every horizontal engraving
 
 **35. [ADR-0058: Variants at a Break](../ADRs/0058-Variants-at-a-Break.md)**
 
-What differs where a system starts or ends. Every barline is a discretionary break with three records, for no break, a system's end and a system's start, so that a system's width is one sum: its start record, its stacks' interiors, the mids of the barlines inside it, and its end record. Prefatory blocks are rigid and come from one table for the piece, so identical preambles align down the page; only the approach to the first note is a spring, which also holds courtesy accidentals and tie continuations. Everything is known before breaking, which keeps the breaker free of engraving rules and its result exact.
+What differs where a system starts or ends. Every barline is a discretionary break with three records, for no break, a system's end and a system's start, so that a system's width is one sum: its start record, its stacks' interiors, the mids of the barlines inside it, and its end record. Prefatory blocks are rigid and come from one table per layout, so identical preambles align down the page; only the approach to the first note is a spring, which also holds courtesy accidentals and tie continuations. Everything is known before breaking, which keeps the breaker free of engraving rules and its result exact.
 
 **36. [ADR-0038: Backend Authoritative Rendering and Terminal Frontend Execution](../ADRs/0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)**
 

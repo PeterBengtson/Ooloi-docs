@@ -504,7 +504,7 @@ What a system start needs is specified by [ADR-0058](0058-Variants-at-a-Break.md
 
 ### The Preamble: System-Start Clef and Key Signature Width
 
-The preamble is a rigid block from [ADR-0058](0058-Variants-at-a-Break.md#the-preamble-table)'s preamble table, one for the piece, keyed by the clef and key signature in force on every staff and by the font and settings. Its width enters `start[k]` as fixed width, so Stage 3 never consults the table or queries ChangeSets, and identical preambles align down the page by construction. It ends at its ink: the space after it is the leading gap's system-start form ([ADR-0058](0058-Variants-at-a-Break.md#the-blocks-are-rigid)). Whether house style omits a key change's cancellation naturals at a system start is ADR-0058 V4.
+The preamble is a rigid block from [ADR-0058](0058-Variants-at-a-Break.md#the-preamble-table)'s preamble table, one per layout, keyed by the clef and key signature in force on every staff it presents and by the font and settings. Its width enters `start[k]` as fixed width, so Stage 3 never consults the table or queries ChangeSets, and identical preambles align down the page by construction. It ends at its ink: the space after it is the leading gap's system-start form ([ADR-0058](0058-Variants-at-a-Break.md#the-blocks-are-rigid)). Whether house style omits a key change's cancellation naturals at a system start is ADR-0058 V4.
 
 ### The Postamble: System-End Width
 
@@ -910,7 +910,7 @@ Three rules keep it so:
 Stage 3 operates over a sequence of measure stacks whose width metrics are **already finalized upstream**. In addition, Ooloi caches the following per **measure stack**:
 
 * its gaps' ideal and blocking widths, `w_j` and `b_j`, after the reduction of constraints spanning several columns, and their stretch weights `s_j` (Stages 1–2)
-* its interior record for Stage 3, and the three records of the barline before it, with that barline's index into the preamble table ([ADR-0058](0058-Variants-at-a-Break.md#the-preamble-table)); the table is one for the piece, keyed by the clefs and keys in force, the font file's content hash and the settings
+* its interior record for Stage 3, and the three records of the barline before it, with that barline's index into the preamble table ([ADR-0058](0058-Variants-at-a-Break.md#the-preamble-table)); the table is one per layout, keyed by the clefs and keys in force, the font file's content hash and the settings
 * `actual_width` — realized width after Stages 3–4 (each system's room shared out among its gaps by Stage 4)
 
 This cache is authoritative at the Stage 3-4 boundary: Stage 3 consumes the records, and produces break assignments and adjustment ratios; Stage 4 fills each system through its gaps' springs to produce `actual` positions; Stage 5 consumes `actual` and never influences Stages 3-4.
