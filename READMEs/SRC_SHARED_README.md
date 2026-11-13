@@ -109,8 +109,7 @@ shared/src/main/clojure/ooloi/shared/
 │       ├── page_view.clj     ; Page layout view
 │       ├── system_view.clj   ; System layout view
 │       ├── staff_view.clj    ; Staff layout view
-│       ├── measure_view.clj  ; Measure layout view
-│       └── measure_stack_formatter.clj ; Spacing and discomfort for measure stacks
+│       └── measure_view.clj  ; Measure layout view
 ├── ops/                      ; **Complete Operations**
 │   ├── access.clj            ; Structure access using VPD addressing
 │   ├── accidental_maps.clj   ; Letter-aware accidental maps
