@@ -194,7 +194,7 @@ Where two expansions compete for the same space, as the ledger lines of neighbou
 
 This is not an exception to the rule that no column moves: a minimum form never asks for room, it only takes room the springs have already given. A tight system loses nothing it needed, and a loose one gains the comfortable forms without a pass back to Stage 3.
 
-Stage 1 can reserve envelopes and minimum forms only if the declared ranges and forms are available to it, which is a requirement on the Slur and Tie Geometry ADR and on beaming.
+Stage 1 can reserve envelopes and minimum forms only if the declared ranges and forms are available to it, which is a requirement on the Slur and Tie Geometry ADR and on the beaming ADR.
 
 ### The Raster and Gap Classes
 
