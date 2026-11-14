@@ -276,7 +276,7 @@ A correction can be negative, where the conservative reduction reserved more tha
 
 These rules are tried on the workbench, [ADR-0057](0057-Reference-Model-of-the-Spacing-Pipeline.md#the-exploration)'s interactive model, before any of them is built, as ADR-0057 requires of every spacing rule. Its reference implementation computes this ADR's figures; the three here are mock-ups, placed by bounding boxes with placeholder values, and are to be replaced by the model's.
 
-- **A page view.** The central claim, that rigid blocks look right and elastic ones would not, can only be judged across systems. The workbench needs a view of several systems stacked as on a page, each at its own adjustment ratio or width. It needs no breaker: each system is an independent one-system model, built from a start record, interiors and mids, and an end record.
+- **A page view.** The central claim, that rigid blocks look right and elastic ones would not, can only be judged across systems. The workbench needs a view of several systems stacked as on a page, each at its own adjustment ratio or width. It needs no breaker: each system is ADR-0057's view of a single system, built from a start record, interiors and mids, and an end record.
 - **A temporary switch between rigid and elastic blocks**, kept only while the eye compares, as the rhythmic-order checkbox was. The comparison across stacked systems at different ratios is the evidence for the rejection under [Alternatives Considered](#alternatives-considered); once it is made, the switch goes.
 - **A second temporary switch**, between the elastic start form and one in which the courtesy material keeps fixed room, as a gutter would ([Alternatives Considered](#alternatives-considered)), to judge under compression whether the room before the first note should yield.
 - **Live settings for the open items**: the start form's settings (V1), the approach after a clef alone (V2), when the start form yields (V3), the distances inside the blocks (V8), the wall's least distance to an accidental (V10) and the continuations' minimum lengths (V11).
@@ -366,7 +366,7 @@ Each is a property test over generated pieces, as ADR-0055's are.
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md): the stages, and its rejection of dual computation for system-start elements
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md): why courtesy accidentals at a system start are graphical, not semantic
 - [ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md): the profiles every block distance and blocking width is measured on, keyed by the font file's content hash
-- [ADR-0057: Reference Model of the Spacing Pipeline](0057-Reference-Model-of-the-Spacing-Pipeline.md): the one-system model and the workbench that compute the blocks and the start form
+- [ADR-0057: Reference Model of the Spacing Pipeline](0057-Reference-Model-of-the-Spacing-Pipeline.md): the reference model and the workbench that compute the blocks and the start form
 
 ### External References
 

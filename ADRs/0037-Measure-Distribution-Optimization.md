@@ -1853,6 +1853,7 @@ A horizontal rule that cannot be expressed in one of these forms is a design pro
 - [ADR-0035: Remembered Alterations](0035-Remembered-Alterations.md) (accidental algorithm that closes the semantic model; tied-note bypass rules inform the system-start contours of tied-to notes)
 - [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) (upstream computation of each gap's ideal and blocking widths, and the reduction of constraints spanning several columns)
 - [ADR-0058: Variants at a Break](0058-Variants-at-a-Break.md) (the barline records Stage 3 reads, the preamble table, and the early-termination bound)
+- [ADR-0057: Reference Model of the Spacing Pipeline](0057-Reference-Model-of-the-Spacing-Pipeline.md) (the model on which Stages 3 and 4 are specified before they are built, and the reference values the implementation's tests compare with)
 - [ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md) (glyph geometry frozen as data, so that a font file or an algorithm version is the only thing that changes it)
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) (the layout never feeds back into a musical edit; frozen systems; orientation as presentation)
 - [ADR-0015: Undo and Redo](0015-Undo-and-Redo.md) (continuous gestures as one undo step; changes an edit makes to layout data are undone with it)
