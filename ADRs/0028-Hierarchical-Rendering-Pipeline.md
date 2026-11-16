@@ -127,7 +127,7 @@ Stage 3 uses Knuth-Plass dynamic programming to determine optimal system break p
 
 ### Pipeline Stage 4: Atom Positioning (Fan-Out per Measure)
 
-Stage 4 positions atoms at their actual coordinates from each system's adjustment ratio (fan-out per measure, parallel processing). Each gap takes the width its spring gives (`g_j(r)`, [ADR-0037 §Gaps as Springs](0037-Measure-Distribution-Optimization.md#gaps-as-springs)): under compression at the system's ratio from Stage 3, and under stretching with the system's room shared out through the gaps' stretch weights ([ADR-0055](0055-Horizontal-Spacing.md#the-stretch-weight)), which never move a break. Atoms are assigned final x,y coordinates from the resulting column positions. Cached paintlists from Stage 1 are positioned at absolute coordinates. Atoms are repositioned, not recreated - their internal geometry remains immutable. Output: positioned atoms ready for Stage 5 spanners.
+Stage 4 positions atoms at their actual coordinates (fan-out per measure, parallel processing), filling the width Stage 3 priced for each system at a ratio of its own ([ADR-0037 §Width Allocation](0037-Measure-Distribution-Optimization.md#width-allocation-applying-the-adjustment-ratio)): under compression every gap gives up the same share of its ideal width, stopping at its blocking width, and under stretching the system's room is shared out through the gaps' stretch weights ([ADR-0055](0055-Horizontal-Spacing.md#the-stretch-weight)). Neither ever moves a break. Atoms are assigned final x,y coordinates from the resulting column positions. Cached paintlists from Stage 1 are positioned at absolute coordinates. Atoms are repositioned, not recreated - their internal geometry remains immutable. Output: positioned atoms ready for Stage 5 spanners.
 
 ### Pipeline Stage 5: Spanners and Margins (Fan-Out per Musician)
 
@@ -326,7 +326,7 @@ sequenceDiagram
     P->>P: Stage 1: Engraving atom formation<br/>(plugin atom hooks fire)
     P->>P: Stage 2: Raster and springs per stack<br/>(ideal and blocking widths, constraints, barline records)
     P->>P: Stage 3: System breaking<br/>(Knuth-Plass optimal distribution)
-    P->>P: Stage 4: Atom positioning<br/>(apply adjustment ratios to gaps)
+    P->>P: Stage 4: Atom positioning<br/>(fill each system's priced width)
     P->>P: Stage 5: Spanners and margins<br/>(per-musician connecting elements + system-start decorations)
     P->>P: Stage 6: Page breaking<br/>(if system heights changed)
     P->>B: Updated MeasureView{glyphs, curves}

@@ -188,7 +188,7 @@ With vertical coordination complete, the problem reduces to:
 - Output: System break decisions and the adjustment ratio of each system
 
 **Stage 4: Atom Positioning**
-Fills each system's width through the springs of its gaps, positioning atoms at their actual coordinates: under compression at the adjustment ratio from Stage 3, and under stretching with the room shared out through the gaps' stretch weights ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)). Non-connecting visual elements (noteheads, accidentals, dynamics) are positioned from the resulting gap widths. These elements do not influence distribution.
+Fills each system's width through the springs of its gaps, positioning atoms at their actual coordinates, at a ratio of its own that fills exactly the width Stage 3 priced: under compression in proportion to the gaps' ideal widths, and under stretching through their stretch weights ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)). Non-connecting visual elements (noteheads, accidentals, dynamics) are positioned from the resulting gap widths. These elements do not influence distribution.
 
 **Stage 5: Spanners and Margins**
 Ties, slurs, and spanning attachments compute geometry based on finalized atom positions from Stage 4. They adapt to the determined layout rather than influencing it. At a system start, Stage 5 draws courtesy accidentals and tie and glissando continuations into the room the leading gap's system-start form reserved ([ADR-0058](0058-Variants-at-a-Break.md#stages-4-and-5)). Determines actual system heights from vertical extent of connecting elements.
@@ -312,7 +312,7 @@ How the calibration applies under the alternative fitting rules is stated under 
 
 ### Architectural Position
 
-Measure distribution optimization (system breaking) is Stage 3 of the hierarchical rendering pipeline ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)). It receives measure stack metrics from Stages 1-2 and produces system break decisions and an adjustment ratio per system, which Stage 4 applies to each system's gaps for atom positioning.
+Measure distribution optimization (system breaking) is Stage 3 of the hierarchical rendering pipeline ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)). It receives measure stack metrics from Stages 1-2 and produces system break decisions and an adjustment ratio per system; Stage 4 positions the atoms in the width that ratio prices, at a ratio of its own.
 
 The algorithm implements **capacity-constrained segmentation with spring-based width allocation**:
 1. Dynamic programming (Stage 3) determines optimal system break points, reading every barline's records, which hold what a system start, a system end and a barline inside a system add ([ADR-0058](0058-Variants-at-a-Break.md))
@@ -828,7 +828,7 @@ The barline records eliminate feedback through **complete information** ([ADR-00
 1. **Stages 1–2** compute exact measure content (each gap's ideal and blocking width) + every barline's three records ([ADR-0055](0055-Horizontal-Spacing.md), [ADR-0058](0058-Variants-at-a-Break.md))
 2. **Stage 3** has *complete knowledge* of every scenario at every barline: no break (`mid[k]`), system end (`end[k]`) and system start (`start[k]`)
 3. **Stage 3** computes the system breaks that are optimal for its cost function, given these inputs - not heuristic, not iterative
-4. **Stage 4** positions atoms using each system's adjustment ratio from Stage 3
+4. **Stage 4** positions atoms in the width each system's adjustment ratio from Stage 3 prices, at a ratio of its own
 5. **Stage 5** adds graphical decorations based on actual positions and computes system heights
 6. **Stage 6** computes page breaks by a dynamic programme over the systems, using actual system heights; its cost function is not yet specified
 
