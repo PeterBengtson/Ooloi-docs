@@ -226,11 +226,11 @@ Within each system `[s, t)` determined by break selection, every gap receives th
 ```
 available = system_width - fixed(s, t)
 fixed(s, t) = start[s].fixed + Σ interior[i].fixed + Σ mid[k].fixed + end[t].fixed     s ≤ i < t, s < k < t
-g_j(r) = max(b_j, w_j + r × k_j)        k_j = σ × w_j when r ≥ 0, max(0, w_j − b_j) when r < 0
+g_j(r) = max(b_j, w_j + r × k_j)        k_j = σ × w_j when r ≥ 0, max(0, w_j − b⁰_j) when r < 0
 r = least r with Σ g_j(r) = available
 ```
 
-This is not optimization: `Σ g_j` is continuous, piecewise linear and non-decreasing in `r`, and `r` is found exactly. Under stretching, every gap that is free to stretch does so in proportion to its ideal width, so rhythmic proportions are kept among those gaps; a gap held open by an accidental keeps its blocking width until the rest of the system catches up with it. Under compression, every gap gives up the same share of its room above its minimum. These are the springs the breaker prices. Which gaps take a stretched system's room is decided by the gaps' stretch weights, which Stage 4 applies to the room this ratio gives the system; they never change `r`, the cost or the breaks ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)).
+This is not optimization: `Σ g_j` is continuous, piecewise linear and non-decreasing in `r`, and `r` is found exactly. Under stretching, every gap that is free to stretch does so in proportion to its ideal width, so rhythmic proportions are kept among those gaps; a gap held open by an accidental keeps its blocking width until the rest of the system catches up with it. Under compression, every gap gives up the same share of its room above its own minimum `b⁰_j`, the blocking width its atoms set, and a gap that a constraint spanning several columns holds open stops where the constraint binds ([Gaps as Springs](#gaps-as-springs)). These are the springs the breaker prices. Which gaps take a stretched system's room is decided by the gaps' stretch weights, which Stage 4 applies to the room this ratio gives the system; they never change `r`, the cost or the breaks ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)).
 
 **Segment cost model**:
 The cost of a system is Knuth–Plass's. It is judged by its **adjustment ratio** `r`: how far its gaps are stretched or compressed, measured against how far they can go. In the glue model of Knuth and Plass, `r` is one division:
@@ -240,9 +240,9 @@ r = (available − Σ natural) / Σ stretch     when available ≥ Σ natural   
 r = (available − Σ natural) / Σ shrink      when available <  Σ natural   (shrinking)
 ```
 
-Under springs it is the value that solves `Σ g_j(r) = available`, which Hegazy and Gourlay call the fitting force. The two coincide whenever no gap is blocked or prestretched. In the baseline:
+Under springs it is the value that solves `Σ g_j(r) = available`, which Hegazy and Gourlay call the fitting force. The two coincide whenever no gap is blocked, raised or prestretched. In the baseline:
 
-- **Shrinking is always one division.** Every gap's shrink is its room above its minimum, `max(0, w_j − b_j)`, so every gap reaches its minimum at the same value, `r = −1`, and none blocks before then: `r = (available − Σ natural) / (Σ natural − Σ min)`, from prefix sums. `r = −1` is exactly `available = Σ min`, the system's collision limit, so Knuth–Plass's condition `r ≥ −1` is the feasibility condition `Σ min ≤ available` ([Feasibility](#feasibility)).
+- **Shrinking is one division until a raised gap blocks.** Every gap's shrink is its room above its own minimum, `max(0, w_j − b⁰_j)`, so at `r = −1` every gap is at its blocking width. A gap whose blocking width a constraint spanning several columns has raised holds it from its shrinking kink downwards; every other gap reaches its blocking width only at `r = −1` ([Gaps as Springs](#gaps-as-springs)). While `r` stays above the segment's greatest shrinking kink, `r = (available − Σ natural) / Σ shrink`, which is `(available − Σ natural) / (Σ natural − Σ min)` where no gap is raised, from prefix sums; below it, the kinks are walked in order, downwards ([Solving for the Adjustment Ratio](#solving-for-the-adjustment-ratio)). `r = −1` is exactly `available = Σ min`, the system's collision limit, so Knuth–Plass's condition `r ≥ −1` is the feasibility condition `Σ min ≤ available` ([Feasibility](#feasibility)).
 - **Stretching is one division until a prestretched gap starts to stretch.** Every ordinary gap (`b_j ≤ w_j`) stretches by `σ × w_j` per unit of `r` from `r = 0`. A prestretched gap holds its blocking width until `r` reaches its kink, `(b_j − w_j) / (σ × w_j)`, and stretches from there. While `r` stays below the segment's smallest kink, `r = (available − Σ natural) / (σ × Σ ordinary ideal)`; beyond it, the kinks are walked in order ([Solving for the Adjustment Ratio](#solving-for-the-adjustment-ratio)).
 
 `r` is negative under compression and positive under stretching. It depends on the segment alone, so the DP stays exact.
@@ -299,7 +299,7 @@ TeX's constants assume that the adjustment ratio `r` is measured against the lim
 
 The calibration gives `r` its meaning at both ends, and TeX's constants (`c`, `e`, `b_max`, `l` and the tolerance) are meaningful only under it:
 
-- **Shrinking**: each gap's shrink is its room above its minimum, `max(0, w_j − b_j)`, so `r = −1` is where every gap reaches its minimum together: the system's collision limit. Knuth–Plass's limit on shrinking and this ADR's feasibility condition are then the same point.
+- **Shrinking**: each gap's shrink is its room above its own minimum, `max(0, w_j − b⁰_j)`, so `r = −1` is where every gap is at its blocking width: the system's collision limit. A gap a constraint has raised gets there sooner and holds it. Knuth–Plass's limit on shrinking and this ADR's feasibility condition are then the same point.
 - **Stretching**: stretch has no collision limit, so its scale is a parameter, the stretchability `σ`: each ordinary gap's stretch is `σ × w_j`. The documented starting point is `σ = 1/2`. A system whose gaps are all free to stretch then reaches `r = 1`, with badness 100, at one and a half times its ideal width: the same badness as a system at its collision limit. Tolerance 200 admits stretch up to about 63%. A prestretched gap contributes to the stretch only once `r` has passed its kink. No engraving source fixes the value of `σ`: it is where the documented constants start, and the empirical validation decides it ([Evaluation Criteria](#evaluation-criteria)).
 
 **Kinks beyond the tolerance.** At tolerance 200, the documented starting point, no system chosen within the tolerance has `r` above about 1.26, so a prestretched gap is released in such a system only if its kink lies below that: with `σ = 1/2`, only if its blocking width is less than about 1.63 times its ideal width. Two kinds of system are not bound by the tolerance and can stretch further: a frozen system ([Frozen Systems](#frozen-systems)), and a system of a part broken without the tolerance because no segmentation of the part met it ([Optimization Characterization](#optimization-characterization)). Take a run of beamed thirty-seconds at about one height, with an eighth as the anchoring duration and the duration table at LilyPond's values ([ADR-0055 H1](0055-Horizontal-Spacing.md#h1-the-duration-table)), which give a thirty-second an ideal width of 1.5. Before a note carrying a double flat, Bravura's widths (black notehead 1.18, double flat 1.644) give a blocking width of 2.824 plus the clearance between the notehead and the accidental, and the accidental's least distance from its own notehead ([ADR-0055 H22](0055-Horizontal-Spacing.md#h22-minimum-forms)). The kink is then about 1.77 with both at 0 and 2.30 with both at 0.2, a provisional value, so such a gap is never released. With the same provisional values the gaps before a flat (1.31) and a sharp (1.44) are not released either; only the gap before a natural (1.00) is. Which gaps stay packed depends on the anchoring duration and the table ([ADR-0055 H2](0055-Horizontal-Spacing.md#h2-the-anchoring-duration), [H8](0055-Horizontal-Spacing.md#h8-very-short-values-under-stretching)).
@@ -336,7 +336,8 @@ The algorithm implements **capacity-constrained segmentation with spring-based w
  :min ratio                   ;; Σ b_j: collision floor of its springs
  :natural ratio               ;; Σ max(w_j, b_j): width at r = 0
  :ordinary-ideal ratio        ;; Σ w_j over gaps with b_j ≤ w_j: what stretches from r = 0
- :prestretched [[w b] ...]}   ;; gaps with b_j > w_j, as [ideal blocking] pairs
+ :prestretched [[w b] ...]    ;; gaps with b_j > w_j, as [ideal blocking] pairs
+ :raised [[w b b0] ...]}      ;; gaps with b⁰_j < b_j ≤ w_j, as [ideal blocking own-blocking]
 
 ;; Output:
 {:breaks [break-positions]    ;; Vector of indices where systems start
@@ -351,6 +352,7 @@ The algorithm implements **capacity-constrained segmentation with spring-based w
 - `:natural` — the width of its springs at `r = 0`: each gap at its ideal width, or at its blocking width where that is larger
 - `:ordinary-ideal` — the ideal width of the gaps that are free to stretch from `r = 0`
 - `:prestretched` — the gaps whose blocking width exceeds their ideal width, typically a short note followed by one carrying an accidental; Stage 3 derives their kinks from `σ`
+- `:raised` — the ordinary gaps whose blocking width a constraint spanning several columns has raised above their own; Stage 3 derives their shrinking kinks from them ([Constraints Spanning Several Columns](#constraints-spanning-several-columns))
 
 **What each record holds** ([ADR-0058](0058-Variants-at-a-Break.md#every-barline-is-a-discretionary-break)):
 
@@ -368,6 +370,7 @@ Stage 4 needs every gap's `w_j` and `b_j`, and its stretch weight `s_j` ([ADR-00
 - Every interior's `:min` must be positive
 - Each record is consistent with its gaps: `:natural = :min + Σ max(0, w_j − b_j)`
 - Every prestretched pair has `0 ≤ w < b`; a pair with `w = 0` is fixed space, which never stretches
+- Every raised triple has `0 ≤ b0 < b ≤ w`, and its gap is counted in `:ordinary-ideal`
 - A record's sums are non-negative, except for the corrections of [ADR-0058](0058-Variants-at-a-Break.md#break-forms-of-constraints-across-a-barline) V5
 - Barline 0 has only `:start`, and barline N only `:end`, which is empty
 - At least one feasible segmentation must exist (the entire sequence fits on some number of systems)
@@ -381,17 +384,19 @@ Every gap has the same stretchability `σ`. A stretchability per class of gap, w
 Every column gap in a measure stack is a spring in the sense of Hegazy and Gourlay (see [The Spring Model](#the-spring-model)). The springs attach to the origins of the atoms on either side, not to their outer edges, because what the eye measures is the distance from one note to the next; the atoms themselves are boxes that cannot pass through each other. A gap `j` has:
 
 - an **ideal width** `w_j`, the distance between atom origins that the durations call for (Stages 1–2);
-- a **blocking width** `b_j`, the distance at which the atoms on either side would collide, the largest such distance over the stack's staves (Stages 1–2);
-- a **stretch** `σ × w_j` and a **shrink** `max(0, w_j − b_j)`, the baseline elasticity ([Fitting Rules](#fitting-rules)).
+- a **blocking width** `b_j`, the distance at which the atoms on either side would collide, the largest such distance over the stack's staves (Stages 1–2), or more, where a constraint spanning several columns has raised it ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)); its **own blocking width** `b⁰_j` is the atoms' alone, and is `b_j` wherever no constraint has raised it;
+- a **stretch** `σ × w_j` and a **shrink** `max(0, w_j − b⁰_j)`, the baseline elasticity ([Fitting Rules](#fitting-rules)).
 
 Under an adjustment ratio `r` its width is
 
 ```
-g_j(r) = max(b_j, w_j + r × σ × w_j)            when r ≥ 0
-g_j(r) = max(b_j, w_j + r × max(0, w_j − b_j))  when r < 0
+g_j(r) = max(b_j, w_j + r × σ × w_j)             when r ≥ 0
+g_j(r) = max(b_j, w_j + r × max(0, w_j − b⁰_j))  when r < 0
 ```
 
 A gap is **ordinary** when `b_j ≤ w_j`. It is **prestretched** when `b_j > w_j`: the atoms need more room than the durations call for, as when a short note is followed by one carrying an accidental. A prestretched gap holds its blocking width under every compression, and under stretching up to its **kink**, `κ_j = (b_j − w_j) / (σ × w_j)`, where its spring catches up with the collision; beyond that it stretches like any other gap. The accidental takes the room it needs and no more, and once the system is loose enough it costs nothing.
+
+An ordinary gap is **raised** when a constraint has raised its blocking width above its own, `b⁰_j < b_j ≤ w_j`. It shrinks at its own rate, as if the constraint were not there, until it reaches `b_j` at its **shrinking kink**, `κ⁻_j = (b_j − w_j) / (w_j − b⁰_j)`, between −1 and 0, and holds `b_j` below it: the mirror of a prestretched gap. The constraint takes the room it needs when it needs it, and no sooner. Every other ordinary gap reaches its blocking width only at `r = −1`.
 
 This is the engraver's principle, that everything belonging to a note, accidentals included, should fit within its proportional allocation, made exact: where it cannot fit, the allocation yields only as far as the collision requires.
 
@@ -399,70 +404,75 @@ These are the springs Stage 3 prices, and those Stage 4 places a system with und
 
 **Why not one scale factor.** A single proportional scale factor per system requires `b_j ≤ w_j` for every gap and gives every gap the same proportional stretch and shrink. It cannot represent a prestretched gap, and a gap whose minimum equals its ideal blocks compression of its whole system. It is kept as an alternative under [Fitting Rules](#fitting-rules).
 
-**Summaries for Stage 3.** Stage 3 never needs the gaps one by one. A segment's width at `r` depends on three sums and on its prestretched gaps:
+**Summaries for Stage 3.** Stage 3 never needs the gaps one by one. A segment's width at `r` depends on three sums, on its raised gaps and on its prestretched gaps:
 
 ```
-Σ g_j(r) = Σ natural + r × (Σ natural − Σ min)                             when −1 ≤ r < 0
+Σ g_j(r) = Σ natural + r × Σ shrink
+           + Σ over raised gaps with r < κ⁻_j  of  (w_j − b⁰_j) × (κ⁻_j − r)  when −1 ≤ r < 0
 Σ g_j(r) = Σ natural + r × σ × Σ ordinary ideal
            + Σ over prestretched gaps with κ_j < r  of  σ × w_j × (r − κ_j)    when r ≥ 0
+
+Σ shrink = Σ natural − Σ min + Σ over raised gaps of (b_j − b⁰_j)
 ```
 
-So each record carries `:min`, `:natural`, `:ordinary-ideal` and its `:prestretched` pairs beside its fixed width ([Interface Contract](#interface-contract)), and a segment's sums come from prefix sums ([ADR-0058](0058-Variants-at-a-Break.md#what-stage-3-receives)).
+So each record carries `:min`, `:natural`, `:ordinary-ideal`, its `:prestretched` pairs and its `:raised` triples beside its fixed width ([Interface Contract](#interface-contract)), and a segment's sums come from prefix sums ([ADR-0058](0058-Variants-at-a-Break.md#what-stage-3-receives)). Where no gap is raised, `Σ shrink` is `Σ natural − Σ min` and the shrinking side is a single line.
 
 ### Constraints Spanning Several Columns
 
-Some minimum distances span more than one gap: a long syllable sung across a melisma, a dynamic or a word of text that must not run into the next, material crossing between staves, and two neighbouring atoms in one staff whenever other staves place columns between them. A blocking width belongs to one gap, so such a constraint is reduced to blocking widths before Stage 3 sees it, in Stage 2. The procedure follows LilyPond's spacer, which reduces its rods to blocking forces (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`), and differs from it in one respect, stated below:
+Some minimum distances span more than one gap: a long syllable sung across a melisma, a dynamic or a word of text that must not run into the next, material crossing between staves, and two neighbouring atoms in one staff whenever other staves place columns between them. A blocking width belongs to one gap, so such a constraint is reduced to blocking widths before Stage 3 sees it, in Stage 2. The procedure is LilyPond's spacer's, which reduces its rods to blocking forces (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`, raising each spring it spans through `Spring::set_blocking_force` in `lily/spring.cc`):
 
 1. For a constraint of distance `D` over gaps `j..k`, find the least `r_D` at which `Σ g_i(r)` over those gaps reaches `D`, using their springs alone and the same exact solver as Stage 3 ([Solving for the Adjustment Ratio](#solving-for-the-adjustment-ratio)). If `Σ b_i ≥ D` already, the constraint is met and nothing changes.
-2. Raise each spanned gap's blocking width to its width at that ratio, `b_i ← g_i(r_D)`; its shrink follows from the new blocking width.
+2. Raise each spanned gap's blocking width to its width at that ratio, `b_i ← g_i(r_D)`, wherever that is more than it was. A raised gap keeps its shrink, `max(0, w_i − b⁰_i)`, measured from its own blocking width ([Gaps as Springs](#gaps-as-springs)).
 
-Afterwards the span is at least `D` at every `r ≥ −1`: no spanned gap is narrower than before at any ratio, and each holds at least its share at `r_D`. For a single constraint, feasibility is exactly what the constraint requires: at `r = −1` every spanned gap is at its new blocking width, and together they are `D` wide.
+Afterwards the span is at least `D` at every `r ≥ −1`: no spanned gap is narrower than before at any ratio, and each holds at least its share at `r_D`. For a single constraint the span is exactly `max(D, Σ g_i(r))` at every ratio, what the constraint requires and no more: above `r_D` every spanned gap is as it was, and below it every spanned gap holds its width at `r_D`, which together are `D`. Feasibility and the calibration of `r = −1` are unchanged: at `r = −1` every gap is at its blocking width, and the spanned gaps together are `D` wide.
 
-**When the constraint binds under stretching** (`r_D ≥ 0`), the reduction is exact. A raised gap holds its new blocking width below `r_D` and stretches as before above it: it becomes prestretched with its kink at `r_D`, or, at `r_D = 0`, an ordinary gap with no shrink. The span is `max(D, Σ g_i(r))` at every ratio, which is what the constraint requires and no more.
+**When the constraint binds under stretching** (`r_D ≥ 0`), a raised gap holds its new blocking width below `r_D` and stretches as before above it: it becomes prestretched with its kink at `r_D`, or, at `r_D = 0`, a raised gap whose shrinking kink is 0, which holds its blocking width under every compression.
 
-**When it binds under compression** (`r_D < 0`), the reduction over-reserves. A raised gap's shrink follows from its new blocking width, `max(0, w_i − b_i′)`, so that every gap still reaches its minimum at `r = −1` and shrinking stays one division. The gap therefore does not simply stop at `r_D`: it becomes stiffer across the whole compressed range, and reaches `b_i′` only at `r = −1`. With `H` the room above their minimums, before the reduction, of the ordinary gaps the constraint spans, the span exceeds `max(D, Σ g_i(r))` by
+**When it binds under compression** (`r_D < 0`), each gap it raises is a raised gap in the sense of [Gaps as Springs](#gaps-as-springs): it shrinks as before from `r = 0` and holds its new blocking width from its shrinking kink, `r_D`, downwards. This is how a blocking force acts in Hegazy and Gourlay's model and in LilyPond's spacer ([The Spring Model](#the-spring-model)). The price is kinks on the shrinking side: a segment's shrinking side is piecewise linear, with a kink at each raised gap's `r_D` (the largest, if several constraints raised it) carrying the shrink of the gaps that block there, and is solved by the same walk as the stretching side, from `r = 0` downwards; a segment without raised gaps keeps the single division ([Solving for the Adjustment Ratio](#solving-for-the-adjustment-ratio)). Each record carries its raised gaps for this ([Interface Contract](#interface-contract)), and the reduction's own solver walks them too, where an earlier constraint has raised a gap that a later one spans. Feasibility stays O(1).
+
+For example, two ordinary gaps with `w = 4` and `b = 2` under a constraint of 6 give `r_D = −1/2`; each blocking width rises to 3 and each shrink stays 2. At `r = −1/4` each gap is 3.5 and the span 7, where the constraint is slack; from `r = −1/2` down each gap holds 3, and the span is 6.
+
+**Not adopted: recomputing the shrink.** Recomputing a raised gap's shrink from its new blocking width, `max(0, w_i − b_i′)`, would keep the shrinking side one division in every segment, every gap reaching its minimum at `r = −1` and none sooner. The gap would then not stop at `r_D`: it would become stiffer across the whole compressed range, and reach `b_i′` only at `r = −1`. With `H` the room above their minimums, before the reduction, of the ordinary gaps the constraint spans, the span would exceed `max(D, Σ g_i(r))` by
 
 ```
 |r| × (1 − |r_D|) × H        when r_D ≤ r ≤ 0
 |r_D| × (1 − |r|) × H        when −1 ≤ r ≤ r_D
 ```
 
-and by nothing when `r ≥ 0`. The excess is zero at `r = 0` and at `r = −1`, and greatest at `r_D`, where it is `|r_D| × (1 − |r_D|) × H`: at most `H / 4`, at `r_D = −1/2`. A constraint reduced this way therefore widens its span in every compressed system, including those in which it would be slack, and the room comes from the system's other gaps, which compress further, so that the system's adjustment ratio is more negative than the constraint requires. For example, two ordinary gaps with `w = 4` and `b = 2` under a constraint of 6 give `r_D = −1/2`; each blocking width rises to 3 and each shrink falls to 1, and at `r = −1/2` the span is 7 rather than 6.
+and by nothing when `r ≥ 0`: most at `r_D`, by `|r_D| × (1 − |r_D|) × H`, which is at most `H / 4`. In the example each shrink would fall to 1, and at `r = −1/2` the span would be 7 rather than 6. The room would be given in every compressed system, including those in which the constraint is slack, and taken from the system's other gaps, which would compress further than the constraint requires. An engraver gives a constraint room when it needs it and not before, and LilyPond's spacer does the same. What recomputing saves, the shrinking kinks, costs Stage 3 only the walk it already makes on the stretching side, and only in segments that hold raised gaps.
 
-**Overlapping constraints** are reduced one at a time, so a gap raised by one is fixed at its share of it rather than free to trade room with its neighbours under another, and together they can hold more room than they need. This holds under either form of the reduction. LilyPond's source accepts a loss of this kind, on the grounds that the denser result looks worse anyway.
-
-**The exact form**, an alternative to the baseline reduction: a raised gap keeps its shrink, `max(0, w_i − b_i)` with its original blocking width, and holds its new blocking width below `r_D`:
-
-```
-g_i′(r) = max(b_i′, w_i + r × σ × w_i)                when r ≥ 0
-g_i′(r) = max(b_i′, w_i + r × max(0, w_i − b_i))      when r < 0
-```
-
-This is how a blocking force acts in Hegazy and Gourlay's model and in LilyPond's spacer ([The Spring Model](#the-spring-model)). For a single constraint the span is then exactly `max(D, Σ g_i(r))` whatever the sign of `r_D`, and feasibility and the calibration of `r = −1` are unchanged: every gap is at its minimum at `r = −1`. The price is kinks on the shrinking side. A raised gap blocks at its `r_D` (the largest, if several constraints raised it), so the shrinking side of a segment is piecewise linear, with a kink at each such ratio carrying the shrink of the gaps that block there, and is solved by the same walk as the stretching side, from `r = 0` downwards; a segment without such gaps keeps the single division. Each record would carry, besides its sums, the shrink of its gaps and its shrinking kinks, since `Σ natural − Σ min` no longer gives the slope ([Interface Contract](#interface-contract)), and the reduction's own solver would walk them too. Which form is the baseline is decided by the validation, against the cost of the slower path ([Evaluation Criteria](#evaluation-criteria)); vocal scores with dense lyrics in tight systems are where the difference is largest.
+**Overlapping constraints** are reduced one at a time, so a gap raised by one is fixed at its share of it rather than free to trade room with its neighbours under another, and together they can hold more room than they need. LilyPond's source accepts a loss of this kind, on the grounds that the denser result looks worse anyway.
 
 Overlapping constraints are applied in a fixed order (by first gap, then by last), so the result is deterministic. Each raises blocking widths only, and raising a blocking width never narrows a gap at any ratio, so the order affects how room is shared, never whether a constraint holds.
 
 ```clojure
 (defn reduce-span-constraint
   "Raises the blocking widths of gaps [j, k) so that together they are at
-   least d wide at every adjustment ratio r ≥ -1 (Stage 2). Baseline form:
-   each raised gap's shrink follows from its new blocking width."
+   least d wide at every adjustment ratio r ≥ -1 (Stage 2). r-d comes from
+   Stage 3's own solver; each gap is raised to its width there and keeps its
+   shrink, measured from its own blocking width :b0, which it records the
+   first time it is raised."
   [gaps j k d sigma]
-  (let [{:keys [min natural ordinary-ideal prestretched]} (stack-summary (subvec gaps j k))]
+  (let [{:keys [min natural ordinary-ideal prestretched raised]} (stack-summary (subvec gaps j k))]
     (if (>= min d)
       gaps
       (let [r-d (solve-ratio d min natural ordinary-ideal
-                             (add-kinks (sorted-map) prestretched sigma) sigma)]
+                             (add-kinks (sorted-map) prestretched sigma) sigma
+                             (add-shrink-kinks (sorted-map) raised))]
         (reduce (fn [gs i]
-                  (update gs i (fn [{:keys [w b] :as g}]
-                                 (assoc g :b (gap-width w b w r-d sigma)))))
+                  (update gs i (fn [{:keys [w b b0] :as g}]
+                                 (let [b0 (or b0 b)
+                                       raised-b (gap-width w b w r-d sigma b0)]
+                                   (if (> raised-b b)
+                                     (assoc g :b raised-b :b0 b0)
+                                     g)))))
                 gaps
                 (range j k))))))
 ```
 
 Because `r_D` depends only on the springs inside the span, the reduction is independent of where systems break, and Stage 3's inputs stay fixed before it starts. A constraint that crosses a barline is reduced over the gaps of both stacks, raising springs in their interiors and in the leading gap's mid-system form, `mid[k]`. Within a system it behaves as any other constraint does; at a break it is conservative, since the constraint may need less there (a lyric extender, say). A tie continuation or glissando end at a system start is exact: a constraint inside the leading gap's system-start form, in `start[k]`. Exact break forms for the rest are [ADR-0058](0058-Variants-at-a-Break.md#break-forms-of-constraints-across-a-barline) V5. An edit that changes such a constraint changes both stacks, which is a range edit for [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit).
 
-The reduction is mandatory and is not a setting: [ADR-0055](0055-Horizontal-Spacing.md#invariants-and-property-tests)'s Invariants 1 and 8, that no contours collide at any feasible ratio and that every constraint holds after Stage 2, depend on it. How much room it over-reserves is measured in the validation ([Evaluation Criteria](#evaluation-criteria)).
+The reduction is mandatory and is not a setting: [ADR-0055](0055-Horizontal-Spacing.md#invariants-and-property-tests)'s Invariants 1 and 8, that no contours collide at any feasible ratio and that every constraint holds after Stage 2, depend on it. Overlapping constraints can hold more room than they need; how much is measured in the validation ([Evaluation Criteria](#evaluation-criteria)).
 
 ### Ideal Width Semantics
 
@@ -527,7 +537,7 @@ This is **derivation, not optimisation**:
 - Deterministic: `r` is the exact solution of a piecewise-linear equation, computed by Stage 3, and `r′` the exact solution of the system's own, by the same solver
 - No gap falls below its blocking width, by construction: the `max` is part of the spring, not a defensive clamp
 - Under stretching, the stretch weights decide which gaps take the room: only the white space between noteheads stretches; a gap held open by an accidental keeps its blocking width until the system has caught up with it
-- Under compression, every gap gives up the same share of its room above its minimum
+- Under compression, every gap gives up the same share of its room above its own minimum, a raised gap stopping at its blocking width
 - No iteration, no convergence, no tuning beyond the documented parameters
 - Contained: within a fixed break configuration, a change to one stack alters only its own system's ratios
 - Near-zero computational cost: O(gaps) per system, with a walk over the held gaps' kinks for `r′`
@@ -607,11 +617,11 @@ If the springs prove adequate, asymmetric optimization becomes unnecessary compl
 
 **When the springs might be insufficient**:
 
-1. **Extreme compression**: as a system approaches `r = −1`, every gap gives up the same share of its room above its minimum, so long values, which have more room, give up more. Whether that is right, or short values should give way first, is an engraving question ([Fitting Rules](#fitting-rules)). Since stacks are heterogeneous (some staves dense, others sparse), visual degradation affects only the dense staves within each stack.
+1. **Extreme compression**: as a system approaches `r = −1`, every gap gives up the same share of its room above its own minimum, so long values, which have more room, give up more. Whether that is right, or short values should give way first, is an engraving question ([Fitting Rules](#fitting-rules)). Since stacks are heterogeneous (some staves dense, others sparse), visual degradation affects only the dense staves within each stack.
 
 2. **Mixed density across stacks**: a system with one very dense stack and several sparse ones compresses the sparse ones more in absolute terms, since they have more room. Within the dense stack, some staves may be heavily compressed while others remain adequate.
 
-3. **Cliff avoidance**: a gap with little room above its minimum gives up little. Under one scale factor per system ([Fitting Rules](#fitting-rules), rule 1), one such gap would block compression of its whole system; the springs avoid that.
+3. **Cliff avoidance**: a gap with little room above its own minimum gives up little. Under one scale factor per system ([Fitting Rules](#fitting-rules), rule 1), one such gap would block compression of its whole system; the springs avoid that.
 
 **Note on staff-local effects**: Since compression primarily affects the most demanding staff within each stack while other staves may remain visually intact, the arguments for asymmetric optimization are weaker than they might initially appear. Stack-level allocation may be adequate even under compression.
 
@@ -967,7 +977,7 @@ Visual judgement, together with measurements taken on the same scores:
 - The difference between adjacent systems' `r`
 - The number of systems
 - Running time
-- How much room the reduction of constraints spanning several columns over-reserves: the same systems solved offline with those constraints imposed exactly, system by system, compared with the springs as reduced by the baseline and by its exact form. This, with the cost of the exact form's slower path, decides which form is the baseline ([Constraints Spanning Several Columns](#constraints-spanning-several-columns))
+- How much room overlapping constraints spanning several columns hold beyond what they need: the same systems solved offline with those constraints imposed exactly, system by system, compared with the springs as Stage 2 reduces them one at a time ([Constraints Spanning Several Columns](#constraints-spanning-several-columns))
 - The number of manual interventions (forced breaks, width overrides) needed to reach the layout of a reference engraving: the measure that matters most to an engraver
 
 The test material is chosen for where the difficulty lies: chromatic passages in short values, bars that mix long values with runs of very short ones, vocal scores with dense lyrics, tight orchestral pages, music of gradually changing density, and parts with page turns. Parts with page turns evaluate Stage 6 and the separation of system breaking from page breaking ([Joint System and Page Breaking](#joint-system-and-page-breaking)), not Stage 3 alone. The references are printed engravings, not the output of other programs.
@@ -1038,7 +1048,7 @@ Each column gap is a spring with three kinds of parameter ([Gaps as Springs](#ga
 
 A fitting rule is a choice of elasticity.
 
-**The baseline: springs.** Stretch `σ × w_j`, shrink `max(0, w_j − b_j)`. Under stretching, gaps free to stretch keep their proportions and prestretched gaps join at their kinks. Under compression every gap gives up the same share of its room above its minimum: where long values have more room, they give up more, and the rhythmic hierarchy flattens; a gap with no room stays where it is and the others absorb the compression. Every gap reaches its minimum at `r = −1`. This is also LilyPond's default compression.
+**The baseline: springs.** Stretch `σ × w_j`, shrink `max(0, w_j − b⁰_j)`. Under stretching, gaps free to stretch keep their proportions and prestretched gaps join at their kinks. Under compression every gap gives up the same share of its room above its own minimum: where long values have more room, they give up more, and the rhythmic hierarchy flattens; a gap with no room stays where it is and the others absorb the compression, and a raised gap stops where its constraint binds. Every gap is at its blocking width by `r = −1`, and only raised gaps get there sooner. This is also LilyPond's default compression.
 
 **Alternatives**, kept as candidates for the validation:
 
@@ -1049,7 +1059,7 @@ A fitting rule is a choice of elasticity.
 
 Whether the hierarchy should sharpen or flatten under compression is an engraving question, decided by the empirical validation rather than by the model; which values take the stretch is decided by the stretch weights: only the white space between noteheads. The baseline is the rule this ADR's formulas and code carry for pricing; none of the alternatives is chosen until the validation decides.
 
-**All of them keep the DP exact.** Each system's cost still depends on the segment alone, and `r` is the solution of a piecewise-linear equation built from prefix sums and the segment's kinks. Under the baseline and rules 1, 2 and 4 the shrinking side is one division; rule 3 makes it piecewise, solved exactly by the same walk as the stretching side. Under any rule, Stage 4 fills the system through each gap's own spring, under stretching as the stretch weights shape it.
+**All of them keep the DP exact.** Each system's cost still depends on the segment alone, and `r` is the solution of a piecewise-linear equation built from prefix sums and the segment's kinks. Under rules 1 and 2 the shrinking side is one division; under the baseline and rule 4 it is one division in a segment without raised gaps and piecewise in one with them; rule 3 makes it piecewise in every segment. A piecewise shrinking side is solved exactly by the same walk as the stretching side. Under any rule, Stage 4 fills the system through each gap's own spring, under stretching as the stretch weights shape it.
 
 **Who pays.** The adjustment ratio is one value for the whole system, so when a bar needs more room than its proportions give it (a run of thirty-second notes between a half note and a quarter, say), the cost is shared by every gap in the system according to its elasticity, including gaps several bars away. An engraver might prefer the long notes of the same bar to pay. That is a choice between consistency, where the same duration is treated alike across the system, and locality, where each bar settles its own debts. Locality belongs where ideal widths are formed, in Stage 2, before any fitting begins ([ADR-0055](0055-Horizontal-Spacing.md#h18-locality-within-a-bar)), and needs no change to Stage 3. The baseline is consistency; the validation decides whether locality is needed.
 
@@ -1065,7 +1075,7 @@ Under the baseline a system is feasible exactly when its gaps' blocking widths f
 Σ min_i ≤ available          (equivalently, r ≥ −1)
 ```
 
-The condition is necessary and sufficient. Every gap's shrink is its own room above its minimum, so at `r = −1` every gap is at its minimum and none reaches it sooner. It comes from prefix sums in O(1), and it is the same point as Knuth–Plass's limit on shrinking ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)).
+The condition is necessary and sufficient. Every gap's shrink is its room above its own minimum, so at `r = −1` every gap is at its blocking width, a raised gap having reached it sooner and held it, and no gap is ever below it. It comes from prefix sums in O(1), and it is the same point as Knuth–Plass's limit on shrinking ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)).
 
 Under rule 1 of [Fitting Rules](#fitting-rules), one scale factor applies to every gap, and the sufficient condition is the largest column ratio, `scale ≥ max_j(b_j / w_j)` over the segment. A stack could pass a stack-level check while one of its columns collided, so every stack would have to carry that ratio. Under the springs no such ratio is needed.
 
@@ -1111,25 +1121,29 @@ The following implementation performs **Stage 3: System Breaking** - distributin
 
 (defn gap-width
   "Width of a gap with ideal width w, blocking width b and stretch weight s
-   at adjustment ratio r: stretch σ × s, shrink max(0, w − b). Stage 3 prices
-   with s = w, the baseline springs; Stage 4 places a stretched system with
-   each gap's stretch weight."
-  [w b s r sigma]
-  (if (neg? r)
-    (max b (+ w (* r (max 0N (- w b)))))
-    (max b (+ w (* r sigma s)))))
+   at adjustment ratio r: stretch σ × s, shrink max(0, w − b0), b0 its own
+   blocking width, which is b unless a constraint spanning several columns
+   has raised b above it. Stage 3 prices with s = w, the baseline springs;
+   Stage 4 places a stretched system with each gap's stretch weight."
+  ([w b s r sigma] (gap-width w b s r sigma b))
+  ([w b s r sigma b0]
+   (if (neg? r)
+     (max b (+ w (* r (max 0N (- w b0)))))
+     (max b (+ w (* r sigma s))))))
 
 (defn stack-summary
-  "Sums a sequence of gaps {:w ideal, :b blocking}: the springs of a record,
-   or of a span (see Interface Contract)."
+  "Sums a sequence of gaps {:w ideal, :b blocking}, with :b0, its own
+   blocking width, where a constraint has raised :b above it: the springs of
+   a record, or of a span (see Interface Contract)."
   [gaps]
-  (reduce (fn [acc {:keys [w b]}]
+  (reduce (fn [acc {:keys [w b b0]}]
             (cond-> (-> acc
                         (update :min + b)
                         (update :natural + (max w b)))
               (<= b w) (update :ordinary-ideal + w)
+              (and (<= b w) b0 (< b0 b)) (update :raised conj [w b b0])
               (> b w)  (update :prestretched conj [w b])))
-          {:min 0N :natural 0N :ordinary-ideal 0N :prestretched []}
+          {:min 0N :natural 0N :ordinary-ideal 0N :prestretched [] :raised []}
           gaps))
 
 (defn add-kinks
@@ -1147,38 +1161,65 @@ The following implementation performs **Stage 3: System Breaking** - distributin
           kinks
           prestretched))
 
+(defn add-shrink-kinks
+  "Adds raised gaps to a sorted map {shrinking-kink Σshrink}. Each gap is
+   [w b b0]: it shrinks by w − b0 from r = 0 and blocks at its shrinking
+   kink (b − w) / (w − b0), between -1 and 0, where it reaches b."
+  [kinks raised]
+  (reduce (fn [m [w b b0]]
+            (update m (/ (- b w) (- w b0)) (fnil + 0N) (- w b0)))
+          kinks
+          raised))
+
 (defn solve-ratio
   "The least adjustment ratio r at which a segment's gaps fill `available`,
    or nil when they cannot (available < Σ min). min and natural are the
    segment's sums, ordinary-stretch the stretch weight of its ordinary gaps
    (their ideal width, when Stage 3 prices a segment); kinks is its sorted
-   map {kink Σs}. Exact: rationals in, rational out."
-  [available min natural ordinary-stretch kinks sigma]
-  (cond
-    (< available min) nil
+   map {kink Σs}, and shrink-kinks the sorted map {shrinking-kink Σshrink}
+   of its raised gaps. Exact: rationals in, rational out."
+  ([available min natural ordinary-stretch kinks sigma]
+   (solve-ratio available min natural ordinary-stretch kinks sigma (sorted-map)))
+  ([available min natural ordinary-stretch kinks sigma shrink-kinks]
+   (cond
+     (< available min) nil
 
-    (= available natural) 0N
+     (= available natural) 0N
 
-    ;; Shrinking: every gap gives up the same share of its room above its
-    ;; minimum, and all reach their minimums together at r = -1. One division.
-    (< available natural)
-    (/ (- available natural) (- natural min))
+     (= available min) -1N
 
-    ;; Stretching: ordinary gaps stretch from r = 0; each prestretched gap
-    ;; joins at its kink. The first piece is the fast path. A positive ideal
-    ;; width for every interior, and a positive stretch weight wherever an
-    ;; ideal width is positive, guarantee a positive slope once all kinks are
-    ;; passed.
-    :else
-    (loop [width natural
-           r0 0N
-           slope (* sigma ordinary-stretch)
-           ks (seq kinks)]
-      (let [[k s] (first ks)
-            reach (when k (+ width (* slope (- k r0))))]
-        (if (or (nil? k) (<= available reach))
-          (+ r0 (/ (- available width) slope))
-          (recur reach k (+ slope (* sigma s)) (next ks)))))))
+     ;; Shrinking: every gap gives up the same share of its room above its own
+     ;; minimum, all of it at r = -1, and a raised gap stops at its shrinking
+     ;; kink. From r = 0 the slope is every ordinary gap's shrink, Σ natural −
+     ;; Σ min and what the raised gaps were raised by; at each shrinking kink,
+     ;; walked downwards, it drops by the shrink of the gaps that block there.
+     ;; The first piece is the fast path; without raised gaps, one division.
+     (< available natural)
+     (loop [width natural
+            r0 0N
+            slope (reduce (fn [x [k h]] (+ x (* h (+ 1 k)))) (- natural min) shrink-kinks)
+            ks (rseq shrink-kinks)]
+       (let [[k h] (first ks)
+             reach (when k (+ width (* slope (- k r0))))]
+         (if (or (nil? k) (>= available reach))
+           (+ r0 (/ (- available width) slope))
+           (recur reach k (- slope h) (next ks)))))
+
+     ;; Stretching: ordinary gaps stretch from r = 0; each prestretched gap
+     ;; joins at its kink. The first piece is the fast path. A positive ideal
+     ;; width for every interior, and a positive stretch weight wherever an
+     ;; ideal width is positive, guarantee a positive slope once all kinks are
+     ;; passed.
+     :else
+     (loop [width natural
+            r0 0N
+            slope (* sigma ordinary-stretch)
+            ks (seq kinks)]
+       (let [[k s] (first ks)
+             reach (when k (+ width (* slope (- k r0))))]
+         (if (or (nil? k) (<= available reach))
+           (+ r0 (/ (- available width) slope))
+           (recur reach k (+ slope (* sigma s)) (next ks))))))))
 
 (defn badness
   "Badness of a system with adjustment ratio r: c × |r|^e, capped at b_max.
@@ -1200,7 +1241,7 @@ The following implementation performs **Stage 3: System Breaking** - distributin
 
 (defn add-records
   "Adds records: their fixed widths and sums add, and their prestretched
-   pairs are concatenated."
+   pairs and raised triples are concatenated."
   [records]
   (reduce (fn [acc r]
             (-> acc
@@ -1208,8 +1249,9 @@ The following implementation performs **Stage 3: System Breaking** - distributin
                 (update :min + (:min r 0N))
                 (update :natural + (:natural r 0N))
                 (update :ordinary-ideal + (:ordinary-ideal r 0N))
-                (update :prestretched into (:prestretched r))))
-          {:fixed 0N :min 0N :natural 0N :ordinary-ideal 0N :prestretched []}
+                (update :prestretched into (:prestretched r))
+                (update :raised into (:raised r))))
+          {:fixed 0N :min 0N :natural 0N :ordinary-ideal 0N :prestretched [] :raised []}
           records))
 
 (defn find-optimal-breaks
@@ -1286,15 +1328,19 @@ The following implementation performs **Stage 3: System Breaking** - distributin
        ;; Try previous break at prefix length s (represents stacks 0..s-1)
        ;; System contains stacks s..t-1. Each step leftwards extends the
        ;; segment by stack s and, below t, the barline after it: their
-       ;; prestretched gaps join the accumulated kinks in O(P_s log P), and
-       ;; their weights the bound
+       ;; prestretched gaps join the accumulated kinks in O(P_s log P), their
+       ;; raised gaps the accumulated shrinking kinks likewise, and their
+       ;; weights the bound
        (loop [s (dec t)
               inner-kinks (sorted-map)
+              inner-shrink-kinks (sorted-map)
               bound 0N]
          (when (>= s 0)
            (let [inner? (< (inc s) t)
                  inner-kinks (cond-> (add-kinks inner-kinks (:prestretched (interior s)) sigma)
                                inner? (add-kinks (:prestretched (mid (inc s))) sigma))
+                 inner-shrink-kinks (cond-> (add-shrink-kinks inner-shrink-kinks (:raised (interior s)))
+                                      inner? (add-shrink-kinks (:raised (mid (inc s)))))
                  bound (cond-> (+ bound (weight (interior s)))
                          inner? (+ (weight (mid (inc s)))))
                  system-width (system-width-fn s t)]
@@ -1312,11 +1358,14 @@ The following implementation performs **Stage 3: System Breaking** - distributin
                (when (and (or (zero? s) (not (forbidden s)))
                           (some? (nth best s)))
                  (let [available (- system-width (segment s t :fixed))
-                       ;; The segment's kinks: the accumulated ones, and those of
-                       ;; start[s] and end[t] for this candidate alone
+                       ;; The segment's kinks on either side: the accumulated ones,
+                       ;; and those of start[s] and end[t] for this candidate alone
                        kinks (-> inner-kinks
                                  (add-kinks (:prestretched (start s)) sigma)
-                                 (add-kinks (:prestretched (end t)) sigma))]
+                                 (add-kinks (:prestretched (end t)) sigma))
+                       shrink-kinks (-> inner-shrink-kinks
+                                        (add-shrink-kinks (:raised (start s)))
+                                        (add-shrink-kinks (:raised (end t))))]
 
                    ;; The adjustment ratio, or nil when the minimums do not fit
                    ;; after the records' fixed widths: r >= -1 is feasibility
@@ -1325,7 +1374,8 @@ The following implementation performs **Stage 3: System Breaking** - distributin
                                              (segment s t :natural)
                                              (segment s t :ordinary-ideal)
                                              kinks
-                                             sigma)]
+                                             sigma
+                                             shrink-kinks)]
                      (let [b (badness r params)]
 
                        ;; Tolerance: badness within the optional bound
@@ -1347,7 +1397,7 @@ The following implementation performs **Stage 3: System Breaking** - distributin
                              (assoc! prev t s)
                              (assoc! ratio t r))))))))
 
-               (recur (dec s) inner-kinks bound))))))
+               (recur (dec s) inner-kinks inner-shrink-kinks bound))))))
 
      ;; Return results: breaks, and the ratio of each system, indexed by where it ends
      (let [prev (persistent! prev)
@@ -1365,14 +1415,14 @@ For each candidate segment [s, t):
 2. Take each sum from the derived prefix sums, `X(s,t) = U[t].X − U[s].X + δ[s].X + end[t].X`, in O(1) ([ADR-0058](0058-Variants-at-a-Break.md#what-stage-3-receives))
 3. Compute `available = system_width − fixed(s,t)`
 4. Check feasibility: `min(s,t) ≤ available`
-5. Solve for the adjustment ratio `r`: one division when shrinking, and when stretching until the segment's first kink; beyond it, the kinks in order, those of the interiors and inner mids accumulated as `s` moves left, and those of `start[s]` and `end[t]`
+5. Solve for the adjustment ratio `r`: one division until the segment's first kink on the side `available` lies, the greatest shrinking kink when shrinking and the least kink when stretching; beyond it, the kinks in order, those of the interiors and inner mids accumulated as `s` moves left, and those of `start[s]` and `end[t]`
 6. Compute its badness and, within the tolerance, the system's demerits; the records' fixed widths are fixed overhead and enter only through `available`
 
 The records' fixed widths are reserved space outside the springs; they do not participate in cost computation. `δ` is Stage 3's private arithmetic, not part of the contract: the records hold each form whole.
 
 **Feasibility condition:**
 
-Under the baseline, `Σ min_i ≤ available` is **necessary and sufficient**: every gap's shrink is its own room above its minimum, so every gap reaches its minimum at `r = −1` and none sooner ([Feasibility](#feasibility)). `solve-ratio` returns nil exactly when it fails.
+Under the baseline, `Σ min_i ≤ available` is **necessary and sufficient**: every gap's shrink is its room above its own minimum, so at `r = −1` every gap is at its blocking width, and none is ever below it ([Feasibility](#feasibility)). `solve-ratio` returns nil exactly when it fails.
 
 **Width Policy Function Examples**:
 
@@ -1398,11 +1448,11 @@ The DP subtracts the fixed widths of the system's records from the policy-provid
 
 `solve-ratio` finds the least `r` at which a segment's gaps fill the available width ([Gaps as Springs](#gaps-as-springs)):
 
-- **Infeasible**: `available < Σ min`, so no `r ≥ −1` fits.
-- **Shrinking**: `r = (available − Σ natural) / (Σ natural − Σ min)`, one division. Under the baseline every gap's shrink is its room above its minimum, so `Σ g_j(r)` is linear on `[−1, 0]`.
+- **Infeasible**: `available < Σ min`, so no `r ≥ −1` fits. At `available = Σ min`, `r = −1`.
+- **Shrinking**: from `r = 0` the segment shrinks at `Σ shrink` per unit of `r`, `Σ natural − Σ min` and what its raised gaps were raised by ([Gaps as Springs](#gaps-as-springs)). At each shrinking kink, in decreasing order, the slope drops by the shrink of the raised gaps that block there. The walk stops on the piece that contains `available`, and `r` is one division on it. Without raised gaps, the common case, `Σ g_j(r)` is linear on `[−1, 0]` and `r = (available − Σ natural) / (Σ natural − Σ min)`.
 - **Stretching**: from `r = 0` the segment grows at `σ × Σ ordinary ideal` per unit of `r`. At each kink, in increasing order, the slope grows by `σ × w` for the prestretched gaps that start to stretch there. The walk stops on the piece that contains `available`, and `r` is one division on it. When `available` is reached before the first kink, which is the common case, this is the fast path and costs what one scale factor per system does ([Fitting Rules](#fitting-rules), rule 1).
 
-The walk visits only the kinks below `r`. A balanced tree over the kinks carrying running sums of `w` would find the piece in O(log P) for `P` prestretched gaps in the segment; the linear walk is specified for clarity, since a segment holds few prestretched gaps and `r` passes few of them within any reasonable tolerance.
+Each walk visits only the kinks between 0 and `r`. A balanced tree over the kinks carrying running sums would find the piece in O(log P) for `P` prestretched or raised gaps in the segment; the linear walk is specified for clarity, since a segment holds few such gaps and `r` passes few of them within any reasonable tolerance.
 
 Every quantity is a rational, so `r` is exact and identical on every platform. The same function serves Stage 2, which uses it to reduce [constraints spanning several columns](#constraints-spanning-several-columns), and Stage 4, which uses it with each gap's stretch weight in place of its ideal width to place a stretched system ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)).
 
@@ -1421,7 +1471,7 @@ d = (l + b)² ± p²
 (let [available (- system-width (segment s t :fixed))
       r (solve-ratio available
                      (segment s t :min) (segment s t :natural) (segment s t :ordinary-ideal)
-                     kinks sigma)
+                     kinks sigma shrink-kinks)
       b (badness r params)
       d (demerits b (break-penalty-fn stacks s t) params)]
   ...)
@@ -1461,7 +1511,8 @@ This is the canonical cost definition under the ADR's contract, not an optimisat
    order: start[s], then each stack's interior, each followed by the mid of
    the barline after it except the last, then end[t] (ADR-0058). Each is
    {:fixed ratio, :gaps [{:w ideal, :b blocking, :s stretch weight} ...]}:
-   its fixed width, reserved outside the springs, and its gaps.
+   its fixed width, reserved outside the springs, and its gaps, a raised
+   gap with :b0, its own blocking width.
 
    Returns map with:
    - :fixed - per record, its fixed width
@@ -1470,7 +1521,7 @@ This is the canonical cost definition under the ADR's contract, not an optimisat
   [records r sigma]
   (let [placed-r (placement-ratio (into [] (mapcat :gaps) records) r sigma)
         gaps (mapv (fn [{record-gaps :gaps}]
-                     (mapv (fn [{:keys [w b s]}] (gap-width w b s placed-r sigma)) record-gaps))
+                     (mapv (fn [{:keys [w b s b0]}] (gap-width w b s placed-r sigma (or b0 b))) record-gaps))
                    records)]
     {:fixed (mapv :fixed records)
      :gaps gaps
@@ -1527,7 +1578,7 @@ Their springs, the leading gaps' two forms among them, are fitted with every oth
 
 The implementation fits each system by its gaps' springs. This is derivation (the exact solution of a piecewise-linear equation), not optimisation (an iterative solver):
 
-- **Ratio**: `r` is the least value with `Σ g_j(r) = available`: one division when shrinking, and when stretching until a prestretched gap starts to stretch
+- **Ratio**: `r` is the least value with `Σ g_j(r) = available`: one division when shrinking until a raised gap blocks, and when stretching until a prestretched gap starts to stretch
 - **Placement**: under stretching, Stage 4 shares the system's room out through the stretch weights, solving its own ratio with the same function (`placement-ratio`); `r`, the cost and the breaks are unchanged
 - **Reservation**: `available = system_width - fixed(s, t)`, the fixed widths of the system's records
 - **No clamp**: `g_j(r) = max(b_j, w_j + r × k_j)` never falls below the blocking width
@@ -1546,17 +1597,17 @@ The algorithm accepts an optional `break-penalty-fn` parameter with signature `(
 
 **Kinks**:
 
-The inner loop visits segments in a fixed order: for fixed `t`, `s` decreases from `t-1`, so each candidate segment `[s, t)` is the previous one extended by stack `s` and, below `t`, the barline after it. The prestretched gaps of `interior[s]` and `mid[s+1]` are added to a persistent sorted map of kinks, O(P_s log P) for `P_s` such gaps and `P` in the segment; those of `start[s]` and `end[t]` are added for the candidate alone, leaving the accumulated map as it was. The first kink, which decides whether a stretching segment takes the fast path, is the least of the interiors' and inner mids' and two lookups, `start[s]` and `end[t]` ([ADR-0058](0058-Variants-at-a-Break.md#what-stage-3-receives)). Rebuilding the map for each segment instead would cost O(P log P) per segment.
+The inner loop visits segments in a fixed order: for fixed `t`, `s` decreases from `t-1`, so each candidate segment `[s, t)` is the previous one extended by stack `s` and, below `t`, the barline after it. The prestretched gaps of `interior[s]` and `mid[s+1]` are added to a persistent sorted map of kinks, O(P_s log P) for `P_s` such gaps and `P` in the segment, and their raised gaps to a second map, of shrinking kinks, likewise; those of `start[s]` and `end[t]` are added for the candidate alone, leaving the accumulated maps as they were. The first kink on each side, which decides whether a segment takes the fast path, is the least kink and the greatest shrinking kink of the interiors' and inner mids' and two lookups, `start[s]` and `end[t]` ([ADR-0058](0058-Variants-at-a-Break.md#what-stage-3-receives)). Rebuilding the maps for each segment instead would cost O(P log P) per segment.
 
 **Segment Evaluation**:
 
 Each candidate segment (s, t) requires:
 1. **Sums**: O(1) for each quantity, `U[t] − U[s] + δ[s] + end[t]`
 2. **Feasibility**: O(1) from those sums
-3. **Kinks**: the prestretched gaps of `interior[s]` and `mid[s+1]` added to the accumulated sorted map, O(P_s log P), and those of `start[s]` and `end[t]` for the candidate
-4. **Cost**: the adjustment ratio, O(1) when shrinking and on the fast path when stretching, otherwise one step per kink passed; then badness and demerits from it
+3. **Kinks**: the prestretched and raised gaps of `interior[s]` and `mid[s+1]` added to the accumulated sorted maps, O(P_s log P), and those of `start[s]` and `end[t]` for the candidate
+4. **Cost**: the adjustment ratio, O(1) on the fast path on either side, otherwise one step per kink passed; then badness and demerits from it
 
-Every per-segment step is O(1) except where prestretched gaps take part.
+Every per-segment step is O(1) except where prestretched or raised gaps take part.
 
 **Rational Arithmetic Throughout**:
 - All numeric literals use `N` suffix: `0N`
@@ -1582,7 +1633,7 @@ Every per-segment step is O(1) except where prestretched gaps take part.
 **Prefix Sums for O(1) Queries**:
 - Derived once, O(N): for each quantity, `U`, the prefix sums of `u[i] = interior[i] + mid[i]` (with `mid[0]` empty), and `δ[s] = start[s] − mid[s]` ([ADR-0058](0058-Variants-at-a-Break.md#what-stage-3-receives))
 - A segment's sum in O(1): `U[t] − U[s] + δ[s] + end[t]`
-- Enables O(1) feasibility, and the adjustment ratio in O(1) when shrinking and on the fast path when stretching
+- Enables O(1) feasibility, and the adjustment ratio in O(1) on the fast path on either side
 - Must use `0N` in reductions to maintain ratio domain
 - `δ` is Stage 3's private arithmetic, not part of the contract: the records hold each form whole, and nothing in Stage 3 depends on which form is wider
 - The tie-break terms `2^−t` are precomputed once, one per breakpoint
@@ -1606,8 +1657,8 @@ Every per-segment step is O(1) except where prestretched gaps take part.
 | Inner loop | O(K) typical | Early termination once the bound exceeds the full system width |
 | Sums | O(1) | `U[t] − U[s] + δ[s] + end[t]` per quantity |
 | Feasibility check | O(1) | From the segment's sums |
-| Kinks | O(P_s log P) | Those of `interior[s]` and `mid[s+1]` added to the accumulated map; those of `start[s]` and `end[t]` per candidate |
-| Cost computation | O(1) fast path | Adjustment ratio from prefix sums; one step per kink passed when a prestretched gap starts to stretch; badness and demerits from it |
+| Kinks | O(P_s log P) | Those of `interior[s]` and `mid[s+1]` added to the accumulated maps; those of `start[s]` and `end[t]` per candidate |
+| Cost computation | O(1) fast path | Adjustment ratio from prefix sums; one step per kink passed when a raised gap blocks or a prestretched gap starts to stretch; badness and demerits from it |
 | **Total (worst case)** | O(N²) | Without early termination |
 | **Total (typical)** | O(N×K) | With monotone width policy, K ≈ 15 |
 | Page breaking | O(S²) | S = number of systems |
@@ -1628,7 +1679,7 @@ This section defines the relationship once. Elsewhere in this ADR, "Knuth-Plass"
 | Natural width of glue | Ideal distance between atom origins, `w_j` |
 | (none) | Blocking width `b_j`, the distance at which the atoms on either side collide |
 | Stretchability of glue | `σ × w_j` in the baseline, with `σ` a parameter |
-| Shrinkability of glue | `max(0, w_j − b_j)` in the baseline, the gap's room above its minimum |
+| Shrinkability of glue | `max(0, w_j − b⁰_j)` in the baseline, the gap's room above its own minimum |
 | Legal breakpoint | Legal break position, normally a barline |
 | Discretionary break: pre-break, post-break and no-break material | Every barline: `end[k]`, `start[k]` and `mid[k]` ([ADR-0058](0058-Variants-at-a-Break.md#every-barline-is-a-discretionary-break)). The post-break material includes glue, the leading gap's system-start form, which TeX's discretionaries cannot hold |
 | Line length | System width less the fixed widths of the system's records |
@@ -1638,7 +1689,7 @@ This section defines the relationship once. Elsewhere in this ADR, "Knuth-Plass"
 | Line penalty `l` | Per-system penalty `l` |
 | Tolerance | Optional bound on badness |
 
-**The springs as an extension of glue**: a spring is glue with a blocking width. Where no gap is blocked or prestretched, `Σ g_j(r)` is linear in `r` and the adjustment ratio is Knuth–Plass's single division. A prestretched gap, `b_j > w_j`, adds a kink where it starts to stretch. Under the baseline's shrink every gap blocks exactly at `r = −1`, so the shrinking side has no kinks. `r = −1` is the system's collision limit, so Knuth–Plass's condition `r ≥ −1` is the feasibility condition `Σ min ≤ available` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)).
+**The springs as an extension of glue**: a spring is glue with a blocking width. Where no gap is blocked, raised or prestretched, `Σ g_j(r)` is linear in `r` and the adjustment ratio is Knuth–Plass's single division. A prestretched gap, `b_j > w_j`, adds a kink where it starts to stretch. Under the baseline's shrink every gap blocks at `r = −1`, but a raised gap, which a constraint spanning several columns holds open, blocks sooner, at its shrinking kink, and so adds a kink on the shrinking side. `r = −1` is the system's collision limit, so Knuth–Plass's condition `r ≥ −1` is the feasibility condition `Σ min ≤ available` ([Calibrating the Adjustment Ratio](#calibrating-the-adjustment-ratio)).
 
 **In the baseline**: the adjustment ratio, cubic badness, demerits with the per-system penalty, breakpoint penalties through `break-penalty-fn`, and the tolerance are Knuth–Plass's own, with parameters to be settled by validation.
 
@@ -1647,7 +1698,7 @@ This section defines the relationship once. Elsewhere in this ADR, "Knuth-Plass"
 - Fitness classes, including classes for different kinds of system endings (the evenness forms are not adopted; see [Consistency Between Adjacent Systems](#consistency-between-adjacent-systems))
 - Looseness
 
-**The reduction is preserved**: each stack's interior and each barline's records are a fixed width, three sums and their prestretched gaps. Prefix sums derived from them give feasibility in O(1), and the adjustment ratio in O(1) when shrinking and, when stretching, up to the segment's first kink; beyond it the segment's sorted kinks are walked in order. Each system's cost still depends on the segment alone.
+**The reduction is preserved**: each stack's interior and each barline's records are a fixed width, three sums, their prestretched gaps and their raised gaps. Prefix sums derived from them give feasibility in O(1), and the adjustment ratio in O(1) up to the segment's first kink on the side `available` lies; beyond it the segment's sorted kinks are walked in order. Each system's cost still depends on the segment alone.
 
 **Exactness and DP state**: The baseline's cost has no term linking adjacent systems, so one DP node per breakpoint is enough for the result to be exact. The springs keep that. Two extensions need more state:
 
@@ -1669,7 +1720,7 @@ The reduction is what matters: by solving vertical coordination, symbol collisio
 
 **What the widths mean**:
 
-`ideal_width` encodes rhythmic proportionality, which has musical meaning, and `min_width` encodes collision, which has physical meaning. The springs keep both. Gaps free to stretch keep their proportions under stretching, and a gap the music needs wider than its proportion gets exactly the room its collision requires. Under compression proportionality is given up, gap by gap, in proportion to each gap's room above its minimum; the choice of shrink expresses how ([Fitting Rules](#fitting-rules)). The rigid blocks and rows at a break, and what only a barline inside a system has, are fixed overhead, outside the springs; the approach from a preamble to the first note is a spring, the leading gap's system-start form ([ADR-0058](0058-Variants-at-a-Break.md)).
+`ideal_width` encodes rhythmic proportionality, which has musical meaning, and `min_width` encodes collision, which has physical meaning. The springs keep both. Gaps free to stretch keep their proportions under stretching, and a gap the music needs wider than its proportion gets exactly the room its collision requires. Under compression proportionality is given up, gap by gap, in proportion to each gap's room above its own minimum, and a constraint spanning several columns takes room only once it binds; the choice of shrink expresses how ([Fitting Rules](#fitting-rules)). The rigid blocks and rows at a break, and what only a barline inside a system has, are fixed overhead, outside the springs; the approach from a preamble to the first note is a spring, the leading gap's system-start form ([ADR-0058](0058-Variants-at-a-Break.md)).
 
 **Architectural prerequisites**:
 
@@ -1751,7 +1802,7 @@ Stage 3 draws on three lineages: optimal breaking by dynamic programming, a mode
 
 - **Hegazy and Gourlay** (1987), above: springs through boxes, blocking widths, prestretched springs, and the force of a line as a piecewise-linear function.
 
-- **LilyPond**: `lily/spring.cc` (Joe Neeman, from 2007) defines a spring by its ideal distance, its minimum distance and its inverse stretch and compression strengths. Its length under a force is the larger of the minimum and the ideal plus force times flexibility, with a blocking force below which the length is constant, including the case in which the minimum exceeds the ideal: Hegazy and Gourlay's spring. By default a spring compresses by its room above its minimum (`Spring::set_default_compress_strength`), as in this ADR's baseline, and a note's spring stretches in proportion to the space between bare noteheads (`Spacing_spanner::note_spacing` in `lily/spacing-basic.cc`). Minimum distances spanning several columns, its "rods", are reduced to blocking forces on the springs they span (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`): a spring keeps its flexibility and holds its length below the blocking force, which is the exact form of the reduction under [Constraints Spanning Several Columns](#constraints-spanning-several-columns); Ooloi's baseline instead recomputes each raised gap's shrink from its new blocking width. LilyPond solves the spacing afresh for every candidate line.
+- **LilyPond**: `lily/spring.cc` (Joe Neeman, from 2007) defines a spring by its ideal distance, its minimum distance and its inverse stretch and compression strengths. Its length under a force is the larger of the minimum and the ideal plus force times flexibility, with a blocking force below which the length is constant, including the case in which the minimum exceeds the ideal: Hegazy and Gourlay's spring. By default a spring compresses by its room above its minimum (`Spring::set_default_compress_strength`), as in this ADR's baseline, and a note's spring stretches in proportion to the space between bare noteheads (`Spacing_spanner::note_spacing` in `lily/spacing-basic.cc`). Minimum distances spanning several columns, its "rods", are reduced to blocking forces on the springs they span (`Simple_spacer::add_rod` in `lily/simple-spacer.cc`): `Spring::set_blocking_force` sets a spring's minimum to its length at the rod's force and recomputes only its blocking force, never its compression strength, so the spring keeps its flexibility and holds its length below that force, as a raised gap does under [Constraints Spanning Several Columns](#constraints-spanning-several-columns). LilyPond solves the spacing afresh for every candidate line.
 
 - **MuseScore**: when a system is justified (`HorizontalSpacing::justifySystem` and `stretchSegmentsToWidth` in `src/engraving/rendering/score/horizontalspacing.cpp`), each segment is a spring whose stiffness comes from its duration, and a segment already wider than its duration warrants, from a collision, does not stretch until the force reaches it: the stretching half of the model. Compression is handled separately, by re-spacing with reduced paddings and duration spacing in steps.
 
@@ -1780,7 +1831,7 @@ Each breaker is described against its own cost: whether the result it returns is
 
 - The combination of the three lineages over stack interiors and barline records, structured so that full Knuth–Plass remains available
 - Every barline as TeX's discretionary, with three records known to the DP before it chooses breaks, which Hegazy and Gourlay pointed to for music without working it out; what is specific is the formulation, `start[s] + Σ interior + Σ mid + end[t]` under one index convention, post-break material that includes glue, and an exact early-termination bound that counts only the records a system certainly uses ([ADR-0058](0058-Variants-at-a-Break.md))
-- Blocking springs summarised so that feasibility is O(1), and the adjustment ratio O(1) except where prestretched gaps take part, with constraints spanning several columns reduced before breaking
+- Blocking springs summarised so that feasibility is O(1), and the adjustment ratio O(1) except where prestretched or raised gaps take part, with constraints spanning several columns reduced before breaking
 - Exact rational arithmetic and a tie-break that depends only on the configuration, giving identical results on every platform and after any editing history
 - Exact re-optimisation after an edit, from forward and backward tables (the technique has precedent in text layout)
 - Use inside a collaborative editor, where every client must see the same layout (PriMus's author reports interactive total-fit breaking; the collaborative determinism is specific)
@@ -1807,7 +1858,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 6. **Cheap recomputation** - An edit re-runs Stage 3 over cached scalar metrics, without repeating upstream work for unchanged stacks
 7. **Variable system widths** - Natural handling of final systems, editorial overrides, margins and layout settings
 8. **Clean stage separation** - No feedback loops with connecting elements or decorations
-9. **Performance** - O(N×K) segment evaluations, each O(1) except where prestretched gaps take part
+9. **Performance** - O(N×K) segment evaluations, each O(1) except where prestretched or raised gaps take part
 10. **Rational arithmetic** - No floating-point drift across platforms
 11. **Predictability** - Users can mentally model system behavior
 12. **Stretch weights that never move a system break** - Which gaps take a stretched system's room is decided in Stage 4, after the breaker has priced the room: the weights change no cost, ratio or system break
@@ -1824,7 +1875,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 4. **Policy-free core** - Algorithm is purely geometric by default; editorial preferences can be added via optional `break-penalty-fn` without modifying the core
 5. **Record storage** - Each barline carries three records beside each stack's interior, and the preamble table one entry per combination of clefs and keys; Stage 3 derives its prefix sums once; overhead is minimal
 6. **Global breaks** - The break configuration is a global optimum, so an edit can change system breaks anywhere between the forced breaks around it, before the edit as well as after it. Breaks stay where they are only where the user fixes them, with forced breaks or frozen systems; keeping the user oriented is presentation ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece))
-7. **Springs, not one scale factor** - Stage 4 fills each system gap by gap, and each record's input to Stage 3 includes a short list of its prestretched gaps besides its sums
+7. **Springs, not one scale factor** - Stage 4 fills each system gap by gap, and each record's input to Stage 3 includes short lists of its prestretched and raised gaps besides its sums
 
 **Future Considerations:**
 

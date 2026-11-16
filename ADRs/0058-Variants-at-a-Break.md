@@ -105,7 +105,7 @@ start[s]  +  Σ interior[i]  +  Σ mid[k]  +  end[t]
              s ≤ i < t         s < k < t
 ```
 
-Each record is a few numbers: fixed width (rigid blocks, rows and fixed space), the minimum, natural and ordinary ideal sums of its springs, and its prestretched pairs. The formula is the whole contract between Stage 2 and Stage 3.
+Each record is a few numbers: fixed width (rigid blocks, rows and fixed space), the minimum, natural and ordinary ideal sums of its springs, its prestretched pairs, and its raised gaps, those whose blocking width a constraint spanning several columns has raised. The formula is the whole contract between Stage 2 and Stage 3.
 
 **Grouping is not ownership.** A stack's leading gap is computed from its own measure, by the same rules and in the same stage as the measure's other gaps; it is grouped with the barline before it because that is where its two forms differ. An override of a measure's widths reaches its leading gap, since Stage 2 applies overrides before it groups ([ADR-0055](0055-Horizontal-Spacing.md#user-inputs)).
 
@@ -164,7 +164,7 @@ There is therefore no separate area for system-start decorations, no gutter, and
 - **Its settings** are those of the kind of the row's last item: a key change after a key signature, a time change after a time signature, a clef after a clef alone, a barline after a start repeat. The widths follow ADR-0055's formula after a barline, with that kind's `D`, `m` and `m_min`, and `e` the reach of the first atom's ink left of its origin (V1 asks whether a set of its own is better).
 - **The first atom's system-start contour.** Stage 1 supplies, for every atom that can stand first in a system, the contour it has there: courtesy accidentals for tied-to notes, as ink before its origin. They are graphical, not semantic ([ADR-0035](0035-Remembered-Alterations.md)), and always reserved, whatever the courtesy setting: whether a system starts a page is decided in Stage 6, after Stage 3.
 - **Continuations ending at the first atom**, a tie continuation or a glissando end, are constraints from the wall to that atom. Each needs its minimum length plus its clearances (V11), and enters the start form's blocking width. Stage 5 draws it into the room the spring gives, as it widens a ledger line into the room its minimum form reserved ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). Where a requirement exceeds the ideal width, the gap is prestretched and enters Stage 3 as a kink, as any prestretched gap does. Continuations ending further into the system are break forms ([Break Forms of Constraints Across a Barline](#break-forms-of-constraints-across-a-barline)).
-- **Elasticity** is ADR-0037's baseline: shrink `max(0, w′ − b′)`, priced stretch `σ × w′`. In Stage 4 its stretch weight is `k_D × D` of its kind, as after a barline, so after a key or time signature (`k_D` = 0) it does not stretch. After a clef alone, V2 decides.
+- **Elasticity** is ADR-0037's baseline: shrink `max(0, w′ − b′⁰)`, `b′⁰` its own blocking width, which a constraint spanning several columns may have raised `b′` above ([ADR-0037](0037-Measure-Distribution-Optimization.md#gaps-as-springs)), priced stretch `σ × w′`. In Stage 4 its stretch weight is `k_D × D` of its kind, as after a barline, so after a key or time signature (`k_D` = 0) it does not stretch. After a clef alone, V2 decides.
 - **The start form may be wider or narrower than the mid-system form**, in ideal and in blocking width: no barline's least distance applies at a system start, and the kinds' settings differ. The records hold each form whole, so nothing in Stage 3 depends on which is wider.
 
 ![The leading gap's mid-system and system-start forms, at normal width and at full compression](../img/variants-at-a-break/leading-gap-two-forms.png)
@@ -214,7 +214,8 @@ flowchart LR
 ;; a record: what its material adds to a system
 {:fixed ratio                                     ;; rigid blocks, rows, fixed space
  :min ratio :natural ratio :ordinary-ideal ratio  ;; sums over its springs
- :prestretched [[w b] ...]}                       ;; its prestretched pairs, the kinks
+ :prestretched [[w b] ...]                        ;; its prestretched pairs, the kinks
+ :raised [[w b b0] ...]}                          ;; its raised gaps, the shrinking kinks
 ```
 
 Every interior has a positive ideal width, its `:ordinary-ideal` and the ideal widths of its prestretched pairs together, so that every segment can stretch, as [ADR-0037](0037-Measure-Distribution-Optimization.md#interface-contract) requires of every stack.
@@ -226,8 +227,8 @@ X(s,t)         = start[s].X + Σ_{s≤i<t} interior[i].X + Σ_{s<k<t} mid[k].X +
 available(s,t) = system_width − fixed(s,t)
 ```
 
-- **Feasibility** is `min(s,t) ≤ available(s,t)`, necessary and sufficient as before, since every shrink is its own room above its minimum.
-- **Solving for `r`** is ADR-0037's: one division when shrinking, the fast path when stretching up to the first kink. The segment's kinks are its records' prestretched pairs; the first is the least of two range minima, over the interiors and the mids, and two lookups, `start[s]` and `end[t]`.
+- **Feasibility** is `min(s,t) ≤ available(s,t)`, necessary and sufficient as before, since every shrink is the gap's room above its own minimum, so every gap is at its blocking width at `r = −1` and none is ever below it.
+- **Solving for `r`** is ADR-0037's: the fast path on either side up to the first kink there. The segment's kinks are its records' prestretched pairs, and its shrinking kinks their raised gaps; the first of each, the least kink and the greatest shrinking kink, comes from two range extrema, over the interiors and the mids, and two lookups, `start[s]` and `end[t]`.
 - **Exactness.** Every term comes from `start[s]`, `end[t]` or a sum over the segment, so each system's cost depends on the segment alone and the DP stays exact.
 
 **Stage 3 derives its sums itself**, once, in O(N). With `u[i] = interior[i] + mid[i]` (and `mid[0]` empty), `U` its prefix sums, and `δ[s] = start[s] − mid[s]`:
