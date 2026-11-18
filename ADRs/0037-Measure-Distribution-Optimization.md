@@ -109,7 +109,7 @@ Accepted
 │  ┌─────────────────────────────────────────────────────────────────┐    │
 │  │  Stage 4: ATOM POSITIONING (Fan-out per Measure)                │    │
 │  │  Fill each system's width through its gaps' springs             │    │
-│  │  g_j = max(b_j, w_j + r × k_j)                                  │    │
+│  │  at a ratio r′ of its own; r and the breaks unchanged           │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 │                                    │                                    │
 │                                    ▼                                    │
@@ -1489,7 +1489,7 @@ d = (l + b)² ± p²
   ...)
 ```
 
-This is the canonical cost definition under the ADR's contract, not an optimisation of a more complex one. The `r` it uses is the ratio every gap of the system receives in Stage 4 under compression; under stretching the stretch weights share the same room out at a ratio of their own and never change `r` ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)).
+This is the canonical cost definition under the ADR's contract, not an optimisation of a more complex one. The `r` it uses is Stage 3's price of the system; Stage 4 places the system at a ratio of its own, in proportion to the ideal widths under compression and through the stretch weights under stretching, and never changes `r` ([Width Allocation](#width-allocation-applying-the-adjustment-ratio)).
 
 ### Width Allocation Implementation
 
