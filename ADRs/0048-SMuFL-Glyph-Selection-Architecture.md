@@ -253,7 +253,7 @@ These are added to the unified class registry alongside classes from `classes.js
 
 ### Font Coverage
 
-Ooloi bundles 10 SMuFL fonts. The tables below also include [November 2](https://www.klemm-music.de/notation/november2/) --- a commercial font (not bundled) that Ooloi recommends as its primary notation font. Notation examples throughout Ooloi's documentation use November 2. It is available separately from Klemm Music Technology.
+Ooloi bundles 10 SMuFL fonts. The tables below also include [November 2](https://www.klemm-music.de/notation/november2/) --- a commercial font (not bundled) that Ooloi recommends as its primary notation font. Ooloi's documentation draws its notation examples in November 2 and in Bravura. It is available separately from Klemm Music Technology.
 
 Glyph counts include both standard glyphs (from `glyphBBoxes`) and optional glyphs (from `optionalGlyphs`). Data extracted from the companion metadata JSON files shipped with each font.
 

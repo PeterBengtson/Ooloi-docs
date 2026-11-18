@@ -182,5 +182,5 @@ A figure an ADR needs before the model can compute it is a mock-up, and its capt
 
 - Hegazy, W.A. and Gourlay, J.S. "Optimal line breaking in music", Technical Report OSU-CISRC-8/87-TR33, The Ohio State University (1987) — the springs the model computes
 - Ross, T. *The Art of Music Engraving and Processing* (1970) — the tables of sit, straddle and hang the model's beams are checked against
-- [Bravura](https://github.com/steinbergmedia/bravura) — the font whose outlines the figures are drawn from
+- [Bravura](https://github.com/steinbergmedia/bravura) and [November 2](https://www.klemm-music.de/notation/november2/) — the fonts whose outlines the figures are drawn from
 - [Skia](https://skia.org) — the rasteriser the reference implementation renders with
