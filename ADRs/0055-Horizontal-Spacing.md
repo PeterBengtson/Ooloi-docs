@@ -36,6 +36,7 @@ The architecture is decided: the forms in which horizontal engraving rules reach
     - [The Space Around a Barline](#the-space-around-a-barline)
     - [Accidental Position](#accidental-position)
     - [Stays Nearer Its Own Note](#stays-nearer-its-own-note)
+    - [Notehead Scale](#notehead-scale)
   - [User Inputs](#user-inputs)
   - [Inspection](#inspection)
   - [Invariants and Property Tests](#invariants-and-property-tests)
@@ -545,6 +546,26 @@ The previous atom is the nearest earlier atom in the same staff, whatever column
 
 **Values.** The setting is on by default, which matches the plate-engraving tradition most closely, and `k` starts at 1.
 
+#### Notehead Scale
+
+A house style may draw the black noteheads of some written values smaller than the font's regular head while keeping the spacing the regular head is given, as Durand's 1909 plate of Ravel's *Ondine* appears to set its thirty-seconds, which lightens a dense texture. The notehead scale is a setting: a table from a written value to a scale, above 0 and at most 1, every value 1 by default.
+
+- **Keyed on the written value.** Dots and tuplet ratios leave the entry unchanged: a dotted thirty-second and a thirty-second in a triplet take the thirty-second's scale.
+- **Black noteheads only**, every written value among them settable.
+- **The font's own head, scaled.** A font's small notehead glyph is not used: it is an optical variant for small staves, not a smaller head. Bravura's `noteheadBlackSmall`, 1.408 × 1.128 staff spaces, is larger than its `noteheadBlack`, 1.18 × 1.0.
+
+**Read in Stage 5 only.** Stages 1 to 4 compute from the regular head: contours, ideal and blocking widths, rhythmic order, accidentals' tightest offsets and ledger lines' minimum forms. The scale therefore moves no note and no system break (Invariant 16), and what Stage 5 draws stays within the contour Stage 1 reserved for the regular head ([What Stage 5 may change](#atoms-and-contours), Invariant 1).
+
+**The drawn head** is the regular glyph scaled about its baseline, so that it stays centred on its line or space, and about its stem anchor's x (`stemDownNW` for a down-stem, `stemUpSE` for an up-stem; for a stemless note, the side its stem would take), then moved away from its stem by the least distance that keeps it inside the regular head's outline profiles, band by band. Scaled about its baseline alone, a tilted head would stand outside them on its stem side, by up to 0.009 staff spaces at a scale of 0.9 in the bundled fonts. The stem is unchanged.
+
+**Its ledger lines** are measured from the drawn head: each end reaches at most the full extension `E` past it, and at least its minimum protrusion past it, `B` where it meets the note's own accidental and `B′` elsewhere ([Minimum Protrusion](#minimum-protrusion)). Stage 1 reserved each line at its minimum past the regular head, so Stage 5 only shortens it.
+
+**Its accidental** keeps the white it has to its notehead: it moves in by the head's retreat, its contact with the regular head less its contact with the drawn one on the outline profiles, never nearer the note's other ink than its least distance, nor its own ledger lines at their minimum past the drawn head than its distance from them. The drawn head lies inside the regular one, so the accidental only ever moves in, into room its own head left, and its distance from its own notehead, which stays nearer its own note reads, is what it was.
+
+**Shared noteheads.** Column assembly decides in Stage 1 whether voices at a unison share a notehead as if every scale were 1 ([H5](#h5-column-assembly)), so that the scale stays out of Stage 1; Stage 5 draws a shared head at the largest scale among the notes sharing it.
+
+**Values.** Every scale is 1 by default, which draws every notehead at the font's size. Which values a house style scales, and by how much, is for the plates ([The Exploration](#the-exploration)).
+
 ### User Inputs
 
 **Column drags.** The user sees the columns on the page and can drag them. A drag is stored as a transfer of ideal width between the column's two neighbouring gaps: the gap on the side the column moves toward loses `Δ`, and the gap on the other side gains it.
@@ -614,8 +635,8 @@ The boundary between Stages 1–2 and Stage 3 is specified by properties, tested
 12. **Weights equal to the ideal widths are the priced springs.** Stage 4, run with every gap's stretch weight equal to its ideal width, places every stretched system at the ratio the breaker priced: a test of Stage 4's solver against Stage 3.
 13. **Minimum protrusions only reserve.** Raising `B` or `B′` never narrows a blocking width, and changes no ideal width or stretch weight.
 14. **The full extension holds.** At `B = :full`, no ledger-line end that faces its own note's accidental is drawn shorter than `E`.
-15. **Every end at or beyond its minimum.** Every ledger-line end is drawn at or above its minimum protrusion, in every system.
-16. **Stage 5 settings never move a note.** Changing a setting read only in Stage 5, such as the accidental position or stays nearer its own note, changes no width, record, ratio or system break; only what Stage 5 draws.
+15. **Every end at or beyond its minimum.** Every ledger-line end is drawn at or above its minimum protrusion, in every system, measured from the notehead as drawn ([Notehead Scale](#notehead-scale)).
+16. **Stage 5 settings never move a note.** Changing a setting read only in Stage 5, such as the accidental position, stays nearer its own note or the notehead scale, changes no width, record, ratio or system break; only what Stage 5 draws.
 17. **An accidental stays nearer its own note where it can.** With that setting on, every accidental in every system has `d_prev ≥ k × d_own`, unless even its tightest offset cannot give it; such an accidental stands at its tightest offset, and the failure is reported.
 18. **A barline guards every height.** At every ratio, no ink before or after a barline, above, below or within the staff, stands nearer the barline than its least distance at that ratio: `q` for a stroke, otherwise `m` at normal width and above, and under compression a distance between `m` and `m_min` in proportion to the ratio. A postamble's ink is held the same way ([ADR-0058](0058-Variants-at-a-Break.md#invariants-and-property-tests) Invariant 8).
 19. **A change after a barline keeps the barline's distance.** At every ratio, a key or time change after a barline stands at the barline's least distance at normal width, the first item of a rigid row ([ADR-0058](0058-Variants-at-a-Break.md#rows-of-items-are-rigid-wherever-they-stand)), and no Stage 5 adjustment moves it nearer.
@@ -717,7 +738,7 @@ The values of the clearances ([Blocking Widths](#blocking-widths)): between ink 
 
 ### H5: Column assembly
 
-The rules for seconds in chords, offsets between voices (including which voice is displaced), shared unisons, stacking accidentals, aligning dots and placing arpeggio signs. They may warrant a decision of their own. This ADR fixes that they run in Stage 1 and produce the atom's geometry, including, for an accidental, its minimum and comfortable distances from its notehead ([H22](#h22-minimum-forms)).
+The rules for seconds in chords, offsets between voices (including which voice is displaced), shared unisons, stacking accidentals, aligning dots and placing arpeggio signs. They may warrant a decision of their own. This ADR fixes that they run in Stage 1 and produce the atom's geometry, including, for an accidental, its minimum and comfortable distances from its notehead ([H22](#h22-minimum-forms)), and that a unison is shared or offset as if every notehead were at its regular size ([Notehead Scale](#notehead-scale)).
 
 ### H6: Ledger lines
 
@@ -945,7 +966,7 @@ Within a measure, a clef, key or time change is ink before the column that follo
   - A measure reads the clef the next measure begins with, which it draws before its closing barline ([The Bar Boundary](#the-bar-boundary)).
   - A change to a setting read only for the stretch weights re-runs Stage 2's stretch weights and the stages from Stage 4 on, never Stage 1 or Stage 3 ([The Stretch Weight](#the-stretch-weight)).
   - Stage 1 re-runs for a measure when its content changes, when the clef the next measure begins with changes, and when a font or a setting that changes its glyph geometry changes, such as a minimum protrusion; a spacing parameter alone never re-runs it.
-  - A setting read only in Stage 5, such as the accidental position or stays nearer its own note, re-runs Stage 5 and what follows it, never an earlier stage ([Spacing Settings](#spacing-settings)).
+  - A setting read only in Stage 5, such as the accidental position, stays nearer its own note or the notehead scale, re-runs Stage 5 and what follows it, never an earlier stage ([Spacing Settings](#spacing-settings)).
 - **ADR-0037:**
   - Its `ADR-00XX` references point here.
   - Where it places ideal widths or blocking widths in Stage 1, they become Stages 1–2: Stage 1 supplies the geometry, Stage 2 the widths. This affects Ideal Width Semantics, Fitting Rules (including its note on who pays) and How Complete Information Enables Optimality; the material at a break is [ADR-0058](0058-Variants-at-a-Break.md)'s.
