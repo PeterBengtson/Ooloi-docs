@@ -123,15 +123,15 @@ SMuFL makes every key of a font's metadata optional except `fontName` and `fontV
 
 A font's glyph profiles are computed once per font file, by the function [ADR-0056](0056-Glyph-Geometry-from-Outlines.md#frozen-as-data) specifies, and read wherever they are needed after that.
 
-- **A bundled font's profiles are part of the application.** They are computed by that function and committed with the application's sources, as resources beside the font, under its content hash and the algorithm's version. They are read when the font is loaded ([Font Registry Component](#font-registry-component)). They are never copied out of the application: unlike the translation catalogues ([ADR-0039](0039-Localisation-Architecture.md)), profiles are derived data that nobody edits.
+- **A bundled font's profiles are part of the application.** They are computed by that function and committed with the application's sources, one file beside each font file, which records the font's content hash and the algorithm's version; loading checks both against the font and reads nothing that does not match. They are read when the font is loaded ([Font Registry Component](#font-registry-component)). They are never copied out of the application: unlike the translation catalogues ([ADR-0039](0039-Localisation-Architecture.md)), profiles are derived data that nobody edits.
 - **Any other font's profiles are cached in the platform directory**, in `glyph-profiles` under the directory `get-platform-directory` gives: `~/.ooloi/glyph-profiles` on macOS and Linux, `%APPDATA%\Ooloi\glyph-profiles` on Windows. There is one file per font file and algorithm version, named by both. When such a font is registered and its file is not there, its profiles are computed in the background on two threads and the file is written atomically, so that a partial file is never read as a complete one. The file is read when the font is loaded; a file that cannot be read is computed again.
 - **Nothing else invalidates a cache.** A changed font file has another content hash and a changed algorithm another version; a cache under either is never read.
 
-Computing a font's profiles takes from tens of seconds to a few minutes, depending on the font; reading a set takes under a third of a second ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#consequences)).
+Computing a font's profiles takes from tens of seconds to a few minutes, depending on the font; reading a set takes under a second ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#consequences)).
 
 ### Bundled Fonts
 
-Ooloi ships with ten SMuFL-compliant notation fonts as JAR resources in `shared/resources/smufl-fonts/`, each with its companion SMuFL metadata JSON. Companion text fonts for lyrics, expression markings, and other text-alongside-music live in `shared/resources/music-text-fonts/`.
+Ooloi ships with ten SMuFL-compliant notation fonts as JAR resources in `shared/fonts/smufl-fonts/`, each with its companion SMuFL metadata JSON. Companion text fonts for lyrics, expression markings, and other text-alongside-music live in `shared/fonts/music-text-fonts/`. `shared/fonts/` is a resource root of its own, on the classpath of all three projects: the standalone backend lays pieces out with the fonts and their profiles, the frontend draws with them, and the packaged application holds each file once.
 
 **Bundled notation fonts:**
 
