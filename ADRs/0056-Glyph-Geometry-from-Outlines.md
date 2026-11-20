@@ -150,7 +150,7 @@ How spacing uses the geometry is [ADR-0055](0055-Horizontal-Spacing.md)’s to d
 
 ## Invariants and Property Tests
 
-Each invariant is a property test over every glyph of every bundled font, and over generated outlines.
+Each invariant is a property test over every glyph of every bundled font, and over generated outlines, but for Invariants 3 and 10, whose tests compute again only the glyphs Invariant 9 holds in full.
 
 1. **Never inside the ink.** Points sampled on every curve at rational parameters, evaluated exactly, lie within the glyph’s profiles in their bands.
 2. **Close to the ink.** In every band, a profile lies within the tolerance of the farthest sampled point in that band, the band widened by the tolerance at each edge: a piece that straddles a band’s edge may carry ink from just across it.
@@ -161,7 +161,7 @@ Each invariant is a property test over every glyph of every bundled font, and ov
 7. **Layout never computes.** No formatting stage reads an outline; a test that removes outline access after registration leaves every layout unchanged.
 8. **Exact transformations.** Scaling a profile by a rational factor equals computing it from the outline scaled by the same factor, within the tolerance scaled likewise; a mirrored glyph’s profiles are its original’s, exchanged.
 9. **Agreement with the reference model.** The reference model ([ADR-0057](0057-Reference-Model-of-the-Spacing-Pipeline.md#one-model-two-implementations)) exports, for every glyph of every bundled font, a SHA-256 digest of its four profiles as stored, in the order of the glyphs’ indices; and in full, for the glyphs it reads and for a few in each font that between them execute every charstring operator the font’s outlines use, the profiles themselves. Ooloi’s shipped profiles are equal to them, compared exactly: their digests are computed from the shipped files, so the test computes no profile, and a mismatch names the glyphs that differ.
-10. **The shipped sets are current.** The profiles shipped with each bundled font are those the function computes from its file at the algorithm’s current version.
+10. **The shipped sets are current.** The profiles shipped with each bundled font are those the function computes from its file at the algorithm’s current version. The tests compute again the glyphs Invariant 9 holds in full, compare them exactly with the shipped sets and check each set’s recorded content hash and version, on every platform the tests run on; computing every glyph of every bundled font again and comparing it with the shipped sets is a run of its own, made when the algorithm, the outline reader or a bundled font changes.
 
 The figures above are generated from Bravura’s outlines by the same algorithm, so they double as worked examples of these properties.
 
