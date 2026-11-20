@@ -4,7 +4,7 @@
 
 Accepted
 
-The decision is made: layout reads glyph geometry from the fonts’ outlines, through profiles computed once per font file and frozen as data. The band grid, the tolerance, the library that reads outlines and three narrower questions are open items, G1 to G6, settled during implementation and [ADR-0055](0055-Horizontal-Spacing.md#the-exploration)’s exploration.
+The decision is made: layout reads glyph geometry from the fonts’ outlines, through profiles computed once per font file and frozen as data, shipped with the bundled fonts and cached for any other. The band grid, the tolerance, the library that reads outlines and four narrower questions are open items, G1 to G7, settled during implementation and [ADR-0055](0055-Horizontal-Spacing.md#the-exploration)’s exploration.
 
 ## Table of Contents
 
@@ -85,14 +85,19 @@ A profile is a bound on the ink, not an estimate of it. In every band it lies at
 
 Bands lie on a fixed grid in staff spaces (G1). Adjacent bands are merged when their values differ by less than the tolerance, keeping the outer value, so merging never moves a profile inward.
 
+**A profile is held exactly in integers.** Every breakpoint is a whole number of bands, and every value a whole number of the font’s units divided by a power of two, converted to staff spaces by the font’s one exact factor: midpoint subdivision introduces no other denominator, and a CFF outline’s fixed-point coordinates are already of that form.
+
 ![One curve of Bravura’s flat, subdivided until its hulls give a profile](../img/glyph-geometry/fig2-conservative-bound.svg)
 
 *Figure 2. One curve of Bravura’s flat bowl, its control polygon, the hulls after one, two and three halvings, and the right profile that results: 83 pieces at the 0.01 sp tolerance, never inside the curve.*
 
 ### Frozen as Data
 
-Profiles are computed once, when a font is registered ([ADR-0047](0047-Font-Management.md#metadata-loading)), and stored with its per-font metadata. They are keyed by the font file’s content hash and by the version of the algorithm that extracted them. Layout reads them and never computes them.
+Profiles are computed once per font file, by one function that computes a font’s full set, the four profiles of every glyph with an outline, and that can be called for any font at any time. They are keyed by the font file’s content hash and by the version of the algorithm that extracted them, and stored with the font’s per-font metadata ([ADR-0047](0047-Font-Management.md#the-profile-cache)). Layout reads them and never computes them.
 
+- **Bundled fonts ship with their profiles.** The build computes them with the same function, and they are resources of the application beside the font files. Registering a bundled font reads them and computes nothing.
+- **Every other font is computed when it is registered**, a font found by local discovery or supplied by the user, in the background on two threads, and its profiles are cached in the platform directory under the font file’s content hash and the algorithm’s version. A later registration of the same file reads the cache. Two threads compute a font almost twice as fast as one; from the third the returns diminish, and beyond a processor’s physical cores there are none ([Consequences](#consequences)).
+- **A change of the algorithm’s version computes every set again**: the bundled fonts’ in the build, any other font’s at its next registration, since a cache under another version is never read.
 - A change of platform, library or renderer cannot move a note.
 - A different font file has a different hash and its own profiles. The piece font manifest records each font’s version and content hash, and refuses to render a piece with a font file it does not record ([ADR-0047](0047-Font-Management.md#piece-font-manifest-and-version-matching)), so a piece is always laid out with the profiles of the fonts it records.
 - An improvement to the extraction algorithm increments its version. That is a deliberate, announced layout change, never a side effect. Whether pieces record the version they were laid out with is G2.
@@ -149,6 +154,8 @@ Each invariant is a property test over every glyph of every bundled font, and ov
 6. **Cut-outs checked.** Ink inside a declared cut-out is reported at registration, with the glyph and the cut-out named; nothing is changed.
 7. **Layout never computes.** No formatting stage reads an outline; a test that removes outline access after registration leaves every layout unchanged.
 8. **Exact transformations.** Scaling a profile by a rational factor equals computing it from the outline scaled by the same factor, within the tolerance scaled likewise; a mirrored glyph’s profiles are its original’s, exchanged.
+9. **Agreement with the reference model.** For every glyph whose profiles the reference model exports ([ADR-0057](0057-Reference-Model-of-the-Spacing-Pipeline.md#one-model-two-implementations)), Ooloi’s profiles are equal to them, compared exactly.
+10. **The shipped sets are current.** The profiles shipped with each bundled font are those the function computes from its file at the algorithm’s current version.
 
 The figures above are generated from Bravura’s outlines by the same algorithm, so they double as worked examples of these properties.
 
@@ -171,12 +178,14 @@ Reading outlines and freezing their profiles keeps what each alternative had to 
 - **Any font, any glyph.** Fonts without cut-outs, and text fonts for lyrics and expressions, are spaced by their actual shapes.
 - **Both axes from one source.** Stage 5’s vertical placement reads the same frozen geometry as Stage 1’s contours.
 - **Deterministic and stable.** Profiles change only with the font file or the algorithm’s version, both explicit events.
-- **Cheap at layout time.** Formatting reads step functions; the cost of reading outlines is paid once per font, at registration.
+- **Cheap at layout time.** Formatting reads step functions; the cost of reading outlines is paid once per font file.
+- **A bundled font’s profiles load in under a second.** Bravura’s, at bands of 0.01 staff spaces, are a 21 MB file, frozen with Nippy and compressed ([ADR-0007](0007-Nippy.md)), read and thawed in 0.74 s; the ten bundled fonts’ sets come to 74 MB at bands of 0.01 and to 19 MB at bands of 0.05.
 - **Font metadata becomes checkable.** Errors in bounding boxes and cut-outs are found and reported.
 
 ### Negative
 
-- **Registration does more work.** A SMuFL font has a few thousand glyphs; reading them and storing four profiles each is a one-off cost per font file.
+- **Registering a font that is not bundled takes time.** Measured with an unoptimised implementation in exact rational arithmetic on an Intel Core i7-8750H with six cores, at bands of 0.01 staff spaces: Bravura’s 3,668 glyphs take 238 s on one thread and 121 s on two; Petaluma’s 1,490 about 62 s on two; Bravura Text’s 19,140, most of them precomposed combinations, about 460 s on two. At bands of 0.05 a font takes about 40 per cent of those times. Two threads compute a font 1.97 times as fast as one, four 3.1 times and six 3.6 times; the processor’s hyper-threads add nothing. Ooloi’s Mac platform is Apple Silicon, two to three times as fast per core on CPU-bound work ([ADR-0050](0050-Platform-Support-Policy.md)).
+- **Profiles held in memory can be large.** As vectors of Clojure ratios, Bravura’s occupy about 680 MB at bands of 0.01, some 530 bytes per step of a profile; held in integers, as every value allows ([A Profile Never Understates Ink](#a-profile-never-understates-ink)), a step is three integers.
 - **The algorithm’s version is part of layout.** Improving it changes pages and must be announced as such.
 - **More room to tuck is not better engraving.** Finer contours let a program tuck further than an engraver would. Restraint comes from [ADR-0055](0055-Horizontal-Spacing.md)’s clearances and its [opening width](0055-Horizontal-Spacing.md#opening-width), not from coarser geometry.
 
@@ -184,19 +193,23 @@ Reading outlines and freezing their profiles keeps what each alternative had to 
 
 | Item | Question | Settled by |
 | --- | --- | --- |
-| G1: Band grid and tolerance | The band height and the tolerance, in staff spaces. Placeholders until measured; LilyPond’s quantisation unit of 0.2 is a reference point, not a value. | Implementation, against [ADR-0055](0055-Horizontal-Spacing.md#the-exploration)’s exploration |
+| G1: Band grid and tolerance | The band height and the tolerance, in staff spaces. Placeholders until measured; LilyPond’s quantisation unit of 0.2 is a reference point, not a value. The grid also sets the profiles’ cost: at bands of 0.05 and a tolerance of 0.01 a font’s profiles take about 40 per cent of the time, and a quarter of the memory and the file size, they take at bands of 0.01 and a tolerance of 0.005 ([Consequences](#consequences)). | Implementation, against [ADR-0055](0055-Horizontal-Spacing.md#the-exploration)’s exploration |
 | G2: Pinning the algorithm’s version | Whether a piece records the profile algorithm’s version it was laid out with, as the piece font manifest records font versions, or whether a new version is treated as a release-level layout change. | Decision before the first change of version |
 | G3: Other transformations | Which transformations beyond scaling, mirroring and quarter-turns occur in practice, and whether caching their profiles per glyph is enough. | When a formatter first needs one |
 | G4: The outline reader | Which library reads outlines on the JVM: one that reads the font’s own tables directly, so coordinates arrive as the font stores them, is preferred over one that passes through a renderer’s scaler. The choice must preserve exact coordinates. | Implementation |
 | G5: Text runs | How shaping, kerning and ligatures of text fonts are represented, so that a run’s profile is the union of what is drawn. | The lyrics and text ADRs |
 | G6: Cut-outs as intent | Whether spacing ever honours a declared cut-out as the designer’s intent, beyond what the outline shows, or uses cut-outs only as a cross-check. | [ADR-0055](0055-Horizontal-Spacing.md#the-exploration)’s exploration |
+| G7: Layout while profiles are computed | What a piece drawing on a font whose profiles are still being computed shows until they are ready, since layout never computes them. | The font registry’s implementation ([ADR-0047](0047-Font-Management.md#the-profile-cache)) |
 
 ## References
 
 ### Related ADRs
 
 - [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) — builds atoms’ contours from the left and right profiles; owns the opening width and the clearances
-- [ADR-0047: Font Management](0047-Font-Management.md) — registers fonts, loads their metadata and stores the profiles with it; the piece font manifest pins font versions
+- [ADR-0047: Font Management](0047-Font-Management.md) — registers fonts, loads their metadata and stores the profiles with it, shipped with the bundled fonts and cached for any other; the piece font manifest pins font versions
+- [ADR-0057: Reference Model of the Spacing Pipeline](0057-Reference-Model-of-the-Spacing-Pipeline.md) — computes its own profiles, which Ooloi’s are checked against
+- [ADR-0007: Nippy](0007-Nippy.md) — the format the profiles are stored in
+- [ADR-0050: Platform Support Policy](0050-Platform-Support-Policy.md) — the platforms the computation runs on
 - [ADR-0048: SMuFL Glyph Selection Architecture](0048-SMuFL-Glyph-Selection-Architecture.md) — decides which glyph is drawn, and so whose profiles are read
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) — contours replace its four-directional extents; Stage 5 reads the vertical profiles
 - [ADR-0013: Slur Formatting](0013-Slur-Formatting.md) — Stage 5’s vertical placement against the top and bottom profiles

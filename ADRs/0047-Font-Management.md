@@ -14,6 +14,7 @@ Under implementation
     - [Per-Font Metadata](#per-font-metadata)
     - [Spec-Level Metadata](#spec-level-metadata)
     - [Required Anchor Data](#required-anchor-data)
+    - [The Profile Cache](#the-profile-cache)
   - [Bundled Fonts](#bundled-fonts)
   - [Local Font Discovery](#local-font-discovery)
   - [User-Supplied Fonts](#user-supplied-fonts)
@@ -54,7 +55,7 @@ The font registry is an Integrant component with a standard lifecycle. Its state
 | `:font-bytes` | `byte[]` | Raw font file data |
 | `:skija-typeface` | `Typeface` | Skija typeface, created via `Typeface/makeFromData` |
 | `:javafx-family` | `String` | Family name as returned by `Font.loadFont` |
-| `:metadata` | `map` | Parsed SMuFL JSON (glyphs, anchors, bounding boxes, engraving defaults), with the glyph profiles computed from the font’s outlines at registration ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)) |
+| `:metadata` | `map` | Parsed SMuFL JSON (glyphs, anchors, bounding boxes, engraving defaults), with the glyph profiles computed from the font’s outlines ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)), shipped with a bundled font and cached for any other ([The Profile Cache](#the-profile-cache)) |
 | `:source` | keyword | One of `:bundled`, `:local`, `:user-supplied` |
 | `:version` | `String` | Font version string extracted from the font's name table |
 | `:content-hash` | `String` | Content hash of the font file; keys its glyph profiles and is recorded in the piece font manifest ([Piece Font Manifest and Version Matching](#piece-font-manifest-and-version-matching)) |
@@ -78,11 +79,11 @@ The font registry consumes two distinct layers of SMuFL metadata: spec-level met
 
 #### Per-Font Metadata
 
-Each SMuFL font ships with a companion `metadata.json` file conforming to the SMuFL specification. The registry parses this JSON at registration time, computes the glyphs' profiles from the font's outlines, and stores both alongside the font. The metadata includes:
+Each SMuFL font ships with a companion `metadata.json` file conforming to the SMuFL specification. The registry parses this JSON at registration time, reads or computes the glyphs' profiles ([The Profile Cache](#the-profile-cache)), and stores both alongside the font. The metadata includes:
 
 - **Glyph names → codepoints**: the mapping from canonical SMuFL names to Unicode Private Use Area codepoints.
 - **Glyph bounding boxes**: per-glyph extents in staff spaces, checked against the glyphs’ profiles at registration ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#invariants-and-property-tests)).
-- **Glyph profiles**: computed from the outlines at registration ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)), keyed by the font file’s content hash and the profile algorithm’s version. Layout reads glyph geometry from them.
+- **Glyph profiles**: computed from the outlines ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)), keyed by the font file’s content hash and the profile algorithm’s version, shipped with a bundled font and computed and cached for any other ([The Profile Cache](#the-profile-cache)). Layout reads glyph geometry from them.
 - **Anchor points**: stem attachments, optical centres, and other positioning data.
 - **Engraving defaults**: the staff line thickness, stem width, beam spacing and similar values the font's designer recommends.
 
@@ -117,6 +118,16 @@ SMuFL makes every key of a font's metadata optional except `fontName` and `fontV
 **A glyph without an anchor its use needs is withheld from that use.** Where a font gives a required kind for some glyphs and not others, and for every other anchor a use reads (a repeat offset to join a tessellating line, a notehead origin to align a notehead that has a side bearing, the corners of a grace-note slash, split-stem attachments), a glyph that lacks the anchor is treated, for that use, as a glyph the font does not have (the font availability filtering above). A font without the grace-note slash anchors offers its eighth-note flag for notes, but not for slashed grace notes. Registration records, for each font, what it withholds and why.
 
 **Cut-outs are not required.** They are not a source of geometry ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#smufl-cut-outs)), so a font without them loses nothing.
+
+#### The Profile Cache
+
+A font's glyph profiles are computed once per font file, by the function [ADR-0056](0056-Glyph-Geometry-from-Outlines.md#frozen-as-data) specifies, and read wherever they are needed after that.
+
+- **A bundled font's profiles are part of the application.** The build computes them and stores them as resources beside the font, under its content hash and the algorithm's version. Registration reads them. They are never copied out of the application: unlike the translation catalogues ([ADR-0039](0039-Localisation-Architecture.md)), profiles are derived data that nobody edits.
+- **Any other font's profiles are cached in the platform directory**, in `glyph-profiles` under the directory `get-platform-directory` gives: `~/.ooloi/glyph-profiles` on macOS and Linux, `%APPDATA%\Ooloi\glyph-profiles` on Windows. There is one file per font file and algorithm version, named by both. Registration reads the file if it is there, and otherwise computes the profiles in the background on two threads and writes the file atomically, so that a partial file is never read as a complete one. A file that cannot be read is computed again.
+- **Nothing else invalidates a cache.** A changed font file has another content hash and a changed algorithm another version; a cache under either is never read.
+
+Computing a font's profiles takes from tens of seconds to a few minutes, depending on the font and the band grid; reading a cached set takes under a second ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#consequences)).
 
 ### Bundled Fonts
 
@@ -171,7 +182,7 @@ Discovery without silent substitution. Nothing changes without an explicit user 
 
 ### User-Supplied Fonts
 
-The font management UI allows the user to load additional SMuFL fonts from arbitrary file paths. These go through the same registration pipeline: load bytes, parse metadata, validate SMuFL compliance and the required anchor data ([Required Anchor Data](#required-anchor-data)), register with Skija and JavaFX, add to registry. A font that fails validation is registered with neither, since JavaFX keeps a loaded font for the lifetime of the JVM. No system installation is required — Skija loads typefaces from byte arrays, not from the OS font system.
+The font management UI allows the user to load additional SMuFL fonts from arbitrary file paths. These go through the same registration pipeline: load bytes, parse metadata, validate SMuFL compliance and the required anchor data ([Required Anchor Data](#required-anchor-data)), read or compute the glyph profiles ([The Profile Cache](#the-profile-cache)), register with Skija and JavaFX, add to registry. A font that fails validation is registered with neither, since JavaFX keeps a loaded font for the lifetime of the JVM. No system installation is required — Skija loads typefaces from byte arrays, not from the OS font system.
 
 The user-supplied fonts the registry knows are persisted in application settings and registered again at startup. If one is no longer available at its stored path, it is not registered and a notification says so; a piece that draws glyphs from it cannot be rendered until it is available again (§Piece Font Manifest and Version Matching).
 
@@ -246,6 +257,7 @@ The benefit — making bundled SMuFL fonts available to other applications — d
 - In multi-user environments, exact font version matching guarantees all participants see identical rendering. There is no class of "works on my machine" font drift.
 - The font registry is a clean Integrant component with no global state; it can be started and stopped in tests.
 - Every glyph is attached at the points its own designer gave it.
+- A bundled font costs its registration nothing but reading its precomputed profiles, in under a second ([The Profile Cache](#the-profile-cache)).
 
 **Negative**
 
@@ -253,6 +265,7 @@ The benefit — making bundled SMuFL fonts available to other applications — d
 - Upgrading bundled fonts requires an Ooloi release. Users who want a newer version of a bundled font before the next release must use the local font path and explicitly opt in.
 - The local font scan adds startup time proportional to the number of fonts installed on the system. The scan should be bounded (check known directories, match known family names or metadata files, do not parse every installed font).
 - JavaFX's `Font.loadFont` registers fonts globally for the JVM lifetime. If multiple font versions of the same family are loaded (bundled and user-supplied), JavaFX's family name resolution may be ambiguous. The registry must manage this — either by loading only the versions an open piece's manifest names, or by qualifying family names.
+- Registering a font that is not bundled computes its profiles once, which takes from tens of seconds to a few minutes; a later registration of the same file reads the cache ([The Profile Cache](#the-profile-cache)).
 - Exact version matching means a client cannot open a piece created with a font version it does not have. This is intentional friction: the user is told exactly what is needed and can acquire it through the font management UI. The alternative — silent misrendering — is worse.
 
 ---
@@ -271,7 +284,8 @@ The benefit — making bundled SMuFL fonts available to other applications — d
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) — consumer of font metrics for spatial calculations
 - [ADR-0031: Frontend Event-Driven Architecture](0031-Frontend-Event-Driven-Architecture.md) — notification system for local font discovery alerts
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) — rendering invariant: backend layout and frontend drawing must agree on which font supplies each glyph; a change of font invalidates Pictures and tiles through the ordinary route
-- [ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md) — glyph profiles, computed from the outlines at registration and stored with the per-font metadata, keyed by the font file’s content hash
+- [ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md) — glyph profiles, computed from the outlines once per font file, shipped with the bundled fonts and cached for any other, keyed by the font file’s content hash and the algorithm’s version
+- [ADR-0039: Localisation Architecture](0039-Localisation-Architecture.md) — the platform directory, where the profiles of fonts that are not bundled are cached
 
 ### External References
 
