@@ -60,7 +60,7 @@ The font registry is an Integrant component with a standard lifecycle. Its state
 | `:version` | `String` | Font version string extracted from the font's name table |
 | `:content-hash` | `String` | Content hash of the font file; keys its glyph profiles and is recorded in the piece font manifest ([Piece Font Manifest and Version Matching](#piece-font-manifest-and-version-matching)) |
 
-The component initialises by loading all bundled fonts, then running the local discovery scan. It halts by releasing Skija typeface resources.
+**Fonts are loaded when they are needed, Bravura first.** The component initialises while the splash screen is showing, under a splash message of its own: it loads Bravura, its glyph profiles included ([The Profile Cache](#the-profile-cache)), and runs the local discovery scan. Every other font is loaded, its profiles with it, when a piece that draws on it is opened, its piece font manifest naming the fonts it needs ([Piece Font Manifest and Version Matching](#piece-font-manifest-and-version-matching)), or when a piece's settings first draw on it; a notification reports the loading. The component halts by releasing Skija typeface resources.
 
 **A typeface is released only once nothing can still draw with it.** Skija Pictures record references to the typefaces they draw with, and Pictures are replayed on worker threads and on the GPU render thread ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) §Frontend Rendering Threading Model). The registry therefore never releases a typeface while a Picture or tile built from it may still be in use: it releases it after the caches built from it have been dropped.
 
@@ -79,10 +79,10 @@ The font registry consumes two distinct layers of SMuFL metadata: spec-level met
 
 #### Per-Font Metadata
 
-Each SMuFL font ships with a companion `metadata.json` file conforming to the SMuFL specification. The registry parses this JSON at registration time, reads or computes the glyphs' profiles ([The Profile Cache](#the-profile-cache)), and stores both alongside the font. The metadata includes:
+Each SMuFL font ships with a companion `metadata.json` file conforming to the SMuFL specification. The registry parses this JSON when it loads the font, reads the glyphs' profiles ([The Profile Cache](#the-profile-cache)), and stores both alongside the font. The metadata includes:
 
 - **Glyph names → codepoints**: the mapping from canonical SMuFL names to Unicode Private Use Area codepoints.
-- **Glyph bounding boxes**: per-glyph extents in staff spaces, checked against the glyphs’ profiles at registration ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#invariants-and-property-tests)).
+- **Glyph bounding boxes**: per-glyph extents in staff spaces, checked against the glyphs’ profiles when the profiles are computed ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#invariants-and-property-tests)).
 - **Glyph profiles**: computed from the outlines ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)), keyed by the font file’s content hash and the profile algorithm’s version, shipped with a bundled font and computed and cached for any other ([The Profile Cache](#the-profile-cache)). Layout reads glyph geometry from them.
 - **Anchor points**: stem attachments, optical centres, and other positioning data.
 - **Engraving defaults**: the staff line thickness, stem width, beam spacing and similar values the font's designer recommends.
@@ -123,11 +123,11 @@ SMuFL makes every key of a font's metadata optional except `fontName` and `fontV
 
 A font's glyph profiles are computed once per font file, by the function [ADR-0056](0056-Glyph-Geometry-from-Outlines.md#frozen-as-data) specifies, and read wherever they are needed after that.
 
-- **A bundled font's profiles are part of the application.** The build computes them and stores them as resources beside the font, under its content hash and the algorithm's version. Registration reads them. They are never copied out of the application: unlike the translation catalogues ([ADR-0039](0039-Localisation-Architecture.md)), profiles are derived data that nobody edits.
-- **Any other font's profiles are cached in the platform directory**, in `glyph-profiles` under the directory `get-platform-directory` gives: `~/.ooloi/glyph-profiles` on macOS and Linux, `%APPDATA%\Ooloi\glyph-profiles` on Windows. There is one file per font file and algorithm version, named by both. Registration reads the file if it is there, and otherwise computes the profiles in the background on two threads and writes the file atomically, so that a partial file is never read as a complete one. A file that cannot be read is computed again.
+- **A bundled font's profiles are part of the application.** They are computed by that function and committed with the application's sources, as resources beside the font, under its content hash and the algorithm's version. They are read when the font is loaded ([Font Registry Component](#font-registry-component)). They are never copied out of the application: unlike the translation catalogues ([ADR-0039](0039-Localisation-Architecture.md)), profiles are derived data that nobody edits.
+- **Any other font's profiles are cached in the platform directory**, in `glyph-profiles` under the directory `get-platform-directory` gives: `~/.ooloi/glyph-profiles` on macOS and Linux, `%APPDATA%\Ooloi\glyph-profiles` on Windows. There is one file per font file and algorithm version, named by both. When such a font is registered and its file is not there, its profiles are computed in the background on two threads and the file is written atomically, so that a partial file is never read as a complete one. The file is read when the font is loaded; a file that cannot be read is computed again.
 - **Nothing else invalidates a cache.** A changed font file has another content hash and a changed algorithm another version; a cache under either is never read.
 
-Computing a font's profiles takes from tens of seconds to a few minutes, depending on the font and the band grid; reading a cached set takes under a second ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#consequences)).
+Computing a font's profiles takes from tens of seconds to a few minutes, depending on the font; reading a set takes under a third of a second ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#consequences)).
 
 ### Bundled Fonts
 
@@ -154,7 +154,7 @@ Bundled fonts are the tested, known-good pairing with the rendering pipeline. A 
 
 ### Local Font Discovery
 
-After loading bundled fonts, the registry scans for locally installed SMuFL-compliant fonts. Font files and SMuFL metadata JSON are stored in separate locations on all platforms — the OS font system knows nothing about SMuFL metadata. The scanner must search both sets of directories and correlate results by font family name. The set of platforms Ooloi actually ships for is defined in [ADR-0050: Platform Support Policy](0050-Platform-Support-Policy.md); the tables below cover all three supported OSes.
+After loading Bravura, the registry scans for locally installed SMuFL-compliant fonts. Font files and SMuFL metadata JSON are stored in separate locations on all platforms — the OS font system knows nothing about SMuFL metadata. The scanner must search both sets of directories and correlate results by font family name. The set of platforms Ooloi actually ships for is defined in [ADR-0050: Platform Support Policy](0050-Platform-Support-Policy.md); the tables below cover all three supported OSes.
 
 **Font file locations (standard OS font directories):**
 
@@ -182,7 +182,7 @@ Discovery without silent substitution. Nothing changes without an explicit user 
 
 ### User-Supplied Fonts
 
-The font management UI allows the user to load additional SMuFL fonts from arbitrary file paths. These go through the same registration pipeline: load bytes, parse metadata, validate SMuFL compliance and the required anchor data ([Required Anchor Data](#required-anchor-data)), read or compute the glyph profiles ([The Profile Cache](#the-profile-cache)), register with Skija and JavaFX, add to registry. A font that fails validation is registered with neither, since JavaFX keeps a loaded font for the lifetime of the JVM. No system installation is required — Skija loads typefaces from byte arrays, not from the OS font system.
+The font management UI allows the user to load additional SMuFL fonts from arbitrary file paths. These go through the same registration pipeline: load bytes, parse metadata, validate SMuFL compliance and the required anchor data ([Required Anchor Data](#required-anchor-data)), compute the glyph profiles unless the cache holds them ([The Profile Cache](#the-profile-cache)), register with Skija and JavaFX, add to registry. A font that fails validation is registered with neither, since JavaFX keeps a loaded font for the lifetime of the JVM. No system installation is required — Skija loads typefaces from byte arrays, not from the OS font system.
 
 The user-supplied fonts the registry knows are persisted in application settings and registered again at startup. If one is no longer available at its stored path, it is not registered and a notification says so; a piece that draws glyphs from it cannot be rendered until it is available again (§Piece Font Manifest and Version Matching).
 
@@ -257,7 +257,7 @@ The benefit — making bundled SMuFL fonts available to other applications — d
 - In multi-user environments, exact font version matching guarantees all participants see identical rendering. There is no class of "works on my machine" font drift.
 - The font registry is a clean Integrant component with no global state; it can be started and stopped in tests.
 - Every glyph is attached at the points its own designer gave it.
-- A bundled font costs its registration nothing but reading its precomputed profiles, in under a second ([The Profile Cache](#the-profile-cache)).
+- Loading a bundled font costs nothing but reading its precomputed profiles, and only Bravura's are read at startup; no font's profiles occupy memory until a piece draws on it ([The Profile Cache](#the-profile-cache)).
 
 **Negative**
 

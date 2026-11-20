@@ -234,7 +234,7 @@ Effective obstacle = Obstacle ⊕ SlurProfile(t)
 
 In plain terms: take each obstacle (notehead, stem, accidental) and inflate it outward by the slur's half-thickness at the corresponding curve parameter *t*. If the centreline clears the inflated obstacles, the actual thick slur clears the actual obstacles.
 
-The obstacles are the glyphs’ top and bottom profiles ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#four-profiles-per-glyph)), not their bounding boxes: slurs, ties and their clearances are placed against the ink. ADR-0056’s Figure 5 shows the difference: the lowest slur from outlines has its apex 0.55 staff spaces lower than from boxes.
+The obstacles are the glyphs’ top and bottom profiles ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#four-profiles-per-glyph)), not their bounding boxes: slurs, ties and their clearances are placed against the ink. ADR-0056’s Figure 5 shows the difference: the lowest slur from outlines has its apex 0.50 staff spaces lower than from boxes.
 
 With copper plate rounded endpoints (§6), the slur half-thickness *r(t)* is never zero — even at the endpoints, the inflation equals the end cap radius. This eliminates the degenerate zero-width case that arises with pointed endpoints, making the clearance computation well-behaved everywhere along the curve.
 
