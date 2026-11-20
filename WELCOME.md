@@ -48,6 +48,10 @@ The architecture must be released as a whole before it can be extended by others
 
 Ooloi will become open source in the way TeX is open source: inspectable, forkable, extensible at defined boundaries. The core is not developed collaboratively.
 
+## In the Meantime: the Workbench
+
+There is already something to try. [*Ooloi: the Hegazy–Gourlay Workbench*](https://www.ooloi.org/workbench.html) runs the core of Ooloi's horizontal spacing in your browser, as the ADRs specify it: a few bars of music, in any of the music fonts Ooloi ships with, redrawn as you move the settings. It previews the notation engine being built here in the strict sense, being the same spacing engine: Ooloi's own implementation is tested against its values, compared for equality, so what you see it do is exactly what Ooloi is to do. It is also where the specifications are set, in public: a spacing rule is tried there and judged by eye before a line of Clojure is written for it.
+
 ## After Release: How You'll Be Able to Contribute
 
 Once Ooloi reaches its first public release, the architecture will support contribution through several paths:
