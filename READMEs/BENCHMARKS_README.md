@@ -191,13 +191,47 @@ Criterium-based benchmarks testing various timewalk scenarios.
 
 ## Quick Start
 
+Both suites, from the repository root, with their results and the circumstances of the run written to one directory:
+
 ```bash
-cd /Users/pjotr/ProjectCode/FrankenScore/Ooloi/shared
+shared/dev/bench/run_suites.sh <output directory>
+```
+
+The script runs the timewalk suite and then the persistence suite, each in a fresh JVM with the options in `shared/project.clj`, and writes:
+
+| File | Contents |
+| --- | --- |
+| `timewalk.log`, `persistence.log` | Each suite's output |
+| `machine.log` | Processor, model, core and thread counts, memory, OS, Java version, the commit and any uncommitted changes, and the JVM options |
+| `state.log` | Power source, Low Power Mode and thermal state before and after each suite (macOS) |
+| `exits.log` | Each suite's exit code, then `ALL DONE` |
+
+On macOS the script keeps the machine awake for the whole run. The suites take about ten minutes on an M3; nothing else should run on the machine meanwhile, and on a laptop it should be on mains power with Low Power Mode off.
+
+**Comparing machines.** Results compare only when they come from the same commit and the same JVM options, which `machine.log` records. The host line the timewalk suite prints is fixed text and does not name the machine it runs on; `machine.log` does. To record a machine's results for comparison:
+
+1. Pull. Runs compare while the code they measure is the same between the commits their `machine.log` files record: `git diff --stat <commit> <commit> -- shared/src shared/dev shared/project.clj` lists nothing but this README, `run_suites.sh` and `results/`.
+2. Run the script twice into `shared/dev/bench/results/`, under a name for the machine, its model, processor and year, and the run:
+
+   ```bash
+   shared/dev/bench/run_suites.sh shared/dev/bench/results/macbook-pro-15-i7-8750h-2018-run1
+   shared/dev/bench/run_suites.sh shared/dev/bench/results/macbook-pro-15-i7-8750h-2018-run2
+   ```
+
+   One run is not enough. The timewalk suite's scopes take microseconds to milliseconds, and activity on the machine during a run moves them by a third or more while leaving no trace in `state.log`. Where two runs disagree by more than a tenth on any scope, a third is made.
+3. Check each run's `exits.log`: both suites `EXIT=0`, then `ALL DONE`. A run whose `state.log` shows battery power, Low Power Mode or a thermal warning is run again.
+4. Commit the directories, five files each, and push.
+
+Each directory under `results/` is one run on one machine, and the directories side by side are the comparison.
+
+From a REPL, one suite at a time:
+
+```bash
+cd shared
 lein repl
 ```
 
 ```clojure
-;; Load and run benchmarks
 (require '[bench.timewalk-bench :as bench])
 (bench/run-all-benchmarks)
 ```
