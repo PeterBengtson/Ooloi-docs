@@ -525,7 +525,7 @@ What a system start needs is specified by [ADR-0058](0058-Variants-at-a-Break.md
 
 ### The Preamble: System-Start Clef and Key Signature Width
 
-The preamble is a rigid block from [ADR-0058](0058-Variants-at-a-Break.md#the-preamble-table)'s preamble table, one per layout, keyed by the clef and key signature in force on every staff it presents and by the font and settings. Its width enters `start[k]` as fixed width, so Stage 3 never consults the table or queries ChangeSets, and identical preambles align down the page by construction. It ends at its ink: the space after it is the leading gap's system-start form ([ADR-0058](0058-Variants-at-a-Break.md#the-blocks-are-rigid)). Whether house style omits a key change's cancellation naturals at a system start is ADR-0058 V4.
+The preamble is a rigid block from [ADR-0058](0058-Variants-at-a-Break.md#the-preamble-table)'s preamble table, one per layout, keyed by the clef and key signature in force on every staff it presents and by the font and settings. Its width enters `start[k]` as fixed width, so Stage 3 never consults the table or queries ChangeSets, and identical preambles align down the page by construction. It ends at its last item: the space after it is the leading gap's system-start form ([ADR-0058](0058-Variants-at-a-Break.md#the-blocks-are-rigid)). Whether house style omits a key change's cancellation naturals at a system start is ADR-0058 V4.
 
 ### The Postamble: System-End Width
 
