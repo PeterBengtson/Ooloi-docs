@@ -133,7 +133,7 @@ Constructor arguments are used directly as cache keys, eliminating the need for 
 
 ### Serialization Integration with Nippy
 
-The system integrates with Nippy serialization to preserve shared object structure across save/load cycles. Custom Nippy transforms for pitches, rests, chords and articulations write each object as its constructor arguments. Nippy does not deduplicate: an object shared a thousand times in memory is written a thousand times, and a 1000-measure orchestral piece of some 520,000 items freezes to 40.5 MB. The LZ4 compression Nippy applies to the frozen bytes is what makes the file small: the same piece compresses to 0.17 MB. Upon deserialization, each object's arguments pass back through its caching constructor, so the thawed piece shares objects exactly as a newly constructed one would, maintaining the hash-consing benefits.
+The system integrates with Nippy serialization to preserve shared object structure across save/load cycles. Nippy does not deduplicate on its own, so a piece is written registry-first: each cacheable object the piece holds is written once, as its constructor arguments, in a registry ahead of the piece, and the piece refers to it by index; uncached objects are written inline. On load the registry is read first and each entry is reconstructed through its caching constructor, so the thawed piece shares objects through the global cache exactly as a newly constructed one would. LZ4 compression applies to the whole.
 
 ### Background Cache Optimization Daemon
 
@@ -181,7 +181,7 @@ score has changed, and nothing anywhere may behave as though it had. It emits no
 marks a piece dirty, pushes no undo entry, and changes nothing about what is saved. It alters how
 much memory a piece occupies, and nothing else. An undo that restores a piece to a state the daemon
 had already optimised is therefore harmless — the next sweep does the work again, and serialisation
-does not depend on it: each object is written as its constructor arguments whether it is shared or not.
+does not depend on it: the file records each object by its value, whether or not it is shared.
 
 That transparency holds because the daemon writes **outside** the API and change-detection layer,
 and it must continue to. Routing it through the VPD write funnel would mark every open piece dirty
