@@ -13,6 +13,7 @@ How a piece reaches disk and comes back, and why the two directions are shaped d
 - [Serialisation](#serialisation)
 - [The I/O backends](#the-io-backends)
 - [Integration with the Piece Manager](#integration-with-the-piece-manager)
+- [What a save and an open cost](#what-a-save-and-an-open-cost)
 - [Benchmarking](#benchmarking)
 - [Autosave and versioning](#autosave-and-versioning)
 - [Common gotchas](#common-gotchas)
@@ -150,6 +151,18 @@ Opening a piece **registers it** in the piece manager and returns its piece-id; 
 
 A piece's identity is its UUID, and the [persistent catalogue](PIECE_MANAGER_GUIDE.md) maps that UUID to a storage location — which is how `open-by-uuid` reopens a piece that is no longer in memory, and how session restore reopens the windows of a previous run.
 
+## What a save and an open cost
+
+The benchmark's orchestral piece at three sizes, written through `file-writer` and read back through `file-reader`: the write a save performs and the read an open performs. Each time is the median of that machine's runs (three on the 2018 MacBook Pro, two on the M3), measured with Criterium by `bench.persistence-bench` (see [Benchmarking](#benchmarking)).
+
+| Piece | Items | Frozen | File | Write, M3 | Read, M3 | Write, i7-8750H | Read, i7-8750H |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 10 measures | 5,200 | 423 KB | 8.2 KB | 6.5 ms | 12.5 ms | 13.8 ms | 33.7 ms |
+| 100 measures | 52,000 | 4.1 MB | 32 KB | 46 ms | 128 ms | 109 ms | 295 ms |
+| 1000 measures | 520,000 | 40.6 MB | 183 KB | 513 ms | 1.23 s | 1.18 s | 2.71 s |
+
+*Frozen* is the serialisation before compression, and *File* is what lands on disk: LZ4 compression takes the 1000-measure piece from 40.6 MB to 183 KB. The generated piece repeats far more than a real score does, so a real score of the same length compresses less. A read takes two to three times as long as its write. From 100 to 1000 measures both grow about tenfold, with the piece. A write also carries a fixed cost of a few milliseconds, which is most of a 10-measure write. The M3 is Ooloi's Mac platform; the i7-8750H, which Ooloi does not support, is there for comparison.
+
 ## Benchmarking
 
 **A save is timed through `file-writer`, the write a save performs.** Its freeze runs on a thread of its own, as a save's does, so repeated writes in one benchmark each cost what a save costs:
@@ -170,7 +183,7 @@ A piece's identity is its UUID, and the [persistent catalogue](PIECE_MANAGER_GUI
    :bytes    (.length file)})
 ```
 
-This times the freeze and the write together, not the save queue's hop, which exists for ordering rather than for speed. `bench.persistence-bench` in `shared/dev/bench/` times it with Criterium at 10, 100 and 1000 measures, and the [benchmarks README](../READMEs/BENCHMARKS_README.md) holds the figures. A write also carries a fixed cost of a few milliseconds, which is most of a small piece's write.
+This times the freeze and the write together, not the save queue's hop, which exists for ordering rather than for speed. `bench.persistence-bench` in `shared/dev/bench/` times it with Criterium at 10, 100 and 1000 measures; the table under [What a save and an open cost](#what-a-save-and-an-open-cost) holds its figures, and the [benchmarks README](../READMEs/BENCHMARKS_README.md) the rest.
 
 **Do not time `nippy/freeze` in a loop on one thread.** After the first small freeze, every later one pays the kept buffer described under [Serialisation](#serialisation) once per shared object, so the figure measures that rather than serialisation.
 
