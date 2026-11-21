@@ -34,7 +34,7 @@ Consequences:
 - Pros:
   - Thread-safe operations with automatic conflict resolution.
   - Simplified programming model for complex concurrent operations.
-  - Efficient conflict resolution (100,000+ transactions/second tested on 2017 hardware).
+  - Efficient conflict resolution (100,000+ transactions/second tested on 2018 hardware).
   - Better consistency guarantees for complex musical structures.
   - Deterministic behavior regardless of concurrent access patterns.
   - Multi-client access becomes architecturally straightforward when needed.

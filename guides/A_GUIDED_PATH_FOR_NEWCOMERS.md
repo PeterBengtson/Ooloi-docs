@@ -100,7 +100,7 @@ The reasoning behind the language choice. Notable not because the conclusion is 
 
 **9. [ADR-0004: STM for Concurrency](../ADRs/0004-STM-for-concurrency.md)**
 
-Why Software Transactional Memory rather than atoms, locks, or actors? The key argument: music notation requires coordinated updates across multiple parts of the structure atomically. STM is not a performance choice here; it is a correctness choice. The 100,000+ transactions per second benchmark on 2017 hardware establishes that correctness costs nothing in this context — the bottleneck is network, rendering, or I/O, never the transaction mechanism itself.
+Why Software Transactional Memory rather than atoms, locks, or actors? The key argument: music notation requires coordinated updates across multiple parts of the structure atomically. STM is not a performance choice here; it is a correctness choice. The 100,000+ transactions per second benchmark on 2018 hardware establishes that correctness costs nothing in this context — the bottleneck is network, rendering, or I/O, never the transaction mechanism itself.
 
 **10. [ADR-0001: Frontend-Backend Separation](../ADRs/0001-Frontend-Backend-Separation.md)**
 

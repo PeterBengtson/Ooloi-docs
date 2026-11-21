@@ -64,7 +64,7 @@ Ooloi's [frontend-backend separation](0001-Frontend-Backend-Separation.md) provi
 
 **Collaboration as Consequence**: Standalone applications operate as "collaboration groups of 1" - the same architectural patterns scale naturally to multi-user scenarios without special collaborative features.
 
-**Performance Without Compromise**: In-process gRPC transport eliminates 99% of network overhead (36μs roundtrip measured on 2017 MacBook Pro), proving separation costs nothing performance-wise whilst enabling optimal lazy evaluation patterns.
+**Performance Without Compromise**: In-process gRPC transport eliminates 99% of network overhead (36μs roundtrip measured on 2018 MacBook Pro), proving separation costs nothing performance-wise whilst enabling optimal lazy evaluation patterns.
 
 **Type Fidelity Preservation**: Clojure defrecord instances (`Tuplet`, `Pitch`, etc.) maintain identical structure across gRPC boundaries, eliminating serialization impedance mismatch and enabling plugins to operate identically in local or distributed modes.
 
@@ -817,7 +817,7 @@ These are not accidental costs. They are the necessary consequences of solving t
 
 ### Performance Characteristics
 - **Batching Interval**: 100ms asynchronous processing provides optimal balance between responsiveness and computational efficiency
-- **API Responsiveness**: 36μs roundtrip measured on 2017 MacBook Pro proves gRPC separation adds negligible latency
+- **API Responsiveness**: 36μs roundtrip measured on 2018 MacBook Pro proves gRPC separation adds negligible latency
 - **Memory Efficiency**: Lazy rendering data generation reduces memory footprint for large scores
 - **Parallel Scaling**: Linear performance improvement with available CPU cores during formatting stages
 - **Engraving Atom Efficiency**: Atom-relative geometry ensures Stage 1 recomputation only for changes of content, fonts or glyph geometry, never for layout changes

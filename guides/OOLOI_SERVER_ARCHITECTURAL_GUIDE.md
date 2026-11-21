@@ -183,7 +183,7 @@ A multi-step change that must be atomic is one `SRV/atomic` call. The server's `
 
 #### Performance Characteristics
 
-Benchmarking demonstrates **100,000+ contending transactions per second** on modest 2017 hardware. This capacity far exceeds music-notation workload requirements:
+Benchmarking demonstrates **100,000+ contending transactions per second** on modest 2018 hardware. This capacity far exceeds music-notation workload requirements:
 
 * **Manual user operations**: 1–100 ops/sec across all human users
 * **Automated operations**: plugin mutations, background saves/loads, file imports, layout calculations

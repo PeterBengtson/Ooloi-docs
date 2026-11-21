@@ -257,7 +257,7 @@ with the dependency code rather than a generic one
 
 Implementation of the selective hash-consing system has been completed and comprehensively tested with 50,000-object datasets to measure real-world performance characteristics. The results demonstrate substantial gains across all optimization targets: file size reduction, serialization speed, and deserialization speed.
 
-**Test Environment:** Performance measurements were conducted on a 2017 MacBook Pro to provide conservative baseline figures. Modern hardware would show proportionally better absolute performance while maintaining the same optimization ratios.
+**Test Environment:** Performance measurements were conducted on a 2018 MacBook Pro to provide conservative baseline figures. Modern hardware would show proportionally better absolute performance while maintaining the same optimization ratios.
 
 ### Registry-Based File Size Optimization
 

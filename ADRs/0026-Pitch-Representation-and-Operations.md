@@ -499,7 +499,7 @@ For interval string and fluid keyword lanes, the system uses an internal `(D,A,C
 
 ### Performance Benchmarks
 
-**2017 MacBook Pro (2.2 GHz 6-core Intel):**
+**2018 MacBook Pro (2.2 GHz 6-core Intel):**
 - **1,000,000 transpositions in 5637.002775 ms**
 - **≈ 177,500 operations/second**  
 - **≈ 5.64 µs per transposition**

@@ -127,7 +127,7 @@ A font's glyph profiles are computed once per font file, by the function [ADR-00
 - **Any other font's profiles are cached in the platform directory**, in `glyph-profiles` under the directory `get-platform-directory` gives: `~/.ooloi/glyph-profiles` on macOS and Linux, `%APPDATA%\Ooloi\glyph-profiles` on Windows. There is one file per font file and algorithm version, named by both. When such a font is registered and its file is not there, its profiles are computed in the background on two threads and the file is written atomically, so that a partial file is never read as a complete one. The file is read when the font is loaded; a file that cannot be read is computed again.
 - **Nothing else invalidates a cache.** A changed font file has another content hash and a changed algorithm another version; a cache under either is never read.
 
-Computing a font's profiles takes from tens of seconds to a few minutes, depending on the font; reading a set takes under a second ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#consequences)).
+Computing a font's profiles takes from seconds to about three minutes, depending on the font; reading a set takes under a second ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#consequences)).
 
 ### Bundled Fonts
 

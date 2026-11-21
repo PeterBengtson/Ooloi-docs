@@ -619,7 +619,7 @@ Comprehensive benchmarks (October 2025) on a 1000-measure orchestral piece (29 i
 - Only cost is final vector allocation, not lazy sequence overhead
 - Architecture delivers on zero-intermediate-allocation promise
 
-**Streaming Characteristics (2017 MacBook Pro baseline)**:
+**Streaming Characteristics (2018 MacBook Pro baseline)**:
 - Full traversal: 582ms (~1M pitches/second)
 - Cache refresh: 1-5ms for typical windows (10-50 measures)
 - Constant memory for exports (<10 MB regardless of piece size)
@@ -636,7 +636,7 @@ Comprehensive benchmarks (October 2025) on a 1000-measure orchestral piece (29 i
 - Small scopes complete sub-millisecond to few milliseconds
 
 **Endpoint Search Performance**:
-- Typical slur searches (2-10 notes): 2-10 microseconds (2025 laptop, 6-29 µs on 2017 hardware)
+- Typical slur searches (2-10 notes): 2-10 microseconds (2025 laptop, 6-29 µs on 2018 hardware)
   - 2 notes: ~2 µs
   - 5 notes: ~5 µs
   - 10 notes: ~10 µs

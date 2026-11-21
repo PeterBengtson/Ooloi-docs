@@ -141,7 +141,7 @@ We are committed to providing a friendly, safe, and welcoming environment for al
    - Leverages Clojure's Software Transactional Memory (STM) for thread-safe, concurrent data operations
    - Utilizes refs and dosync blocks to ensure atomicity and consistency in updates
    - Implements automatic retry mechanism for handling conflicts in concurrent modifications
-   - Achieves high-performance concurrent updates (2017 2,2 GHz 6-Core Intel Core i7 old Macbook Pro):
+   - Achieves high-performance concurrent updates (2018 2.2 GHz 6-Core Intel Core i7 MacBook Pro):
      - Transactional mode: Over 100,000 updates per second
    - Leverages Clojure's core.async for managing asynchronous operations and parallelization
    - Implements parallel processing for tasks like layout calculations, part extraction, and rendering of complex sections
