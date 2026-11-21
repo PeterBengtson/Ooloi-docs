@@ -4,18 +4,17 @@ Performance benchmarks for the Ooloi timewalk traversal system using Criterium f
 
 ## Test Hardware
 
-**MacBook Pro (2017) - Baseline**
-- **Processor**: 2.2 GHz 6-Core Intel Core i7
-- **Memory**: 16 GB 2400 MHz DDR4
-- **Graphics**: Intel UHD Graphics 630 1536 MB
-- **macOS**: Sequoia 15.6.1
-
-**MacBook Pro (2023) - M3 Comparison**
-- **Processor**: Apple M3 chip
+**Apple M3, MacBook Air 15-inch (2024)**: the main figures. Ooloi's Mac platform is Apple Silicon ([ADR-0050](https://github.com/PeterBengtson/Ooloi-docs/blob/main/ADRs/0050-Platform-Support-Policy.md)).
+- **Processor**: Apple M3, four performance and four efficiency cores
 - **Memory**: 16 GB
-- **macOS**: Sonoma 14.x
+- **macOS**: 27.2.1
 
-Original benchmarks run on 2017 hardware establish baseline. M3 benchmarks demonstrate 2-3× linear scaling improvements with newer hardware.
+**Intel Core i7-8750H, MacBook Pro 15-inch (2018)**: for comparison only. Ooloi does not support Intel Macs.
+- **Processor**: 2.2 GHz, six cores, twelve hardware threads
+- **Memory**: 16 GB
+- **macOS**: 15.8.3
+
+Both run OpenJDK 25 with the JVM options in `shared/project.clj`, on the same code, on mains power with Low Power Mode off. Each machine ran both suites three times; every figure below is the median of its three runs, and each run's output is in `shared/dev/bench/results/`.
 
 ## Benchmark Results Summary
 
@@ -30,24 +29,12 @@ For each scope we report two forms:
 - **Unrealised (streaming)**: we *reduce* over the traversal and never allocate result tuples. This is **constant-memory** and typical for cache updates and searches.
 - **Materialised (collected)**: we *collect* `[item vpd position]` tuples into a vector. This allocates proportionally and is used intentionally for operations that need random access.
 
-**2017 MacBook Pro (Baseline):**
-
-| Scope | Typical Use | Unrealised Mean | Materialised Mean | Notes |
-|------|--------------|-----------------|-------------------|-------|
-| 10 measures × 1 staff | Cache refresh after edit | ~1.0 ms | ~1.0 ms | Minimal overhead for materialisation |
-| 10 measures × 4 staves | Compound cache rebuild | ~4.4 ms | ~4.4 ms | Proportional to number of staves |
-| 1 instrument × full piece | Part extraction / analysis | ~35 ms | ~35 ms | Noise within measurement variance |
-| 50 measures × 1 staff | Search endpoint (worst case) | ~2.3 ms | N/A | Real slurs end within 1-2 measures |
-
-**2023 M3 MacBook Pro (2-3× improvement):**
-
-| Scope | Typical Use | Unrealised Mean | Materialised Mean | Notes |
-|------|--------------|-----------------|-------------------|-------|
-| 10 measures × 1 staff | Cache refresh after edit | ~360 µs | ~360 µs | 2.8× faster than baseline |
-| 10 measures × 4 staves | Compound cache rebuild | ~1.49 ms | ~1.49 ms | 2.95× faster than baseline |
-| 1 instrument × full piece | Part extraction / analysis | ~12.9 ms | ~12.9 ms | 2.7× faster than baseline |
-| 50 measures × 1 staff | Search endpoint (worst case) | ~788 µs | N/A | 2.9× faster than baseline |
-| Typical slur search (1-2 measures) | Common endpoint search | <50 µs | N/A | 2× faster than baseline (<100 µs) |
+| Scope | Typical Use | M3, unrealised | M3, materialised | i7-8750H, unrealised | i7-8750H, materialised |
+|------|--------------|---------------:|-----------------:|---------------------:|-----------------------:|
+| 10 measures × 1 staff | Cache refresh after edit | 402 µs | 404 µs | 1.02 ms | 992 µs |
+| 10 measures × 4 staves | Compound cache rebuild | 1.61 ms | 1.62 ms | 5.94 ms | 4.25 ms |
+| 1 instrument × full piece | Part extraction / analysis | 13.9 ms | 14.8 ms | 30.4 ms | 41.3 ms |
+| 50 measures × 1 staff | Search endpoint (worst case) | 889 µs | N/A | 2.51 ms | N/A |
 
 #### Materialisation vs Streaming
 
@@ -82,25 +69,17 @@ There are two ways to consume this stream:
 
 ### Batch Operations (rare, but important)
 
-**2017 MacBook Pro (Baseline):**
+| Operation | Scope | M3 | i7-8750H | Memory | Notes |
+|-----------|-------|---:|---------:|--------|-------|
+| **Streaming export** | Full piece | 613 ms | 1.18 s | <10 MB | Constant memory, no materialisation |
+| **Full traversal** | Full piece | 334 ms | 536 ms | ~244 MB | With materialisation |
+| **Generate piece** | Full piece | 1.78 s | 4.31 s | - | Creating structure from scratch |
+| **Save to disk** | Full piece | 517 ms | 1.33 s | - | Nippy serialisation with the hash-consing registry |
+| **Load from disk** | Full piece | 1.23 s | 3.23 s | - | Deserialisation + verification |
+| **Freeze, Nippy alone** | Full piece | 8.17 s | 47.6 s | - | `nippy/freeze` of the whole piece, without the registry |
+| **File size** | Full piece | 0.17 MB | 0.17 MB | - | 0.35 bytes/pitch with hash-consing |
 
-| Operation | Scope | Mean Time | Memory | Notes |
-|-----------|-------|-----------|--------|-------|
-| **Streaming export** | Full piece | ~1.25 sec | <10 MB | Constant memory, no materialization |
-| **Full traversal** | Full piece | ~582 ms | ~244 MB | With materialization (baseline) |
-| **Generate piece** | Full piece | ~1.0 sec | - | Creating structure from scratch |
-| **Save to disk** | Full piece | ~1.3 sec | - | Async with Nippy serialization |
-| **Load from disk** | Full piece | ~3.3 sec | - | Deserialization + verification |
-| **File size** | Full piece | 0.17 MB | - | 0.35 bytes/pitch with hash-consing |
-
-**2023 M3 MacBook Pro (2-3× improvement):**
-
-| Operation | Scope | Mean Time | Memory | Notes |
-|-----------|-------|-----------|--------|-------|
-| **Streaming export** | Full piece | ~592 ms | <10 MB | 2.1× faster than baseline |
-| **Full traversal** | Full piece | ~316 ms | ~244 MB | 1.84× faster than baseline |
-
-**Key insight**: The streaming export (~1.27 sec) uses constant memory (<10 MB) vs full traversal with materialization (528 ms, 244 MB). For MIDI/MusicXML export, the system maintains constant memory regardless of piece size.
+**Key insight**: The streaming export (613 ms) uses constant memory (<10 MB), against the full traversal with materialisation (334 ms, ~244 MB). For MIDI/MusicXML export, the system maintains constant memory regardless of piece size.
 
 **Persistence notes**:
 - File size does NOT include visual formatting hierarchy yet (will likely double when added)
@@ -112,21 +91,31 @@ There are two ways to consume this stream:
 
 These results demonstrate **optimal performance characteristics** for a functional music notation system:
 
-**Traversal substrate performance**: Typical **traversal windows** that feed cache updates and searches complete in 1–5 ms for unrealised (streaming) operations. Editing and scrolling themselves run on **cached data**; traversal occurs only when dependencies must be recomputed. The difference between unrealised and materialised for small scopes is **negligible**, validating that the transducer architecture delivers genuine zero-intermediate-allocation. The cost you pay for materialisation is purely the final vector allocation, not intermediate lazy sequence overhead. Endpoint searches (slur/tie resolution) complete in ~2.3ms even for the worst case (50 measures ahead with no match) - real slurs typically end within 1-2 measures, making actual searches sub-millisecond.
+**Traversal substrate performance**: On the M3, the traversal windows that feed cache updates and searches complete in 0.4 to 1.6 ms for unrealised (streaming) operations, 1 to 6 ms on the i7-8750H. Editing and scrolling themselves run on **cached data**; traversal occurs only when dependencies must be recomputed. The difference between unrealised and materialised for small scopes is **negligible**, validating that the transducer architecture delivers genuine zero-intermediate-allocation. The cost you pay for materialisation is purely the final vector allocation, not intermediate lazy sequence overhead. Endpoint searches (slur/tie resolution) complete in 0.9 ms even for the worst case (50 measures ahead with no match); real slurs typically end within 1-2 measures, making actual searches far shorter.
 
-**Memory discipline**: The contrast between streaming export (~1.25 sec, <10 MB constant memory) and full traversal with materialization (~582 ms, ~244 MB) validates the architectural design. For MIDI/MusicXML export, the system maintains **constant memory regardless of piece size** - this is critical for production systems handling large scores. Cache refresh operations use constant memory via streaming reduction; materialisation is intentionally used only when random access is needed. The negligible materialisation overhead means you can freely materialize small scopes without performance concerns.
+**Memory discipline**: The contrast between streaming export (613 ms, <10 MB constant memory) and full traversal with materialisation (334 ms, ~244 MB) validates the architectural design. For MIDI/MusicXML export, the system maintains **constant memory regardless of piece size** - this is critical for production systems handling large scores. Cache refresh operations use constant memory via streaming reduction; materialisation is intentionally used only when random access is needed. The negligible materialisation overhead means you can freely materialise small scopes without performance concerns.
 
-**Batch traversal**: Half a second to traverse over half a million musical elements with temporal coordination guarantees is **exceptionally fast**. The push-based transducer architecture delivers on its zero-intermediate-allocation promise - we only allocate the result tuples themselves, which is unavoidable. The 1M+ pitches/second traversal rate means even the most complex orchestral scores feel instantaneous to users.
+**Batch traversal**: A third of a second to traverse over half a million musical elements with temporal coordination guarantees is **exceptionally fast**: about 1.6 million pitches a second on the M3, and 1 million on the i7-8750H. The push-based transducer architecture delivers on its zero-intermediate-allocation promise - we only allocate the result tuples themselves, which is unavoidable.
 
-**File persistence**: At 0.35 bytes per pitch, Ooloi achieves **remarkable compression** through hash-consing. A massive *Götterdämmerung*-scale work compresses to 172KB - smaller than a typical email. The 1.3 second save time eliminates the notorious slowness of systems like Igor Engraver. Combined with the 3.3 second load time, users experience **near-instant file operations** even for extreme scores. This is production-ready performance.
+**File persistence**: At 0.35 bytes per pitch, Ooloi achieves **remarkable compression** through hash-consing. A massive *Götterdämmerung*-scale work compresses to 172KB - smaller than a typical email. A save takes half a second and a load 1.2 seconds on the M3, eliminating the notorious slowness of systems like Igor Engraver: users experience **near-instant file operations** even for extreme scores.
 
-**Generation speed**: Creating 520,000 pitches from scratch in one second demonstrates that **piece construction is not a bottleneck**. The system can generate complex musical structures faster than users can think about them.
+**Generation speed**: Creating 520,000 pitches from scratch in under two seconds demonstrates that **piece construction is not a bottleneck**.
 
-**Overall**: These benchmarks validate that the Phase 6.9 optimization delivered production-ready performance. The system is **fast enough** that performance concerns disappear from user consciousness - operations complete before users notice. File sizes are **small enough** to be irrelevant in modern contexts. The architecture is **efficient enough** to handle extreme scores without compromise. This is exactly where a professional notation system should be.
+**Overall**: The system is **fast enough** that performance concerns disappear from user consciousness - operations complete before users notice. File sizes are **small enough** to be irrelevant in modern contexts. The architecture is **efficient enough** to handle extreme scores without compromise.
+
+### Apple Silicon against Intel
+
+On this code the M3 is 2.15 to 2.60 times as fast as the i7-8750H, comparing each machine's fastest run, and Geekbench 6 rates the M3's single core 2.49 times the i7-8750H's. Three results lie outside that range:
+
+- **The two whole-piece traversals gain least**: the streaming export 1.84 times and the materialised traversal 1.55. The export runs in constant memory, so allocation does not account for it alone; the cause has not been measured.
+- **Nippy's freeze of the whole piece gains most**, 5.0 to 6.4 times, while a save, which freezes through the hash-consing registry, gains 2.6. The cause has not been measured.
+- **The i7-8750H's runs vary more.** Its three runs differ by up to 2.15 times on one scope, the M3's last two by at most 14 per cent, so ratios of medians run higher than ratios of best runs: 3.69 against 2.44 for the 10 measures × 4 staves streaming scope.
+
+Each run's full output is in `shared/dev/bench/results/`, one directory per run and machine.
 
 ## Overview
 
-These benchmarks validate the Phase 6.9 timewalk optimization, which refactored from lazy sequence wrapper to true push-based transducer with:
+These benchmarks validate the timewalk's push-based transducer design, which replaced a lazy sequence wrapper with:
 
 - **Zero intermediate allocation** - No lazy sequence nodes, bare arguments throughout
 - **True early termination** - Processing stops immediately on `reduced`
@@ -208,7 +197,7 @@ The script runs the timewalk suite and then the persistence suite, each in a fre
 
 On macOS the script keeps the machine awake for the whole run. The suites take about ten minutes on an M3; nothing else should run on the machine meanwhile, and on a laptop it should be on mains power with Low Power Mode off.
 
-**Comparing machines.** Results compare only when they come from the same commit and the same JVM options, which `machine.log` records. The host line the timewalk suite prints is fixed text and does not name the machine it runs on; `machine.log` does. To record a machine's results for comparison:
+**Comparing machines.** Results compare only when they come from the same commit and the same JVM options, which `machine.log` records. The timewalk suite's host line gives the operating system, architecture, processor count and maximum heap as the JVM sees them; `machine.log` names the processor and the machine. To record a machine's results for comparison:
 
 1. Pull. Runs compare while the code they measure is the same between the commits their `machine.log` files record: `git diff --stat <commit> <commit> -- shared/src shared/dev shared/project.clj` lists nothing but this README, `run_suites.sh` and `results/`.
 2. Run the script twice into `shared/dev/bench/results/`, under a name for the machine, its model, processor and year, and the run:
@@ -284,7 +273,7 @@ Each benchmark validates specific optimization claims:
 
 ## Expected Results
 
-Based on Phase 6.9 optimization goals:
+Based on the transducer design's goals:
 
 | Scenario | Expected Improvement | Why |
 |----------|---------------------|-----|
