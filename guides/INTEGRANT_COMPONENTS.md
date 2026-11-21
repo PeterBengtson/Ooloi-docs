@@ -1059,7 +1059,7 @@ Headless suppresses only `window/show!`; registration, scene assembly, menu wiri
 
 ### Async helpers from `util.common`
 
-For tests that need to wait on asynchronous state changes (events arriving in an atom, a registry counting up or down, a flag flipping), `util.common` provides three helpers. `wait-for-event` and `wait-for-state` are re-exports of the implementations in `ooloi.shared.async`, built on `promise` + `add-watch` + `(deref _ timeout-ms nil)`; `wait-until` polls, for conditions with nothing to watch. All three return as soon as the condition is satisfied, with a hard upper-bound timeout — replacing brittle `Thread/sleep N` waits.
+For tests that need to wait on asynchronous state changes (events arriving in an atom, a registry counting up or down, a flag flipping), `util.common` provides three helpers. `wait-for-event` and `wait-for-state` are re-exports of the implementations in `ooloi.shared.async`, built on `promise` + `add-watch` + `(deref _ timeout-ms nil)`; `wait-until` polls, for conditions with nothing to watch. All three return as soon as the condition is satisfied, with a hard upper-bound timeout — replacing brittle `Thread/sleep N` waits. Two more serve one measurement, what a piece of work allocates: `total-allocated-bytes` and `wait-for-no-threads-named`.
 
 #### `wait-for-event` — predicate per element
 
@@ -1126,6 +1126,26 @@ The last resort, and genuinely last. `wait-for-state` and `wait-for-event` are *
 **It is still better than a sleep, for the reason that governs this whole class:** it returns the moment the condition holds instead of always paying the full delay, and it fails at a deadline instead of proceeding silently to an assertion that was never going to hold.
 
 **Do not reach for it when an atom does express the condition — and do not rule it out when nothing does.** *"The target is a JavaFX property, not a Clojure atom, so `wait-for-state` can't watch it"* is correct, and the wrong conclusion when it ends in a sleep, because polling is available. The opposite error is commoner: polling a view when the model behind it is an atom, which samples a consequence instead of watching the cause.
+
+#### `total-allocated-bytes` — what a piece of work allocated, on whatever thread
+
+The bytes every thread has allocated since the JVM started, finished threads included (`com.sun.management.ThreadMXBean/getTotalThreadAllocatedBytes`, JDK 21 and later). Taken before and after the work, the difference counts allocation on threads the work created and that are gone when it returns, which a per-thread count cannot see. It also counts whatever else the JVM allocated meanwhile, so compare such figures with a tolerance, a ratio or a factor of two, never for equality. The save-cost facts in `filesystem_test` and `persistence_test` use it that way: a second save of the same piece allocates no more than twice the first.
+
+#### `wait-for-no-threads-named` — a thread made for one piece of work is gone
+
+Polls, through `wait-until`, until no live thread's name starts with a prefix. It exists for reading `total-allocated-bytes` after work that ran on a thread made for it, such as the `ooloi-save-writer` thread `persistence/file-writer` creates for each write. The JVM moves a finished thread's allocation into its total as the thread exits, so a total read while that thread is still exiting can miss the work entirely, and the next reading then includes it. Repeated 150 times, a `buffer-writer` measurement read 0.003 MB for a 19 MB freeze in 6 cases without the wait, and in none with it.
+
+```clojure
+(require '[util.common :refer [total-allocated-bytes wait-for-no-threads-named]])
+
+(let [before (total-allocated-bytes)]
+  @(SRV/save-piece piece-id dir-token "saved.ooloi")
+  ;; the write's own thread must be gone for its allocation to count
+  (wait-for-no-threads-named "ooloi-save-writer" 5000)
+  (- (total-allocated-bytes) before))
+```
+
+It reads thread names through the thread MXBean at stack depth 0, which allocates little per poll; `Thread/getAllStackTraces` would add its stack traces to the very count it protects.
 
 ### Teardown that provokes production behaviour must wait for it to finish
 

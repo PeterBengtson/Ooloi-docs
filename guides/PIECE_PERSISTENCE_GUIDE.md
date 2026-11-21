@@ -126,6 +126,8 @@ A consequence worth expecting: pressing Save leaves the modified indicator showi
 
 **Hash-consing survives the round trip.** Ooloi shares identical immutable musical objects — a C4 with a staccato exists once however many times it appears — and a piece read back from disk shares them again. The file writer freezes the piece directly, with `nippy/freeze-to-file`. Custom Nippy transforms for `Pitch`, `Rest`, `Chord` and `Articulation` write each such object as its constructor arguments, and thawing passes those arguments back through the same caching constructor (`create-pitch`, `create-rest`, `create-chord`, `create-articulation`), so a thawed object is shared exactly as a newly constructed one would be. See [ADR-0029](../ADRs/0029-Global-Hash-Consing.md).
 
+**A file or buffer write freezes on a thread of its own.** Nippy keeps an outermost freeze's final buffer on the thread that made it when that buffer is at most 1 MiB, and gives every nested freeze a new buffer that size. The transforms above freeze each `Pitch`, `Rest`, `Chord` and `Articulation` nested, so on a thread that is used again, as the save queue's is, every freeze after a small one would allocate up to a mebibyte per such object. On a 2018 MacBook Pro, a 100-measure score whose first save took 0.4 s and allocated 0.22 GB took 5.0 s and allocated 49.5 GB when saved after a 10-measure one. `file-writer` and `buffer-writer` therefore run their freeze on a thread created for the write and shut down after it, which takes its buffer with it, at about 0.1 ms a write. The caller waits, and a failure on that thread reaches it as itself. `socket-writer` needs no such thread: `freeze-to-out!` keeps its own nesting count, so the transforms' freezes inside it reuse the kept buffer instead of allocating one that size.
+
 `ooloi.shared.ops.persistence` also holds a registry-first format — `create-optimized-file-format` and `extract-cache-registry`, which gather the shared objects into a registry ahead of the piece — but nothing outside that namespace calls them. The file `save-piece` writes is the frozen piece itself.
 
 **Pure trees are what make the deferred write safe.** A snapshot is an immutable value, so the queue can hold it while the user edits into new versions, and the file that lands is a consistent point-in-time score rather than a smear of two. See [ADR-0010](../ADRs/0010-Pure-Trees.md).
@@ -150,24 +152,29 @@ A piece's identity is its UUID, and the [persistent catalogue](PIECE_MANAGER_GUI
 
 ## Benchmarking
 
-Serialisation cost is best measured through the **buffer** backend, which removes the disk from the measurement:
+**A save is timed through `file-writer`, the write a save performs.** Its freeze runs on a thread of its own, as a save's does, so repeated writes in one benchmark each cost what a save costs:
 
 ```clojure
-(let [piece (pm/get-piece piece-id)
-      write (persistence/buffer-writer)
-      t0    (System/nanoTime)
-      bytes (write piece)
-      froze (- (System/nanoTime) t0)
-      read  (persistence/buffer-reader bytes)
-      t1    (System/nanoTime)
-      _     (read)
+(let [piece  (pm/get-piece piece-id)
+      file   (java.io.File/createTempFile "ooloi-bench" ".ooloi")
+      write! (persistence/file-writer (.getPath file))
+      t0     (System/nanoTime)
+      _      (write! piece)
+      wrote  (- (System/nanoTime) t0)
+      read   (persistence/file-reader (.getPath file))
+      t1     (System/nanoTime)
+      _      (read)
       thawed (- (System/nanoTime) t1)]
-  {:freeze-ms (/ froze 1e6)
-   :thaw-ms   (/ thawed 1e6)
-   :bytes     (count bytes)})
+  {:write-ms (/ wrote 1e6)
+   :read-ms  (/ thawed 1e6)
+   :bytes    (.length file)})
 ```
 
-This measures the serialiser, not the save path: it neither queues a write nor touches a file. Remember the buffer's constraint — it holds the whole serialisation in memory, so benchmark a representative score rather than the largest one you have.
+This times the freeze and the write together, not the save queue's hop, which exists for ordering rather than for speed. `bench.persistence-bench` in `shared/dev/bench/` times it with Criterium at 10, 100 and 1000 measures, and the [benchmarks README](../READMEs/BENCHMARKS_README.md) holds the figures. A write also carries a fixed cost of a few milliseconds, which is most of a small piece's write.
+
+**Do not time `nippy/freeze` in a loop on one thread.** After the first small freeze, every later one pays the kept buffer described under [Serialisation](#serialisation) once per shared object, so the figure measures that rather than serialisation.
+
+**The buffer backend** removes the disk from the measurement, and its freeze runs on a thread of its own as the file's does, so it isolates the serialiser's cost. It holds the whole serialisation in memory: benchmark a representative score with it rather than the largest one you have.
 
 ## Autosave and versioning
 
