@@ -633,7 +633,7 @@ An Intel Core i7-8750H, which Ooloi does not support ([ADR-0050](0050-Platform-S
 - Small scopes complete sub-millisecond to few milliseconds
 
 **Endpoint Search Performance**:
-- Typical slur searches (2-10 notes): 2-10 microseconds (2025 laptop, 6-29 µs on 2018 hardware)
+- Typical slur searches (2-10 notes): 2-10 microseconds on an Apple M3 (6-29 µs on an Intel Core i7-8750H)
   - 2 notes: ~2 µs
   - 5 notes: ~5 µs
   - 10 notes: ~10 µs
