@@ -620,12 +620,12 @@ Benchmarks on a 1000-measure orchestral piece (29 instruments, ~520,000 pitches)
 - Architecture delivers on zero-intermediate-allocation promise
 
 **Streaming Characteristics (Apple M3)**:
-- Full traversal: 334 ms (~1.6M pitches/second)
-- Cache refresh: 0.4 ms for 10 measures of one staff, 1.6 ms for 10 measures of four
+- Full traversal: 329 ms (~1.6M pitches/second)
+- Cache refresh: 0.4 ms for 10 measures of one staff, 1.7 ms for 10 measures of four
 - Constant memory for exports (<10 MB regardless of piece size)
-- Streaming export: 613 ms for 520K pitches
+- Streaming export: 630 ms for 520K pitches
 
-An Intel Core i7-8750H, which Ooloi does not support ([ADR-0050](0050-Platform-Support-Policy.md)), takes 1.5 to 2.6 times as long for each.
+An Intel Core i7-8750H, which Ooloi does not support ([ADR-0050](0050-Platform-Support-Policy.md)), takes 1.5 to 2.4 times as long for each.
 
 **Scope Limiting Validation**:
 - Performance scales proportionally with scope
