@@ -67,9 +67,9 @@ Elements that can be referenced implement the TakesAttachment trait:
 
 ### 3. Serialization and Deserialization
 
-- Serialization: The entire piece structure, including all integer ID references, is serialized directly using Nippy.
-- Deserialization: The piece structure is deserialized directly using Nippy, with all integer ID references intact.
-- **Hash-Consing Optimization**: Registry-based file size optimization leverages selective hash-consing to achieve substantial performance gains during serialization/deserialization while preserving all ID references and structural integrity (see [ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md)).
+- Serialization: The piece is serialized with Nippy in the registry-first format ([ADR-0007](0007-Nippy.md) §The File Format): each distinct shared object once, in a registry ahead of the piece, which refers to it. Integer ID references are written as they stand.
+- Deserialization: The registry's entries are built first, through their caching constructors, and the piece is then thawed with every reference to an entry resolved and every integer ID reference intact.
+- **Hash-consing survives the round trip**: a reopened piece shares its objects through the global cache exactly as a newly constructed one would ([ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md)).
 
 ### 4. Piece Identity: UUID as Primary Key
 
@@ -126,7 +126,7 @@ The access model that uses the piece-level UUID as a collaboration key, and the 
 - Maintains consistency of references across updates.
 - Simplifies the overall data structure by maintaining a pure tree.
 - Allows for straightforward serialization and deserialization.
-- **Substantial performance optimization**: Hash-consing provides 69% file size reduction and 4x serialization/deserialization speed improvement for repetitive musical structures while preserving all ID references.
+- **Small files and fast opens**: each shared object is written once, so the benchmark's 1000-measure piece writes a 49 KB file that opens in 69 ms on an Apple M3, against 183 KB and 1.23 s with every object written in full, its ID references preserved either way ([ADR-0029](0029-Global-Hash-Consing.md) §Measured Performance Results).
 
 ### Negative
 
@@ -138,7 +138,7 @@ The access model that uses the piece-level UUID as a collaboration key, and the 
 - [ADR-0010: Pure Trees](0010-Pure-Trees.md) - Tree structure foundation that this persistence model builds upon
 - [ADR-0007: Nippy](0007-Nippy.md) - Serialization technology chosen for persistence implementation
 - [ADR-0008: VPDs](0008-VPDs.md) - VPD addressing system that gets persisted as part of the structure
-- [ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md) - Hash-consing optimization system that dramatically improves serialization performance while maintaining ID reference integrity
+- [ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md) - The shared objects a file holds once and a reopened piece shares again, with ID references untouched
 - [ADR-0036: Collaborative Sessions and Hybrid Transport](0036-Collaborative-Sessions-and-Hybrid-Transport.md) - Uses the piece-level UUID as the collaboration access key
 - [ADR-0021: Authentication](0021-Authentication.md) - JWT claims target the piece-level UUID for authorised access
 - [ADR-0053: The Piece Window and Piece Preferences](0053-Piece-Window-and-Piece-Preferences.md) - Introduces `:musician-uuids`, the layout-to-musician references cloning must remap
@@ -160,8 +160,7 @@ The access model that uses the piece-level UUID as a collaboration key, and the 
 
 1. Explore implementing concurrent processing for further performance improvements.
 2. Develop tools for analyzing and visualizing ID references to aid in debugging and optimization.
-3. Implement a versioning system to handle future changes in piece structure.
-4. Investigate lazy loading techniques for referenced structures in extremely large pieces.
-5. Monitor and profile ID reference operations in real-world usage to identify optimization opportunities.
-6. Explore optimizations for traversing and processing structures with ID references in very large musical pieces.
-7. Consider implementing a diff-based serialization for storing revision histories efficiently.
+3. Investigate lazy loading techniques for referenced structures in extremely large pieces.
+4. Monitor and profile ID reference operations in real-world usage to identify optimization opportunities.
+5. Explore optimizations for traversing and processing structures with ID references in very large musical pieces.
+6. Consider implementing a diff-based serialization for storing revision histories efficiently.

@@ -22,10 +22,9 @@ Implemented
   - [Background Cache Optimization Daemon](#background-cache-optimization-daemon)
     - [The Counters Are a Required Dependency](#the-counters-are-a-required-dependency)
 - [Measured Performance Results](#measured-performance-results)
-  - [Registry-Based File Size Optimization](#registry-based-file-size-optimization)
-  - [Serialization Performance Gains](#serialization-performance-gains)
-  - [Deserialization Performance Gains](#deserialization-performance-gains)
-  - [Implementation Verification](#implementation-verification)
+  - [File Size](#file-size)
+  - [Write and Read Times](#write-and-read-times)
+  - [What the Tests Establish](#what-the-tests-establish)
 - [Consequences](#consequences)
   - [Benefits](#benefits)
   - [Trade-offs](#trade-offs)
@@ -38,7 +37,7 @@ Musical notation systems create enormous numbers of immutable objects during ope
 
 Since musical objects are immutable by design, identical instances can be safely shared across the entire system without affecting behavior. This enables **hash-consing** - a technique where identical immutable values are represented by the same object instance.
 
-Since over 99% of musical objects are duplicates with identical parameter values, hash-consing provides substantial memory reductions across typical compositions. File sizes shrink proportionally, with corresponding improvements in save/load performance.
+Since over 99% of musical objects are duplicates with identical parameter values, hash-consing provides substantial memory reductions across typical compositions. A saved file holds each shared object once and an open builds each once, so files are smaller and opens faster as well (see [Measured Performance Results](#measured-performance-results)).
 
 This optimization is straightforward in functional programming with immutable data structures, where sharing identical objects is safe. The same optimization is complex in procedural/object-oriented programming where mutable state makes object sharing require synchronization and defensive copying.
 
@@ -83,14 +82,16 @@ The `hash-cons-cacheable?` predicate determines caching eligibility through simp
 - **TakesAttachment objects with articulation-only attachments**: Pitches, rests, chords that have:
   - No `:endpoint-id` (not part of a relationship)
   - All attachments recursively cacheable (which means articulations only)
+  - For a chord, all its pitches cacheable
 
 **Not Cacheable:**
 - **TakesAttachment objects with endpoint-id**: Any object participating in a relationship (slurs, ties, glissandos)
 - **TakesAttachment objects with non-articulation attachments**: Objects with dynamics, hairpins, or mixed attachment types
+- **Chords holding an uncacheable pitch**: a pitch that starts a tie, or ends one, makes its chord unique to that relationship as well
 - **Non-articulation attachments**: Dynamics, slurs, ties, hairpins, glissandos
 - **All other object types**: Measures, voices, staves, musicians, instruments, pieces, etc.
 
-The predicate uses recursive checking: a TakesAttachment object is cacheable only if all its attachments are themselves cacheable, which implicitly means they must all be articulations.
+The predicate uses recursive checking: a TakesAttachment object is cacheable only if all its attachments are themselves cacheable, which implicitly means they must all be articulations, and a chord only if its pitches are as well.
 
 ## Architecture
 
@@ -133,7 +134,7 @@ Constructor arguments are used directly as cache keys, eliminating the need for 
 
 ### Serialization Integration with Nippy
 
-The system integrates with Nippy serialization to preserve shared object structure across save/load cycles. Nippy does not deduplicate on its own, so a piece is written registry-first: each cacheable object the piece holds is written once, as its constructor arguments, in a registry ahead of the piece, and the piece refers to it by index; uncached objects are written inline. On load the registry is read first and each entry is reconstructed through its caching constructor, so the thawed piece shares objects through the global cache exactly as a newly constructed one would. LZ4 compression applies to the whole.
+The system integrates with Nippy serialization to preserve shared object structure across save/load cycles. Nippy does not deduplicate on its own, so a piece is written registry-first: each cacheable object the piece holds is written once, as its constructor arguments, in a registry ahead of the piece, and the piece refers to it by index; uncached objects are written inline. On load the registry is read first and each entry is reconstructed through its caching constructor, so the thawed piece shares objects through the global cache exactly as a newly constructed one would. LZ4 compression applies to the whole. The format, its references and its version stamp are specified in [ADR-0007](0007-Nippy.md) §The File Format.
 
 ### Background Cache Optimization Daemon
 
@@ -255,61 +256,48 @@ with the dependency code rather than a generic one
 
 ## Measured Performance Results
 
-Implementation of the selective hash-consing system has been completed and comprehensively tested with 50,000-object datasets to measure real-world performance characteristics. The results demonstrate substantial gains across all optimization targets: file size reduction, serialization speed, and deserialization speed.
+The benchmark's orchestral piece (`bench.persistence-bench` in `shared/dev/bench/`: 29 instruments, about 520 items a measure) at three sizes, written through `file-writer` and read back through `file-reader`, the write a save performs and the read an open performs. Each figure is the median of three runs on each machine, set against the same piece with every object written in full, as a file without a `:format` holds it ([ADR-0007](0007-Nippy.md) §The File Format). The M3 is Ooloi's Mac platform; the Intel Core i7-8750H, which Ooloi does not support ([ADR-0050](0050-Platform-Support-Policy.md)), is there for comparison. Each run's output is kept in `shared/dev/bench/results/`.
 
-**Test Environment:** Performance measurements were conducted on a 2018 MacBook Pro to provide conservative baseline figures. Modern hardware would show proportionally better absolute performance while maintaining the same optimization ratios.
+### File Size
 
-### Registry-Based File Size Optimization
+| Piece | Items | Frozen, in full → registry-first | File, in full → registry-first |
+|---|---:|---:|---:|
+| 10 measures | 5,200 | 423 KB → 85 KB | 8.2 KB → 6.2 KB |
+| 100 measures | 52,000 | 4.07 MB → 691 KB | 32 KB → 10 KB |
+| 1000 measures | 520,000 | 40.6 MB → 6.73 MB | 183 KB → 49 KB |
 
-The system implements a registry-based serialization format that replaces cached objects with shared references during storage operations. Testing with large datasets shows dramatic file size reductions:
+*Frozen* is the serialisation before compression, and *File* is what lands on disk; the two machines agree on both within the generator's variation, under one per cent. Written once rather than at every occurrence, the shared objects leave the frozen piece five to six times smaller. LZ4 had already compressed most of that repetition away, so the file shrinks less: 1.3 times at 10 measures, 3.2 at 100 and 3.8 at 1000. The generated piece repeats far more than a real score does, so a real score of the same length has more distinct objects.
 
-**File Size Comparison (50,000 objects):**
-- **Identical cached objects**: 14,540 bytes
-- **Varied uncached objects**: 24,590 bytes
-- **Compression improvement**: **69% better** (1.69x file size reduction)
+### Write and Read Times
 
-The registry system scales excellently - compression effectiveness actually **improves** with larger datasets containing more duplicate identical objects. Musical pieces naturally contain many duplicate objects (multiple C4 pitches, quarter-note rests, staccato markings), and larger pieces amplify these benefits.
+| Piece | Write, M3 | Read, M3 | Write, i7-8750H | Read, i7-8750H |
+|---|---:|---:|---:|---:|
+| 10 measures | 6.5 → 7.4 ms | 12.5 → 1.0 ms | 13.8 → 12.7 ms | 33.7 → 2.0 ms |
+| 100 measures | 46 → 59 ms | 128 → 7.2 ms | 109 → 103 ms | 295 → 13.5 ms |
+| 1000 measures | 513 → 511 ms | 1.23 s → 68.5 ms | 1.18 s → 822 ms | 2.71 s → 144 ms |
 
-### Serialization Performance Gains
+A read takes a twelfth to a twenty-second of the time: it builds each shared object once, through its caching constructor, and resolves every other occurrence to it. A write does the registry's work as it goes, a lookup for each object it writes; on the M3 it takes as long, or up to 29 per cent longer at the smaller sizes, and on the i7-8750H 5 to 30 per cent less. The write runs on the save queue, which nobody waits on ([ADR-0007](0007-Nippy.md)).
 
-Hash-consed objects demonstrate substantial serialization speed improvements compared to uncached objects. The registry-based approach eliminates redundant serialization work by replacing cached objects with lightweight references:
+### What the Tests Establish
 
-**Serialization Speed (50,000 objects):**
-- **Cached objects**: 556.58 ms
-- **Uncached objects**: 2,294.79 ms
-- **Performance improvement**: **4.12x faster** serialization
+The tests enter through `save-piece` and `open-piece`, the calls the application makes, and establish that:
 
-The performance improvement results from two factors: (1) cached objects are replaced with compact shared references during serialization, and (2) registry lookup operations are significantly faster than full object serialization.
-
-### Deserialization Performance Gains
-
-The registry-based system achieves even greater deserialization speed improvements. Shared references are resolved through constructor calls that immediately return cached instances, eliminating object reconstruction overhead:
-
-**Deserialization Speed (50,000 objects):**
-- **Cached objects**: 258.72 ms
-- **Uncached objects**: 1,144.52 ms
-- **Performance improvement**: **4.42x faster** deserialization
-
-Constructor-based cache lookup provides faster object restoration than full deserialization, while simultaneously preserving cache identity and shared object benefits in the restored system state.
-
-### Implementation Verification
-
-The complete implementation has been verified through comprehensive testing:
-
-- **76 passing tests** including full serialization/deserialization roundtrip verification
-- **Registry extraction** from all cached object types (pitch, rest, chord, articulation)
-- **Reference replacement** via Nippy transforms with dynamic binding
-- **Cache identity preservation** through constructor-based reconstruction
-- **Structured file format** with metadata and registry-first layout
-
-Performance testing demonstrates that the optimization system scales linearly - larger datasets with more duplicate identical objects achieve proportionally better compression and speed improvements.
+- a saved file holds the registry-first map, its registry ahead of the piece;
+- each distinct cacheable object appears in the registry once, however often the piece uses it, and holds only the piece's own objects, not others the global cache holds;
+- an open builds each distinct cacheable object once, including those held inside other entries, and the reopened piece's objects are `identical?` to newly constructed ones;
+- an entry follows the entries its arguments hold;
+- an object in a relationship, the two notes of a tie, is written inline and reopens equal;
+- saving the same piece again writes a byte-identical file;
+- a file written before the format, every object inline, still opens;
+- a file whose `:format` is newer than the reader's is refused as `:unsupported-piece-format`, and no piece is registered;
+- a save of a piece holding five hundred distinct chords allocates no more than twice what a save of the same piece without them does.
 
 ## Consequences
 
 ### Benefits
 - **Significant memory reduction**: Substantial reductions in memory usage as duplicate objects are eliminated system-wide
-- **Smaller file sizes**: Save files shrink proportionally to memory reductions, enabling faster storage and network transfers
-- **Improved I/O performance**: Save/load operations benefit from reduced data volumes
+- **Smaller files**: a saved file holds each shared object once, in a registry ahead of the piece
+- **Faster opens**: an open builds each shared object once, in a twelfth to a twenty-second of the time it takes with every object written in full (see [Measured Performance Results](#measured-performance-results))
 - **Reduced garbage collection pressure**: Fewer object allocations reduce GC overhead
 - **Better scalability**: System can handle larger orchestral scores and complex compositions
 - **Transparent implementation**: Existing code benefits without requiring modifications
@@ -319,7 +307,7 @@ Performance testing demonstrates that the optimization system scales linearly - 
 
 ### Trade-offs
 
-Minimal and well-mitigated (bounded LRU memory, configurable daemon CPU, comprehensive test coverage). Like JVM string deduplication, the optimization is a net-positive with no user-visible downsides.
+Minimal and well-mitigated (bounded LRU memory, configurable daemon CPU, comprehensive test coverage). The one cost a save carries is the registry's lookups: on an Apple M3 a small piece's write takes up to 29 per cent longer than it would with every object written in full, on a queue nobody waits on (see [Measured Performance Results](#measured-performance-results)). Like JVM string deduplication, the optimization is a net-positive with no user-visible downsides.
 
 ### Risk Mitigation
 - **Comprehensive testing**: Extensive validation ensures shared instances maintain correctness

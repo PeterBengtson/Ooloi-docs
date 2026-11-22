@@ -11,6 +11,10 @@ Implemented
 - [Why Fressian Was Not Chosen](#why-fressian-was-not-chosen)
 - [Consequences](#consequences)
 - [Implementation Approach](#implementation-approach)
+- [The File Format](#the-file-format)
+  - [The Registry](#the-registry)
+  - [The Version Stamp](#the-version-stamp)
+  - [Every Write Freezes on a Thread of Its Own](#every-write-freezes-on-a-thread-of-its-own)
 - [Future Considerations](#future-considerations)
 - [Related Decisions](#related-decisions)
 
@@ -68,7 +72,7 @@ While Fressian was initially considered due to its language-agnostic nature and 
   - Built-in encryption support for potential future security needs.
 - Cons:
   - Clojure-specific, which may limit interoperability with non-JVM systems if needed in the future.
-  - ~~Doesn't natively handle shared structure, requiring custom solutions for Ooloi's musical structures~~ **RESOLVED**: Custom Nippy transforms now provide registry-based shared object optimization with substantial performance gains.
+  - Doesn't natively handle shared structure: Nippy writes an object again each time it meets it. Ooloi's custom transforms write each shared object once, in a registry ahead of the piece (see [The File Format](#the-file-format)).
 
 ## Implementation Approach
 1. Utilize Nippy's core functions for basic serialization and deserialization.
@@ -76,10 +80,37 @@ While Fressian was initially considered due to its language-agnostic nature and 
 3. Defer serialisation rather than performing it inline: a save takes its snapshot immediately and submits the write to a single-threaded queue, returning a handle that delivers the outcome. Reads run on the shared thread pool, bounded so the interface always has a core. Neither uses `clojure.core/future`, whose exceptions vanish unobserved ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md), [ADR-0017](0017-System-Architecture.md)).
 4. Integrate with the Piece Manager for efficient piece storage and retrieval.
 5. Implement chunked serialization and deserialization for handling very large musical scores.
-6. **Registry-Based File Size Optimization**: Leverage custom Nippy transforms to replace cached objects with shared references during serialization, achieving 69% file size reduction and 4x performance improvement for repetitive musical structures (see [ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md)).
+6. **The registry-first file format**: custom Nippy transforms write each distinct shared object once, in a registry ahead of the piece, and the piece refers to it (see [The File Format](#the-file-format) and [ADR-0029: Selective Hash-Consing](0029-Global-Hash-Consing.md)).
+
+## The File Format
+
+Every writer writes one frozen map, `{:format 1 :registry [...] :piece <bytes>}`, and every reader returns the value it holds. A file, an in-memory buffer and a socket stream carry the same format: it belongs to the persistence layer (`ooloi.shared.ops.persistence`), not to the file.
+
+### The Registry
+
+The registry holds one entry, `{:type … :args …}`, for each distinct `Pitch`, `Rest`, `Chord` and `Articulation` that the global cache would hold (`hash-cons-cacheable?`, [ADR-0029](0029-Global-Hash-Consing.md)): the object's Nippy type id, and the arguments its caching constructor takes. The registry fills while the piece is frozen, so the piece is frozen to bytes first, uncompressed, and the registry goes ahead of those bytes in the map; LZ4 compresses the whole.
+
+In the piece's bytes such an object is a reference to its entry: one negative int, `-(index + 1)`, under the object's own type id. Any other object of the four types, one in a relationship or carrying a non-articulation attachment, is written inline, as the length of its frozen arguments followed by them. A length is never negative, so a reader tells the two apart by sign.
+
+An entry is registered only after the objects its own arguments hold (a chord's pitches, a pitch's articulations), and inside the registry those objects are references too, so an entry refers only to entries before it. Registration is add-if-absent, in the order first met: Nippy writes a value again from the start each time it grows its buffer, and a repeated pass adds nothing.
+
+A reader builds the entries in index order through their caching constructors (`create-pitch`, `create-rest`, `create-chord`, `create-articulation`), each entry's references resolved to the objects already built, and then thaws the piece with every reference resolved the same way. A reopened piece therefore shares its objects through the global cache exactly as a newly constructed one would.
+
+### The Version Stamp
+
+`:format` is a positive integer, 1 for this format (`persistence/format-version`). A reader has one question to ask of it, whether it can read the file, and an integer answers it with one comparison:
+
+- A value with no `:format`, as files written before the stamp existed are, is format 0 and is read as it is, every object inline.
+- A number up to the reader's own is read.
+- A newer number is refused before anything is built or thawed, and `open-piece` reports it as `:unsupported-piece-format` ([ADR-0051](0051-Filesystem-Operations-Real-and-Virtual.md) §7).
+
+Any change a reader must know about is the next number. A save writes the current format, so an older file becomes the current one the first time it is saved.
+
+### Every Write Freezes on a Thread of Its Own
+
+Nippy keeps an outermost freeze's final buffer on the thread that made it when that buffer is at most 1 MiB, and gives every nested freeze on that thread a new buffer that size. A writer's nested freezes are the arguments of each object registered for the first time and of each object written inline, and a writer makes two outermost freezes, the piece's and then the map's. On a thread used again, as the save queue's is, each nested freeze would allocate up to a mebibyte. Each writer therefore runs on a thread created for the write and shut down after it, which takes its buffer with it; and an object already registered is written as its reference without its arguments being frozen again ([Piece Persistence Guide](../guides/PIECE_PERSISTENCE_GUIDE.md) §Serialisation).
 
 ## Future Considerations
-- Implement versioning for serialized data to manage future schema changes.
 - Optimize compression settings for very large scores.
 - Develop a comprehensive testing suite for serialization/deserialization, especially for complex structures and shared structure.
 - Monitor performance and optimize as necessary, potentially implementing lazy loading for large scores.

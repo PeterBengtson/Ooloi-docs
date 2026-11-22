@@ -11,6 +11,8 @@ How a piece reaches disk and comes back, and why the two directions are shaped d
 - [Failures are typed data](#failures-are-typed-data)
 - [What follows a completed write](#what-follows-a-completed-write)
 - [Serialisation](#serialisation)
+  - [The registry-first format](#the-registry-first-format)
+  - [Every write freezes on a thread of its own](#every-write-freezes-on-a-thread-of-its-own)
 - [The I/O backends](#the-io-backends)
 - [Integration with the Piece Manager](#integration-with-the-piece-manager)
 - [What a save and an open cost](#what-a-save-and-an-open-cost)
@@ -123,15 +125,19 @@ A consequence worth expecting: pressing Save leaves the modified indicator showi
 
 ## Serialisation
 
-**Nippy** provides the serialisation layer: a compact binary format, native handling of Clojure data structures, built-in compression, and streaming for pieces too large to hold twice in memory. See [ADR-0007](../ADRs/0007-Nippy.md).
-
-**Hash-consing survives the round trip.** Ooloi shares identical immutable musical objects — a C4 with a staccato exists once however many times it appears — and a piece read back from disk shares them again. The file writer freezes the piece directly, with `nippy/freeze-to-file`. Custom Nippy transforms for `Pitch`, `Rest`, `Chord` and `Articulation` write each such object as its constructor arguments, and thawing passes those arguments back through the same caching constructor (`create-pitch`, `create-rest`, `create-chord`, `create-articulation`), so a thawed object is shared exactly as a newly constructed one would be. See [ADR-0029](../ADRs/0029-Global-Hash-Consing.md).
-
-**A file or buffer write freezes on a thread of its own.** Nippy keeps an outermost freeze's final buffer on the thread that made it when that buffer is at most 1 MiB, and gives every nested freeze a new buffer that size. The transforms above freeze each `Pitch`, `Rest`, `Chord` and `Articulation` nested, so on a thread that is used again, as the save queue's is, every freeze after a small one would allocate up to a mebibyte per such object. On a 2018 MacBook Pro, a 100-measure score whose first save took 0.4 s and allocated 0.22 GB took 5.0 s and allocated 49.5 GB when saved after a 10-measure one. `file-writer` and `buffer-writer` therefore run their freeze on a thread created for the write and shut down after it, which takes its buffer with it, at about 0.1 ms a write. The caller waits, and a failure on that thread reaches it as itself. `socket-writer` needs no such thread: `freeze-to-out!` keeps its own nesting count, so the transforms' freezes inside it reuse the kept buffer instead of allocating one that size.
-
-`ooloi.shared.ops.persistence` also holds a registry-first format — `create-optimized-file-format` and `extract-cache-registry`, which gather the shared objects into a registry ahead of the piece — but nothing outside that namespace calls them. The file `save-piece` writes is the frozen piece itself.
+**Nippy** provides the serialisation layer: a compact binary format, native handling of Clojure data structures and built-in compression. See [ADR-0007](../ADRs/0007-Nippy.md).
 
 **Pure trees are what make the deferred write safe.** A snapshot is an immutable value, so the queue can hold it while the user edits into new versions, and the file that lands is a consistent point-in-time score rather than a smear of two. See [ADR-0010](../ADRs/0010-Pure-Trees.md).
+
+### The registry-first format
+
+**Hash-consing survives the round trip, and is what keeps a file small.** Ooloi shares identical immutable musical objects (a C4 with a staccato exists once however many times it appears), and a save writes each such object once. Every writer writes one frozen map, `{:format 1 :registry [...] :piece <bytes>}`. The registry holds an entry for each distinct `Pitch`, `Rest`, `Chord` and `Articulation` that the global cache would hold, as the arguments its caching constructor takes, and the piece's bytes refer to the entries by index. Any other object of those types, one in a relationship or carrying a non-articulation attachment, is written inline.
+
+An open builds the entries first, through the caching constructors (`create-pitch`, `create-rest`, `create-chord`, `create-articulation`), and then thaws the piece with each reference resolved to its built object, so a reopened piece shares its objects exactly as a newly constructed one would. A file with no `:format`, written before the format existed, holds every object inline and reads as it always has; one with a newer `:format` than the reader's is refused as `:unsupported-piece-format`. [ADR-0007](../ADRs/0007-Nippy.md) §The File Format specifies the format and its version stamp, and [ADR-0029](../ADRs/0029-Global-Hash-Consing.md) what is shared.
+
+### Every write freezes on a thread of its own
+
+Nippy keeps an outermost freeze's final buffer on the thread that made it when that buffer is at most 1 MiB, and gives every nested freeze on that thread a new buffer that size. A writer's freezes are nested wherever an object's arguments are frozen, for each object registered for the first time and each written inline; and a writer makes two outermost freezes, the piece's and then the map's. On a thread that is used again, as the save queue's is, each of those nested freezes would allocate up to a mebibyte. `file-writer`, `buffer-writer` and `socket-writer` therefore each run their freezes on a thread created for the write and shut down after it, which takes its buffer with it, at about 0.1 ms a write; and an object already registered is written as its reference without its arguments being frozen again. The caller waits, and a failure on that thread reaches it as itself.
 
 ## The I/O backends
 
@@ -140,8 +146,10 @@ A write is parameterised by an output function and a read by an input function, 
 | Backend | Constructors | Mechanism | Suitable for |
 |---|---|---|---|
 | **File** | `file-writer`, `file-reader` | `freeze-to-file` / `thaw-from-file` | Everything production does. This is the path `save-piece` and `open-piece` use |
-| **Buffer** | `buffer-writer`, `buffer-reader` | `freeze` / `thaw` over a byte array | Tests and benchmarks. **Size-limited by construction**: the whole serialisation is held in memory, so it is unsuitable for a very large score |
-| **Socket** | `socket-writer`, `socket-reader` | `freeze-to-out!` / `thaw-from-in!` over a socket stream | Streaming a piece over a network connection. It never materialises the whole serialisation, so unlike the buffer it is not bounded by heap |
+| **Buffer** | `buffer-writer`, `buffer-reader` | `freeze` / `thaw` over a byte array | Tests and benchmarks. It holds its compressed output in memory as well |
+| **Socket** | `socket-writer`, `socket-reader` | `freeze-to-out!` / `thaw-from-in!` over a socket stream | Sending a piece over a network connection |
+
+**Every backend holds the piece's frozen bytes before it writes.** The registry fills while the piece is frozen and goes ahead of it, so the piece is frozen in full, uncompressed, before the map is frozen to the file, the buffer or the stream: 6.7 MB for the benchmark's 1000-measure piece. Nothing is sent over a socket until then.
 
 The buffer and socket backends have **no production callers** — every occurrence outside tests is a definition. They carry no global state and no lifecycle, so nothing about them is latent; they are the pieces available if a use arrives. Collaboration does not use the socket backend: piece access between a host and a guest goes over gRPC ([ADR-0036](../ADRs/0036-Collaborative-Sessions-and-Hybrid-Transport.md)), not raw sockets.
 
@@ -153,15 +161,15 @@ A piece's identity is its UUID, and the [persistent catalogue](PIECE_MANAGER_GUI
 
 ## What a save and an open cost
 
-The benchmark's orchestral piece at three sizes, written through `file-writer` and read back through `file-reader`: the write a save performs and the read an open performs. Each time is the median of that machine's runs (three on the 2018 MacBook Pro, two on the M3), measured with Criterium by `bench.persistence-bench` (see [Benchmarking](#benchmarking)).
+The benchmark's orchestral piece at three sizes, written through `file-writer` and read back through `file-reader`: the write a save performs and the read an open performs. Each time is the median of that machine's three runs, measured with Criterium by `bench.persistence-bench` (see [Benchmarking](#benchmarking)).
 
 | Piece | Items | Frozen | File | Write, M3 | Read, M3 | Write, i7-8750H | Read, i7-8750H |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 10 measures | 5,200 | 423 KB | 8.2 KB | 6.5 ms | 12.5 ms | 13.8 ms | 33.7 ms |
-| 100 measures | 52,000 | 4.1 MB | 32 KB | 46 ms | 128 ms | 109 ms | 295 ms |
-| 1000 measures | 520,000 | 40.6 MB | 183 KB | 513 ms | 1.23 s | 1.18 s | 2.71 s |
+| 10 measures | 5,200 | 85 KB | 6.2 KB | 7.4 ms | 1.0 ms | 12.7 ms | 2.0 ms |
+| 100 measures | 52,000 | 691 KB | 10 KB | 59 ms | 7.2 ms | 103 ms | 13.5 ms |
+| 1000 measures | 520,000 | 6.7 MB | 49 KB | 511 ms | 68.5 ms | 822 ms | 144 ms |
 
-*Frozen* is the serialisation before compression, and *File* is what lands on disk: LZ4 compression takes the 1000-measure piece from 40.6 MB to 183 KB. The generated piece repeats far more than a real score does, so a real score of the same length compresses less. A read takes two to three times as long as its write. From 100 to 1000 measures both grow about tenfold, with the piece. A write also carries a fixed cost of a few milliseconds, which is most of a 10-measure write. The M3 is Ooloi's Mac platform; the i7-8750H, which Ooloi does not support, is there for comparison.
+*Frozen* is the registry-first map before compression, and *File* is what lands on disk: LZ4 compression takes the 1000-measure piece from 6.7 MB to 49 KB. The generated piece repeats far more than a real score does, so a real score of the same length has more distinct objects and a larger file. A read takes between a sixth and an eighth as long as its write. Each tenfold step in length costs a write about eight times as much, and a read seven to eleven times. The M3 is Ooloi's Mac platform; the i7-8750H, which Ooloi does not support, is there for comparison. [ADR-0029](../ADRs/0029-Global-Hash-Consing.md) §Measured Performance Results sets these figures against the same piece with every object written in full.
 
 ## Benchmarking
 
@@ -187,7 +195,7 @@ This times the freeze and the write together, not the save queue's hop, which ex
 
 **Do not time `nippy/freeze` in a loop on one thread.** After the first small freeze, every later one pays the kept buffer described under [Serialisation](#serialisation) once per shared object, so the figure measures that rather than serialisation.
 
-**The buffer backend** removes the disk from the measurement, and its freeze runs on a thread of its own as the file's does, so it isolates the serialiser's cost. It holds the whole serialisation in memory: benchmark a representative score with it rather than the largest one you have.
+**The buffer backend** removes the disk from the measurement, and its freeze runs on a thread of its own as the file's does, so it isolates the serialiser's cost. It holds its output in memory as well as the piece's frozen bytes: benchmark a representative score with it rather than the largest one you have.
 
 ## Autosave and versioning
 
@@ -200,7 +208,7 @@ Neither exists. The deferred write is what makes both possible without interrupt
 
 **Versioning** — keeping timestamped copies rather than overwriting — is a `clone-piece` to a derived filename, and inherits the whole save-failure taxonomy unchanged. What it needs beyond that is a policy nobody has decided: how many versions, where they live, and when they are pruned.
 
-**Format migration** would rewrite existing files under a new format. It waits on a decision rather than on code: the on-disk format carries no version stamp, so a file written by a later Ooloi is indistinguishable from a damaged one. [ADR-0051 §7](../ADRs/0051-Filesystem-Operations-Real-and-Virtual.md) records that a versioned envelope is a separate future decision, and an `:unsupported-piece-format` type is what it would add.
+**Format migration** happens through saving. A file carries a version stamp, `:format` ([ADR-0007](../ADRs/0007-Nippy.md) §The File Format): a reader reads its own number and every earlier one, a file with no stamp counting as 0, and refuses a newer one as `:unsupported-piece-format` ([ADR-0051 §7](../ADRs/0051-Filesystem-Operations-Real-and-Virtual.md)). A save writes the current format, so an older file is brought up to date the first time it is saved.
 
 ## Common gotchas
 
@@ -219,7 +227,7 @@ Neither exists. The deferred write is what makes both possible without interrupt
 
 **Expecting a nav-token to resolve off the calling thread.** Token resolution reads the client-id from the gRPC context. Anything deferred to another thread must have resolved its destination first.
 
-**Reaching for the buffer backend for a large score.** It holds the entire serialisation in memory. Use the file backend, or the socket backend if it must cross a network.
+**Reaching for the buffer backend for a large score.** It holds its compressed output in memory as well as the piece's frozen bytes. Use the file backend, or the socket backend if it must cross a network.
 
 ## Cross-references
 

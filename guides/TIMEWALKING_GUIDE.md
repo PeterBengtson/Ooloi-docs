@@ -120,6 +120,8 @@ Since the `timewalk` function returns `[item vpd position]` tuples, Ooloi provid
 
 ;; With ?? predicates - clean and focused on musical intent
 (filter pitch?? timewalk-results)
+;; ...and cheaper: a predicate keeps its answer for each type, where a raw isa? that
+;; answers false builds the class's supers afresh on every call
 
 ;; Clear separation: ? for raw items, ?? for timewalk tuples
 (pitch? raw-item)      ; ✓ Normal predicate for raw musical item
