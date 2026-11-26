@@ -217,7 +217,7 @@ Layout (structural coordination only)
     └── SystemView Paintlists (backend-computed)
         ↳ Braces, brackets, instrument names, tempo markings, slurs/beams spanning measures
         └── StaffView Paintlists (backend-computed)
-            ↳ Clefs, key signatures, time signatures, staff lines
+            ↳ Clefs, key signatures, time signatures, stave lines
             └── MeasureView Paintlists (backend-computed)
                 ↳ Notes, rests, accidentals, articulations, dynamics, measure-local slurs/ties
 ```
@@ -526,7 +526,7 @@ When scrolling outpaces the arrival of paintlists or the production of tiles, th
 
 1. **Page known, nothing else.** The page is shown blank with fuzzy placeholder content, a blurred generic texture suggesting staves and notation that reads unmistakably as *loading*, never as music.
 2. **System dimensions known.** The placeholder is drawn within each system's real rectangle, so the page already has its final shape.
-3. **Contents available.** The page, system, staff and measure paintlists are rasterised, at lower resolution first where that is quicker, and replaced by full-resolution tiles once they are ready.
+3. **Contents available.** The page, system, stave and measure paintlists are rasterised, at lower resolution first where that is quicker, and replaced by full-resolution tiles once they are ready.
 
 Page and system dimensions come from the backend calls that return them without their contents; when they are already cached locally the frontend uses them at once, and otherwise a placeholder of the page's size stands in until they arrive. The finer detail — which levels refine in which order, and at what resolutions — is settled during implementation.
 

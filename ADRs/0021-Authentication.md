@@ -405,7 +405,7 @@ Authentication (this ADR) handles **who the user is**, while piece-scoped author
 ### Compliance and Regulatory Support
 
 **Education Compliance (FERPA)**:
-- **Student Data Protection**: Separate authentication for student vs. staff accounts
+- **Student Data Protection**: Separate authentication for student vs. stave accounts
 - **Audit Trail Requirements**: Complete authentication and access logging
 - **Data Retention Policies**: Configurable log retention periods
 - **Parent/Guardian Consent**: Optional consent workflows for student account creation

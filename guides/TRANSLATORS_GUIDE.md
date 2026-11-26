@@ -312,7 +312,7 @@ The tables below are working vocabulary rather than settled authority: like the 
 | `de_DE` | Notensystem | | `ko_KR` | 보표 |
 | `el_GR` | πεντάγραμμο | | `nb_NO` | notesystem |
 | `en_GB` | stave | | `nl_NL` | notenbalk |
-| `en_US` | staff | | `pl_PL` | pięciolinia |
+| `en_US` | stave | | `pl_PL` | pięciolinia |
 | `es_ES` | pentagrama | | `pt_BR` | pauta |
 | `fi_FI` | nuottiviivasto | | `pt_PT` | pauta |
 | `fr_FR` | portée | | `sv_SE` | notrad |

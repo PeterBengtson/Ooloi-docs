@@ -202,7 +202,7 @@ The shared structure system handles a wide range of spanning musical elements:
 
 - **Simple connections**: Ties between identical pitches, basic slurs over a few notes within measures
 - **Cross-measure elements**: Slurs and dynamic hairpins (crescendo/diminuendo) spanning multiple measures and voices
-- **Multi-staff elements**: Slurs connecting notes across different staves in piano music
+- **Multi-stave elements**: Slurs connecting notes across different staves in piano music
 - **System-wide elements**: Long slurs spanning entire musical systems in complex orchestral works
 - **Other spanning attachments**: Glissandos, ottava markings, pedal markings, and other elements that extend across musical time
 

@@ -103,7 +103,7 @@ Keyless notation represents music without a tonal center, where every accidental
 
 ![Complex](../img/keysigs/keysigs_vienna_2.png)
 
-In the above example from Alban Berg's *Wozzeck* (1914-1922), each note has an accidental. This can further be controlled through settings on the piece, instrument, or staff to show accidentals (a) only where necessary, (b) for all notes except repeated notes, or (c) for all notes _including_ repeated notes. The *Wozzeck* example uses (b), which was typical for the 2nd Vienna School during this period.
+In the above example from Alban Berg's *Wozzeck* (1914-1922), each note has an accidental. This can further be controlled through settings on the piece, instrument, or stave to show accidentals (a) only where necessary, (b) for all notes except repeated notes, or (c) for all notes _including_ repeated notes. The *Wozzeck* example uses (b), which was typical for the 2nd Vienna School during this period.
 
 **Specification:**
 - `:mode` = `:keyless`
@@ -184,12 +184,12 @@ Per-octave specifications enable Bartók-style notation where the same letter na
 
 ### Microtonal Key Signatures
 
-Microtonal systems require accidentals beyond the standard sharp/flat system. The architecture supports arbitrary accidental types within the constraints of staff-based notation.
+Microtonal systems require accidentals beyond the standard sharp/flat system. The architecture supports arbitrary accidental types within the constraints of stave-based notation.
 
 ![Custom 1](../img/keysigs/custom_microtonal.png)
 
 **Notational Constraint:**
-Key signatures assume staff-based notation with 7 letter names (A-G). The `:edo` field describes the tuning system, but all pitches must still be spelled using letter names with appropriate accidentals. Systems that require fundamentally different spelling systems (e.g., 19-EDO, 22-EDO with native spelling) are outside the scope of this architecture.
+Key signatures assume stave-based notation with 7 letter names (A-G). The `:edo` field describes the tuning system, but all pitches must still be spelled using letter names with appropriate accidentals. Systems that require fundamentally different spelling systems (e.g., 19-EDO, 22-EDO with native spelling) are outside the scope of this architecture.
 
 **12-EDO vs Other Systems:**
 The `:edo` field in the custom metadata specifies the equal divisions of the octave:
@@ -220,7 +220,7 @@ Microtonal accidentals used in custom key signatures require the `:accidentals` 
 ```
 
 **Rationale:**
-By accepting arbitrary accidental keywords and EDO specifications within the 7-letter staff framework, the system remains extensible to microtonal systems that can be represented on traditional staves. The engraving engine is responsible for mapping these keywords to appropriate glyphs, with glyph specifications provided as extensions to the accidentals structure.
+By accepting arbitrary accidental keywords and EDO specifications within the 7-letter stave framework, the system remains extensible to microtonal systems that can be represented on traditional staves. The engraving engine is responsible for mapping these keywords to appropriate glyphs, with glyph specifications provided as extensions to the accidentals structure.
 
 ### Custom Metadata
 

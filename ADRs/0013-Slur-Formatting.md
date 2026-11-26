@@ -234,7 +234,7 @@ Effective obstacle = Obstacle ⊕ SlurProfile(t)
 
 In plain terms: take each obstacle (notehead, stem, accidental) and inflate it outward by the slur's half-thickness at the corresponding curve parameter *t*. If the centreline clears the inflated obstacles, the actual thick slur clears the actual obstacles.
 
-The obstacles are the glyphs’ top and bottom profiles ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#four-profiles-per-glyph)), not their bounding boxes: slurs, ties and their clearances are placed against the ink. ADR-0056’s Figure 5 shows the difference: the lowest slur from outlines has its apex 0.50 staff spaces lower than from boxes.
+The obstacles are the glyphs’ top and bottom profiles ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#four-profiles-per-glyph)), not their bounding boxes: slurs, ties and their clearances are placed against the ink. ADR-0056’s Figure 5 shows the difference: the lowest slur from outlines has its apex 0.50 stave spaces lower than from boxes.
 
 With copper plate rounded endpoints (§6), the slur half-thickness *r(t)* is never zero — even at the endpoints, the inflation equals the end cap radius. This eliminates the degenerate zero-width case that arises with pointed endpoints, making the clearance computation well-behaved everywhere along the curve.
 
@@ -252,16 +252,16 @@ In traditional copper plate engraving, the burin entering and leaving the plate 
 
 | Parameter | Range | Description |
 |---|---|---|
-| End cap radius | 0.08–0.12 staff spaces | Rounded tip at each endpoint |
-| Maximum thickness | 0.12–0.15 staff spaces | At shoulder position |
+| End cap radius | 0.08–0.12 stave spaces | Rounded tip at each endpoint |
+| Maximum thickness | 0.12–0.15 stave spaces | At shoulder position |
 | Shoulder position | 0.25–0.35 from endpoint | Where maximum thickness occurs |
-| Minimum thickness | 0.16–0.24 staff spaces | At endpoint (= 2 × end cap radius); never zero |
+| Minimum thickness | 0.16–0.24 stave spaces | At endpoint (= 2 × end cap radius); never zero |
 
 **Slur Height Guidelines:**
-- **Short slurs** (2-4 notes): 1.5-2 staff spaces above note heads
-- **Medium slurs** (5-8 notes): 2-3 staff spaces above note heads
-- **Long slurs** (9+ notes or cross-barline): 3-4 staff spaces above note heads
-- **Clearance**: Minimum 0.5 staff space between slur and note heads/stems
+- **Short slurs** (2-4 notes): 1.5-2 stave spaces above note heads
+- **Medium slurs** (5-8 notes): 2-3 stave spaces above note heads
+- **Long slurs** (9+ notes or cross-barline): 3-4 stave spaces above note heads
+- **Clearance**: Minimum 0.5 stave space between slur and note heads/stems
 
 **Curvature Characteristics:**
 - **Control point placement**: 30% and 70% along horizontal span
@@ -319,7 +319,7 @@ Some stage-5 decisions are discrete: a beam's slant is quantised, a stem length 
 
 5. **Dual Bézier curves with rounded ends**: The rendering approach — two edge curves with fill between them and copper plate endpoint rounding — is specified here; the curve generation algorithm belongs to the progressive solver in the Slur and Tie Geometry ADR.
 
-6. **Single-staff focus**: Simplifies implementation while covering the majority of slur cases. Multi-staff spanning can be addressed in future iterations.
+6. **Single-stave focus**: Simplifies implementation while covering the majority of slur cases. Multi-stave spanning can be addressed in future iterations.
 
 ### Performance Characteristics
 
@@ -342,7 +342,7 @@ Some stage-5 decisions are discrete: a beam's slant is quantised, a stem length 
 ### Negative
 
 - **Complexity**: More sophisticated than simple straight-line connections
-- **Single-staff limitation**: Multi-staff slurs require additional complexity (future work)
+- **Single-stave limitation**: Multi-stave slurs require additional complexity (future work)
 - **Hull alone insufficient**: Complex cases require the progressive solver (Slur and Tie Geometry ADR)
 
 ### Neutral

@@ -834,7 +834,7 @@ shared category, and no global event is ever piece-scoped.
 **Piece Structure** (`:piece-structure-changed` — a **per-piece event, not a bus category**):
 ```clojure
 :piece-structure-changed  ; Structural metadata changed: musicians, instruments,
-                          ; layouts, staff participation, piece title
+                          ; layouts, stave participation, piece title
 ```
 
 **Required fields**: `:piece-id` (string), `:timestamp` (number)
@@ -1185,7 +1185,7 @@ the JAT.
 - **Double-click slur to edit:** Same hit-test → detect double-click → enter edit mode → request control points from backend (if not in paintlist) → display control point handles
 - **Modifier+click slur to modify:** Hit-test → detect modifier → identify control point near click or add new point → send command to backend → backend recomputes → invalidation event → refetch → render updated slur
 - **Convert element to graphic:** Hit-test → user triggers conversion action → send convert-to-graphic command → backend detaches from musical semantics → invalidation → refetch → render as pure graphic
-- **Drag note head:** Hit-test during mouse-down → MeasureView VPD → timewalk to Note → track drag delta → send pitch/position change to backend → backend recomputes layout → cascading invalidations (measure, staff, possibly system/page) → refetch affected paintlists → render with new positions
+- **Drag note head:** Hit-test during mouse-down → MeasureView VPD → timewalk to Note → track drag delta → send pitch/position change to backend → backend recomputes layout → cascading invalidations (measure, stave, possibly system/page) → refetch affected paintlists → render with new positions
 - **Rectangle selection:** Accumulate all paintlist VPDs whose bounds intersect selection rectangle → timewalk each to musical elements → multi-select
 - **Convert clef to editable graphic:** User action on clef → convert-to-graphic command → backend resolves font glyph to bezier paths → creates graphic element → paintlist updated → refetch → render with editable control points → user drags point to distort shape → command to backend → stored → invalidation → refetch → render distorted clef
 - **Reshape converted graphic:** Click converted graphic → enter edit mode → display bezier control points → drag point/handle → send path update to backend → stored → invalidation → refetch → render updated shape

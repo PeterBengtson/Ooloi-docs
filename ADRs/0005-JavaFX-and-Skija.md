@@ -92,7 +92,7 @@ We will use JavaFX as the primary GUI framework for Ooloi, with Skija (Java bind
 1. Set up a basic JavaFX application structure using cljfx (Clojure JavaFX wrapper).
 2. Integrate Skija for custom rendering of musical notation.
 3. Implement core UI components using cljfx declarative syntax and JavaFX controls.
-4. Develop custom JavaFX components for music-specific elements (e.g., staff, measure, note).
+4. Develop custom JavaFX components for music-specific elements (e.g., stave, measure, note).
 5. Use Skija for rendering detailed musical symbols and notation.
 6. Implement reactive UI updates using cljfx's React-inspired declarative model.
 7. Develop the printing subsystem early in the project:

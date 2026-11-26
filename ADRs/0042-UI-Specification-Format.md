@@ -743,7 +743,7 @@ Nor is anything validated. A value already in the model was accepted when it was
 again answers the same question and could only refuse something the piece already contains.
 
 **Below the control, the same question is asked of what a commit *means*** rather than of what was
-typed, because a value can be computed rather than entered. Unticking Transposing brings every staff's
+typed, because a value can be computed rather than entered. Unticking Transposing brings every stave's
 written clef into line with its sounding one, and a transposing instrument usually reads the clef it
 sounds in, so most of those writes restate what is already there. A name cleared to ask for its
 derivation back is the same case from the other end: a musician's name is its main instrument's until
@@ -1576,7 +1576,7 @@ Two cascade constants exist. `list-surface-style` is the single-slot kind, redef
 
 | Constant | CSS string | Used by |
 |---|---|---|
-| `selected-style` | `-fx-background-color: -color-accent-muted;` | Instrument and staff tiles: applied via `:style` when the tile is in the selection set |
+| `selected-style` | `-fx-background-color: -color-accent-muted;` | Instrument and stave tiles: applied via `:style` when the tile is in the selection set |
 | `panel-style` | `-fx-border-color: -color-neutral-muted; -fx-border-width: 1; -fx-background-color: -color-bg-subtle;` | Bordered panel surfaces: `ooloi-vscroll-pane` wrappers in piece window panes and instrument library family scroll area |
 | `muted-text-style` | `-fx-text-fill: -color-fg-muted;` | Secondary labels: instrument-editor comment and staves labels, staff-editor clef label, app-settings choice and text descriptions |
 | `subtle-text-style` | `-fx-text-fill: -color-fg-subtle;` | Tertiary labels: instrument-editor language label, piece-window empty-state placeholders |
@@ -1771,9 +1771,9 @@ The declarative prop eliminates all dynamic style-class mutation for validation.
 
 `:validate` and `:on-reject` are the transient counterpart: a refusal restores, signals and reports within the one commit, so a caller passing them keeps no state at all and an editor needs no per-field error map.
 
-**Tile selection** (instrument and staff editors):
+**Tile selection** (instrument and stave editors):
 
-Tile-based editors (instrument library, staff editor) use `styles/selected-style` for the selected tile. The constant is assigned inline via `:style` in the tile's cljfx spec when the tile is in the selection set. `selected-style` is a Category 2 direct property (`-fx-background-color: -color-accent-muted;`) — NOT a lookup variable cascade — because containers can nest selectable children (musicians → instruments → staves), and a cascade would leak into descendants, making them appear selected. The mirror pattern (`.title` and `.content` set to `-fx-background-color: transparent;`) lets the parent's direct background show through without propagating.
+Tile-based editors (instrument library, stave editor) use `styles/selected-style` for the selected tile. The constant is assigned inline via `:style` in the tile's cljfx spec when the tile is in the selection set. `selected-style` is a Category 2 direct property (`-fx-background-color: -color-accent-muted;`) — NOT a lookup variable cascade — because containers can nest selectable children (musicians → instruments → staves), and a cascade would leak into descendants, making them appear selected. The mirror pattern (`.title` and `.content` set to `-fx-background-color: transparent;`) lets the parent's direct background show through without propagating.
 
 **Windows** (About, Settings):
 

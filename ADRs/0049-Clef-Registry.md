@@ -38,7 +38,7 @@ Limitations of the current system:
 - **No connection to SMuFL glyph names.** The keyword `:treble` carries no information about which glyph to render or which alternatives exist.
 - **No user-defined clefs.** The set is hardcoded. A French violin clef (G clef on line 1) or sub-bass clef (F clef on line 5) cannot be represented.
 - **No alternative glyph styles.** Users cannot choose a 19th century F clef, a mensural C clef, or any visual variant.
-- **Conflated semantics.** The keywords conflate glyph type, staff position, and octave transposition into a single name.
+- **Conflated semantics.** The keywords conflate glyph type, stave position, and octave transposition into a single name.
 - **Colloquially fuzzy names.** "Treble" and "bass" are universally understood by musicians but have no formal definition in the SMuFL specification.
 
 The clef registry is the first concrete implementation of the general glyph selection mechanism defined in [ADR-0048](0048-SMuFL-Glyph-Selection-Architecture.md). The same pattern will extend to noteheads, rests, accidentals, articulations, time signature digits, and all other notation elements with visual variants.
@@ -53,8 +53,8 @@ The clef registry is a map from keyword to clef definition. It is a standalone d
 
 ```clojure
 {:class              <keyword>         ;; SMuFL class: :clefsG, :clefsF, :clefsC, :clefsPercussion, :clefsTab
- :line               <integer>         ;; Staff line (bottom = 1, top = 5) --- mutually exclusive with :space
- :space              <integer>         ;; Staff space (bottom = 1) --- mutually exclusive with :line
+ :line               <integer>         ;; Stave line (bottom = 1, top = 5) --- mutually exclusive with :space
+ :space              <integer>         ;; Stave space (bottom = 1) --- mutually exclusive with :line
  :pitch              <string>          ;; Pitch of the line/space the clef sits on (ADR-0026 format: "G4", "C4", "F3")
  :additional-glyphs  <set of keywords> ;; Optional: extra SMuFL glyph keywords beyond the class
 }
@@ -68,9 +68,9 @@ The available glyphs for a clef = (members of `:class` from `classes.json`) ∪ 
 
 **`:class`** --- determines the clef shape family. A G clef (`:clefsG`) marks the line it sits on as G in whatever octave `:pitch` specifies. An F clef (`:clefsF`) marks its line as F. A C clef (`:clefsC`) marks its line as C. The class is the primary classifier and determines which SMuFL glyphs are valid visual alternatives.
 
-**`:line` / `:space`** --- where the clef sits on the staff. Standard 5-line staff: lines are numbered 1 (bottom) to 5 (top), spaces are numbered 1 (between lines 1--2) to 4 (between lines 4--5). Positions outside 1--5 (ledger line territory) are valid for exotic clef placements.
+**`:line` / `:space`** --- where the clef sits on the stave. Standard 5-line stave: lines are numbered 1 (bottom) to 5 (top), spaces are numbered 1 (between lines 1--2) to 4 (between lines 4--5). Positions outside 1--5 (ledger line territory) are valid for exotic clef placements.
 
-**`:pitch`** --- the sounding pitch of the line or space the clef occupies, in [ADR-0026](0026-Pitch-Representation-and-Operations.md) string format. For standard clefs, this is determined by the clef shape: G clefs mark G4 (or G3 for 8vb, G5 for 8va, etc.), F clefs mark F3 (or F2 for 8vb, etc.), C clefs mark C4. For user-defined clefs, the pitch is explicit --- any glyph on any line with any pitch. The pitch field is essential for MIDI input and for computing the pitch of every staff position.
+**`:pitch`** --- the sounding pitch of the line or space the clef occupies, in [ADR-0026](0026-Pitch-Representation-and-Operations.md) string format. For standard clefs, this is determined by the clef shape: G clefs mark G4 (or G3 for 8vb, G5 for 8va, etc.), F clefs mark F3 (or F2 for 8vb, etc.), C clefs mark C4. For user-defined clefs, the pitch is explicit --- any glyph on any line with any pitch. The pitch field is essential for MIDI input and for computing the pitch of every stave position.
 
 **`:additional-glyphs`** --- cherry-picks individual SMuFL glyphs that aren't in the primary class but should be available as visual alternatives. This avoids pulling in an entire mixed class (like the `medievalAndRenaissanceClefs` range, which contains G, F, and C clef glyphs together). See [ADR-0048 §The Additional-Glyphs Mechanism](0048-SMuFL-Glyph-Selection-Architecture.md#the-additional-glyphs-mechanism).
 
@@ -129,7 +129,7 @@ Whether to include mensural alternatives by default is a house style decision. T
 
 ### Clef Change Glyphs
 
-When a clef changes mid-staff, it is conventionally drawn smaller. SMuFL provides dedicated glyphs for this: `gClefChange`, `cClefChange`, `fClefChange`. These are derived by convention from the class:
+When a clef changes mid-stave, it is conventionally drawn smaller. SMuFL provides dedicated glyphs for this: `gClefChange`, `cClefChange`, `fClefChange`. These are derived by convention from the class:
 
 | Class | Change glyph |
 |---|---|
@@ -165,7 +165,7 @@ User-defined clefs use the same format, participate in the same glyph selection 
 
 1. **New piece**: the default clef registry is copied into the piece.
 2. **Editing**: the user modifies the piece's clef registry via the clef editor (adding, removing, or redefining entries). Changes affect only this piece.
-3. **Instrument assignment**: when an instrument is assigned from the library ([ADR-0045](0045-Instrument-Library.md)), its staff definitions reference clef keywords. These keywords must exist in the piece's clef registry. If a library instrument references a clef keyword that doesn't exist in the piece (e.g., a user deleted `:alto`), the assignment fails with a clear error.
+3. **Instrument assignment**: when an instrument is assigned from the library ([ADR-0045](0045-Instrument-Library.md)), its stave definitions reference clef keywords. These keywords must exist in the piece's clef registry. If a library instrument references a clef keyword that doesn't exist in the piece (e.g., a user deleted `:alto`), the assignment fails with a clear error.
 4. **Rendering**: the rendering pipeline ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md)) resolves the clef keyword → clef definition → glyph through the cascade ([ADR-0048](0048-SMuFL-Glyph-Selection-Architecture.md)). The backend uses the resolved glyph's bounding box and anchor data from the font's metadata to compute spatial layout.
 
 ### Impact on Existing Code
@@ -214,7 +214,7 @@ The alternative is a single `:position` field where integers represent lines and
 
 3. **House style persistence**: how house style glyph defaults are stored and shared. This is a cross-cutting concern that applies to all notation elements, not just clefs. Design to be specified separately.
 
-4. **Petrucci position assignments**: the `:additional-glyphs` sets in the default registry match `mensuralCclefPetrucciPosLowest` → soprano (line 1), `PosLow` → mezzo-soprano (line 2), etc. This mapping from position name to staff line is a reasonable starting point but may need refinement based on historical musicological feedback.
+4. **Petrucci position assignments**: the `:additional-glyphs` sets in the default registry match `mensuralCclefPetrucciPosLowest` → soprano (line 1), `PosLow` → mezzo-soprano (line 2), etc. This mapping from position name to stave line is a reasonable starting point but may need refinement based on historical musicological feedback.
 
 ---
 
@@ -222,8 +222,8 @@ The alternative is a single `:position` field where integers represent lines and
 
 **Positive**
 
-- Every clef keyword now carries structured data: which glyph class it belongs to, where it sits on the staff, and what pitch it defines. This information was previously implicit.
-- Users can define custom clefs with any combination of glyph class, staff position, and pitch. Historical and experimental notation is supported without special-casing.
+- Every clef keyword now carries structured data: which glyph class it belongs to, where it sits on the stave, and what pitch it defines. This information was previously implicit.
+- Users can define custom clefs with any combination of glyph class, stave position, and pitch. Historical and experimental notation is supported without special-casing.
 - The glyph selection cascade ([ADR-0048](0048-SMuFL-Glyph-Selection-Architecture.md)) applies to clefs uniformly: house style defaults, piece overrides, and local overrides all work.
 - The existing 17 clef keywords are unchanged. All current code, instrument library entries, i18n translations, and tests continue to work without modification.
 - Font availability filtering ensures users only see clef glyphs a font provides, offered from that font. Choosing a low-coverage default music font never produces errors.
@@ -243,7 +243,7 @@ The alternative is a single `:position` field where integers represent lines and
 - [ADR-0048: SMuFL Glyph Selection Architecture](0048-SMuFL-Glyph-Selection-Architecture.md) --- the general mechanism this ADR applies to clefs
 - [ADR-0047: Font Management](0047-Font-Management.md) --- font registry, spec-level metadata loading, font availability filtering
 - [ADR-0006: SMuFL](0006-SMuFL.md) --- SMuFL as the sole font standard
-- [ADR-0045: Instrument Library](0045-Instrument-Library.md) --- instruments reference clef keywords in staff definitions
+- [ADR-0045: Instrument Library](0045-Instrument-Library.md) --- instruments reference clef keywords in stave definitions
 - [ADR-0026: Pitch Representation and Operations](0026-Pitch-Representation-and-Operations.md) --- string-based pitch format used in `:pitch` field
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) --- resolves clef keyword → glyph at render time
 - [ADR-0016: Settings](0016-Settings.md) --- piece settings store piece-level glyph selection overrides

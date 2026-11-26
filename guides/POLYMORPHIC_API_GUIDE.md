@@ -45,10 +45,10 @@ Most musical software forces musicians to adapt to developer abstractions. Ooloi
         voice-inst (api/create-instrument :name "Voice")
         piece (api/add-instrument [:m 0] piece voice-inst)
 
-        ;; Add staff with treble clef
+        ;; Add stave with treble clef
         piece (api/add-staff [:m 0 0] piece (api/create-staff :name "Soprano" :clefs {:sounding {:default-clef :treble} :written {:default-clef :treble}}))
 
-        ;; Add two measures to soprano staff
+        ;; Add two measures to soprano stave
         piece (api/add-measure [:m 0 0 0] piece (api/create-measure))
         piece (api/add-measure [:m 0 0 0] piece (api/create-measure))
 
@@ -73,7 +73,7 @@ Most musical software forces musicians to adapt to developer abstractions. Ooloi
     piece))  ; Transaction ensures all operations succeed atomically
 ```
 
-Notice the vocabulary: `add-musician`, `add-staff`, `add-item`, `add-attachment :slur`. The code reads like musical instructions. The VPD paths like `[:m 0 0 0 0 0]` navigate the hierarchy: musician → instrument → staff → measure → voice → items. The `dosync` ensures all operations succeed or none do - atomic piece construction.
+Notice the vocabulary: `add-musician`, `add-staff`, `add-item`, `add-attachment :slur`. The code reads like musical instructions. The VPD paths like `[:m 0 0 0 0 0]` navigate the hierarchy: musician → instrument → stave → measure → voice → items. The `dosync` ensures all operations succeed or none do - atomic piece construction.
 
 This same pattern - create structures, set properties, add items hierarchically - applies to anything building musical content: MusicXML importers, notation software plugins, algorithmic composition tools.
 
@@ -426,7 +426,7 @@ Compare:
 
 ;; Platform approach: VPD operations (musical focus)
 (api/set-measure [:m 0 0 0] piece-id 5 new-measure)
-;; Developer thinks about: "set measure 5 in the first staff"
+;; Developer thinks about: "set measure 5 in the first stave"
 ;; Compact VPDs work with Ooloi's API - another advantage of the platform approach
 
 ;; The VPD API abstracts away implementation complexity while providing musical clarity
@@ -765,15 +765,15 @@ The **VPD vs object dispatch** is the foundation of Ooloi's polymorphic architec
 ;; Key signatures belong to the piece
 (api/set-key-signature [] piece-id 0 c-major)
 
-;; An instrument or a staff carries local overrides of them
+;; An instrument or a stave carries local overrides of them
 (api/set-key-signature-override [:m 0 0]   piece-id 0 d-major)   ; Instrument 0 of musician 0
-(api/set-key-signature-override [:m 0 0 0] piece-id 0 f-major)   ; Its first staff
+(api/set-key-signature-override [:m 0 0 0] piece-id 0 f-major)   ; Its first stave
 
 ;; The same verb, set-key-signature-override, at two depths
 ;; Traditional APIs would need different functions for each level
 ```
 
-The piece holds the key signatures; an instrument and a staff each hold a sparse change set of overrides, and the effective key at a position is the first one found from staff to instrument to piece. A musician holds neither.
+The piece holds the key signatures; an instrument and a stave each hold a sparse change set of overrides, and the effective key at a position is the first one found from stave to instrument to piece. A musician holds neither.
 
 ### Automatic Transaction Management
 

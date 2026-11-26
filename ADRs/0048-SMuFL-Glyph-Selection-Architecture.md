@@ -89,7 +89,7 @@ The cascade determines which specific glyph from the class is actually rendered:
 
 1. **House style default** --- the default glyph for each class (e.g., all G clefs use `:gClef`). Defined in the house style, which ships with sensible defaults.
 2. **Piece override** --- this piece uses `:gClef8vbOld` for all G clefs. Stored in piece settings ([ADR-0016](0016-Settings.md)).
-3. **Local override** --- this specific staff uses `:mensuralGclef`. Stored on the individual notation element.
+3. **Local override** --- this specific stave uses `:mensuralGclef`. Stored on the individual notation element.
 
 Each level overrides the one above. Most users never touch this --- the house style default handles everything. Power users and historical-notation specialists control it precisely.
 
@@ -182,11 +182,11 @@ Each set provides a complete family of noteheads (whole, half, quarter, etc.) in
 | `dynamics` | 42 | Dynamic marking glyphs |
 | `tuplets` | 11 | Tuplet number glyphs |
 | `articulations` | 36 | All articulation glyphs |
-| `articulationsAbove` | 18 | Above-staff articulations |
-| `articulationsBelow` | 18 | Below-staff articulations |
+| `articulationsAbove` | 18 | Above-stave articulations |
+| `articulationsBelow` | 18 | Below-stave articulations |
 | `pauses` | 21 | Fermatas and other pause marks |
-| `pausesAbove` | 7 | Above-staff pauses |
-| `pausesBelow` | 7 | Below-staff pauses |
+| `pausesAbove` | 7 | Above-stave pauses |
+| `pausesBelow` | 7 | Below-stave pauses |
 | `octaves` | 25 | Octave line markings (8va, 15ma, etc.) |
 | `ornaments` | 55 | Ornament glyphs |
 | `stemDecorations` | 32 | Stem decoration glyphs |
@@ -399,7 +399,7 @@ Converting `gClef8vb` to `:g-clef-8vb` would be more idiomatic Clojure but would
 - [ADR-0049: Clef Registry](0049-Clef-Registry.md) --- first concrete implementation of this glyph selection architecture, applied to clefs
 - [ADR-0016: Settings](0016-Settings.md) --- piece settings store piece-level glyph selection overrides
 - [ADR-0028: Hierarchical Rendering Pipeline](0028-Hierarchical-Rendering-Pipeline.md) --- resolves logical keyword to glyph at render time by walking the cascade
-- [ADR-0045: Instrument Library](0045-Instrument-Library.md) --- references logical clef keywords in staff definitions; unaffected by glyph selection
+- [ADR-0045: Instrument Library](0045-Instrument-Library.md) --- references logical clef keywords in stave definitions; unaffected by glyph selection
 - [ADR-0056: Glyph Geometry from Outlines](0056-Glyph-Geometry-from-Outlines.md) --- glyph profiles, read for the glyph a selection resolves to, from the font that supplies it
 
 ### External References

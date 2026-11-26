@@ -13,7 +13,7 @@ VPDs are vectors that describe a path to a specific element within the nested st
 - **VPD Form (Compact)** - The default notation using prefix keywords: `[:m 0 1 0 3 0]` or `[:l 0 2 1]`
 - **Navigator Form** - The expanded notation for Specter operations: `[:musicians 0 :instruments 1 :staves 0 :measures 3 :voices 0]`
 
-VPDs can navigate both the musical hierarchy (musicians, instruments, staves, measures, voices) and the visual hierarchy (layouts, page views, system views, staff views, measure views).
+VPDs can navigate both the musical hierarchy (musicians, instruments, staves, measures, voices) and the visual hierarchy (layouts, page views, system views, stave views, measure views).
 
 ### Key Concept: VPDs vs Navigators
 
@@ -39,7 +39,7 @@ VPDs can navigate both the musical hierarchy (musicians, instruments, staves, me
 Use the compact VPD form in all your code:
 
 ```clojure
-[:m 0 1 0 3 0]  ; Musical: musician 0, instrument 1, staff 0, measure 3, voice 0
+[:m 0 1 0 3 0]  ; Musical: musician 0, instrument 1, stave 0, measure 3, voice 0
 [:l 0 2 1 0 3]  ; Layout: layout 0, page-view 2, system-view 1, staff-view 0, measure-view 3
 ```
 

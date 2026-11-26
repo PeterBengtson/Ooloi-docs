@@ -95,7 +95,7 @@ Ooloi operates through two complementary communication mechanisms:
   - `(get-layout musical-item)` → entire score layout from local cache
   - `(get-page-view layout page-index)` → page data from local cache
   - `(get-system-view page-view system-index)` → system data from local cache  
-  - `(get-staff-view system-view staff-index)` → staff data from local cache
+  - `(get-staff-view system-view staff-index)` → stave data from local cache
   - `(get-measure-view staff-view measure-index)` → `MeasureView{glyphs, curves}` from local cache
 - Same shared API functions work locally (frontend cache) and remotely (backend authority)
 

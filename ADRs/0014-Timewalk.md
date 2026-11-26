@@ -49,7 +49,7 @@ Ooloi requires sophisticated traversal capabilities for its hierarchical musical
 
 2. **Polyphonic Complexity**: Modern musical scores contain multiple simultaneous voices that must be synchronized during traversal while maintaining their individual structural integrity.
 
-3. **Scope-Limited Operations**: Different operations require traversal of specific subsets of the piece (single instrument, staff, voice, or measure range) without processing irrelevant portions.
+3. **Scope-Limited Operations**: Different operations require traversal of specific subsets of the piece (single instrument, stave, voice, or measure range) without processing irrelevant portions.
 
 4. **Performance Requirements**: Large orchestral scores with hundreds of thousands of musical elements demand efficient traversal that can terminate early and filter elements without full tree processing.
 
@@ -384,7 +384,7 @@ The system uses Vector Path Descriptors (VPDs) to define traversal boundaries. *
 ;; Single instrument traversal
 {:boundary-vpd [:m 0 1]}
 
-;; Single staff traversal
+;; Single stave traversal
 {:boundary-vpd [:m 0 1 0]}
 ```
 
@@ -499,7 +499,7 @@ The temporal coordination guarantee directly solves MIDI's core requirement for 
 
 - **Temporal Order**: All MIDI events at measure N emit before any at measure N+1
 - **Polyphonic Support**: Natural handling of multiple simultaneous voices
-- **Partial Playback**: Boundary-VPD enables instrument/staff-specific playback
+- **Partial Playback**: Boundary-VPD enables instrument/stave-specific playback
 - **Real-time Streaming**: Transducer composition supports efficient event generation
 
 ### 2. Visual Layout Calculation
@@ -621,7 +621,7 @@ Benchmarks on a 1000-measure orchestral piece (29 instruments, ~520,000 pitches)
 
 **Streaming Characteristics (Apple M3)**:
 - Full traversal: 293 ms (~1.8M pitches/second)
-- Cache refresh: 0.3 ms for 10 measures of one staff, 1.2 ms for 10 measures of four
+- Cache refresh: 0.3 ms for 10 measures of one stave, 1.2 ms for 10 measures of four
 - Constant memory for exports (<10 MB regardless of piece size)
 - Streaming export: 319 ms for 520K pitches
 

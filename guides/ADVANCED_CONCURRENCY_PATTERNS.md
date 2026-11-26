@@ -248,7 +248,7 @@ This guide demonstrates how to leverage Ooloi's sophisticated concurrency archit
 
 ## Parallel Measure Formatting with Coordinated Updates
 
-The examples below are sketches. `calculate-measure-view`, `format-staff-view` and `visible-elements` stand for the formatting work itself and are not Ooloi functions; everything addressed through `api/`, `pm/`, `cd/` and `vpd/` is. Measure views live in a staff view, which lives in a system view, so a measure view is set with the staff view's VPD, the measure view's index within that staff view, and the new measure view.
+The examples below are sketches. `calculate-measure-view`, `format-staff-view` and `visible-elements` stand for the formatting work itself and are not Ooloi functions; everything addressed through `api/`, `pm/`, `cd/` and `vpd/` is. Measure views live in a stave view, which lives in a system view, so a measure view is set with the stave view's VPD, the measure view's index within that stave view, and the new measure view.
 
 ```clojure
 ;; Advanced: Parallel measure formatting showcasing Ooloi's elegant concurrency
@@ -258,7 +258,7 @@ The examples below are sketches. `calculate-measure-view`, `format-staff-view` a
          '[ooloi.shared.ops.vpd :as vpd])
 
 (defn extract-measures-by-range
-  "Extract one staff's measures from the piece using temporal coordination."
+  "Extract one stave's measures from the piece using temporal coordination."
   [piece-id staff-vpd measure-range]
   (->> (pm/get-piece piece-id)
        vector
@@ -278,7 +278,7 @@ The examples below are sketches. `calculate-measure-view`, `format-staff-view` a
     [measure-num measure-view]))
 
 (defn update-layout-measures
-  "Coordinate parallel results into one staff view with composed VPD operations."
+  "Coordinate parallel results into one stave view with composed VPD operations."
   [piece-id staff-view-vpd first-measure formatted-measures]
   ;; *** APPROACH 1: Compose multiple VPD operations ***
   ;; Each VPD operation is separate but runs inside one enclosing transaction
@@ -288,11 +288,11 @@ The examples below are sketches. `calculate-measure-view`, `format-staff-view` a
       ;; Result: All measure view updates succeed or fail as a single atomic operation
       (api/set-measure-view staff-view-vpd
                             piece-id
-                            (- measure-num first-measure)   ; index within the staff view
+                            (- measure-num first-measure)   ; index within the stave view
                             measure-view))))
 
 (defn update-layout-measures-batch
-  "Alternative: Update the staff view's entire measure-views vector in one operation."
+  "Alternative: Update the stave view's entire measure-views vector in one operation."
   [piece-id staff-view-vpd first-measure formatted-measures]
   ;; *** APPROACH 2: Single vector update operation ***
   ;; Collect all results and update the entire vector at once
@@ -342,7 +342,7 @@ The examples below are sketches. `calculate-measure-view`, `format-staff-view` a
 ;; • Automatic transaction retries, conflict resolution, and thread safety
 ;; • Enterprise-grade concurrency that reads like simple data transformation
 
-;; Usage: format measures 10-50 of the first staff, assuming one system displays them all
+;; Usage: format measures 10-50 of the first stave, assuming one system displays them all
 (pm/store-piece "symphony-id" symphony-piece)
 (format-measures-parallel "symphony-id"
                           [:musicians 0 :instruments 0 :staves 0]
@@ -355,7 +355,7 @@ The examples below are sketches. `calculate-measure-view`, `format-staff-view` a
 ```clojure
 ;; Advanced: Staff-level parallel processing with hierarchical addressing
 (defn extract-staff-elements
-  "Extract visible elements from a single staff using boundary-VPD scoping."
+  "Extract visible elements from a single stave using boundary-VPD scoping."
   [piece staff-vpd]
   (into [] 
         (comp (timewalk {:boundary-vpd staff-vpd})
@@ -363,25 +363,25 @@ The examples below are sketches. `calculate-measure-view`, `format-staff-view` a
         [piece]))
 
 (defn format-single-staff
-  "Process individual staff with spatial layout calculations."
+  "Process individual stave with spatial layout calculations."
   [piece [staff-view-index staff-vpd]]
   (let [elements (extract-staff-elements piece staff-vpd)
         staff-view (format-staff-view elements)]
     [staff-view-index staff-view]))
 
 (defn integrate-staff-layouts
-  "Integrate parallel staff results using sophisticated VPD addressing."
+  "Integrate parallel stave results using sophisticated VPD addressing."
   [piece-id system-view-vpd staff-results]
   (doseq [[staff-view-index staff-view] staff-results]
-    ;; Elegant nested addressing: the system view's VPD, then the staff view's index in it
+    ;; Elegant nested addressing: the system view's VPD, then the stave view's index in it
     (api/set-staff-view system-view-vpd
                         piece-id
                         staff-view-index
                         staff-view)))
 
 (defn parallel-staff-formatting
-  "Parallel staff processing showcasing VPD boundary scoping and hierarchical addressing.
-   staff-vpds are given in the order of the system view's staff views."
+  "Parallel stave processing showcasing VPD boundary scoping and hierarchical addressing.
+   staff-vpds are given in the order of the system view's stave views."
   [piece-id staff-vpds system-view-vpd]
   (let [piece (pm/get-piece piece-id)]
     (->> staff-vpds

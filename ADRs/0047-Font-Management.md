@@ -82,16 +82,16 @@ The font registry consumes two distinct layers of SMuFL metadata: spec-level met
 Each SMuFL font ships with a companion `metadata.json` file conforming to the SMuFL specification. The registry parses this JSON when it loads the font, reads the glyphs' profiles ([The Profile Cache](#the-profile-cache)), and stores both alongside the font. The metadata includes:
 
 - **Glyph names → codepoints**: the mapping from canonical SMuFL names to Unicode Private Use Area codepoints.
-- **Glyph bounding boxes**: per-glyph extents in staff spaces, checked against the glyphs’ profiles when the profiles are computed ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#invariants-and-property-tests)).
+- **Glyph bounding boxes**: per-glyph extents in stave spaces, checked against the glyphs’ profiles when the profiles are computed ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md#invariants-and-property-tests)).
 - **Glyph profiles**: computed from the outlines ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)), keyed by the font file’s content hash and the profile algorithm’s version, shipped with a bundled font and computed and cached for any other ([The Profile Cache](#the-profile-cache)). Layout reads glyph geometry from them.
 - **Anchor points**: stem attachments, optical centres, and other positioning data.
-- **Engraving defaults**: the staff line thickness, stem width, beam spacing and similar values the font's designer recommends.
+- **Engraving defaults**: the stave line thickness, stem width, beam spacing and similar values the font's designer recommends.
 
 The rendering pipeline reads all glyph metrics from the registry. There is no separate metadata loading path.
 
 **A glyph's metrics come from the font that supplies it.** Casting off and horizontal positioning use the actual widths and extents of the glyphs being drawn: a notehead drawn from one font is spaced by that font's notehead, never by another font's. Spacing a piece by the metrics of a font it is not drawn with would be wrong in every measure.
 
-**Engraving values are piece settings, not font properties.** Staff line thickness, stem width, beam spacing and the like are settings of the piece ([ADR-0016](0016-Settings.md)), and the piece's settings are part of its house style, which overrides whatever a font recommends. A font's engraving defaults are therefore information rather than configuration. A way for the user to import a font's recommended values into the piece's settings may be offered; that is not yet decided.
+**Engraving values are piece settings, not font properties.** Stave line thickness, stem width, beam spacing and the like are settings of the piece ([ADR-0016](0016-Settings.md)), and the piece's settings are part of its house style, which overrides whatever a font recommends. A font's engraving defaults are therefore defaults, not values: each such setting follows the font that draws the music until the piece gives it a value of its own, which a house style may do for any of them. A value SMuFL has no key for, or one a font's metadata lacks, takes a default of Ooloi's own; a font without `thinThickBarlineSeparation` takes its `barlineSeparation`, from which SMuFL divided it.
 
 #### Spec-Level Metadata
 

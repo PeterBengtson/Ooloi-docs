@@ -4,7 +4,7 @@
 
 Accepted
 
-The decision is made: layout reads glyph geometry from the fonts’ outlines, through profiles computed once per font file and frozen as data, shipped with the bundled fonts and cached for any other, on bands of 0.01 staff spaces at a tolerance of 0.005, from outlines read exactly. Five narrower questions are open items, G2, G3 and G5 to G7, settled during implementation and [ADR-0055](0055-Horizontal-Spacing.md#the-exploration)’s exploration.
+The decision is made: layout reads glyph geometry from the fonts’ outlines, through profiles computed once per font file and frozen as data, shipped with the bundled fonts and cached for any other, on bands of 0.01 stave spaces at a tolerance of 0.005, from outlines read exactly. Five narrower questions are open items, G2, G3 and G5 to G7, settled during implementation and [ADR-0055](0055-Horizontal-Spacing.md#the-exploration)’s exploration.
 
 ## Table of Contents
 
@@ -57,9 +57,9 @@ No rasteriser, hinting or renderer takes part. No rendering library, version or 
 
 **Apache FontBox reads the font’s tables, and Ooloi interprets the outlines.** FontBox parses the OpenType tables, the character map, CFF’s indexes and private dictionaries, and TrueType’s points. Ooloi interprets each CFF charstring from its bytes, its subroutines included, in exact rationals, reading a 16.16 fixed-point number as its integer over 65536; it skips hints, which say nothing about the outline. FontBox’s own outlines pass through single-precision floating point, which is exact only for a font whose coordinates are all integers. Every bundled font’s are, but a font a user supplies need not be.
 
-Font units convert to staff spaces through the font’s units per em and SMuFL’s convention that a five-line staff is one em high, so one staff space is a quarter of an em. The conversion is an exact rational factor.
+Font units convert to stave spaces through the font’s units per em and SMuFL’s convention that a five-line stave is one em high, so one stave space is a quarter of an em. The conversion is an exact rational factor.
 
-**A text font’s profiles are stored as though it were set at 13 points against a 20-point staff**, an em of 2.6 staff spaces: the largest size at which text is commonly set on and near a staff, where it is set at 10 to 13 points. Text at that size or smaller keeps the grid’s precision when its profiles are scaled down to it. Larger text, such as a title, which never meets notes closely, coarsens in proportion to its size: a 26-point title is held as though on bands of 0.02 staff spaces.
+**A text font’s profiles are stored as though it were set at 13 points against a 20-point stave**, an em of 2.6 stave spaces: the largest size at which text is commonly set on and near a stave, where it is set at 10 to 13 points. Text at that size or smaller keeps the grid’s precision when its profiles are scaled down to it. Larger text, such as a title, which never meets notes closely, coarsens in proportion to its size: a 26-point title is held as though on bands of 0.02 stave spaces.
 
 ### Four Profiles per Glyph
 
@@ -72,7 +72,7 @@ Each glyph has four profiles, relative to the glyph’s origin as SMuFL places i
 | Bottom | width | the lowest ink | Stage 5: vertical placement |
 | Top | width | the highest ink | Stage 5: vertical placement |
 
-A profile is a step function with rational breakpoints and rational values, in staff spaces. Counters, the holes inside a glyph, never affect a profile: a band’s outermost ink always lies on the outline.
+A profile is a step function with rational breakpoints and rational values, in stave spaces. Counters, the holes inside a glyph, never affect a profile: a band’s outermost ink always lies on the outline.
 
 ![Bravura’s sharp as a box, as a box with cut-outs, and as its outline’s profiles](../img/glyph-geometry/fig1-sharp-outline-box-cutouts-profiles.svg)
 
@@ -87,11 +87,11 @@ A profile is a bound on the ink, not an estimate of it. In every band it lies at
 3. Subdivision continues until each piece’s control points lie within the tolerance of its chord in the profile’s axis, or until the piece lies within one band.
 4. Straight segments are taken exactly.
 
-Bands lie on a fixed grid in staff spaces. Adjacent bands are merged into one step while every value in it lies within the tolerance of every other, and the step keeps the outer value, so merging never moves a profile inward and moves it outward by less than the tolerance. Comparing each band only with the step before it would let a step creep outward, band by band, along an edge that moves less than the tolerance from one band to the next.
+Bands lie on a fixed grid in stave spaces. Adjacent bands are merged into one step while every value in it lies within the tolerance of every other, and the step keeps the outer value, so merging never moves a profile inward and moves it outward by less than the tolerance. Comparing each band only with the step before it would let a step creep outward, band by band, along an edge that moves less than the tolerance from one band to the next.
 
-**Bands are 0.01 staff spaces high, and the tolerance is 0.005 staff spaces.** A step function overstates ink at an edge that runs nearly level, by as far as the outline travels across one band, so a profile can only widen the distance between two glyphs, and the grid sets by how much. Measured on the horizontal distance between Bravura’s noteheads, accidentals, flags and dots at heights two staff spaces apart either way, the profiles as stored, merged into steps, overstate it by 0.007 to 0.009 staff spaces on average and by 0.06 at most: 0.11 mm on a staff space of 1.75 mm, less than half a staff line’s thickness. The largest overstatements arise where two glyphs share no more than a hundredth of a staff space of height, or meet only within the vertical clearance. Height is resolved to a hundredth of a staff space, so ink at different heights meets as [ADR-0055](0055-Horizontal-Spacing.md#blocking-widths)’s vertical clearance decides, to within that hundredth. The tolerance chiefly sets the time a font’s profiles take to compute, and the band chiefly the number of steps they hold ([Consequences](#consequences)).
+**Bands are 0.01 stave spaces high, and the tolerance is 0.005 stave spaces.** A step function overstates ink at an edge that runs nearly level, by as far as the outline travels across one band, so a profile can only widen the distance between two glyphs, and the grid sets by how much. Measured on the horizontal distance between Bravura’s noteheads, accidentals, flags and dots at heights two stave spaces apart either way, the profiles as stored, merged into steps, overstate it by 0.007 to 0.009 stave spaces on average and by 0.06 at most: 0.11 mm on a stave space of 1.75 mm, less than half a stave line’s thickness. The largest overstatements arise where two glyphs share no more than a hundredth of a stave space of height, or meet only within the vertical clearance. Height is resolved to a hundredth of a stave space, so ink at different heights meets as [ADR-0055](0055-Horizontal-Spacing.md#blocking-widths)’s vertical clearance decides, to within that hundredth. The tolerance chiefly sets the time a font’s profiles take to compute, and the band chiefly the number of steps they hold ([Consequences](#consequences)).
 
-**A profile is held exactly in integers.** Every breakpoint is a whole number of bands, and every value a whole number of the font’s units divided by a power of two, converted to staff spaces by the font’s one exact factor, its em in staff spaces divided by its units per em, four for a music font and 2.6 for a text font: midpoint subdivision introduces no other denominator, and a CFF outline’s fixed-point coordinates are already of that form. A profile is four arrays of primitive integers, with one entry for each step: the band it begins at, the band it ends before, and its value’s numerator and exponent of two. Over every step of the 23 bundled fonts’ profiles the largest exponent is 36 and the largest numerator 48 bits, so a byte and a long hold them with room to spare. A value whose numerator a long cannot hold is an error, raised when the profiles are computed.
+**A profile is held exactly in integers.** Every breakpoint is a whole number of bands, and every value a whole number of the font’s units divided by a power of two, converted to stave spaces by the font’s one exact factor, its em in stave spaces divided by its units per em, four for a music font and 2.6 for a text font: midpoint subdivision introduces no other denominator, and a CFF outline’s fixed-point coordinates are already of that form. A profile is four arrays of primitive integers, with one entry for each step: the band it begins at, the band it ends before, and its value’s numerator and exponent of two. Over every step of the 23 bundled fonts’ profiles the largest exponent is 36 and the largest numerator 48 bits, so a byte and a long hold them with room to spare. A value whose numerator a long cannot hold is an error, raised when the profiles are computed.
 
 ![One curve of Bravura’s flat, subdivided until its hulls give a profile](../img/glyph-geometry/fig2-conservative-bound.svg)
 
@@ -110,7 +110,7 @@ Profiles are computed once per font file, by one function that computes a font�
 
 ### Geometry Not from Fonts
 
-Stems, ledger lines, staff lines, beams and barlines are drawn from engraving values, which are piece settings ([ADR-0047](0047-Font-Management.md)). Their profiles are computed exactly from those shapes, rectangles and parallelograms, not read from a font.
+Stems, ledger lines, stave lines, beams and barlines are drawn from engraving values, which are piece settings ([ADR-0047](0047-Font-Management.md)). Their profiles are computed exactly from those shapes, rectangles and parallelograms, not read from a font.
 
 Text is shaped first, with the text font’s kerning and ligatures. A shaped run’s profile is the union of its positioned glyphs’ profiles (G5).
 
@@ -142,7 +142,7 @@ The nearest two glyphs can come horizontally is found band by band. Where the ri
 
 ![Top profiles from outlines and from boxes, and the lowest slur each allows](../img/glyph-geometry/fig5-vertical-profiles.svg)
 
-*Figure 5. Top profiles from outlines and from boxes over a bar of one staff, and the lowest slur each allows at a placeholder clearance of 0.25 sp. The slur from outlines has its apex 0.50 sp lower.*
+*Figure 5. Top profiles from outlines and from boxes over a bar of one stave, and the lowest slur each allows at a placeholder clearance of 0.25 sp. The slur from outlines has its apex 0.50 sp lower.*
 
 ### What This ADR Does Not Decide
 
@@ -173,8 +173,8 @@ The figures above are generated from Bravura’s outlines by the same algorithm,
 | Rasterised bitmaps | Depend on the rasteriser, its version and its settings (anti-aliasing, hinting); quantisation must be rounded outward everywhere; need a renderer on the backend. Stable only if frozen, and then no better than outlines while less exact. |
 | Outlines read at layout time, without a cache | Repeats work at every formatting; makes layout depend on the outline reader at run time; gives a library upgrade the power to move notes. |
 | Hand-tuned tables per glyph, such as LilyPond’s ledger-shortening ranges | Special cases per glyph and per font; what the outline already states, restated by hand. |
-| A coarser grid: bands of 0.05 staff spaces at a tolerance of 0.01 | A font’s profiles take about 40 per cent of the time, and a quarter of the memory and the file size, but they overstate the distance between two glyphs by up to 0.22 staff spaces in Bravura, 0.38 mm on a staff space of 1.75 mm. Bands of 0.02 at a tolerance of 0.01 overstate it by up to 0.11. |
-| A finer grid: bands of 0.005 staff spaces at a tolerance of 0.0025 | The largest overstatement falls from 0.06 staff spaces to 0.023, for nearly twice the time and twice the memory and file size. |
+| A coarser grid: bands of 0.05 stave spaces at a tolerance of 0.01 | A font’s profiles take about 40 per cent of the time, and a quarter of the memory and the file size, but they overstate the distance between two glyphs by up to 0.22 stave spaces in Bravura, 0.38 mm on a stave space of 1.75 mm. Bands of 0.02 at a tolerance of 0.01 overstate it by up to 0.11. |
+| A finer grid: bands of 0.005 stave spaces at a tolerance of 0.0025 | The largest overstatement falls from 0.06 stave spaces to 0.023, for nearly twice the time and twice the memory and file size. |
 | Profiles held as exact rationals, Clojure’s ratios in vectors | About 530 bytes a step against 17: Bravura’s profiles would occupy about 750 MB and a 23.6 MB file, read in 0.39 s. |
 
 Reading outlines and freezing their profiles keeps what each alternative had to offer, LilyPond’s real shapes and a cache’s speed, without their dependencies.
@@ -193,7 +193,7 @@ Reading outlines and freezing their profiles keeps what each alternative had to 
 
 ### Negative
 
-- **Registering a font that is not bundled takes time.** Measured with an unoptimised implementation in exact rational arithmetic on an Apple M3, at bands of 0.01 staff spaces: Bravura’s 3,668 glyphs take 111 s on one thread and 60 s on two; Petaluma’s 1,490, 30 s on two; Bravura Text’s 19,140, most of them precomposed combinations, 177 s on two at the size its profiles are stored at. Two threads compute a font 1.86 times as fast as one, and four, the M3’s performance cores, 2.8 times; its four efficiency cores add less, and all eight give 3.5 times. An Intel Core i7-8750H, a processor Ooloi does not support ([ADR-0050](0050-Platform-Support-Policy.md)), takes 2.0 to 2.2 times as long.
+- **Registering a font that is not bundled takes time.** Measured with an unoptimised implementation in exact rational arithmetic on an Apple M3, at bands of 0.01 stave spaces: Bravura’s 3,668 glyphs take 111 s on one thread and 60 s on two; Petaluma’s 1,490, 30 s on two; Bravura Text’s 19,140, most of them precomposed combinations, 177 s on two at the size its profiles are stored at. Two threads compute a font 1.86 times as fast as one, and four, the M3’s performance cores, 2.8 times; its four efficiency cores add less, and all eight give 3.5 times. An Intel Core i7-8750H, a processor Ooloi does not support ([ADR-0050](0050-Platform-Support-Policy.md)), takes 2.0 to 2.2 times as long.
 - **The algorithm’s version is part of layout.** Improving it changes pages and must be announced as such.
 - **More room to tuck is not better engraving.** Finer contours let a program tuck further than an engraver would. Restraint comes from [ADR-0055](0055-Horizontal-Spacing.md)’s clearances and its [opening width](0055-Horizontal-Spacing.md#opening-width), not from coarser geometry.
 
@@ -221,11 +221,11 @@ Reading outlines and freezing their profiles keeps what each alternative had to 
 - [ADR-0013: Slur Formatting](0013-Slur-Formatting.md) — Stage 5’s vertical placement against the top and bottom profiles
 - [ADR-0037: Measure Distribution Optimization](0037-Measure-Distribution-Optimization.md) — exact rational arithmetic and the layout as a function of the piece
 - [ADR-0038: Backend-Authoritative Rendering and Terminal Frontend Execution](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md) — layout on the backend, with no renderer needed for geometry
-- [ADR-0006: SMuFL](0006-SMuFL.md) — the font standard, its staff-space convention and its cut-out anchors
+- [ADR-0006: SMuFL](0006-SMuFL.md) — the font standard, its stave-space convention and its cut-out anchors
 
 ### External References
 
-- [SMuFL Specification](https://www.w3.org/2021/03/smufl14/index.html) — the staff-space convention and the cut-out anchors
+- [SMuFL Specification](https://www.w3.org/2021/03/smufl14/index.html) — the stave-space convention and the cut-out anchors
 - [SMuFL metadata specification](https://www.w3.org/2021/03/smufl14/specification/font-specific-metadata.html) — bounding boxes and anchors, including `cutOutNE`, `cutOutSE`, `cutOutSW` and `cutOutNW`
 - [Bravura](https://github.com/steinbergmedia/bravura) — the font whose outlines the figures are drawn from
 - [Apache FontBox](https://pdfbox.apache.org/) — reads the font’s tables; Ooloi interprets the outlines

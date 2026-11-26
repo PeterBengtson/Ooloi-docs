@@ -122,7 +122,7 @@ This phase is the core operational toolkit. Everything above and below in this r
 
 **12. [ADR-0008: VPDs](../ADRs/0008-VPDs.md)**
 
-Vector Path Descriptors are compact vectors that address locations in the musical hierarchy. `[:m 0 1 0 3 0]` means: musician 0, instrument 1, staff 0, measure 3, voice 0. Read the rationale section — the alternatives considered (string paths, integer indexing, object references) illuminate why VPDs specifically were chosen. VPDs serialise cleanly across gRPC; object pointers do not.
+Vector Path Descriptors are compact vectors that address locations in the musical hierarchy. `[:m 0 1 0 3 0]` means: musician 0, instrument 1, stave 0, measure 3, voice 0. Read the rationale section — the alternatives considered (string paths, integer indexing, object references) illuminate why VPDs specifically were chosen. VPDs serialise cleanly across gRPC; object pointers do not.
 
 **13. [Guide: VPDs.md](VPDs.md)**
 
@@ -138,7 +138,7 @@ How pieces are stored, retrieved, and referenced. UUID-based identification in p
 
 **16. [ADR-0016: Settings](../ADRs/0016-Settings.md)**
 
-Configuration for any entity in either hierarchy, from a piece to a single pitch. `defsetting` generates `get-` and `set-` accessors indistinguishable from those of a record slot, so the polymorphic API covers settings with no new vocabulary; values are stored in a `:settings` map that holds only what differs from the default, are validated when written, and are addressed by VPD like everything else. Piece settings — accidental behaviour, the default music font and the glyphs drawn from other fonts, staff spacing and the rest — are of this kind.
+Configuration for any entity in either hierarchy, from a piece to a single pitch. `defsetting` generates `get-` and `set-` accessors indistinguishable from those of a record slot, so the polymorphic API covers settings with no new vocabulary; values are stored in a `:settings` map that holds only what differs from the default, are validated when written, and are addressed by VPD like everything else. Piece settings — accidental behaviour, the default music font and the glyphs drawn from other fonts, stave spacing and the rest — are of this kind.
 
 > **What you should understand at the end of Phase 3:** How to address any element in any piece using a VPD. How the polymorphic API dispatches. How pieces are stored and retrieved. How to read and construct any API call in the codebase.
 
@@ -194,7 +194,7 @@ The complete data synchronisation model. Three layers: events tell clients which
 
 **25. [ADR-0052: Change Detection and Event Generation](../ADRs/0052-Change-Detection-and-Event-Generation.md)**
 
-Where an invalidation comes from. Change is detected at one point, the single write funnel every VPD mutation passes through. A mutation of a structural entity — piece, musician, instrument, staff, layout — emits `:piece-structure-changed`, deferred to commit and coalesced to exactly one event per outermost transaction by `with-coalesced-structural-change`, and the subscribed window refetches the piece's structural snapshot. A change to the music itself emits no structure event; it reaches the frontend as invalidations from the formatting pipeline. The ADR also defines the per-piece dirty flag. Read beside ADR-0022: that ADR says what an event carries, this one says how the backend decides to emit it.
+Where an invalidation comes from. Change is detected at one point, the single write funnel every VPD mutation passes through. A mutation of a structural entity — piece, musician, instrument, stave, layout — emits `:piece-structure-changed`, deferred to commit and coalesced to exactly one event per outermost transaction by `with-coalesced-structural-change`, and the subscribed window refetches the piece's structural snapshot. A change to the music itself emits no structure event; it reaches the frontend as invalidations from the formatting pipeline. The ADR also defines the per-piece dirty flag. Read beside ADR-0022: that ADR says what an event carries, this one says how the backend decides to emit it.
 
 **26. [ADR-0015: Undo and Redo](../ADRs/0015-Undo-and-Redo.md)**
 
@@ -222,7 +222,7 @@ Standard (major, minor, modal), keyless, mixed-accidental, per-octave variation 
 
 **30. [ADR-0035: Remembered Alterations](../ADRs/0035-Remembered-Alterations.md)**
 
-The first "impossible problem turned straightforward" result. Read the problem statement carefully. Accidentals have temporal memory within measures; that memory applies to the musical timeline, not to visual order; multi-staff instruments require a single shared accidental state across all staves. The solution is deterministic via the timewalker. The same input always produces the same accidental decisions, regardless of layout, staff count, or rendering order.
+The first "impossible problem turned straightforward" result. Read the problem statement carefully. Accidentals have temporal memory within measures; that memory applies to the musical timeline, not to visual order; multi-stave instruments require a single shared accidental state across all staves. The solution is deterministic via the timewalker. The same input always produces the same accidental decisions, regardless of layout, stave count, or rendering order.
 
 This is worth understanding thoroughly. It is the first confirmation that the architecture turns a question of judgement into a computation: the ADR states that its algorithm needs no heuristics or special-case logic beyond house-style settings. It establishes that five user-configurable settings cover the full domain of legitimate taste decisions in accidental rendering. That small configuration surface is a consequence of the algorithm's completeness: where the correct answer can be computed, configuration is unnecessary.
 
@@ -371,7 +371,7 @@ These documents are not required for understanding Ooloi's architecture. They pr
 
 **[ADR-0048: SMuFL Glyph Selection Architecture](../ADRs/0048-SMuFL-Glyph-Selection-Architecture.md)** — The general mechanism for selecting notation glyphs from the SMuFL specification. Logical keywords resolve to SMuFL classes, which resolve to glyphs through a three-level cascade (house style → piece → local). Each glyph comes from the piece's default music font or, where the user has chosen, from another SMuFL font, and is offered only from fonts that provide it. The additional-glyphs mechanism lets individual glyphs be added to a class without pulling in a whole mixed range. ADR-0049 is the first concrete implementation of this architecture.
 
-**[ADR-0049: Clef Registry](../ADRs/0049-Clef-Registry.md)** — The first application of ADR-0048. Clefs become a registry mapping keywords to structured definitions (class, line or space, pitch, optional additional glyphs), with 17 defaults covering standard practice and full support for user-defined clefs (French violin clef, sub-bass clef, mensural C clefs, anything else). A flat keyword such as `:treble` conflates glyph, staff position and octave transposition in one name, and a fixed set of such keywords can express no clef outside it; factoring the name into orthogonal fields makes any clef a definition rather than a new keyword, while the default keywords keep their names.
+**[ADR-0049: Clef Registry](../ADRs/0049-Clef-Registry.md)** — The first application of ADR-0048. Clefs become a registry mapping keywords to structured definitions (class, line or space, pitch, optional additional glyphs), with 17 defaults covering standard practice and full support for user-defined clefs (French violin clef, sub-bass clef, mensural C clefs, anything else). A flat keyword such as `:treble` conflates glyph, stave position and octave transposition in one name, and a fixed set of such keywords can express no clef outside it; factoring the name into orthogonal fields makes any clef a definition rather than a new keyword, while the default keywords keep their names.
 
 **[ADR-0056: Glyph Geometry from Outlines](../ADRs/0056-Glyph-Geometry-from-Outlines.md)** — Where the geometry of every glyph comes from for layout: the font’s own outlines, read as the font stores them and never rendered, bounded exactly from outside in four profiles per glyph, computed once when a font is registered and frozen as data keyed by the font file’s content hash. Layout only reads them, so no platform, library or renderer can move a note. SMuFL’s cut-outs remain as a check on the font’s metadata. The figures show the difference from bounding boxes on Bravura’s own glyphs. Read after ADR-0055 and ADR-0047.
 

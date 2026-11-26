@@ -139,14 +139,14 @@ These helpers transform the timewalker from a low-level traversal tool into a re
 A filter only behaves as you expect when you know what arrives in the stream, and the stream holds more than notes. In order (`walk!`, `walk-measure!`, `walk-voice!` and `walk-item!` in `ooloi.shared.ops.timewalk`):
 
 1. **The boundary object comes first**, at position 0: the piece when the options name no `:boundary-vpd`, the instrument for `[:m 0 0]`, and so on. If the boundary is itself a measure, the measure is the first tuple.
-2. **Then measure by measure.** Every measure numbered N within the boundary, staff by staff in structural order, comes before any measure numbered N+1. Each measure is emitted at position 0, followed by its voices; each voice is emitted at position 0, followed by its items.
+2. **Then measure by measure.** Every measure numbered N within the boundary, stave by stave in structural order, comes before any measure numbered N+1. Each measure is emitted at position 0, followed by its voices; each voice is emitted at position 0, followed by its items.
 3. **Musicians, instruments and staves below the boundary are not emitted.** The walker descends through them to find the measures and passes nothing on.
 4. **Items arrive container first.** A tuplet, tremolando or grace group is emitted before its contents, which follow at their own positions.
 5. **Chord pitches and attachments are tuples of their own**, at the position of the item they belong to, with VPDs ending in `:pitches k` or `:attachments k`. `(filter pitch??)` therefore yields the pitches inside chords as well as the single notes; to keep only the single notes, drop the tuples whose VPD contains `:pitches`.
 6. **`:start-position` and `:end-position` filter only the items directly in a voice**, by the position at which each starts. The contents of a tuplet that starts inside the window are emitted in full, wherever they end.
 
 ```clojure
-;; The opening of a walk over a piece with one staff, one measure, one voice
+;; The opening of a walk over a piece with one stave, one measure, one voice
 ;; holding a C major chord of a half note and a rest:
 [piece          []                                0]
 [measure        [:m 0 0 0 0]                      0]
@@ -199,7 +199,7 @@ Once you see your data as a stream, your thinking shifts:
 
 **BEFORE (navigating structure)**:
 ```clojure
-;; "Navigate to musician 0, get instrument 0, find staff 0,
+;; "Navigate to musician 0, get instrument 0, find stave 0,
 ;;  iterate measures, check each voice, filter for pitches"
 (for [musician (:musicians piece)
       instrument (:instruments musician)
@@ -225,7 +225,7 @@ Once you see your data as a stream, your thinking shifts:
 
 Music naturally flows in time. When you think about a melody, you don't think:
 
-> "The musician at index 0, instrument at index 0, staff at index 0, measure at index 5, voice at index 0, items at indices 0 through 7"
+> "The musician at index 0, instrument at index 0, stave at index 0, measure at index 5, voice at index 0, items at indices 0 through 7"
 
 You think:
 
@@ -271,7 +271,7 @@ The key insight: **the transformation is separate from the data**. The `process`
 
 When you embrace the stream mindset:
 
-1. **You stop thinking about structure** - The hierarchy becomes invisible. You never write "musician 0, instrument 0, staff 0" again.
+1. **You stop thinking about structure** - The hierarchy becomes invisible. You never write "musician 0, instrument 0, stave 0" again.
 2. **Code becomes declarative** - "give me pitches above C5" not "for each musician, for each instrument..."
 3. **Operations compose naturally** - filter → map → take is a pipeline, not nested loops
 4. **Performance comes with the form** - a transducer pipeline processes one item at a time, with no intermediate collections
@@ -1087,7 +1087,7 @@ This architectural choice enables, in the transducer form:
 
 1. **True early termination** - Stop computation itself, not just consumption
 2. **Zero intermediate allocation** - No lazy sequence wrappers between steps
-3. **Streaming without holding tuples** - The walk keeps an index of the measures in scope, one entry per measure of each staff, built before the first tuple is pushed (`collect-measures` in `ooloi.shared.ops.timewalk`). The tuples themselves are kept only if the consumer keeps them
+3. **Streaming without holding tuples** - The walk keeps an index of the measures in scope, one entry per measure of each stave, built before the first tuple is pushed (`collect-measures` in `ooloi.shared.ops.timewalk`). The tuples themselves are kept only if the consumer keeps them
 4. **Composability** - Combine with all Clojure transducer operations
 
 The push-based architecture is what makes timewalk efficient enough for professional orchestral scores while maintaining the elegant compositional properties of functional programming.
@@ -1116,7 +1116,7 @@ The options, with their defaults (`timewalk` in `ooloi.shared.ops.timewalk`):
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `:boundary-vpd` | `[]` (the piece) | The subtree to walk: a musician, instrument, staff or measure |
+| `:boundary-vpd` | `[]` (the piece) | The subtree to walk: a musician, instrument, stave or measure |
 | `:start-measure` | `0` | First measure index walked |
 | `:start-position` | `0` | First position walked within the start measure |
 | `:end-measure` | `nil` (the last measure) | Last measure index walked, inclusive |
@@ -1315,7 +1315,7 @@ Why decompose the algorithm this way? Because the alternative is difficult to ma
 
 The accidental algorithm is complex because it must handle:
 
-- Multi-staff, multi-voice temporal coordination
+- Multi-stave, multi-voice temporal coordination
 - Grace note positioning with collision detection
 - Chord conflict detection for courtesy accidentals
 - Remembered state updates after each pitch

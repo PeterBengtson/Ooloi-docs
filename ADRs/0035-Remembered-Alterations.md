@@ -35,15 +35,15 @@ Implemented
 ![Piano, 2 staves](../img/alterations/courtesy_g_major.png)  ![Piano, 2 staves](../img/alterations/courtesy_start_of_measure.png)
 ![Piano, 2 staves](../img/alterations/piano_2_staff.png)  ![Piano, 2 staves](../img/alterations/ties_slurs.png)
 
-The decision of when to print an accidental in music notation is not simply "show an accidental when the note differs from the key signature." Accidentals have **temporal memory** within measures—once an accidental is used, it affects subsequent notes on the same staff position until the barline. This memory system, called "remembered alterations," is fundamental to readable music notation and has historically been one of the most complex aspects of notation software.
+The decision of when to print an accidental in music notation is not simply "show an accidental when the note differs from the key signature." Accidentals have **temporal memory** within measures—once an accidental is used, it affects subsequent notes on the same stave position until the barline. This memory system, called "remembered alterations," is fundamental to readable music notation and has historically been one of the most complex aspects of notation software.
 
-A correct accidental-memory model must evaluate pitches in musical time rather than in visual order. Multi-staff and multi-voice instruments require a representation in which temporal sequence is explicit and independent of staff structure or layout, so that remembered alterations follow the musical timeline.
+A correct accidental-memory model must evaluate pitches in musical time rather than in visual order. Multi-stave and multi-voice instruments require a representation in which temporal sequence is explicit and independent of stave structure or layout, so that remembered alterations follow the musical timeline.
 
-Since Ooloi's internal representation is semantic, Ooloi can solve this problem algorithmically. The solution is deterministic: given the same musical input, the algorithm produces the same accidental decisions regardless of layout, staff assignment, number of staves in the instrument, or rendering order. The approach guarantees correctness for the domain of Western staff notation without relying on heuristics or special-case logic.
+Since Ooloi's internal representation is semantic, Ooloi can solve this problem algorithmically. The solution is deterministic: given the same musical input, the algorithm produces the same accidental decisions regardless of layout, stave assignment, number of staves in the instrument, or rendering order. The approach guarantees correctness for the domain of Western stave notation without relying on heuristics or special-case logic.
 
 ### Problem Statement
 
-Accidental rendering depends on the state of previously encountered pitches. The rules for remembered alterations apply to the musical timeline, not to visual layout. In an instrument with multiple staves and voices, the sequence in which pitches appear rhythmically is not the same as the sequence implied by staff order or voice structure: it's still strictly left-to-right across all voices and staves.
+Accidental rendering depends on the state of previously encountered pitches. The rules for remembered alterations apply to the musical timeline, not to visual layout. In an instrument with multiple staves and voices, the sequence in which pitches appear rhythmically is not the same as the sequence implied by stave order or voice structure: it's still strictly left-to-right across all voices and staves.
 
 The core problem is therefore:
 
@@ -99,16 +99,16 @@ The remembered alterations system uses a **wave pattern** where accidental memor
 The remembered-alterations system maintains the following invariants:
 
 1. **Deterministic evaluation**
-   For a given piece state, key-signature baseline, and measure-initial remembered state, the algorithm produces the same accidental decisions regardless of layout, staff assignment, or rendering order.
+   For a given piece state, key-signature baseline, and measure-initial remembered state, the algorithm produces the same accidental decisions regardless of layout, stave assignment, or rendering order.
 
 2. **Position-based ordering**
-   All pitches belonging to an instrument are evaluated in strictly increasing temporal order determined by their rhythmic position, independent of voice or staff structure.
+   All pitches belonging to an instrument are evaluated in strictly increasing temporal order determined by their rhythmic position, independent of voice or stave structure.
 
 3. **Single comparison rule**
    A printed accidental is required exactly when the pitch's accidental differs from the current remembered state for its letter and octave.
 
 4. **Instrument-level memory**
-   Remembered state is shared across all staves and voices of an instrument. Alterations from any staff or voice contribute to a single state threaded through the instrument's timeline.
+   Remembered state is shared across all staves and voices of an instrument. Alterations from any stave or voice contribute to a single state threaded through the instrument's timeline.
 
 5. **Baseline + deviation model**
    The remembered state at any point is the combination of the key-signature baseline and any per-octave deviations accumulated earlier in the measure. Deviations always override baseline; removal of deviation reverts to baseline.
@@ -116,7 +116,7 @@ The remembered-alterations system maintains the following invariants:
 6. **Measure-boundary rules**
    At measure boundaries, the initial remembered state is always the key-signature baseline. The previous measure's final state and tied-target-endpoint-ids are available for: (a) tied note bypass detection (unconditional for all tied-to notes, with French tie exception at position 0), and (b) courtesy-accidental detection (all modes). The tied bypass is unconditional—tied notes are continuations by definition—requiring no state matching. Bypassed notes produce no print and no remembered state update, requiring subsequent non-tied occurrences to restate vs baseline.
 
-These six invariants, combined with the single comparison rule, constitute a complete solution to accidental rendering for Western staff notation. The algorithm handles all scenarios—single-staff, multi-staff, multi-voice, cross-staff, atonal, mid-measure key changes—through the same mechanism. No heuristics are required beyond configurable house-style settings.
+These six invariants, combined with the single comparison rule, constitute a complete solution to accidental rendering for Western stave notation. The algorithm handles all scenarios—single-stave, multi-stave, multi-voice, cross-stave, atonal, mid-measure key changes—through the same mechanism. No heuristics are required beyond configurable house-style settings.
 
 ### Data Structure
 
@@ -345,7 +345,7 @@ Grace notes are ornamental containers with zero metric duration that appear befo
 - Grace items (pitches/chords within the grace container) process sequentially
 - Each grace item compares against current remembered state (may print if differs)
 - Each grace item updates remembered state (affects subsequent grace items and main note)
-- All existing features apply: multi-voice state sharing, cross-staff integration, courtesy accidentals, simultaneity handling
+- All existing features apply: multi-voice state sharing, cross-stave integration, courtesy accidentals, simultaneity handling
 
 **Example** (C major):
 ```
@@ -664,12 +664,12 @@ Key signatures ([ADR-0034](0034-Key-Signature-Architecture.md)) provide the **ba
 **Hierarchical Key Signature Resolution:**
 
 Key signatures are resolved hierarchically at each pitch position using the pitch's VPD:
-1. **Staff-level**: Check if staff has explicit key signature at this position
-2. **Instrument-level**: If no staff override, check instrument key signature
+1. **Stave-level**: Check if stave has explicit key signature at this position
+2. **Instrument-level**: If no stave override, check instrument key signature
 3. **Piece-level**: If no instrument override, use piece key signature
 
 This hierarchy walk enables:
-- Staff-level overrides for polytonal music (different staves, different keys simultaneously)
+- Stave-level overrides for polytonal music (different staves, different keys simultaneously)
 - Instrument-level key changes affecting all staves
 - Piece-level key changes affecting entire score
 - Complete flexibility: overrides can occur at any position in any measure, multiple times
@@ -678,8 +678,8 @@ This hierarchy walk enables:
 
 When a key signature change is detected (a pitch encounters a key signature not currently in use):
 1. **Query all staves** at the current position to determine which key signatures are now in effect
-2. **Remove partitions** for key signatures no longer used by any staff (temporal cleanup)
-3. **Create fresh baseline** for the new key signature, or inherit existing partition if another staff was already using that key
+2. **Remove partitions** for key signatures no longer used by any stave (temporal cleanup)
+3. **Create fresh baseline** for the new key signature, or inherit existing partition if another stave was already using that key
 4. **Clear octave-specific deviations** for the affected staves (fresh state from new baseline)
 5. Subsequent notes compare against the new baseline
 
@@ -692,20 +692,20 @@ When a key signature change is detected (a pitch encounters a key signature not 
 - F# appears in octave 4 after change → compares against fresh baseline → no print (matches)
 - After F# processed: `{:default {"F" :sharp}}` (baseline only, no deviations)
 
-**Example** (Staff 1: C major, Staff 2: G major simultaneously):
+**Example** (Stave 1: C major, Stave 2: G major simultaneously):
 - Two partitions maintained: C major baseline `{}`, G major baseline `{:default {"F" :sharp}}`
-- F natural on Staff 1 → uses C major partition, matches baseline, no print
-- F natural on Staff 2 → uses G major partition, contradicts baseline, prints natural
+- F natural on Stave 1 → uses C major partition, matches baseline, no print
+- F natural on Stave 2 → uses G major partition, contradicts baseline, prints natural
 - Each partition maintains independent remembered state throughout the measure
 
 ## Hierarchical Scope and Partitioning
 
-Remembered alterations are **partitioned by effective key signature**, where the effective key signature is resolved hierarchically (staff → instrument → piece) at each pitch position.
+Remembered alterations are **partitioned by effective key signature**, where the effective key signature is resolved hierarchically (stave → instrument → piece) at each pitch position.
 
 **Scope dynamics:**
 - When all staves share the same effective key signature → single partition (instrument-level scope)
-- When staves have different effective key signatures → multiple partitions (effectively staff-level scope where needed)
-- When a staff's key signature changes → new partition created or existing partition inherited
+- When staves have different effective key signatures → multiple partitions (effectively stave-level scope where needed)
+- When a stave's key signature changes → new partition created or existing partition inherited
 
 **Architectural principle**: Remembered state is tied to the key signature context, not to a fixed organizational level. This enables:
 - **Polytonal music**: Different staves maintain independent remembered state when using different keys
@@ -714,19 +714,19 @@ Remembered alterations are **partitioned by effective key signature**, where the
 
 **Rationale**: A performer reading notation sees accidentals in the context of the prevailing key signature. When different staves have different key signatures (polytonal music), each key context requires independent accidental memory. When staves share the same key signature, they share accidental memory.
 
-**Hierarchical resolution** (staff → instrument → piece):
+**Hierarchical resolution** (stave → instrument → piece):
 - Each pitch's effective key signature is determined by walking the VPD hierarchy
-- Staff-level overrides take precedence over instrument-level and piece-level
-- Instrument-level key changes affect all staves unless overridden at staff level
+- Stave-level overrides take precedence over instrument-level and piece-level
+- Instrument-level key changes affect all staves unless overridden at stave level
 - Complete flexibility: key signature changes can occur at any position in any measure
 
 **System-level separation**: Instruments in the same system do NOT share accidental memory. An oboe's F# does not affect a flute's F natural, even though they appear visually proximate on the page. The boundary is at the instrument level—accidental memory is an instrument property, not a system or score property.
 
-**Example** (piano cross-staff, single key signature - G major):
+**Example** (piano cross-stave, single key signature - G major):
 ```clojure
 ;; Piano (two staves), both using G major:
-;; Right hand (treble staff): F# at position 0
-;; Left hand (bass staff): F natural at position 1/4
+;; Right hand (treble stave): F# at position 0
+;; Left hand (bass stave): F natural at position 1/4
 ;; Right hand: F at position 1/2
 
 ;; Single partition (both staves share G major baseline)
@@ -743,8 +743,8 @@ The bass F natural at position 1/4 forces a courtesy natural on the treble F at 
 **Example** (organ, polytonal - treble in C major, bass in G major):
 ```clojure
 ;; Organ (two staves), different key signatures:
-;; Treble staff: C major
-;; Bass staff: G major
+;; Treble stave: C major
+;; Bass stave: G major
 ;; Both staves: F natural at position 0
 
 ;; Two partitions maintained throughout measure
@@ -756,7 +756,7 @@ The bass F natural at position 1/4 forces a courtesy natural on the treble F at 
 ;; Bass F natural: contradicts G major baseline → print natural
 ```
 
-Each partition maintains independent remembered state. A staff's alterations only affect other staves sharing the same key signature partition.
+Each partition maintains independent remembered state. A stave's alterations only affect other staves sharing the same key signature partition.
 
 
 ## Architectural Implications
@@ -820,7 +820,7 @@ This architecture ensures consistent musical interpretation across all visual re
 
 1. **Settings complexity** - Multiple settings needed for different engraving traditions
 2. **Sequential dependency** - Each measure depends on previous measure's final state (inherent in the problem domain)
-3. **Instrument-level scope** - Scanning all staves of multi-staff instruments (e.g., piano, organ, choir) increases the number of pitches to sort, though still negligible for typical measures
+3. **Instrument-level scope** - Scanning all staves of multi-stave instruments (e.g., piano, organ, choir) increases the number of pitches to sort, though still negligible for typical measures
 
 ## References
 

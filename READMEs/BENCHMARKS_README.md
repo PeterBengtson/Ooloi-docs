@@ -31,10 +31,10 @@ For each scope we report two forms:
 
 | Scope | Typical Use | M3, unrealised | M3, materialised | i7-8750H, unrealised | i7-8750H, materialised |
 |------|--------------|---------------:|-----------------:|---------------------:|-----------------------:|
-| 10 measures × 1 staff | Cache refresh after edit | 310 µs | 313 µs | 722 µs | 727 µs |
+| 10 measures × 1 stave | Cache refresh after edit | 310 µs | 313 µs | 722 µs | 727 µs |
 | 10 measures × 4 staves | Compound cache rebuild | 1.25 ms | 1.26 ms | 2.93 ms | 2.98 ms |
 | 1 instrument × full piece | Part extraction / analysis | 6.49 ms | 6.85 ms | 13.7 ms | 14.8 ms |
-| 50 measures × 1 staff | Search endpoint (worst case) | 517 µs | N/A | 1.22 ms | N/A |
+| 50 measures × 1 stave | Search endpoint (worst case) | 517 µs | N/A | 1.22 ms | N/A |
 
 #### Materialisation vs Streaming
 
@@ -140,7 +140,7 @@ Generates realistic large orchestral pieces for performance testing.
 - `:measures` - Number of measures per instrument (default: 1000)
 - `:instruments` - Number of instruments (default: 20)
 - `:staves-per-instrument` - Staves per instrument (default: 1)
-- `:voices-per-staff` - Voices per staff (default: 1)
+- `:voices-per-staff` - Voices per stave (default: 1)
 - `:items-per-measure` - Musical items per measure (default: 8)
 
 **Example usage:**

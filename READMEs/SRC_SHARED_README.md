@@ -85,8 +85,8 @@ shared/src/main/clojure/ooloi/shared/
 │   │   ├── piece.clj         ; Piece - root musical container
 │   │   ├── musician.clj      ; Musician - performer representation
 │   │   ├── instrument.clj    ; Instrument - musical instrument definition
-│   │   ├── staff.clj         ; Staff - staff representation
-│   │   ├── voice.clj         ; Voice - voice within staff
+│   │   ├── staff.clj         ; Staff - stave representation
+│   │   ├── voice.clj         ; Voice - voice within stave
 │   │   ├── measure.clj       ; Measure - musical measure
 │   │   ├── pitch.clj         ; Pitch - musical pitch
 │   │   ├── chord.clj         ; Chord - multiple simultaneous pitches

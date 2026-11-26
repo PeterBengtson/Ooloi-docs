@@ -113,7 +113,7 @@ flowchart LR
 
 Stage 1 processes individual measures in parallel (fan-out per measure), with each measure independently calculating its rhythmic content, the geometry of its atoms, and cached visual representations. Each rhythmic position forms an "engraving atom" - noteheads, stems, accidentals, articulations positioned relative to each other as an indivisible unit. All glyph positions within an atom are relative to the atom's origin point (see [Atom-Relative Geometry Invariant](#atom-relative-geometry-invariant)), enabling atoms to be repositioned without internal recomputation.
 
-Each atom has a left and a right contour: for every band of height, its leftmost and rightmost ink relative to its origin, the left edge of its principal notehead column ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). These contours are the extents of this stage’s title, built from the glyphs’ profiles, which are computed from the fonts’ outlines when a font is registered ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)); Stage 5 reads the glyphs’ top and bottom profiles for vertical placement. Stage 1 also records each staff's rhythm, declares as geometry the constraints spanning several columns that the measure implies, and supplies, for every atom that can stand first in a system, its system-start contour (courtesy accidentals for tied-to notes) and the minimum forms of continuations ending at it, tie continuations and glissando ends ([ADR-0058](0058-Variants-at-a-Break.md)). It computes no widths: each gap's ideal and blocking width, and the records of each barline, are formed in Stage 2. Plugin atom hooks fire for each notational element, producing atoms with contours and cached paintlists, and may declare constraints. A measure draws, before its closing barline, a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)). Once calculated, atoms remain immutable until measure content or that clef changes, or a font or a setting that changes glyph geometry, such as a ledger line's minimum protrusion ([ADR-0055](0055-Horizontal-Spacing.md#minimum-protrusion)).
+Each atom has a left and a right contour: for every band of height, its leftmost and rightmost ink relative to its origin, the left edge of its principal notehead column ([ADR-0055](0055-Horizontal-Spacing.md#atoms-and-contours)). These contours are the extents of this stage’s title, built from the glyphs’ profiles, which are computed from the fonts’ outlines when a font is registered ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)); Stage 5 reads the glyphs’ top and bottom profiles for vertical placement. Stage 1 also records each stave's rhythm, declares as geometry the constraints spanning several columns that the measure implies, and supplies, for every atom that can stand first in a system, its system-start contour (courtesy accidentals for tied-to notes) and the minimum forms of continuations ending at it, tie continuations and glissando ends ([ADR-0058](0058-Variants-at-a-Break.md)). It computes no widths: each gap's ideal and blocking width, and the records of each barline, are formed in Stage 2. Plugin atom hooks fire for each notational element, producing atoms with contours and cached paintlists, and may declare constraints. A measure draws, before its closing barline, a clef change that takes effect at the start of the next measure, so it reads the clef the next measure begins with ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)). Once calculated, atoms remain immutable until measure content or that clef changes, or a font or a setting that changes glyph geometry, such as a ledger line's minimum protrusion ([ADR-0055](0055-Horizontal-Spacing.md#minimum-protrusion)).
 
 **Stage 1 is width-complete**: It supplies all horizontal space requirements, including spanner anchors, as geometry and declared constraints, from which Stage 2 forms the complete width information Stage 3 needs for optimal distribution.
 
@@ -256,7 +256,7 @@ Plugins generate connecting elements using finalized atom positions:
 
 ### Cross-Tree Caching Architecture: Layout Integration
 
-The MeasureStackFormatter provides vertical coordination across all staves at each measure position. This architecture is implemented through the Layout model's `stack-formatters` vector, where each formatter manages the vertical alignment and spacing of one measure position across every staff in the score.
+The MeasureStackFormatter provides vertical coordination across all staves at each measure position. This architecture is implemented through the Layout model's `stack-formatters` vector, where each formatter manages the vertical alignment and spacing of one measure position across every stave in the score.
 
 #### Layout Model Integration
 
@@ -293,7 +293,7 @@ Cello:       [measure 5 content]  ←
 
 #### Cross-Tree Consistency Guarantees
 
-**Timewalker Coordination**: All measures within a stack are processed with identical rhythmic raster data, ensuring perfect cross-staff alignment even when measures exist in different visual tree branches.
+**Timewalker Coordination**: All measures within a stack are processed with identical rhythmic raster data, ensuring perfect cross-stave alignment even when measures exist in different visual tree branches.
 
 **STM Transaction Safety**: Width updates and cache invalidation occur within STM transactions, maintaining consistency across the entire layout during concurrent access.
 
@@ -311,7 +311,7 @@ sequenceDiagram
     participant C2 as Client 2
 
     Note over U,C2: Phase 1: User Interaction & Frontend Processing
-    U->>F: Click on staff location
+    U->>F: Click on stave location
     F->>F: Hit-testing & VPD resolution
     F->>B: add-note(measure-vpd, piece-id, note-data)
 
@@ -505,7 +505,7 @@ recomputation happens per measure, since a measure's spacing and beaming are set
 making consolidation start from a level it must first climb out of.
 
 The consequence worth stating for anyone recording marks: **a musical VPD must be truncated to its
-measure before it can mark anything.** `[:m 0 1 0 47 2]`, a voice, marks measure 47 of that staff and
+measure before it can mark anything.** `[:m 0 1 0 47 2]`, a voice, marks measure 47 of that stave and
 carries no more.
 
 #### Staleness lives in the piece
@@ -561,13 +561,13 @@ load-bearing rather than cosmetic:
 - **The level is implicit in the key's length**, so the structure needs no level field and none can
   disagree with its own path. `[:l 0]` is a layout, `[:l 0 2]` a page, `[:l 0 2 1]` a system,
   `[:l 0 2 1 0]` a staff-view, `[:l 0 2 1 0 47]` a measure-view — exactly the five levels ADR-0022
-  enumerates, at lengths one to five. Musically, `[:m 0 1 0]` is a staff and `[:m 0 1 0 3]` a measure.
+  enumerates, at lengths one to five. Musically, `[:m 0 1 0]` is a stave and `[:m 0 1 0 3]` a measure.
 - **The head carries the coordinate system.** `:m` marks a musical origin, `:l` a visual one, and both
   occur: a content edit arises musically, a page-height change visually. One map holds both with no
   wrapper and no tagging scheme.
 
 **The two coordinate systems meet at consolidation, and only there.** Collapsing is a visual-hierarchy
-operation — the levels a client is invalidated at are layout, page, system, staff and measure
+operation — the levels a client is invalidated at are layout, page, system, stave and measure
 ([ADR-0022](0022-Lazy-Frontend-Backend-Architecture.md)) — so a `:l` mark consolidates by prefix
 directly, while a `:m` mark is first resolved to the visual elements it affects and consolidated
 after. That resolution is the pipeline's ordinary musical-to-visual mapping and costs it nothing extra.

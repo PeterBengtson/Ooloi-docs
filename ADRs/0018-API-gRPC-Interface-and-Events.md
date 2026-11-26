@@ -230,7 +230,7 @@ event.
 #### Piece events — only that piece's subscribers
 
 - `:piece-structure-changed` — Structural metadata changed: musicians, instruments, layouts,
-  staff participation, piece title, or a `defsetting` value (a piece's `:settings` is a structural
+  stave participation, piece title, or a `defsetting` value (a piece's `:settings` is a structural
   slot — [ADR-0052](0052-Change-Detection-and-Event-Generation.md) §3a). Carries no payload beyond
   `:piece-id` and `:timestamp`; clients fetch current state via `get-piece-structure`, whose
   projection carries every declared setting at its effective value. There is deliberately no

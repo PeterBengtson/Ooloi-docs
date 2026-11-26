@@ -169,7 +169,7 @@ Assigning an instrument from the library to a piece uses the library record dire
 | `:comment` | string or nil | `nil` | Explanatory note shown in the Instrument Library window to help the user choose between variants (e.g. `"Old notation"`). Never used in scores — score labels come from `:name` and `:short-name` only. |
 | `:staves` | vector | `[]` | `Staff` defrecords; see **Staff Fields** below |
 | `:next-id` | integer | `1` | Internal counter for voice ID generation |
-| `:key-signature-overrides` | ChangeSet | empty | Overrides of piece-level key signatures. Hierarchically resolved by timewalk: staff overrides instrument overrides piece. |
+| `:key-signature-overrides` | ChangeSet | empty | Overrides of piece-level key signatures. Hierarchically resolved by timewalk: stave overrides instrument overrides piece. |
 
 **Display ordering**: instruments are displayed in the order they appear in the vector. Vector
 position is the sort order. The full-replace API (`set-instrument-library` sends the complete
@@ -178,20 +178,20 @@ an element in the vector and submitting the new vector.
 
 #### Staff Fields
 
-Every instrument must declare its staves. Each staff is a `Staff` defrecord:
+Every instrument must declare its staves. Each stave is a `Staff` defrecord:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `:id` | keyword | UUID-based | Unique identifier for this staff |
-| `:name` | string | `""` | Full display name for the staff, e.g. `"Mano destra"`. Empty for most single-staff instruments. |
+| `:id` | keyword | UUID-based | Unique identifier for this stave |
+| `:name` | string | `""` | Full display name for the stave, e.g. `"Mano destra"`. Empty for most single-stave instruments. |
 | `:short-name` | string | `""` | Abbreviated name, e.g. `"M.d."` |
 | `:clefs` | map | `{:sounding {:default-clef :treble} :written {:default-clef :treble}}` | Consolidated clef specification; see below |
-| `:num-lines` | integer | `5` | Number of staff lines |
+| `:num-lines` | integer | `5` | Number of stave lines |
 | `:measures` | vector | `[]` | Measure contents (empty in library instruments) |
 | `:key-signature-overrides` | ChangeSet | empty | Overrides of instrument-level key signature overrides |
-| `:clef-changes` | ChangeSet | empty | Clef changes over time within this staff |
+| `:clef-changes` | ChangeSet | empty | Clef changes over time within this stave |
 
-The `:clefs` map is a consolidated specification of how pitches are read off the staff:
+The `:clefs` map is a consolidated specification of how pitches are read off the stave:
 
 ```clojure
 ;; Non-transposing, single clef (simplest case)
@@ -262,23 +262,23 @@ is derivable via `invert-transposition-direction`.
 Some instruments deviate: the same clef symbol carries a different transposition depending on
 notation convention. Historical natural horns are the canonical case — a Horn in F in treble clef
 sounds a perfect fifth below written, but in bass clef (*old notation*) the same horn sounds a
-perfect fourth *above* written. Both clefs may appear on the same staff; the transposition switches
+perfect fourth *above* written. Both clefs may appear on the same stave; the transposition switches
 with the clef. The `:clef-overrides` key within `:transposition` captures these deviations.
 
 No functions are stored in the library atom or in persistence. Transposer functions are constructed
 at the call site: `(apply make-transposer (:sounding->written (:transposition instrument)))`.
 
-**Turning transposition off clears the map whole, and the staff clefs follow.** The editor's
+**Turning transposition off clears the map whole, and the stave clefs follow.** The editor's
 Transposing control writes the field rather than a flag, so unticking it sets `:transposition` to
 `nil` — and any `:clef-overrides` go with it, living inside that map. That is the unified map paying
 for itself a second time: overrides surviving on a non-transposing instrument is one of the states it
 exists to make structurally impossible, so nothing has to remember to remove them.
 
-The instrument's staves are then brought into line: each staff's written default clef is set to its
+The instrument's staves are then brought into line: each stave's written default clef is set to its
 *own* sounding default clef. For a non-transposing instrument written pitch **is** sounding pitch, so
 the two must agree; and the sounding-clef control is only shown while the instrument transposes, so a
-written clef left disagreeing would be both wrong and no longer visible to correct. Each staff
-follows its own sounding clef, never the first staff's, since a multi-staff instrument may sound in
+written clef left disagreeing would be both wrong and no longer visible to correct. Each stave
+follows its own sounding clef, never the first stave's, since a multi-stave instrument may sound in
 different clefs on different staves.
 
 Unticking is therefore lossy, and deliberately so: the overrides are stashed nowhere and re-ticking
@@ -287,7 +287,7 @@ seeds a plain unison rather than restoring them. Undo is the route back.
 #### Examples
 
 ```clojure
-;; Non-transposing, single staff — Italian copy
+;; Non-transposing, single stave — Italian copy
 (create-instrument
   :id :flute-it :language :it
   :name "Flauto" :short-name "Fl."
@@ -296,7 +296,7 @@ seeds a plain unison rather than restoring them. Undo is the route back.
              :clefs {:sounding {:default-clef :treble}
                      :written  {:default-clef :treble}})])
 
-;; Transposing, single staff (sounds octave above written)
+;; Transposing, single stave (sounds octave above written)
 (create-instrument
   :id :piccolo-it :language :it
   :name "Flauto piccolo" :short-name "Fl. picc."
@@ -658,14 +658,14 @@ collaborative session, guests have write permission only if the host has granted
 ### Selection Model
 
 Multi-select with standard platform conventions. Both instrument selection (`:selected`) and
-staff selection (`:selected-staves`) use **vectors**, not sets — the first element is the
+stave selection (`:selected-staves`) use **vectors**, not sets — the first element is the
 **anchor** for shift-click and shift-arrow range extension. Clojure sets are unordered, so
 `(first set)` returns an arbitrary element; vectors preserve insertion order and provide a
 stable anchor. Selection state is held in the window's view-state atom.
 
 The selection operations are four pure functions — `select-one`, `toggle-selection`,
 `move-selection`, `extend-selection` — over a bare anchor-first id-vector, with no instrument-
-or staff-specific knowledge. Each handler supplies the id-vector and its constraint group: for
+or stave-specific knowledge. Each handler supplies the id-vector and its constraint group: for
 instruments, the visible (filtered) flat list, and the anchor's family for range extension; for
 staves, the parent instrument's staves vector. Because the algebra is type-agnostic, the same
 four primitives serve the whole `Layouts ⊃ Musicians ⊃ Instruments ⊃ Staves` nesting — Musicians
@@ -674,7 +674,7 @@ and constraint group. The Piece window's use of these primitives for its Musicia
 
 **Instrument selection** (`:selected` — vector of instrument `:id` keywords):
 
-- **Click** selects one instrument, clearing previous selection and any staff selection.
+- **Click** selects one instrument, clearing previous selection and any stave selection.
 - **Cmd/Ctrl-click** toggles an instrument in or out of the current selection.
 - **Shift-click** extends selection to a contiguous range within the same family.
 - **Cross-family Cmd/Ctrl-click** works — the selection can span multiple families.
@@ -683,17 +683,17 @@ and constraint group. The Piece window's use of these primitives for its Musicia
 - **Select All**: nothing selected → all instruments in all families; one or more instruments
   selected → all instruments in the families containing selected instruments.
 
-**Staff selection** (`:selected-staves` — vector of staff `:id` keywords within one instrument):
+**Stave selection** (`:selected-staves` — vector of stave `:id` keywords within one instrument):
 
-- **Click on a staff** selects that staff, clearing instrument selection.
-- **Cmd/Ctrl-click** toggles a staff in or out of the current staff selection.
+- **Click on a stave** selects that stave, clearing instrument selection.
+- **Cmd/Ctrl-click** toggles a stave in or out of the current stave selection.
 - **Shift-click** extends to a contiguous range within the instrument's staves vector.
-- **Arrow up/down** (when staff selection is active) moves within the instrument's staves.
-- **Shift+arrow up/down** extends/contracts staff selection preserving the anchor.
-- **Collapsing an instrument** clears its staff selection.
+- **Arrow up/down** (when stave selection is active) moves within the instrument's staves.
+- **Shift+arrow up/down** extends/contracts stave selection preserving the anchor.
+- **Collapsing an instrument** clears its stave selection.
 
-**Mutual exclusivity**: instrument selection and staff selection cannot both be non-empty
-simultaneously. Selecting an instrument clears staff selection; selecting a staff clears
+**Mutual exclusivity**: instrument selection and stave selection cannot both be non-empty
+simultaneously. Selecting an instrument clears stave selection; selecting a stave clears
 instrument selection.
 
 **Keyboard navigation respects filters**: arrow key navigation operates on the visible
@@ -722,21 +722,21 @@ All editing operations apply to the current selection. Write permission is requi
 All mutations are expressed as transformations of the instrument vector and submitted via
 `set-instrument-library`. See [Optimistic Locking](#optimistic-locking) for conflict handling.
 
-#### Staff Editing
+#### Stave Editing
 
-Staff operations follow the same patterns as instrument operations, applied within an instrument's
+Stave operations follow the same patterns as instrument operations, applied within an instrument's
 `:staves` vector via `update-instrument-field`:
 
-- **Delete**: removes selected staves. Last-staff protection prevents deleting an instrument's sole
-  staff (confirmation dialog for multi-staff delete).
-- **Reorder (drag within instrument)**: moves a staff to a new position within the same instrument's
+- **Delete**: removes selected staves. Last-stave protection prevents deleting an instrument's sole
+  stave (confirmation dialog for multi-stave delete).
+- **Reorder (drag within instrument)**: moves a stave to a new position within the same instrument's
   staves vector.
-- **Modifier-drag within instrument**: duplicates the staff with a new UUID `:id`.
+- **Modifier-drag within instrument**: duplicates the stave with a new UUID `:id`.
 - **Plain drag to different instrument**: rejected — cross-instrument moves are not supported.
-- **Modifier-drag to different instrument**: clones the staff with a new UUID `:id`, appended to
+- **Modifier-drag to different instrument**: clones the stave with a new UUID `:id`, appended to
   the target instrument's staves. Source instrument is unmodified.
 
-Staff selection is mutually exclusive with instrument selection — selecting a staff clears instrument
+Stave selection is mutually exclusive with instrument selection — selecting a stave clears instrument
 selection and vice versa. Shift-extend is constrained to the same instrument.
 
 ### Undo/Redo
@@ -919,7 +919,7 @@ sounds in the bass register. The `:sounding` and `:written` maps carry different
 values so that the display engine knows which clef to show in each mode. The German notation
 variant uses bass clef for both and transposes only a major second.
 
-**Multi-staff instrument** (Piano):
+**Multi-stave instrument** (Piano):
 
 ```clojure
 {:id :piano-en
@@ -935,7 +935,7 @@ variant uses bass clef for both and transposes only a major second.
                    :written  {:default-clef :bass}}}]}
 ```
 
-Multi-staff instruments declare one staff map per staff in the `:staves` vector. Each staff
+Multi-stave instruments declare one stave map per stave in the `:staves` vector. Each stave
 carries its own `:name`, `:short-name`, and `:clefs`. The instrument-level `:range` covers
 the entire instrument; individual staves do not carry separate ranges.
 

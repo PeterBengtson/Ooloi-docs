@@ -78,7 +78,7 @@ The system needs to support configuration attributes across the entity hierarchy
 - **Configuration Integrity**: Invalid settings values must be prevented at write time
 
 Future configuration needs include:
-- **Visual rendering**: beam thickness, staff spacing, note head sizes, line weights
+- **Visual rendering**: beam thickness, stave spacing, note head sizes, line weights
 - **Layout preferences**: margins, system breaks, page settings
 - **Performance attributes**: invisible items, playback velocities, swing ratios
 - **User customizations**: custom symbols, color schemes, accessibility options
@@ -292,8 +292,8 @@ reloading a namespace does not reorder what it declares.
 
 A setting is **strictly local to the entity it is set on**. Reading consults that entity's own
 `:settings` map and falls back to the declaration default; it does not consult enclosing entities.
-Setting beam thickness on a musician therefore does not change what an enclosed staff reports — the
-staff returns the declaration default until a value is set on the staff itself. VPD access behaves
+Setting beam thickness on a musician therefore does not change what an enclosed stave reports — the
+stave returns the declaration default until a value is set on the stave itself. VPD access behaves
 identically, resolving the addressed entity and reading it locally. Note also that a default belongs
 to the entity type it was declared for, not to the setting: a setting declared for staves has no
 meaning on a piece, and reading it there is a dispatch failure rather than a fallback.

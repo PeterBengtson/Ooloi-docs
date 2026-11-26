@@ -639,7 +639,7 @@ cljfx supports functions as `:fx/type` values. Each Ooloi custom component funct
 | `ooloi-menu` | `:text-key` | `:menu` |
 | `ooloi-command-item` | `:descriptor`, `:state` | `:menu-item` with resolved text and `:disable` |
 | `ooloi-dense-combo-box` | `:choices` (optional), `:locale` (optional cache-buster), `:error?` (in the `:choices` arm, which every call site takes) | Dense `:combo-box` with AtlantaFX base style-classes and ordered lifecycle (items-before-value); with `:choices`, uses cljfx cell factory pattern — items stay as keywords, `:fx/event` delivers keywords; `:locale` forces re-render so cell factories capture current `tr` |
-| `ooloi-openable-pane` | `:expanded`, `:on-expanded-changed`, `:arrow-only-expand`, `:lazy-content`, `:on-drag-over`, `:on-collapsed`, `:extra-style-classes`, `:locale` | Universal primitive for all openable/closable panes. Dense TitledPane; header via cljfx-native `:text` (title) and `:graphic` (header node); content built by default, with opt-in `:lazy-content` substituting an empty VBox when collapsed (see §Declarative Convergence). Arrow-only mode wires MOUSE_CLICKED/MOUSE_PRESSED filters and style mirroring via `ext-on-instance-lifecycle`. Used by family panes, instrument editors, staff editors, and settings tiles |
+| `ooloi-openable-pane` | `:expanded`, `:on-expanded-changed`, `:arrow-only-expand`, `:lazy-content`, `:on-drag-over`, `:on-collapsed`, `:extra-style-classes`, `:locale` | Universal primitive for all openable/closable panes. Dense TitledPane; header via cljfx-native `:text` (title) and `:graphic` (header node); content built by default, with opt-in `:lazy-content` substituting an empty VBox when collapsed (see §Declarative Convergence). Arrow-only mode wires MOUSE_CLICKED/MOUSE_PRESSED filters and style mirroring via `ext-on-instance-lifecycle`. Used by family panes, instrument editors, stave editors, and settings tiles |
 | `ooloi-dense-text-field` | `:on-commit` (optional), `:error?` | Dense `:text-field` with AtlantaFX base style-classes. With `:on-commit`: fires `(on-commit text-string)` on Enter and focus loss. Without: all props pass through. `:error?` applies `styles/error-style` |
 | `ooloi-dense-numeric-field` | `:on-commit` (optional), `:error?` (inherited, since it delegates) | `ooloi-dense-text-field` at six columns with `:min-width :use-pref-size`. The floor matters: a preferred width is only a hint, so without it a compressed row shrinks the field to its padding and the value disappears. The one way to describe a numeric input, and the place locale-dependent number formatting would go (values are invariant today) |
 | `ooloi-dense-spinner` | `:min`, `:max`, `:value`, `:error?` | Dense `:spinner` with integer value factory; non-editable by default (small numeric ranges). `:error?` applies `styles/error-style` to the base map both arms build from, so it reaches the control whether or not an `:on-commit` wraps it |
@@ -664,8 +664,8 @@ cljfx supports functions as `:fx/type` values. Each Ooloi custom component funct
 | `ooloi-sounding-clef` | Sounding clef selector (transposing instruments only). Accepts `:clefs`, `:label`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
 | `ooloi-aux-range-row` | Single aux-range row: clef combo + low/high text fields + `[-]` button. Fires `:staff-aux-clef-changed` (the clef combo), `:staff-field-changed` with `:field :aux-ranges` (each half's `:on-commit`, naming its clef and its half) and `:staff-aux-remove` (the `[-]`). Requires `:dispatch`. Accepts `:clef`, `:aux-range`, `:available-clefs`, `:id`, `:instrument-id`, `:locale`, `:editable?` |
 | `ooloi-musician-editor` | Musician editor built on `ooloi-openable-pane` with `:arrow-only-expand true` — the outermost of the entity editors. `:graphic` the composed numbered-name header with its doubling annotation; content VBox with the musician's `:name`, `:short-name` and `:number` rows followed by an `ooloi-instrument-editor` per instrument. **Requires `:dispatch`** (*Entity Editors*, below). Accepts `:musician`, `:numeral-settings`, `:selection`, `:expanded`, `:locale`, `:lazy-content`, and the three window-local drag callbacks `:on-musician-drag-detected`, `:on-instrument-drag-detected`, `:on-staff-drag-detected` |
-| `ooloi-instrument-editor` | Instrument editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic (name, comment, spacer, language); content VBox with labelled fields and staff editors. Passes `(permissions/allowed? :edit-staff)` as `:editable?` to each staff editor. **Requires `:dispatch`** — asserted, so a window that omits it fails at first render (*Entity Editors*, below). Accepts `:instrument`, `:locale`, `:editable?`, `:selected-staves`, `:on-staff-clicked`, `:on-staff-drag-detected` (3-arity fn wrapped in per-staff closure), `:on-collapsed`, `:on-expanded-changed`. `:on-drag-over` marks a staff drag's target instrument whether expanded or collapsed; a collapsed instrument **spring-opens** after a hover dwell (*Spring-loading*, under §The Piece Window's Panes) so the drop lands inside, rather than rejecting |
-| `ooloi-staff-editor` | Staff editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic with staff name and translated written default-clef. Content VBox with name/short-name text fields, num-lines spinner, written-clef (with aux-ranges), sounding-clef (when transposing). All controls respect `:editable?`. **Requires `:dispatch`** (*Entity Editors*, below). Accepts `:staff`, `:locale`, `:editable?`, `:transposing?`, `:instrument-id`, `:selected`, `:on-mouse-clicked`. `:on-drag-over` sets `:target-instrument-id` and `:target-staff-id` (the latter used by copy; the reorder position comes from the shared drop-target scan) |
+| `ooloi-instrument-editor` | Instrument editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic (name, comment, spacer, language); content VBox with labelled fields and stave editors. Passes `(permissions/allowed? :edit-staff)` as `:editable?` to each stave editor. **Requires `:dispatch`** — asserted, so a window that omits it fails at first render (*Entity Editors*, below). Accepts `:instrument`, `:locale`, `:editable?`, `:selected-staves`, `:on-staff-clicked`, `:on-staff-drag-detected` (3-arity fn wrapped in per-stave closure), `:on-collapsed`, `:on-expanded-changed`. `:on-drag-over` marks a stave drag's target instrument whether expanded or collapsed; a collapsed instrument **spring-opens** after a hover dwell (*Spring-loading*, under §The Piece Window's Panes) so the drop lands inside, rather than rejecting |
+| `ooloi-staff-editor` | Stave editor built on `ooloi-openable-pane` with `:arrow-only-expand true`. HBox graphic with stave name and translated written default-clef. Content VBox with name/short-name text fields, num-lines spinner, written-clef (with aux-ranges), sounding-clef (when transposing). All controls respect `:editable?`. **Requires `:dispatch`** (*Entity Editors*, below). Accepts `:staff`, `:locale`, `:editable?`, `:transposing?`, `:instrument-id`, `:selected`, `:on-mouse-clicked`. `:on-drag-over` sets `:target-instrument-id` and `:target-staff-id` (the latter used by copy; the reorder position comes from the shared drop-target scan) |
 | `ooloi-layout-editor` | Layout editor built on `ooloi-openable-pane` — the Layouts pane's peer of `ooloi-musician-editor`, built to the same pattern so a reader who has understood one entity editor finds nothing new. `:graphic` the composed layout title with its doubling annotation; content the layout's own field rows followed by the musicians it lists, each an openable-but-**empty** pane (the Layouts pane shows musicians, never their staves). `:name` is the layout's only editable field, and blanking it returns the header to its derived form — a name *override* rather than a stored title. Selection is context-scoped to `[:layout id]`, so the same musician selected in the Musicians pane or another layout does not light up here. **Requires `:dispatch`**. Accepts `:layout`, `:musicians`, `:numeral-settings`, `:selection`, `:expanded`, `:locale`, and the window-local drag callbacks `:on-layout-drag-detected`, `:on-layout-musician-drag-detected`, `:on-drag-over` |
 | `ooloi-setting-row` | One row of a generated settings form: an `ooloi-openable-pane` tile titled by the setting's label, with its wrapped, muted description, its control and a per-field reset shown only when the value differs from the default. The control follows the declaration — a `:checkbox` control hint gives a checkbox, `:choices` a combo box, a numeric default a numeric field, anything else a text field — and `:validate` refuses a commit before it is dispatched. The entity-editor contract: the setting arrives as values (`:setting-key`, `:current`, `:default`), and **`:dispatch` is required**, a commit or reset being a dispatched event whose meaning the mounting window decides. Shared by the App Settings and Piece Preferences windows (§10.2) |
 | `ooloi-setting-tabs` | The tabbed surface holding the rows, one tab per category, ordered by translated label so a new category needs no ordering decision; the rows within a tab keep their declared order. Reports the tab gained (never the tab lost) and takes `:selected-category` back in. Accepts `:tabs`, `:selected-category`, `:locale`; **requires `:dispatch`**. Shared by both settings windows |
@@ -690,7 +690,7 @@ An editor for a further entity is written by following this shape rather than in
 `:graphic` is the entity's composed header and whose `:content` is a `:v-box` of that entity's own
 editable field rows — `ooloi-labelled-field` wrapping a dense control — followed by an editor per
 structural child. Nothing else nests: a musician editor contains instrument editors, an instrument
-editor contains staff editors, a staff editor contains only rows.
+editor contains stave editors, a stave editor contains only rows.
 
 **Every commit is one event carrying its own value.** A control builds a closure that dispatches
 `{:event/type :<entity>-field-changed :id <entity-id> :field <field> :value <v>}`. There is no
@@ -729,7 +729,7 @@ is a plain slot needs nothing there; the musician handler uses `field-edits` not
 **It returns nothing that restates a value the entity already holds.** A commit fires at a moment the
 control chose, and a moment carries no information about whether anything changed — so the question is
 asked at the control for what was *typed*, and here for what was *computed*. Unticking Transposing
-brings every staff's written clef into line with its sounding one, and a transposing instrument usually
+brings every stave's written clef into line with its sounding one, and a transposing instrument usually
 reads the clef it sounds in, so most of those writes say nothing new.
 
 **The count settles whether the writes must land together; the ACT settles what the undo step is
@@ -791,7 +791,7 @@ its name from its instrument. Constraining those is field validation's business,
 handler's.
 
 **A Staff name is optional, and usually absent**, so Staff stands outside this entirely and a cleared
-staff name is stored as the blank it is. A staff name exists for the multi-staff instrument — an
+stave name is stored as the blank it is. A stave name exists for the multi-stave instrument — an
 organ's Manual and Pedal, a choir's voice parts — and the great majority of the staves in the bundled
 library carry none. `:short-name` is outside it too, on every entity: an abbreviation a user does not
 want is legitimately absent.
@@ -904,7 +904,7 @@ per-consumer mechanics live in the sections below. `✓` present · `◻` planne
 | Selection-on-drag (a drag on an unselected item selects it first) | ✓ | ✓ | ✓ |
 | Reorder within a parent — drag (`reorder-<elem>`, shared drop-target scan) | ✓ — instrument level: own scan | ✓ | ✓ |
 | Copy within a parent (`SRV/atomic [copy-<elem>]` — a structural copy clones) | ✓ | ✓ | ✓ layouts |
-| Copy cross-parent (staff→instrument; instrument→musician) | ✓ | ✓ | —² |
+| Copy cross-parent (stave→instrument; instrument→musician) | ✓ | ✓ | —² |
 | Cross-parent *move* — deliberately **rejected**, use copy | — | — | — |
 | Spring-loading (a collapsed container opens under a hovering drag it would accept) | ✓ instrument | ✓ musician, instrument | ✓ layout |
 | Multi-item drag (one `SRV/atomic` for the whole selection) | ✓ | ✓ | ✓ |
@@ -943,9 +943,9 @@ The Instrument Library window, the **Piece window's Musicians pane** and its Lay
 
 - **An inline field edit is one call, and what it should write is shared with the Instrument Library.** The entity editors announce every edit at field granularity, and the Piece Window keeps that granularity: a commit becomes one granular setter on that entity's own VPD, not an accumulated form submitted whole. Because it is one operation, the boundary names its undo step from the operation itself ([ADR-0015](../ADRs/0015-Undo-and-Redo.md#mutation-sites--how-resources-register-undo-steps) §Mutation Sites), so the Edit menu reads *Set Name* with nothing composed for the purpose; grouping it into an *unnamed* batch would replace that with the batch's generic label. **A composite field does not mean a batched commit** — a range half, a transposition component and a clef override are each read-modify-written into a single setter call. **What composes a batch is the act**: unticking Transposing is an atomic batch carrying an explicit name, and stays one even when dropping its no-op writes leaves it a single operation, because the name belongs to the act rather than to the count. Nothing is sent at all where the value does not differ from what the entity holds.
 
-  Working out *what* to write is the same arithmetic in both windows, and it lives in one place: `ui.core.field-edits` takes the entity as it currently stands and the commit, and returns the **writes** — `{:attr … :value …}`, plus a staff index where a write targets a staff. Returning writes rather than a function over an entity is what lets the two windows differ where they must: the Instrument Library has the record in hand and reduces them onto it, while the Piece Window holds a projection of a piece it does not own and must name the operation instead. It returns nothing that restates a value the entity already holds, so a commit that changed nothing produces nothing to send; the count of what remains says whether those writes must land together, and the act — never the count — says what the undo step is called.
+  Working out *what* to write is the same arithmetic in both windows, and it lives in one place: `ui.core.field-edits` takes the entity as it currently stands and the commit, and returns the **writes** — `{:attr … :value …}`, plus a stave index where a write targets a stave. Returning writes rather than a function over an entity is what lets the two windows differ where they must: the Instrument Library has the record in hand and reduces them onto it, while the Piece Window holds a projection of a piece it does not own and must name the operation instead. It returns nothing that restates a value the entity already holds, so a commit that changed nothing produces nothing to send; the count of what remains says whether those writes must land together, and the act — never the count — says what the undo step is called.
 
-- **Spring-loading — a closed container opens under a hover.** A container collapsed when a drag begins is not a dead end: hovering a compatible drag over it opens it after a brief dwell, so the drop lands inside where it can be seen, rather than being rejected. This belongs to the drop *target*, not the drag — a closed Musician opens for a library instrument exactly as for one dragged within the pane, a closed Instrument for any staff, a closed Layout for a Musicians selection. The dwell is what makes it a spring-load rather than open-on-touch: a cursor merely passing over on its way elsewhere must not open every pane it crosses.
+- **Spring-loading — a closed container opens under a hover.** A container collapsed when a drag begins is not a dead end: hovering a compatible drag over it opens it after a brief dwell, so the drop lands inside where it can be seen, rather than being rejected. This belongs to the drop *target*, not the drag — a closed Musician opens for a library instrument exactly as for one dragged within the pane, a closed Instrument for any stave, a closed Layout for a Musicians selection. The dwell is what makes it a spring-load rather than open-on-touch: a cursor merely passing over on its way elsewhere must not open every pane it crosses.
 
 - **A layout references its musicians, and the API hides that entirely.** A Layout does not nest Musicians; it holds a flat vector of musician *references* — its `:musician-uuids` — so a doubling or a rename propagates to every score and part for free, and the two panes can never diverge. Yet the drop handler, and any other caller — a script, a plugin, backend code — assigns, reorders, and removes musicians in a layout with the *ordinary* musician verbs (`add-musician`, `reorder-musician`, `remove-musician`); an `:around` on each recognises a Layout target and redirects the write to reference maintenance, so no code ever needs to know the representation differs from a container that owns its musicians. The reference model is real, load-bearing, and invisible to everyone above it.
 
@@ -953,7 +953,7 @@ The Instrument Library window, the **Piece window's Musicians pane** and its Lay
 
 - **Focus is explicit, and the pane filters are shared.** Because the openable pane consumes the mouse-press that would otherwise focus it, keyboard navigation needs a deliberate focus grant on click — guarded so it never steals focus from an editor's text field or combo box. The click filters that grant focus, dispatch delete and arrow keys, accept drops, and clear the selection on an empty-space click are installed by a single shared routine that both the Musicians and Layouts panes call, parameterised by each pane's own drag handlers — the obviously-shareable wiring is shared even while the higher-level "tree pane" abstraction stays deferred. The focus grant is the kind of interaction only a real windowing test, driving genuine OS focus, can verify.
 
-The Layouts pane is built by **replicating** this realisation — the same dispatcher, the same flat selection map at a new level, a separate per-pane expansion map, the same drop-composes-a-transaction shape — rather than by sharing a common abstraction. Extracting a shared "selectable, expandable tree pane" is deliberately deferred until the shape has stopped moving: replicate now, extract later — where what is replicated is the *pane wiring*. The lower-level pieces are shared the moment a second consumer needs them: the selection primitives, and the **drag drop-target resolution** — one geometry scan, which every piece-window reorder and the Instrument Library's staff reorder resolve through (the IL's instrument reorder carries its own implementation of the same midpoint arithmetic), so a drop lands the same way whether it is released on a row, in a gap, or in the whitespace below the last row; the enclosing scroll-pane accepts across its whole area, the scan reports the insert-after position, and the handler composes the reorder as one transaction. The Piece window as a whole is specified in [ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md).
+The Layouts pane is built by **replicating** this realisation — the same dispatcher, the same flat selection map at a new level, a separate per-pane expansion map, the same drop-composes-a-transaction shape — rather than by sharing a common abstraction. Extracting a shared "selectable, expandable tree pane" is deliberately deferred until the shape has stopped moving: replicate now, extract later — where what is replicated is the *pane wiring*. The lower-level pieces are shared the moment a second consumer needs them: the selection primitives, and the **drag drop-target resolution** — one geometry scan, which every piece-window reorder and the Instrument Library's stave reorder resolve through (the IL's instrument reorder carries its own implementation of the same midpoint arithmetic), so a drop lands the same way whether it is released on a row, in a gap, or in the whitespace below the last row; the enclosing scroll-pane accepts across its whole area, the scan reports the insert-after position, and the handler composes the reorder as one transaction. The Piece window as a whole is specified in [ADR-0053](../ADRs/0053-Piece-Window-and-Piece-Preferences.md).
 
 The Layouts pane renders a layout's ordered musician references: each layout an openable pane, the musicians it lists as openable-but-**empty** panes — the Layouts pane shows musicians, never their staves; a different, simpler editor than the Musicians pane's. A layout with no name derives its header from what it lists — a part for one musician, a score for many, and an empty score for none — through the translation layer. Its expansion is tracked in a **separate map from the Musicians pane's**: a musician can appear in a layout and in the Musicians pane at once, and the two views open and close independently.
 
@@ -1027,7 +1027,7 @@ The rule this obliges — every `addEventFilter` on `MOUSE_CLICKED` in a contain
 
 ### 4.8 Nested TitledPane Event Handling
 
-When TitledPanes are nested (e.g. instrument editors containing staff editors), `Node.lookup(selector)` returns ambiguous results — depth-first search may return the inner pane's `.title` instead of the outer's. This breaks MOUSE_PRESSED consumption, causes title clicks to toggle expand, arrow clicks to double-toggle (appearing dead), and style mirroring to target wrong nodes.
+When TitledPanes are nested (e.g. instrument editors containing stave editors), `Node.lookup(selector)` returns ambiguous results — depth-first search may return the inner pane's `.title` instead of the outer's. This breaks MOUSE_PRESSED consumption, causes title clicks to toggle expand, arrow clicks to double-toggle (appearing dead), and style mirroring to target wrong nodes.
 
 **Production code uses three helper functions** (in `cljfx.clj`):
 
@@ -1347,7 +1347,7 @@ The backend produces **paintlists** — structured, hierarchical drawing instruc
 A paintlist is not a bitmap and not a UI fragment. It is a deterministic description of what must be drawn:
 
 * Glyph placements
-* Staff lines
+* Stave lines
 * Beams and slurs
 * Accidental symbols
 * Layout-derived spacing
@@ -1367,7 +1367,7 @@ The RDM has one responsibility: hold the backend's paintlists and know which of 
 
 It:
 
-* Stores paintlists by VPD, at the page, system, staff and measure levels.
+* Stores paintlists by VPD, at the page, system, stave and measure levels.
 * Tracks which VPD regions are valid or stale.
 * Is a pure data cache: its atoms are updated off the JAT, and nothing about it requires the JAT.
 
@@ -1706,7 +1706,7 @@ The menu formatters and `ooloi-notification` are outside this: menus are refresh
 Application settings in Ooloi are not an afterthought and not a collection of ad-hoc preference reads scattered across the UI. They form two independent systems serving different scopes:
 
 * **Frontend app settings** — global application preferences (theme, UI language, editor preferences). Declared on the frontend with `def-app-setting`, stored in an EDN file, accessed directly through an in-process atom API. Described in full below.
-* **Piece settings** — configuration that travels with piece data (beam thickness, staff spacing, accidental behaviour). Declared with `defsetting` in *shared* code, so the declarations — default, validator, category — are on both projects' classpaths; their **values** are stored in STM-managed piece state. The frontend reads and writes those values exclusively through the polymorphic API over gRPC, via `SRV/` calls, never by touching piece data directly. What a setting *is* is shared knowledge; what a piece has it *set to* belongs to the backend.
+* **Piece settings** — configuration that travels with piece data (beam thickness, stave spacing, accidental behaviour). Declared with `defsetting` in *shared* code, so the declarations — default, validator, category — are on both projects' classpaths; their **values** are stored in STM-managed piece state. The frontend reads and writes those values exclusively through the polymorphic API over gRPC, via `SRV/` calls, never by touching piece data directly. What a setting *is* is shared knowledge; what a piece has it *set to* belongs to the backend.
 
 These two systems are architecturally independent. Piece settings concern musical semantics and belong to the backend. Frontend app settings concern application behaviour and belong to the frontend. Mixing the two would compromise the backend-authoritative invariant (Section 13.1).
 
@@ -1921,14 +1921,14 @@ The frontend uses a permission gating system to control which UI operations are 
 - **`:network`** (remote server): always `false` — no permissions are delivered over a network connection
 - **`nil`** (tests, early init): `true`
 
-**Operation keywords** follow a `verb-noun` convention. Staff and instrument permissions are independent — an admin can control each separately per role or person:
+**Operation keywords** follow a `verb-noun` convention. Stave and instrument permissions are independent — an admin can control each separately per role or person:
 
 | Category | Keywords |
 |----------|----------|
 | Instrument | `:edit-instrument`, `:delete-instrument`, `:copy-instrument`, `:reorder-instrument` |
 | Staff | `:edit-staff`, `:delete-staff`, `:copy-staff`, `:reorder-staff` |
 
-**Handler gating** — mutation handlers wrap their body in `(when (permissions/allowed? :keyword) ...)`. **Editor disable gating** — `ooloi-instrument-editor` passes `(permissions/allowed? :edit-staff)` as `:editable?` to each staff editor; when `false`, all interactive controls have `:disable true`.
+**Handler gating** — mutation handlers wrap their body in `(when (permissions/allowed? :keyword) ...)`. **Editor disable gating** — `ooloi-instrument-editor` passes `(permissions/allowed? :edit-staff)` as `:editable?` to each stave editor; when `false`, all interactive controls have `:disable true`.
 
 The design for the network arm is a check against a set of granted operations populated from the gRPC session handshake. The handler-level gating pattern and keyword vocabulary are permanent; the transport stub and the handshake check differ only inside `allowed?`.
 
@@ -2170,7 +2170,7 @@ content, and because nothing is under the cursor there is no drag source and no 
 all. The gesture does nothing, and reads as a defect in the drop handler rather than in the wait.
 
 Every gesture that must open a container to reach its row is exposed to this — in the piece window,
-every instrument- and staff-level drag.
+every instrument- and stave-level drag.
 
 **Two waits, because there are two questions, and one name cannot answer both honestly.**
 

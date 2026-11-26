@@ -41,7 +41,7 @@ This makes MusicXML import unique among plugins:
 
 2. **Rendering Development Validation**: Plugin-based formatters are difficult to validate fully without real-world test material. Synthetic test fixtures are insufficient for validating professional music engraving against real-world edge cases.
 
-3. **Layout Testing Requires Real Scores**: Symphonies, operas, chamber works, piano repertoire provide edge cases that synthetic generators may not cover (tuplet nesting, cross-staff beaming, extreme dynamics, microtones, percussion notation).
+3. **Layout Testing Requires Real Scores**: Symphonies, operas, chamber works, piano repertoire provide edge cases that synthetic generators may not cover (tuplet nesting, cross-stave beaming, extreme dynamics, microtones, percussion notation).
 
 4. **Performance Validation Needs Scale**: Large orchestral scores are required to benchmark timewalk traversal, memory optimization, hash-consing effectiveness. The 647-line timewalk implementation requires real 100k+ event pieces for validation.
 
@@ -94,7 +94,7 @@ This provides a falsifiable milestone that prevents scope drift and "perpetual b
 
 MusicXML remains the de facto interchange format among major notation software (Sibelius, Dorico, Finale, MuseScore) despite verbosity and uneven vendor interpretations. For users to evaluate Ooloi, they need to import their existing files to see how they render. This should not be a one-way operation - users should be able to export files again without loss of content or fidelity.
 
-MusicXML interchange involves common challenges including tie/slur confusion, tuplet encoding variations, voice representation differences, cross-staff beaming complexities, and output determinism. Real-world MusicXML files contain vendor-specific patterns and deviations from the specification that are handled through repair functions.
+MusicXML interchange involves common challenges including tie/slur confusion, tuplet encoding variations, voice representation differences, cross-stave beaming complexities, and output determinism. Real-world MusicXML files contain vendor-specific patterns and deviations from the specification that are handled through repair functions.
 
 ## Decision
 
@@ -116,7 +116,7 @@ The plugin will use the existing VPD API to build/traverse Ooloi structures, req
 - Test data: Import scores from IMSLP/MuseScore.com for testing
 - Examples: Real repertoire for documentation/blog posts
 - Load testing: Actual orchestral complexity for performance validation
-- Notation validation: Cross-staff beaming, tuplets, etc. from existing corpus
+- Notation validation: Cross-stave beaming, tuplets, etc. from existing corpus
 
 This justifies implementing MusicXML earlier in the development cycle to support layout engine development and provide real-world test material.
 
@@ -161,7 +161,7 @@ Real-world MusicXML files contain vendor-specific patterns and deviations from t
 - **Composable repairs**: Independent, testable repair functions applied based on profile
 - **User control**: Override detection or customize repair sets
 
-Common patterns requiring repair include tie/slur disambiguation, voice inference, tuplet normalization, cross-staff beaming consistency, and ID stabilization. The repair set is compact (~15-20 functions handle 95%+ of issues).
+Common patterns requiring repair include tie/slur disambiguation, voice inference, tuplet normalization, cross-stave beaming consistency, and ID stabilization. The repair set is compact (~15-20 functions handle 95%+ of issues).
 
 ## Implementation Approach
 

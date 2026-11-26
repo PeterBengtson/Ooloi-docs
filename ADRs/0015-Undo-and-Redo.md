@@ -741,16 +741,16 @@ correct grammatical form per locale based on the `:n` parameter (see the existin
 | Same id-set, common instruments unchanged, positions differ | `:il.undo.reorder-instruments` | `{}` |
 | Same set + order, every differing instrument has only `:name` changed | `:il.undo.rename-instruments` | `{:n N :names ["A" "B"]}` |
 | Same set + order, some differing instrument has non-`:name` top-level field changes | `:il.undo.edit-instruments` | `{:n N :names ["A" "B"]}` |
-| Same set + order, exactly one instrument differs only in `:staves`, new staff-ids ⊃ old | `:il.undo.add-staves` | `{:n N :instrument "Flute"}` |
-| Same set + order, exactly one instrument differs only in `:staves`, new staff-ids ⊂ old | `:il.undo.delete-staves` | `{:n N :instrument "Flute"}` |
-| Same set + order, exactly one instrument differs only in `:staves`, staff-ids match but positions differ | `:il.undo.reorder-staves` | `{:instrument "Flute"}` |
-| Same set + order, exactly one instrument differs only in `:staves`, staff-ids and positions match, fields differ | `:il.undo.edit-staves` | `{:n N :instrument "Flute"}` |
+| Same set + order, exactly one instrument differs only in `:staves`, new stave-ids ⊃ old | `:il.undo.add-staves` | `{:n N :instrument "Flute"}` |
+| Same set + order, exactly one instrument differs only in `:staves`, new stave-ids ⊂ old | `:il.undo.delete-staves` | `{:n N :instrument "Flute"}` |
+| Same set + order, exactly one instrument differs only in `:staves`, stave-ids match but positions differ | `:il.undo.reorder-staves` | `{:instrument "Flute"}` |
+| Same set + order, exactly one instrument differs only in `:staves`, stave-ids and positions match, fields differ | `:il.undo.edit-staves` | `{:n N :instrument "Flute"}` |
 | Defensive fallback — mixed-kind change, or `old = new` | `:il.undo.changed` | `{}` |
 
 The edit branches are deliberately coarse — `:il.undo.edit-instruments` covers any
 non-name top-level field change (`:transposition`, `:range`, `:comment`,
 `:amateur-range`) without distinguishing which one, and `:il.undo.edit-staves` likewise
-covers any staff field change (`:short-name`, `:clefs`, `:num-lines`). The user-visible
+covers any stave field change (`:short-name`, `:clefs`, `:num-lines`). The user-visible
 benefit of "Undo Edit Range" vs "Undo Edit Comment" is marginal; "Undo Edit Flute"
 carries enough information. `:language` on the Instrument record is fixed at catalogue
 creation and never user-editable, so `describe-diff` does not observe it changing.
