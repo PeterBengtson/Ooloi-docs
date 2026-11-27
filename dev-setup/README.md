@@ -142,6 +142,12 @@ cd shared && lein midje && cd ../backend && lein midje && cd ../frontend && lein
 
 **Note**: You rarely need to run `lein protoc` again - only if the Protocol Buffer schema itself (`shared/src/main/proto/ooloi_service.proto`) changes, which is extremely rare.
 
+## Development Monitoring with Grafana
+
+A local Grafana is optional, and gives a live dashboard of the backend's server statistics while you work: connections, API calls, event delivery, memory, threads and garbage collection. Grafana reads them as JSON from the backend's HTTP health endpoint on port 10701, through the Infinity datasource plugin (`yesoreyeram-infinity-datasource`). The Prometheus stack in `backend/monitoring/prod/` is for operational deployment and is not needed here.
+
+The procedure is in [backend/monitoring/dev/README.md](../backend/monitoring/dev/README.md). It covers installing Grafana with the Infinity plugin on macOS and Linux, then creating the `Ooloi Backend` datasource and importing the dashboard from `backend/monitoring/shared/dashboards/ooloi-health.json`. Grafana runs at `http://localhost:3000`.
+
 ## Next Steps
 
 After successful installation:

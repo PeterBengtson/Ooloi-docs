@@ -221,6 +221,10 @@ lein repl
 
 The REPL loads the project namespace and allows interactive development.
 
+### Development Monitoring with Grafana
+
+Grafana with the Infinity datasource plugin shows the backend's server statistics on a dashboard during development. It is optional. Installation and the setup of the datasource and dashboard are in [backend/monitoring/dev/README.md](../backend/monitoring/dev/README.md); see also [Development Monitoring with Grafana](README.md#development-monitoring-with-grafana) in the main setup guide.
+
 ## Platform Testing
 
 Ooloi targets three platforms: macOS, Windows, and Linux. When developing on Linux, be aware of platform-specific issues:
