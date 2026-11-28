@@ -671,7 +671,7 @@ Modeling constraints as extreme penalties (e.g., cost = ∞ for forbidden breaks
 
 A forced break makes a measure start a system. It restricts the candidates: no system spans its barline, so the DP never considers a configuration that violates it, and no record changes ([ADR-0058](0058-Variants-at-a-Break.md#where-breaks-may-fall)). Where every place is alike, the parts either side of a forced break are independent problems. Where places differ, they are not: the places after a forced break depend on how many systems precede it, so the DP runs across it, the place in its state.
 
-A lock fixes a measure to its place, starting a system there. Its place being known, a lock partitions the problem into independent parts: the measures before it, which take exactly the places before its place, and the measures from it on, which start at its place ([Variable System Widths](#variable-system-widths)).
+A lock fixes a measure to its place, starting a system there. Its place being known, a lock partitions the problem into independent parts: the measures before it, which take the places before its place, and the measures from it on, which start at its place ([Variable System Widths](#variable-system-widths)). Where the measures before a lock are too few to fill those places, as when the measures between two locks have been deleted, the lock still holds: the measures take as many systems as they can make, one for each run of measures between the barlines where a break may fall, and the places between their last system and the lock's place stay empty.
 
 Forced breaks and the soft preferences below decide where systems break, never where on the page a system stands: only a lock fixes a measure to its place.
 
@@ -687,11 +687,12 @@ Forced breaks and the soft preferences below decide where systems break, never w
 
 (defn distribute
   "Casts the stack sequence off. The locks, {measure place}, partition it
-   into independent parts: the part before a lock takes exactly the places
-   before the lock's place, and the part from it on starts at that place.
-   Forced and prevented breaks reach find-optimal-breaks as the :forced and
-   :forbidden barlines of each part. Returns the parts' results joined in
-   order, their breaks offset to the whole sequence."
+   into independent parts: the part before a lock takes the places before
+   the lock's place, as many as its measures can fill, and the part from it
+   on starts at that place. Forced and prevented breaks reach
+   find-optimal-breaks as the :forced and :forbidden barlines of each part.
+   Returns the parts' results joined in order, their breaks offset to the
+   whole sequence."
   [input page locks break-penalty-fn params]
   (let [n (count (:stacks input))
         cuts (sort (remove zero? (keys locks)))
@@ -699,7 +700,10 @@ Forced breaks and the soft preferences below decide where systems break, never w
     (->> parts
          (map (fn [[a b]]
                 (let [first-place (if (zero? a) (get locks 0 1) (locks a))
-                      systems (when (< b n) (- (locks b) first-place))]
+                      ;; The most systems the part can make: one for each run
+                      ;; of measures between the barlines where a break may fall
+                      most (- b a (count (filter #(< a % b) (:forbidden input))))
+                      systems (when (< b n) (min (- (locks b) first-place) most))]
                   (break-part (part-of input a b)
                               (assoc page :first-place first-place :systems systems)
                               break-penalty-fn params))))
@@ -783,7 +787,7 @@ A drag at a system's start or end acts on the page, not on the music: it changes
 
 **Locking**
 
-Locking fixes a measure to its place. It is an operation of its own, never the effect of a drag, and sets no width. A lock is layout data, held by the layout, keyed by its measure and naming the place it fixes it to. It partitions the casting off (Forced System Breaks and Locks, above), and a locked system's width is its place's. A lock and an inset combine, as on a new movement's first system, inset and locked at its place. A locked barline shows a lock symbol in the score. How a lock is applied and removed, and what a lock does when the page holding its place is removed, are not yet specified.
+Locking fixes a measure to its place. It is an operation of its own, never the effect of a drag, and sets no width. A lock is layout data, held by the layout, keyed by its measure and naming the place it fixes it to. It partitions the casting off (Forced System Breaks and Locks, above), and a locked system's width is its place's. A lock and an inset combine, as on a new movement's first system, inset and locked at its place. A locked barline shows a lock symbol in the score. The layout data never holds locks and break marks that contradict one another: a lock at a place no later than an earlier lock's on its page, forced breaks between a lock and the lock or start before it needing more systems than the places between them, or a barline both forced and forbidden. A barline holds at most one break mark, forced or forbidden, and an edit that would make the locks and forced breaks contradict is refused, or replaces what it contradicts. Inserting or deleting measures cannot make them contradict, since the locked measures stay in order and no break mark is added. How a lock is applied and removed, whether such an edit is refused or replaces what it contradicts, what becomes of a lock whose measure is deleted, and what a lock does when the page holding its place is removed, are not yet specified.
 
 **Soft Preferences: The break-penalty-fn Hook**
 
