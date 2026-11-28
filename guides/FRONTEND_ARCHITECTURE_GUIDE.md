@@ -2106,6 +2106,16 @@ is that a test helper never lives in a `src/` namespace.
 
 For the complete treatment of Integrant lifecycle, the `with-combined-system` macro, and how Integrant components are wired across all three projects, see the [INTEGRANT_COMPONENTS.md](INTEGRANT_COMPONENTS.md) guide.
 
+#### Flushing the JavaFX Thread from a Test: the Double and Triple Flush
+
+`run-on-fx-thread-sync!` queues its function behind whatever is already waiting on the JavaFX Application Thread, so an empty call made from the test thread is a flush: when it returns, everything queued before it has run.
+
+**The double flush** is two such calls in sequence, `(th/run-on-fx-thread-sync! (fn [])) (th/run-on-fx-thread-sync! (fn []))`, for setup that macOS defers past the first turn of the thread.
+
+**The triple flush** is for a control that applies its style from a `skinProperty` listener once the skin has created its internal nodes, as `ooloi-notification` does when it styles its `.container` and `ooloi-openable-pane` does when it mirrors its selection style. The first call runs `.applyCss` and `.layout` inside `run-on-fx-thread-sync!`, which creates the skin; the second, empty, lets the `Platform/runLater` the listener queued run; the third reads the style. `cljfx_styling_test.clj` holds the canonical form.
+
+**A flush only works from the test thread.** On the JavaFX thread itself, inside another `run-on-fx-thread-sync!` for instance, the function runs at once with nothing queued ahead of it: a nested call neither waits for anything nor deadlocks.
+
 #### A Direct-Dispatch Test Is No Evidence That a Control Is Wired
 
 A window's controls emit map events, and cljfx routes those through the renderer's
