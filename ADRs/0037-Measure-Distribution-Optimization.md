@@ -124,7 +124,7 @@ Accepted
 │  │  Stage 6: PAGE BREAKING (Single)                                │    │
 │  │  DP O(S²) over systems using actual heights from Stage 5;       │    │
 │  │  its cost function is not yet specified                         │    │
-│  │  Output: Final page breaks, layout LOCKED                       │    │
+│  │  Output: Final page breaks, layout FINAL                        │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -142,7 +142,7 @@ Given a musical score with N measures and M staves, the system must distribute N
 - Cost model: the badness of each system's adjustment ratio, combined into demerits (Knuth–Plass; see the segment cost model below)
 
 **Distribution constraints**:
-- System capacity: Fixed maximum width per system
+- System capacity: the width of each system's place ([Variable System Widths](#variable-system-widths))
 - Page capacity: Fixed maximum height per page (number of systems)
 - Stack atomicity: Measure stacks cannot be subdivided
 
@@ -207,14 +207,14 @@ The result: the distribution problem becomes solvable by straightforward dynamic
 
 ### What "Optimal" Means
 
-In this ADR, *optimal* always means minimal total demerits under the segment cost model specified below — badness of each system's adjustment ratio, the per-system penalty and the breakpoint penalties from `break-penalty-fn`, with the parameters in force — given the metrics Stages 1–2 supply. It is a statement about that cost function and those inputs, not about layout quality in any wider sense: a different cost function, or different upstream metrics, would have a different optimum.
+In this ADR, *optimal* always means minimal total demerits under the segment cost model specified below — badness of each system's adjustment ratio, the per-system penalty and the breakpoint penalties from `break-penalty-fn`, with the parameters in force — given the metrics Stages 1–2 supply. It is a statement about that cost function and those inputs, not about layout quality in any wider sense: a different cost function, or different upstream metrics, would have a different optimum. Where no casting off fits the page, it means least total overshoot first, then least demerits ([Feasibility](#feasibility)).
 
 ### Optimization Characterization
 
 The distribution problem exhibits structure that admits polynomial-time exact optimization of the reduced subproblem:
 
 **Discrete break selection**:
-Dynamic programming over the sequence of N measure stacks determines optimal system break points. For each potential break location, the algorithm evaluates whether remaining measures fit within capacity (after the fixed widths of the system's records) and computes the resulting demerits. Optimal substructure holds: optimal solution for measures 1..k combined with optimal solution for measures k+1..N yields optimal solution for 1..N.
+Dynamic programming over the sequence of N measure stacks determines optimal system break points. For each potential break location, the algorithm evaluates whether remaining measures fit within capacity (after the fixed widths of the system's records) and computes the resulting demerits. Optimal substructure holds: optimal solution for measures 1..k combined with optimal solution for measures k+1..N yields optimal solution for 1..N (where widths differ by place, for each number of systems before k).
 
 Break selection relies on **separable system costs** and **optimal substructure**, not convexity. The dynamic programming algorithm computes the break configuration of least total cost for the discrete segmentation problem, under the stated cost function and given its inputs.
 
@@ -261,9 +261,9 @@ d = (l + b)² − p²      when p < 0
 d = (l + b)²           when p = 0, and for a forced break
 ```
 
-`l` is added to every system, so each additional system costs at least `l²`: the model favours fewer systems. Squaring a cubic badness makes a system's demerits grow roughly with the sixth power of `r`, so the DP strongly avoids a single very bad system, preferring to spread adjustment across several. A forced break adds no penalty term; in this ADR forced breaks are realised by pre-segmentation ([Editorial Control Mechanisms](#editorial-control-mechanisms)), so the DP never meets one. The DP minimises total demerits.
+`l` is added to every system, so each additional system costs at least `l²`: the model favours fewer systems. Squaring a cubic badness makes a system's demerits grow roughly with the sixth power of `r`, so the DP strongly avoids a single very bad system, preferring to spread adjustment across several. A forced break adds no penalty term: it restricts which systems are candidates ([Editorial Control Mechanisms](#editorial-control-mechanisms)), and is never priced. The DP minimises total demerits.
 
-**Tolerance**: an optional bound on badness. A segment whose badness exceeds it is treated as infeasible. Where that leaves part of the problem, the whole sequence or a part between forced breaks, with no segmentation at all, the tolerance is not applied to that part, which is then broken at least demerits over the segments with `r ≥ −1`. A frozen system, a part with a single segmentation, is the simplest case ([Frozen Systems](#frozen-systems)).
+**Tolerance**: an optional bound on badness. A segment whose badness exceeds it is treated as infeasible. Where that leaves part of the problem, the whole sequence or a part between locks, with no segmentation at all, the tolerance is not applied to that part, which is then broken at least demerits over the segments with `r ≥ −1`. A frozen system, a part with a single segmentation, is the simplest case ([Frozen Systems](#frozen-systems)). A part with no segmentation even then, because its measures cannot fit the places it has at any `r ≥ −1`, is broken with overshoot ([Feasibility](#feasibility)).
 
 **Why the badness of `r`**: the adjustment ratio is what a reader sees — how far a system is stretched or compressed, measured against how far it can go. A cost weighted by content, such as `Σ (actual_i − ideal_i)²`, which with every gap stretched in proportion is `(σ × r)² × Σ ideal_i²`, makes two systems with the same adjustment ratio cost differently according to how their content is divided into measures: the same music in more, shorter measures has a smaller `Σ ideal_i²` and so costs less at the same stretch. That difference has no musical justification.
 
@@ -287,7 +287,7 @@ Given identical input (measure stacks with their bounds, system/page capacities)
 - Deterministic tie-breaking: equal costs are resolved by a secondary cost that differs for any two configurations (see [Deterministic Tie-Breaking](#deterministic-tie-breaking))
 - Closed-form allocation: each system's adjustment ratio is the exact solution of a piecewise-linear equation (no iterative solver convergence)
 
-**Path independence**: the layout depends on the piece alone, its music and its layout data, never on the sequence of edits by which the piece was reached. An edit can therefore move breaks anywhere between the forced breaks around it, before the edit as well as after it, whenever it changes the optimum. See [Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece).
+**Path independence**: the layout depends on the piece alone, its music and its layout data, never on the sequence of edits by which the piece was reached. An edit can therefore move breaks anywhere between the locks around it, before the edit as well as after it, whenever it changes the optimum. See [Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece).
 
 ### Calibrating the Adjustment Ratio
 
@@ -329,6 +329,11 @@ The algorithm implements **capacity-constrained segmentation with spring-based w
  :barlines [{:mid record :end record :start record} ...]}   ;; barlines 0 … N: barline k stands before stack k
 ;; barline 0 has only :start, barline N only :end
 
+;; From the layout and its pages (Variable System Widths), in stave spaces:
+{:width w                ;; the width between the margins, a place's where it has no inset
+ :place-widths {p w}}    ;; the width of each place with an inset, numbered from the top
+;; and the layout's locks, {measure place}
+
 ;; A record: what its material adds to a system. Its springs are column gaps,
 ;; each gap j a spring with ideal width w_j and blocking width b_j (see Gaps
 ;; as Springs):
@@ -342,6 +347,7 @@ The algorithm implements **capacity-constrained segmentation with spring-based w
 ;; Output:
 {:breaks [break-positions]    ;; Vector of indices where systems start
  :ratios [r ...]              ;; Adjustment ratio of each system (ratio)
+ :places [p ...]              ;; The place of each system
  :cost total-demerits}        ;; Total demerits (ratio)
 ```
 
@@ -373,7 +379,8 @@ Stage 4 needs every gap's `w_j` and `b_j`, and its stretch weight `s_j` ([ADR-00
 - Every raised triple has `0 ≤ b0 < b ≤ w`, and its gap is counted in `:ordinary-ideal`
 - A record's sums are non-negative, except for the corrections of [ADR-0058](0058-Variants-at-a-Break.md#break-forms-of-constraints-across-a-barline) V5
 - Barline 0 has only `:start`, and barline N only `:end`, which is empty
-- At least one feasible segmentation must exist (the entire sequence fits on some number of systems)
+
+No feasible segmentation need exist: where none does, the systems that cannot fit overshoot their places ([Feasibility](#feasibility)).
 
 The computation of these values by Stages 1 and 2 is specified by [ADR-0055: Horizontal Spacing](0055-Horizontal-Spacing.md) and [ADR-0058: Variants at a Break](0058-Variants-at-a-Break.md). If preconditions are violated, behavior is undefined.
 
@@ -560,40 +567,32 @@ This is **derivation, not optimisation**:
 
 ### Variable System Widths
 
-**System width is per-system policy input**, not a page-wide constant. The allocation formula is parameterized by `system_width` for each system independently.
+**The page decides a system's width, never its measures.** Each layout defines its pages: their size and margins, set by hand or taken from a named page size, with what every page carries and placeholders such as page numbers. Each layout has its own, since a score, its parts and a piano reduction are printed on different pages. A system stands at a *place*, its position on its page counted from the top. A place's width is the width between the page's left and right margins less the place's *insets*, its offsets from the margin on either side. The measures cast off into a system adapt to that width; the width never adapts to them.
 
-**Any system may have a different width**, including but not limited to:
-- The final system of the piece or of a movement (commonly narrower to avoid excessive whitespace)
-- Systems following explicit editorial break markings
-- Systems constrained by margins or layout policy
-- Systems accommodating graphical elements or marginal annotations
-- A system whose last barline the user has dragged: its width is anchored to the measure that ends it, and the system stays frozen ([Editorial Control Mechanisms](#editorial-control-mechanisms))
+**Insets are exceptions, held by the page.** Each page holds its insets as a map from place to inset, the left and right insets independent: either, both or neither. The margins are the rule, and a place absent from the map takes them with no inset. Engraved music insets systems where it needs to. Ravel's *Ondine* (Durand, 1909) sets its first system behind the word "PIANO", inset from the left, so that the full systems after it share one width and keep one visual rhythm; a new movement's first system is commonly inset; a system can make room for a marginal annotation, or be inset at both ends. Moving a margin changes every place's width by the same amount, and an inset place keeps its offset from the margin; changing an inset changes its own place alone. Whether an inset may be negative, taking a system into the margin, is not yet specified.
 
-**What a width may depend on**: Stage 3 chooses system breaks before Stage 6 chooses page breaks, so a system's width is a function of the candidate segment `(s, t)` and of layout settings, never of the page the system will land on. Widths that depend on page position — a narrower last system on each page, widths that vary with a system's place on its page — are not available to Stage 3 (see [ADR-0028 §Trade-offs](0028-Hierarchical-Rendering-Pipeline.md#trade-offs)).
+**The structure, and what is fixed to it.** Dragging a margin, or a system's start or end, defines the structure: it changes the margins or that place's insets, and fixes no measure. Casting off puts the measures wherever they fall within the structure. Locking fixes a measure to its place: a separate operation, with no width of its own, so that a locked system's width is its place's ([Editorial Control Mechanisms](#editorial-control-mechanisms)).
+
+**The page's description is never pruned.** Casting off changes which places a page uses, never its insets. A page that holds fewer systems after a reflow keeps every entry of its map, and an entry applies again once a system stands at its place. A page that a reflow removes goes, with its insets.
+
+**Where the description is held.** The page definition is part of the Layout, and each page's insets are part of its PageView ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md#staleness-the-state-that-drives-incremental-formatting)). Both are layout data, stored with the piece ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)): formatting reads them and never writes them, and when it rebuilds a page's systems, the page keeps its insets. Whether left-hand and right-hand pages are defined apart is not yet specified. Margins that mirror each other, inner and outer exchanged, leave every place's width the same on either.
+
+**Units.** The page's size, margins and insets are in millimetres, as paper is, so that a change of stave size leaves them where they are. A place's width reaches Stage 3 in stave spaces, converted through the size of the base stave space: a division of rationals, so the breaker stays exact.
+
+**Natural and actual width.** A system's *natural width* is its width at `r = 0`: its records' fixed widths and every gap at its natural width, `fixed(s, t) + natural(s, t)`. It is what the system's music asks for, and is called natural rather than ideal because a gap's ideal width is already `w`, which differs from its natural width wherever the gap is prestretched. A system's *actual width* is its place's width, and in this ADR's formulas `system_width` is that width. The adjustment ratio is solved from the actual width ([Gaps as Springs](#gaps-as-springs)): a result of casting off, never an input to it. A system whose actual width exceeds its natural width is stretched, and one whose actual width falls short of it is compressed.
+
+**What a width may depend on.** A system's width is its place's, and nothing else. Stage 3 counts a candidate system's place by the number of systems before it, so the place joins the dynamic programme's state ([Core Dynamic Programming Structure](#core-dynamic-programming-structure-stage-3)). The count is a system's place for as many systems as the first page holds; beyond them, a system's place depends on where Stage 6 breaks the pages, which Stage 3 does not have, and how those places reach Stage 3 is not yet specified ([Joint System and Page Breaking](#joint-system-and-page-breaking), [ADR-0028 §Trade-offs](0028-Hierarchical-Rendering-Pipeline.md#trade-offs)).
+
+**What Stage 3 reads**: the records ([Interface Contract](#interface-contract)), each place's width as a number, the locks and the cost's parameters. It never reads the page definition, an inset or a glyph.
 
 **Architectural implications**:
 
-1. **Break selection (DP) operates on feasibility and cost** with whatever width is provided for each candidate system position. The algorithm does not assume uniform justification.
-
+1. **Break selection (DP) operates on feasibility and cost** against each candidate system's place's width. The algorithm does not assume uniform justification.
 2. **Width allocation is parameterized per system** after breaks are chosen. The springs are fitted identically whatever the system width.
+3. **Determinism is preserved**: given the same breaks and the same places' widths, allocation produces identical results.
+4. **The place enters the state**: since a system's width depends on its place, the dynamic programme keeps one node per (breakpoint, place), as [looseness](#ending-classes-and-looseness) keeps one per (breakpoint, count).
 
-3. **Determinism is preserved**: Given the same break configuration and per-system width policies, allocation produces identical results.
-
-4. **No algorithmic complexity added**: The DP evaluates `(s, t)` segments against the width available for that system position, minus the fixed widths of the system's records. The springs fill the provided width directly.
-
-**Per-system width policy**:
-
-**Any system may have a distinct width policy** without special-casing, the final system included. Heterogeneous system widths need no additional mechanism because allocation is parameterized by width, not built around a fixed one.
-
-**Expressivity without complexity**:
-
-This architectural freedom enables:
-- Natural handling of the final system of a piece or movement (avoid excessive stretch)
-- Editorial control over system widths for specific musical reasons
-- Adaptation to margins and layout settings
-- Future extensions (e.g., systems of varying width for visual effect)
-
-All while preserving the core property: **the springs distribute whatever width is provided according to each gap's ideal width and its collision limit**, after the fixed widths of each system's records, at its start, at its end and at its inner barlines ([ADR-0058](0058-Variants-at-a-Break.md)).
+The core property holds whatever the page: **the springs distribute whatever width the place provides** according to each gap's ideal width and its collision limit, after the fixed widths of each system's records, at its start, at its end and at its inner barlines ([ADR-0058](0058-Variants-at-a-Break.md)).
 
 ### Alternative: Asymmetric Cost Optimization
 
@@ -668,33 +667,50 @@ Users require control over layout decisions: forcing system breaks at specific p
 
 Modeling constraints as extreme penalties (e.g., cost = ∞ for forbidden breaks) conflates these categories and risks numerical instability. Ooloi handles them through separate mechanisms.
 
-**Forced System Breaks: Pre-Segmentation**
+**Forced System Breaks and Locks**
 
-Forced breaks partition the stack sequence into independent optimization problems:
+A forced break makes a measure start a system. It restricts the candidates: no system spans its barline, so the DP never considers a configuration that violates it, and no record changes ([ADR-0058](0058-Variants-at-a-Break.md#where-breaks-may-fall)). Where every place is alike, the parts either side of a forced break are independent problems. Where places differ, they are not: the places after a forced break depend on how many systems precede it, so the DP runs across it, the place in its state.
+
+A lock fixes a measure to its place, starting a system there. Its place being known, a lock partitions the problem into independent parts: the measures before it, which take exactly the places before its place, and the measures from it on, which start at its place ([Variable System Widths](#variable-system-widths)).
+
+Forced breaks and the soft preferences below decide where systems break, never where on the page a system stands: only a lock fixes a measure to its place.
 
 ```clojure
-(defn distribute-with-forced-breaks 
-  "Partitions stack sequence at forced breaks, optimizes each segment independently.
-   
-   forced-break-indices: Set of measure indices that must start new systems.
-   Returns combined break results across all segments."
-  [stacks forced-break-indices system-width-fn]
-  
-  (let [;; Partition stacks at forced break points
-        segments (partition-at-indices stacks forced-break-indices)]
-    
-    ;; Optimize each segment independently, then combine; a segment with no
-    ;; segmentation within the tolerance is broken again without it
-    (->> segments
-         (map #(find-optimal-breaks % system-width-fn))
-         (combine-break-results))))
+(defn break-part
+  "Breaks one part of the problem: within the tolerance; where that leaves
+   no segmentation, without it; where none fits even then, with overshoot
+   (Feasibility)."
+  [part page break-penalty-fn params]
+  (or (find-optimal-breaks part page break-penalty-fn params)
+      (find-optimal-breaks part page break-penalty-fn (assoc params :tolerance nil))
+      (find-optimal-breaks part page break-penalty-fn (assoc params :tolerance nil :overshoot true))))
+
+(defn distribute
+  "Casts the stack sequence off. The locks, {measure place}, partition it
+   into independent parts: the part before a lock takes exactly the places
+   before the lock's place, and the part from it on starts at that place.
+   Forced and prevented breaks reach find-optimal-breaks as the :forced and
+   :forbidden barlines of each part. Returns the parts' results joined in
+   order, their breaks offset to the whole sequence."
+  [input page locks break-penalty-fn params]
+  (let [n (count (:stacks input))
+        cuts (sort (remove zero? (keys locks)))
+        parts (map vector (cons 0 cuts) (concat cuts [n]))]
+    (->> parts
+         (map (fn [[a b]]
+                (let [first-place (if (zero? a) (get locks 0 1) (locks a))
+                      systems (when (< b n) (- (locks b) first-place))]
+                  (break-part (part-of input a b)
+                              (assoc page :first-place first-place :systems systems)
+                              break-penalty-fn params))))
+         (join-parts parts))))
 ```
 
 This is architecturally correct because:
-- Forced breaks are constraints, not preferences—modeling them as partition boundaries is honest
-- Each segment is an independent subproblem with its own optimal solution
+- Forced breaks and locks are constraints, not preferences: realising them as restrictions on the candidates, and locks as partition boundaries, is honest
+- Each part between locks is an independent subproblem with its own optimal solution
 - No numerical issues from infinity-like costs
-- Clear semantics: the algorithm never considers configurations that violate forced breaks
+- Clear semantics: the algorithm never considers configurations that violate them
 
 **Prevented Breaks: Forbidden Barlines**
 
@@ -755,12 +771,19 @@ An `:ideal-override` scales every gap, clearances after material without duratio
 A measure's closing barline is part of that measure ([ADR-0055](0055-Horizontal-Spacing.md#the-bar-boundary)). Dragging it makes one of two edits, stored with the measure, and what persists is that edit, not a width: at another system's ratio the measure's width differs.
 
 - **Mode (i): a transfer between the measure and the next.** The drag transfers ideal width between measure N and measure N+1, distributed over each measure's gaps. It is computed exactly against the current ratio, as a column transfer is ([ADR-0055](0055-Horizontal-Spacing.md#user-inputs)), so the barline lands under the pointer and the system's ratio is unchanged. It is stored as one transfer attached to the barline, identified by measure, not as two overrides, so that the coupling survives later edits. It is clamped where the gaps of the measure that loses width reach their blocking widths at the current ratio: N+1's when the barline moves right, N's when it moves left. The two measures' sums change individually, so the breaks may change after release.
-- **Mode (i) at a system's end.** Where N+1 is on the next system, the drag takes the width from the margin instead: it changes that system's width ([Variable System Widths](#variable-system-widths)), and the barline follows the pointer. The width is anchored to the measure that ends the system and has no effect if that measure no longer ends one, so the system stays frozen whatever the freeze setting, and with its breaks it keeps the width it was given ([Frozen Systems](#frozen-systems)). How far into the margin the width may extend is not yet specified.
 - **Mode (ii): the measure's width.** The drag sets N's `:ideal-override`, solved exactly so that the barline lands under the pointer once the system has refitted. Every other gap in the system gives or takes room through its spring, the next measure is not edited, and since the stack's sums change, the breaks may change. At a system's end, where the barline cannot move, the measure changes width by the distance dragged and its start moves.
 
 Stage 2 applies both modes before it groups springs into records ([ADR-0055](0055-Horizontal-Spacing.md#stages-1-and-2), step 8), so Stage 3 sees only their results.
 
 While a drag lasts, its system is frozen, so that no measure moves to another system in mid-gesture, and so that each update refits that system alone ([Frozen Systems](#frozen-systems)). Either mode can be applied with the pointer or from the keyboard, and Ooloi supports both. With the pointer the barline follows it, every update is an edit, and the whole drag is one undo step ([ADR-0015](0015-Undo-and-Redo.md#continuous-gestures-one-undo-step)); from the keyboard the barline moves in fixed steps, each an ordinary edit and an undo step of its own. Which mode a drag takes by default, and how the other is chosen, is not yet specified ([ADR-0055 H21](0055-Horizontal-Spacing.md#h21-barline-drag-modes)).
+
+**Dragging a System's Start or End**
+
+A drag at a system's start or end acts on the page, not on the music: it changes its place's inset on that side, and the passage is cast off again at the place's new width ([Variable System Widths](#variable-system-widths)). It defines the structure the measures fall within. It fixes no measure and freezes nothing, so that while it lasts measures may move into or out of the system. A place narrowed past what its system's measures need makes the system overshoot ([Feasibility](#feasibility)). How the user tells it apart from a barline drag at a system's end, Mode (ii), is not yet specified.
+
+**Locking**
+
+Locking fixes a measure to its place. It is an operation of its own, never the effect of a drag, and sets no width. A lock is layout data, held by the layout, keyed by its measure and naming the place it fixes it to. It partitions the casting off (Forced System Breaks and Locks, above), and a locked system's width is its place's. A lock and an inset combine, as on a new movement's first system, inset and locked at its place. A locked barline shows a lock symbol in the score. How a lock is applied and removed, and what a lock does when the page holding its place is removed, are not yet specified.
 
 **Soft Preferences: The break-penalty-fn Hook**
 
@@ -793,9 +816,9 @@ These preferences shift costs without creating hard constraints. Combined prefer
 
 The mechanisms compose cleanly in a defined order:
 
-1. **First**: Apply forced breaks to partition the problem
+1. **First**: Apply locks to partition the problem
 2. **Then**: Apply width overrides and transfers to the stacks' gaps, and group the springs into records
-3. **Then**: Forbid breaks at the barlines inside measure groups, folding a group into one stack where that is faster
+3. **Then**: Forbid breaks at the barlines inside measure groups, folding a group into one stack where that is faster, and forbid systems that span a forced break
 4. **Finally**: Run DP with soft preferences via `break-penalty-fn`
 
 Each mechanism operates at a different level: problem partitioning, input transformation, and cost adjustment. This separation prevents the combinatorial complexity that arises when constraints and preferences are conflated into a single penalty system.
@@ -909,7 +932,7 @@ If editorial preferences are needed (e.g., prefer structural boundaries), they c
 
 ### Layout Is a Function of the Piece
 
-The layout is a function of the piece alone: of its music, and of its layout data, the decisions about layout the user has made and stored with it (forced and prevented breaks, frozen systems, width overrides, transfers of ideal width, system widths, a pinned anchoring duration). It never depends on the route by which the piece reached its present state. Whatever sequence of edits produced a piece, with whatever undos and redos among them, in whatever order collaborators' edits arrived, and whether the piece was edited in this session or loaded from a file, its layout is the one a full pass over that piece produces. Two pieces whose values are equal, music and layout data alike, have the same layout.
+The layout is a function of the piece alone: of its music, and of its layout data, the decisions about layout the user has made and stored with it (locks, forced and prevented breaks, frozen systems, width overrides, transfers of ideal width, the layout's page definition and each page's insets, a pinned anchoring duration). It never depends on the route by which the piece reached its present state. Whatever sequence of edits produced a piece, with whatever undos and redos among them, in whatever order collaborators' edits arrived, and whether the piece was edited in this session or loaded from a file, its layout is the one a full pass over that piece produces. Two pieces whose values are equal, music and layout data alike, have the same layout.
 
 Three rules keep it so:
 
@@ -917,9 +940,9 @@ Three rules keep it so:
 - **No input depends on a previous output.** Each segment's cost depends on the segment alone, and every quantity upstream of Stage 3 is computed from the piece. A cost that compares a layout with an earlier one, or a value that resists change by remembering what it was, would make the layout depend on history, and neither is used ([Stability Term](#stability-term), [ADR-0055 H2](0055-Horizontal-Spacing.md#h2-the-anchoring-duration)).
 - **Every procedure returns the same configuration.** Exact arithmetic and [Deterministic Tie-Breaking](#deterministic-tie-breaking) make the full pass and [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit) return the same breaks and ratios, so incremental computation saves time and changes no result.
 
-**Breaks move.** The break configuration Stage 3 selects is a global optimum, and a global optimum is not local. An edit to stack `m` can change system breaks after `m` and before `m`: the DP finds the configuration of least total cost for the whole sequence, and the chosen breaks are traced backwards from its end, so a change of cost at `m` can alter the choice of breaks anywhere between the forced breaks around it. Nor is there a point beyond which the new configuration must coincide with the previous one. This is intended: when an edit changes which layout is best, the layout changes with it.
+**Breaks move.** The break configuration Stage 3 selects is a global optimum, and a global optimum is not local. An edit to stack `m` can change system breaks after `m` and before `m`: the DP finds the configuration of least total cost for the whole sequence, and the chosen breaks are traced backwards from its end, so a change of cost at `m` can alter the choice of breaks anywhere between the locks around it, or between the forced breaks around it where every place is alike. Nor is there a point beyond which the new configuration must coincide with the previous one. This is intended: when an edit changes which layout is best, the layout changes with it.
 
-**Keeping breaks where they are is an edit.** Where the user wants breaks to stay, the user says so, with forced breaks or a frozen system ([Editorial Control Mechanisms](#editorial-control-mechanisms), [Frozen Systems](#frozen-systems)). Both are layout data, stored with the piece, visible and undone like any other edit, so the layout remains a function of the piece. Forced breaks also bound how far an edit can reach, since each partition is optimised on its own.
+**Keeping breaks where they are is an edit.** Where the user wants breaks to stay, the user says so, with locks, forced breaks or a frozen system ([Editorial Control Mechanisms](#editorial-control-mechanisms), [Frozen Systems](#frozen-systems)). All are layout data, stored with the piece, visible and undone like any other edit, so the layout remains a function of the piece. Locks also bound how far an edit can reach, since each part between them is optimised on its own. A forced break bounds it only where every place is alike: elsewhere an edit before it can change the number of systems before it, and with them the places after it.
 
 **Orientation is presentation.** How a client keeps the user oriented when the layout changes, for example by keeping the edited material where it was on the screen, belongs to the frontend. It takes the layout as given and feeds nothing back into it ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)), and it is not specified here.
 
@@ -975,7 +998,7 @@ With cached stack metrics, Stage 3 runtime is dominated by DP over **scalars**, 
 
 #### Caches Change No Result
 
-This caching strategy makes recomputation after an edit cheap: re-running Stage 3 costs scalar arithmetic over cached aggregates, and no upstream work is repeated for stacks whose content did not change. The caches are derived from the piece and change no result: a re-run over cached metrics returns exactly what a full pass from scratch returns, and may change breaks anywhere between the forced breaks around the edit ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)).
+This caching strategy makes recomputation after an edit cheap: re-running Stage 3 costs scalar arithmetic over cached aggregates, and no upstream work is repeated for stacks whose content did not change. The caches are derived from the piece and change no result: a re-run over cached metrics returns exactly what a full pass from scratch returns, and may change breaks anywhere between the locks around the edit ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)).
 
 ## Extensions
 
@@ -1009,28 +1032,29 @@ min over feasible [s, t) with s ≤ m < t of   F(s) + cost′(s, t) + G(t)
 
 - **Range edits**: an edit that changes every segment intersecting a range `[a, b]` — several adjacent stacks, a width that depends on where a system ends (see [End-of-System Width](#end-of-system-width)), or a constraint spanning a barline ([Constraints Spanning Several Columns](#constraints-spanning-several-columns)) — is re-optimised by a forward DP over the window `[a − K, b + K]`, seeded from `F` and closed with `G`: O((b − a + 2K) × K).
 - **A barline's records**: an edit that changes them alters every segment in which the barline is inner (`mid[k]`), every segment that starts there (`start[k]`) and every segment that ends there (`end[k]`). It is a range edit over the stacks on either side of the barline.
-- **Full passes**: a change of clef or key signature alters the preamble table's entry for every later barline, and a key signature change alters the accidentals of later measures ([ADR-0035](0035-Remembered-Alterations.md)); a change to forced or prevented breaks changes the problem's partition. These re-run Stage 3 in full.
+- **Full passes**: a change of clef or key signature alters the preamble table's entry for every later barline, and a key signature change alters the accidentals of later measures ([ADR-0035](0035-Remembered-Alterations.md)); a change to locks, or to forced or prevented breaks, changes the problem's parts or its candidates. These re-run Stage 3 in full.
 - **Refresh**: after an edit, `F(s)` for `s > m` and `G(t)` for `t ≤ m` are stale. They are recomputed off the edit's critical path, O(N×K), or lazily: the next edit at `m₂` needs only the part of each table between the two edits.
-- **Backward early termination** needs the mirror of the width assumption under [Key Implementation Notes](#key-implementation-notes): for fixed `t`, the system width must not increase as the end moves right. Where it does, the backward pass scans every end — slower, still exact.
+- **Backward early termination** stops at the widest place's width, as the forward search does ([Key Implementation Notes](#key-implementation-notes)), so it needs no assumption on widths.
+- **Places**: where widths differ by place, both tables are kept per (breakpoint, place class), and the minimum is taken over the class as well: `min over s ≤ m < t and c of F(s, c) + cost′(s, t, c) + G(t, next(c))`. The result is exact.
 - **Ties** are resolved as [Deterministic Tie-Breaking](#deterministic-tie-breaking) specifies, which both the full pass and re-optimisation apply, so a piece produces the same layout however its edits arrived ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)).
 
 ### Stability Term
 
 **Not adopted.** A stability term adds to each segment's demerits a charge for departing from an anchored previous layout: `d″(s, t) = d(s, t) + λ × D(s, t)`, where `D` is, for example, 1 when `s` is not a break of the anchor. `D` depends only on the segment, so the result is exact for `d + λD`, but that objective takes an earlier output as an input. The layout becomes a function of the piece and of the anchor, and the anchor a function of the route by which the piece was reached, so two routes to the same piece can give different layouts. Persisting the anchor with the piece and undoing its moves with the edits that caused them makes the result reproducible for one history, not independent of history. And wherever the term changes the result, the layout it keeps has higher demerits than the layout the piece calls for.
 
-It contradicts [Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece), and no form of it is planned. Breaks stay where they are only where the user fixes them, with forced breaks or a frozen system, which are part of the piece; how a client keeps the user oriented when breaks move is presentation.
+It contradicts [Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece), and no form of it is planned. Breaks stay where they are only where the user fixes them, with locks, forced breaks or a frozen system, which are part of the piece; how a client keeps the user oriented when breaks move is presentation.
 
 ### Frozen Systems
 
-A system the user locks keeps its breaks: its start and end become forced breaks and breaks at its inner barlines are forbidden, using the pre-segmentation and forbidden barlines of [Editorial Control Mechanisms](#editorial-control-mechanisms). A freeze is a constraint, so the result is exact over the configurations that respect it, and it reduces work by partitioning the problem; each partition keeps its own `F` and `G`. Freezes are anchored to measure identity.
+A system the user freezes keeps its breaks: its start and end become forced breaks and breaks at its inner barlines are forbidden, using the forced breaks and forbidden barlines of [Editorial Control Mechanisms](#editorial-control-mechanisms). A freeze decides where the system breaks, never where it stands on the page: only a lock fixes a measure to its place. A freeze is a constraint, so the result is exact over the configurations that respect it, and where every place is alike it reduces work by partitioning the problem, each partition keeping its own `F` and `G`. Freezes are anchored to measure identity.
 
 **The tolerance.** A frozen system has exactly one segmentation, so the tolerance does not apply to it: it is accepted at the badness its adjustment ratio gives.
 
-**Drags.** A drag inside a frozen system is clamped at `r = −1`, as [ADR-0055](0055-Horizontal-Spacing.md#user-inputs) clamps column drags; at `r = −1` no gap has room left to give. Most drags change ideal widths only, which leaves `Σ min` as it was; a barline drag at a system's end may instead narrow the system, and the clamp keeps it from narrowing past its minimum. Either way a drag never makes the system infeasible. A barline drag freezes its system while the drag lasts, since it changes measures' widths and with them the stacks' sums ([Editorial Control Mechanisms](#editorial-control-mechanisms)).
+**Drags.** A drag inside a frozen system is clamped at `r = −1`, as [ADR-0055](0055-Horizontal-Spacing.md#user-inputs) clamps column drags; at `r = −1` no gap has room left to give. A barline drag changes ideal widths only, which leaves `Σ min` as it was, so it never makes the system infeasible. A barline drag freezes its system while the drag lasts, since it changes measures' widths and with them the stacks' sums ([Editorial Control Mechanisms](#editorial-control-mechanisms)). A drag of a margin or of a system's start or end changes the place, not the measures; where it narrows a frozen system's place past its minimum, the system overshoots ([Feasibility](#feasibility)).
 
-Whether the freeze remains after the drag is a setting, off by default, and Ooloi supports both. Off, the freeze ends with the drag, however the drag ends, a lost connection included: the layout is then that of the piece as the drag left it, with what the drag set, a transfer or an override, and no freeze, exactly as if that piece had been reached any other way. What the drag set applies in whichever system its measures then fall, and breaks before and after the edit may move ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)). On, the freeze remains until the user removes it: it is layout data like any other freeze, the system keeps its breaks, and the drag changes nothing beyond it. A barline drag at a system's end that changes the system's width leaves the system frozen whatever the setting, since that width applies only while its measure ends the system.
+Whether the freeze remains after the drag is a setting, off by default, and Ooloi supports both. Off, the freeze ends with the drag, however the drag ends, a lost connection included: the layout is then that of the piece as the drag left it, with what the drag set, a transfer or an override, and no freeze, exactly as if that piece had been reached any other way. What the drag set applies in whichever system its measures then fall, and breaks before and after the edit may move ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece)). On, the freeze remains until the user removes it: it is layout data like any other freeze, the system keeps its breaks, and the drag changes nothing beyond it.
 
-**An edit that makes a frozen system infeasible.** What then happens is not yet specified, but two possibilities are excluded. Refusing the edit would need formatting inside the edit's transaction, whereas formatting runs after an edit has committed ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md#computational-scaling-characteristics)), and it would let the layout veto a musical edit ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)). Deleting the freeze would have formatting discard layout the user set. Two remain: suspending the freeze while it cannot be honoured, but keeping it, so that it applies again once it can; or accepting an overfull system, whose widths then exceed what is available.
+**An edit that makes a frozen system infeasible.** Two responses are excluded. Refusing the edit would need formatting inside the edit's transaction, whereas formatting runs after an edit has committed ([ADR-0028](0028-Hierarchical-Rendering-Pipeline.md#computational-scaling-characteristics)), and it would let the layout veto a musical edit ([ADR-0038](0038-Backend-Authoritative-Rendering-and-Terminal-Frontend-Execution.md)). Deleting the freeze would have formatting discard layout the user set. The freeze is kept, and the system overshoots instead: it is set at `r = −1`, every gap at its blocking width, and runs past its place's right edge, as any system that cannot fit does ([Feasibility](#feasibility)).
 
 ### Consistency Between Adjacent Systems
 
@@ -1091,6 +1115,8 @@ The condition is necessary and sufficient. Every gap's shrink is its room above 
 
 Under rule 1 of [Fitting Rules](#fitting-rules), one scale factor applies to every gap, and the sufficient condition is the largest column ratio, `scale ≥ max_j(b_j / w_j)` over the segment. A stack could pass a stack-level check while one of its columns collided, so every stack would have to carry that ratio. Under the springs no such ratio is needed.
 
+**When nothing fits.** `r` is never below −1. Where a part of the problem has no segmentation at `r ≥ −1`, because a measure is wider than its place, or because the measures before a lock cannot fit the places before its place, the systems that cannot fit are set at `r = −1`, every gap at its blocking width, so that nothing collides, and run past their place's right edge: they *overshoot*. The part is broken again, a candidate whose minimums do not fit its place taken at `r = −1` with its overshoot, `fixed(s, t) + min(s, t) − system_width`, and the search scanning every start: the result is the segmentation of least total overshoot, then of least demerits, then the tie-break. Overshoot is a sum over systems, so the result is exact; wherever a segmentation fits, its overshoot is 0 and the result is the ordinary one. The user is warned of overcramped measures; what counts as overcramped, and what follows from it, is not yet specified.
+
 ### End-of-System Width
 
 The width at a system's end that depends on where the system breaks is `end[t]`, the end record of the barline the system ends at: the [postamble](#the-postamble-system-end-width) block, and the end corrections of [ADR-0058](0058-Variants-at-a-Break.md#break-forms-of-constraints-across-a-barline) V5. It depends only on the segment's end, costs one lookup per segment, is constant across the inner loop for fixed `t`, and keeps the result exact ([ADR-0058](0058-Variants-at-a-Break.md#what-stage-3-receives)). An edit that changes it alters every segment ending at `t` as well as those containing the edited stack, so it is a range edit for [Exact Re-optimisation After an Edit](#exact-re-optimisation-after-an-edit).
@@ -1102,6 +1128,8 @@ The design separates system breaking from page breaking ([ADR-0028 §Trade-offs]
 - **Estimated heights**, as LilyPond's "pure" heights are: the breaking is chosen on estimates, and the real heights may not match — a page may overflow, or a better choice may have existed. Correcting it by re-running Stage 6 in a way that can change the breaking is iteration, which the pipeline excludes.
 - **Every candidate built**: Stages 4 and 5 run for each candidate breaking, so Stage 6 chooses on real heights. Exact and unidirectional, but Stage 5 runs once per candidate; limited to a few counts around the optimum (`S − 1`, `S`, `S + 1`), it multiplies that work by the number of candidates.
 - **Separation**, the current design: system breaks are chosen without pages in view, and page turns can only use system boundaries Stage 3 produced.
+
+**Places beyond the first page.** A system's width is its place's ([Variable System Widths](#variable-system-widths)), and its place is its position on its page, which depends on how many systems the pages before it hold: Stage 6's decision, made after Stage 3. Stage 3 counts a candidate's place by the systems before it, as on one page. That is exact for every place the first page holds, its first among them, and not beyond, where the count and the position on the page part at each page break. Where every inset lies on the first page, at a place that page holds, nothing is lost: every place beyond takes the margins. How places beyond the first page reach Stage 3 is not yet specified. Stage 3's place classes already count systems, up to the last place with an inset ([Core Dynamic Programming Structure](#core-dynamic-programming-structure-stage-3)), as the alternative above counts them for Stage 6.
 
 Determinism holds under all three. Adopting either of the first two changes the ADR-0028 trade-off as well as this ADR, and is decided by the same evaluation.
 
@@ -1243,7 +1271,7 @@ The following implementation performs **Stage 3: System Breaking** - distributin
 
 (defn demerits
   "Knuth–Plass demerits of a system of badness b whose break has penalty p.
-   Forced breaks never reach the DP: they are realised by pre-segmentation."
+   Forced breaks are never priced: no system spans one."
   [b p {:keys [line-penalty]}]
   (let [lb (+ line-penalty b)
         d (* lb lb)]
@@ -1267,34 +1295,48 @@ The following implementation performs **Stage 3: System Breaking** - distributin
           records))
 
 (defn find-optimal-breaks
-  "Finds optimal system breaks by dynamic programming over the records of
-   ADR-0058.
+  "Finds optimal system breaks for one part of the problem by dynamic
+   programming over the records of ADR-0058, each candidate system against
+   the width of its place.
 
    Input:
    - input: {:stacks [{:interior record} ...]
              :barlines [{:mid record, :end record, :start record} ...]
-             :forbidden #{barline ...}}
+             :forbidden #{barline ...}
+             :forced #{barline ...}}
             (see Interface Contract); :forbidden, optional, holds the
-            barlines at which no break may fall
-   - system-width-fn: Function (fn [start-pos end-pos] -> ratio)
-                      Returns available width for system containing stacks start-pos..end-pos-1
+            barlines at which no break may fall, :forced, optional, those
+            no system may span
+   - page: {:width w             ;; the width between the margins
+            :place-widths {p w}  ;; the width of each place with an inset
+            :first-place p0      ;; the place of the part's first system
+            :systems n}          ;; optional: the number of systems the part
+                                 ;; must take, as the part before a lock must
+           in stave spaces (Variable System Widths)
    - break-penalty-fn: Optional. Function (fn [stacks s t] -> ratio)
                        Returns the penalty p for selecting segment s..t-1 as a system;
                        it enters the demerits as +p² or -p²
                        Default: (constantly 0N) - no editorial preferences
-   - params: Optional. Segment cost parameters; default knuth-plass-parameters
+   - params: Optional. Segment cost parameters; default knuth-plass-parameters.
+             With :overshoot set, the pass of Feasibility (not shown): a
+             candidate whose minimums do not fit its place is taken at
+             r = -1, each state's cost carries its total overshoot first, and
+             the search scans every start
 
    Output:
    - {:breaks [break-positions], :ratios [adjustment ratio per system],
-      :cost total-demerits-ratio}"
+      :places [place per system], :cost total-demerits-ratio},
+     or nil when the part has no segmentation"
 
-  ([input system-width-fn]
-   (find-optimal-breaks input system-width-fn (constantly 0N)))
+  ([input page]
+   (find-optimal-breaks input page (constantly 0N)))
 
-  ([input system-width-fn break-penalty-fn]
-   (find-optimal-breaks input system-width-fn break-penalty-fn knuth-plass-parameters))
+  ([input page break-penalty-fn]
+   (find-optimal-breaks input page break-penalty-fn knuth-plass-parameters))
 
-  ([{:keys [stacks barlines forbidden] :or {forbidden #{}}} system-width-fn break-penalty-fn params]
+  ([{:keys [stacks barlines forbidden forced] :or {forbidden #{} forced #{}}}
+    {:keys [width place-widths first-place systems] :or {place-widths {} first-place 1}}
+    break-penalty-fn params]
    (let [n (count stacks)
          tolerance (:tolerance params)
          sigma (:stretchability params)
@@ -1323,14 +1365,28 @@ The following implementation performs **Stage 3: System Breaking** - distributin
          ;; segment ending at breakpoint t
          tie-term (vec (reductions (fn [x _] (/ x 2)) 1N (range n)))
 
-         ;; State arrays: nil = unreachable, [cost tie] = best pair for the prefix
-         ;; Length n+1 where index t represents prefix of length t
-         best (transient (vec (repeat (inc n) nil)))
-         prev (transient (vec (repeat (inc n) nil)))
-         ratio (transient (vec (repeat (inc n) nil)))]
+         ;; Places: a candidate system's width depends on its place, the
+         ;; part's first place plus the number of systems before it in the
+         ;; part, so that number, its class c, joins the state. Places past
+         ;; the last one with an inset are alike, so c counts no further than
+         ;; that, unless the part must take an exact number of systems
+         last-inset (reduce max 0 (keys place-widths))
+         top (or systems (max 0 (- (inc last-inset) first-place)))
+         next-class (fn [c] (if systems (inc c) (min top (inc c))))
+         width-of (fn [c] (get place-widths (+ first-place c) width))
+         ;; the widest place, against which the search stops
+         widest (reduce max width (vals place-widths))
 
-     ;; Base case: empty prefix reachable with zero cost
-     (assoc! best 0 [0N 0N])
+         ;; State arrays: for each prefix length t, a map from class to the
+         ;; best [cost tie] pair reaching it, absent = unreachable; prev holds
+         ;; {class [s class-before]}, ratio {class r of the system ending at t}
+         ;; Length n+1 where index t represents prefix of length t
+         best (transient (vec (repeat (inc n) {})))
+         prev (transient (vec (repeat (inc n) {})))
+         ratio (transient (vec (repeat (inc n) {})))]
+
+     ;; Base case: the empty prefix, no system yet
+     (assoc! best 0 {0 [0N 0N]})
 
      ;; For each prefix length t (represents stacks 0..t-1); no system ends
      ;; at a barline where a break is forbidden
@@ -1354,8 +1410,7 @@ The following implementation performs **Stage 3: System Breaking** - distributin
                  inner-shrink-kinks (cond-> (add-shrink-kinks inner-shrink-kinks (:raised (interior s)))
                                       inner? (add-shrink-kinks (:raised (mid (inc s)))))
                  bound (cond-> (+ bound (weight (interior s)))
-                         inner? (+ (weight (mid (inc s)))))
-                 system-width (system-width-fn s t)]
+                         inner? (+ (weight (mid (inc s)))))]
 
              ;; Early termination (ADR-0058): the bound counts only the records a
              ;; system starting at s certainly uses inside it, its interiors and
@@ -1363,13 +1418,14 @@ The following implementation performs **Stage 3: System Breaking** - distributin
              ;; left, and it leaves out start[s] and end[t], which are
              ;; non-negative, so it never exceeds fixed(s,t) + min(s,t) and never
              ;; prunes a feasible segment. It never counts mid[s], a record a
-             ;; system starting at s does not use
-             (when (<= bound system-width)
+             ;; system starting at s does not use. It is compared with the
+             ;; widest place, which does not depend on s
+             (when (<= bound widest)
 
                ;; No system starts at a barline where a break is forbidden
                (when (and (or (zero? s) (not (forbidden s)))
-                          (some? (nth best s)))
-                 (let [available (- system-width (segment s t :fixed))
+                          (seq (nth best s)))
+                 (let [fixed (segment s t :fixed)
                        ;; The segment's kinks on either side: the accumulated ones,
                        ;; and those of start[s] and end[t] for this candidate alone
                        kinks (-> inner-kinks
@@ -1377,47 +1433,65 @@ The following implementation performs **Stage 3: System Breaking** - distributin
                                  (add-kinks (:prestretched (end t)) sigma))
                        shrink-kinks (-> inner-shrink-kinks
                                         (add-shrink-kinks (:raised (start s)))
-                                        (add-shrink-kinks (:raised (end t))))]
+                                        (add-shrink-kinks (:raised (end t))))
+                       p (break-penalty-fn stacks s t)]
 
-                   ;; The adjustment ratio, or nil when the minimums do not fit
-                   ;; after the records' fixed widths: r >= -1 is feasibility
-                   (when-let [r (solve-ratio available
-                                             (segment s t :min)
-                                             (segment s t :natural)
-                                             (segment s t :ordinary-ideal)
-                                             kinks
-                                             sigma
-                                             shrink-kinks)]
-                     (let [b (badness r params)]
+                   ;; The candidate in each class s is reached in, at the width
+                   ;; of the place that class gives it
+                   (doseq [[c [prefix-cost prefix-tie]] (nth best s)
+                           :when (or (nil? systems) (< c systems))]
 
-                       ;; Tolerance: badness within the optional bound
-                       (when (or (nil? tolerance) (<= b tolerance))
-                         ;; Demerits from badness, the per-system penalty and the
-                         ;; break's penalty. The records' fixed widths enter only
-                         ;; through available, and so through r
-                         (let [d (demerits b (break-penalty-fn stacks s t) params)
-                               [prefix-cost prefix-tie] (nth best s)
-                               candidate [(+ prefix-cost d)
-                                          (+ prefix-tie (nth tie-term t))]
-                               current-best (nth best t)]
+                     ;; The adjustment ratio, or nil when the minimums do not fit
+                     ;; after the records' fixed widths: r >= -1 is feasibility
+                     (when-let [r (solve-ratio (- (width-of c) fixed)
+                                               (segment s t :min)
+                                               (segment s t :natural)
+                                               (segment s t :ordinary-ideal)
+                                               kinks
+                                               sigma
+                                               shrink-kinks)]
+                       (let [b (badness r params)]
 
-                           ;; Update if the candidate pair is lexicographically smaller
-                           ;; (nil = infinity); ties in cost are resolved by the secondary term
-                           (when (or (nil? current-best)
-                                     (pair< candidate current-best))
-                             (assoc! best t candidate)
-                             (assoc! prev t s)
-                             (assoc! ratio t r))))))))
+                         ;; Tolerance: badness within the optional bound
+                         (when (or (nil? tolerance) (<= b tolerance))
+                           ;; Demerits from badness, the per-system penalty and the
+                           ;; break's penalty. The records' fixed widths enter only
+                           ;; through the available width, and so through r
+                           (let [d (demerits b p params)
+                                 c' (next-class c)
+                                 candidate [(+ prefix-cost d)
+                                            (+ prefix-tie (nth tie-term t))]
+                                 current-best (get (nth best t) c')]
 
-               (recur (dec s) inner-kinks inner-shrink-kinks bound))))))
+                             ;; Update if the candidate pair is lexicographically smaller
+                             ;; (absent = infinity); ties in cost are resolved by the
+                             ;; secondary term
+                             (when (or (nil? current-best)
+                                       (pair< candidate current-best))
+                               (assoc! best t (assoc (nth best t) c' candidate))
+                               (assoc! prev t (assoc (nth prev t) c' [s c]))
+                               (assoc! ratio t (assoc (nth ratio t) c' r))))))))))
 
-     ;; Return results: breaks, and the ratio of each system, indexed by where it ends
+               ;; No system spans a forced barline: the search for t ends at
+               ;; the latest one before it
+               (when-not (forced s)
+                 (recur (dec s) inner-kinks inner-shrink-kinks bound)))))))
+
+     ;; The result: the whole part, in the class its exact number of systems
+     ;; gives, or in its best class; nil when none is reachable
      (let [prev (persistent! prev)
            ratio (persistent! ratio)
-           breaks (reconstruct-breaks prev n)]
-       {:breaks breaks
-        :ratios (mapv #(nth ratio %) (rest (conj breaks n)))
-        :cost (first (nth best n))}))))
+           ends (nth best n)
+           c (if systems
+               (when (contains? ends systems) systems)
+               (when (seq ends)
+                 (key (reduce (fn [a b] (if (pair< (val b) (val a)) b a)) ends))))]
+       (when c
+         (let [{:keys [breaks ratios]} (reconstruct-breaks prev ratio n c)]
+           {:breaks breaks
+            :ratios ratios
+            :places (mapv #(+ first-place %) (range (count breaks)))
+            :cost (first (get ends c))}))))))
 ```
 
 **A segment's sums explained:**
@@ -1425,7 +1499,7 @@ The following implementation performs **Stage 3: System Breaking** - distributin
 For each candidate segment [s, t):
 1. Skip it if a break is forbidden at barline `s` or `t`
 2. Take each sum from the derived prefix sums, `X(s,t) = U[t].X − U[s].X + δ[s].X + end[t].X`, in O(1) ([ADR-0058](0058-Variants-at-a-Break.md#what-stage-3-receives))
-3. Compute `available = system_width − fixed(s,t)`
+3. Compute `available = system_width − fixed(s,t)`, at the width of the candidate's place
 4. Check feasibility: `min(s,t) ≤ available`
 5. Solve for the adjustment ratio `r`: one division until the segment's first kink on the side `available` lies, the greatest shrinking kink when shrinking and the least kink when stretching; beyond it, the kinks in order, those of the interiors and inner mids accumulated as `s` moves left, and those of `start[s]` and `end[t]`
 6. Compute its badness and, within the tolerance, the system's demerits; the records' fixed widths are fixed overhead and enter only through `available`
@@ -1436,25 +1510,20 @@ The records' fixed widths are reserved space outside the springs; they do not pa
 
 Under the baseline, `Σ min_i ≤ available` is **necessary and sufficient**: every gap's shrink is its room above its own minimum, so at `r = −1` every gap is at its blocking width, and none is ever below it ([Feasibility](#feasibility)). `solve-ratio` returns nil exactly when it fails.
 
-**Width Policy Function Examples**:
-
-The `system-width-fn` accepts `(start-pos, end-pos)` and returns the total available width for that system (including the records' fixed widths):
+**The page, as Stage 3 receives it** ([Variable System Widths](#variable-system-widths)):
 
 ```clojure
-;; Uniform width - all systems same width
-(fn [s t] standard-width)
+;; No insets: every system as wide as the margins allow
+{:width 160N}
 
-;; Narrow final system
-(fn [s t] (if (= t n) final-width standard-width))
+;; The first system inset at the left, as Ondine's stands behind "PIANO"
+{:width 160N :place-widths {1 148N}}
 
-;; Narrower final system of each movement
-(fn [s t] (if (movement-end? t) final-width standard-width))
-
-;; Editorial control - manual overrides
-(fn [s t] (lookup-explicit-width s t))
+;; A new movement's first system at place 3, inset, its measure locked there
+{:width 160N :place-widths {3 150N}}   ;; with locks {32 3}
 ```
 
-The DP subtracts the fixed widths of the system's records from the policy-provided width to determine the space the springs fill.
+The DP subtracts the fixed widths of each candidate system's records from its place's width to determine the space the springs fill.
 
 ### Solving for the Adjustment Ratio
 
@@ -1607,17 +1676,16 @@ The equality is exact, not approximate: `r` solves the system's equation exactly
 ### Break Reconstruction
 
 ```clojure
-(defn reconstruct-breaks [prev n]
-  "Walks backward through prev array to build break positions.
-
-   Returns vector of break positions (indices where systems start)."
-
-  (loop [breaks []
-         pos n]
-    (if (<= pos 0)
-      (vec (reverse breaks))
-      (let [prev-break (nth prev pos)]
-        (recur (conj breaks prev-break) prev-break)))))
+(defn reconstruct-breaks
+  "Walks back through prev, a map {class [s class-before]} at each prefix,
+   from prefix n in class c. Returns the breaks (indices where systems
+   start) and each system's adjustment ratio, in order."
+  [prev ratio n c]
+  (loop [pos n, c c, breaks (), ratios ()]
+    (if (zero? pos)
+      {:breaks (vec breaks) :ratios (vec ratios)}
+      (let [[s c-before] (get (nth prev pos) c)]
+        (recur s c-before (conj breaks s) (conj ratios (get (nth ratio pos) c)))))))
 ```
 
 ### Key Implementation Notes
@@ -1697,14 +1765,14 @@ Every per-segment step is O(1) except where prestretched or raised gaps take par
 - The tie-break terms `2^−t` are precomputed once, one per breakpoint
 
 **Early Termination**:
-- The inner loop stops once the bound exceeds the full `system-width`
+- The inner loop stops once the bound exceeds the widest place's width, or at a forced barline, which no system spans
 - The bound counts only the records a system starting at `s` certainly uses inside it: `Σ (interior[i].fixed + interior[i].min)` over `s ≤ i < t`, and `Σ (mid[k].fixed + mid[k].min)` over `s < k < t` ([ADR-0058](0058-Variants-at-a-Break.md#what-stage-3-receives))
-- Monotonicity: moving `s` one stack left adds `interior[s − 1]` and `mid[s]`, both non-negative, so the bound never decreases, and under the assumption below `system-width` does not increase; once the bound exceeds the full system width, it does so for every earlier `s`
-- Soundness: the bound leaves out `start[s]` and `end[t]`, which are non-negative, so it never exceeds the true requirement `fixed(s,t) + min(s,t)` and never prunes a feasible segment. The bound is the full system width, not `available`, which varies with `s` through `start[s]`. It never counts `mid[s]`, a record a system starting at `s` does not use, so a start form narrower than its mid-system form needs no special handling; a bound that counted `mid[s]` could prune the optimum
+- Monotonicity: moving `s` one stack left adds `interior[s − 1]` and `mid[s]`, both non-negative, so the bound never decreases, and the widest place's width does not depend on `s`; once the bound exceeds it, it does so for every earlier `s`
+- Soundness: the bound leaves out `start[s]` and `end[t]`, which are non-negative, so it never exceeds the true requirement `fixed(s,t) + min(s,t)` and never prunes a feasible segment. The bound is the widest place's width, not `available`, which varies with `s` through `start[s]`, and with the place. It never counts `mid[s]`, a record a system starting at `s` does not use, so a start form narrower than its mid-system form needs no special handling; a bound that counted `mid[s]` could prune the optimum
 - A reference check confirms both claims in exact rational arithmetic, against brute-force enumeration of every segmentation of random pieces whose start forms are narrower and wider than their mid-system forms ([ADR-0058](0058-Variants-at-a-Break.md#invariants-and-property-tests), Invariant 5)
 - The check against `available` is made at each step, as the necessary feasibility condition
-- Reduces effective complexity to O(N×K), where K is the largest number of consecutive stacks whose minimums fit within a full system width (K ≈ 15 typical)
-- **Assumption**: `system-width-fn` must be non-increasing as `s` moves left (for fixed `t`). This holds for typical policies (uniform width, narrower final system). If violated, early termination is invalid and the algorithm must check all `s` values.
+- Reduces effective complexity to O(N×K×C), where K is the largest number of consecutive stacks whose minimums fit within the widest place (K ≈ 15 typical) and C the number of place classes: one more than the last place with an inset, or a part's exact number of systems, and 1 where every place is alike
+- **No assumption on widths**: the bound is compared with the widest place's width, which does not depend on `s`, so the search stops soundly whatever the places' widths; each candidate is then checked against its own place's width
 
 **Complexity Analysis**:
 
@@ -1712,13 +1780,14 @@ Every per-segment step is O(1) except where prestretched or raised gaps take par
 |-----------|------------|-------|
 | Precomputation | O(N) | Prefix sums `U` and differences `δ` for each quantity; tie-break terms |
 | Outer loop | O(N) | Each position once |
-| Inner loop | O(K) typical | Early termination once the bound exceeds the full system width |
+| Inner loop | O(K) typical | Early termination once the bound exceeds the widest place's width |
+| Place classes | O(C) per candidate | One more than the last place with an inset, or a part's exact number of systems; 1 where every place is alike |
 | Sums | O(1) | `U[t] − U[s] + δ[s] + end[t]` per quantity |
 | Feasibility check | O(1) | From the segment's sums |
 | Kinks | O(P_s log P) | Those of `interior[s]` and `mid[s+1]` added to the accumulated maps; those of `start[s]` and `end[t]` per candidate |
 | Cost computation | O(1) fast path | Adjustment ratio from prefix sums; one step per kink passed when a raised gap blocks or a prestretched gap starts to stretch; badness and demerits from it |
 | **Total (worst case)** | O(N²) | Without early termination |
-| **Total (typical)** | O(N×K) | With monotone width policy, K ≈ 15 |
+| **Total (typical)** | O(N×K×C) | K ≈ 15; C = 1 where every place is alike |
 | Page breaking | O(S²) | S = number of systems |
 
 At N=800 measures, K=15: ~12,000 segment evaluations, each O(1) for feasibility and, on the fast path, for cost.
@@ -1758,7 +1827,7 @@ This section defines the relationship once. Elsewhere in this ADR, "Knuth-Plass"
 
 **The reduction is preserved**: each stack's interior and each barline's records are a fixed width, three sums, their prestretched gaps and their raised gaps. Prefix sums derived from them give feasibility in O(1), and the adjustment ratio in O(1) up to the segment's first kink on the side `available` lies; beyond it the segment's sorted kinks are walked in order. Each system's cost still depends on the segment alone.
 
-**Exactness and DP state**: The baseline's cost has no term linking adjacent systems, so one DP node per breakpoint is enough for the result to be exact. The springs keep that. Two extensions need more state:
+**Exactness and DP state**: The baseline's cost has no term linking adjacent systems, so one DP node per breakpoint is enough for the result to be exact where every place is alike. The springs keep that. Where widths differ by place, a system's cost depends on the number of systems before it, so the DP keeps one node per (breakpoint, place class), as looseness keeps one per (breakpoint, count). Two extensions need more state:
 
 - **Fitness classes**: a cost that depends on the class of the preceding system is exact only if the DP keeps one node per (breakpoint, fitness class), which multiplies the work by the number of classes. Keeping a single node per breakpoint with such a term makes the result an approximation.
 - **Looseness**: aiming for a number of systems other than the optimal one requires the number of systems so far to be part of the state, one node per (breakpoint, system count).
@@ -1878,10 +1947,10 @@ Each breaker is described against its own cost: whether the result it returns is
 | LilyPond page breaking | DP over fixed lines; search over system counts | force² per page plus penalties | Page DP over fixed lines: yes. Search over system counts: no, bounded by heuristics and using estimated heights |
 | Dorico (by its developers' account) | One pass from start to end, with remainder distribution at the end of each flow | Not published | No: greedy |
 | MuseScore | Measures added while they fit at natural width | None | No: greedy |
-| Stage 3 | DP, one node per breakpoint | Knuth–Plass demerits (l + b(r))² ± p², from each system's adjustment ratio under blocking springs | Yes |
+| Stage 3 | DP, one node per (breakpoint, place class), per breakpoint where every place is alike | Knuth–Plass demerits (l + b(r))² ± p², from each system's adjustment ratio under blocking springs | Yes |
 | Stage 6 | DP over systems | Not yet specified | Not established |
 
-**Why Stage 3 is exact**: its cost has no term linking adjacent systems, so one node per breakpoint loses nothing; every other input (`system-width-fn`, `start[s]`, `end[t]`, the interiors and the mids of the inner barlines and their kinks, `break-penalty-fn`) depends only on the candidate segment; each system's adjustment ratio is the exact solution of the segment's own piecewise-linear equation; forced breaks partition the problem into independent subproblems; prevented breaks only reduce the set of breakpoints; and the early-termination bound excludes only infeasible segments (see [Key Implementation Notes](#key-implementation-notes)). In this sense Stage 3 is an exact Knuth–Plass computation over Hegazy and Gourlay's springs. Its cost is the baseline, not the full Knuth–Plass cost model; which extensions keep exactness at which cost in state is stated under [Relationship to Knuth-Plass](#relationship-to-knuth-plass).
+**Why Stage 3 is exact**: its cost has no term linking adjacent systems, so one node per breakpoint loses nothing where every place is alike, and one per (breakpoint, place class) where places differ; every other input (`start[s]`, `end[t]`, the interiors and the mids of the inner barlines and their kinks, `break-penalty-fn`) depends only on the candidate segment, and its width only on its place, which the state carries; each system's adjustment ratio is the exact solution of the segment's own piecewise-linear equation; locks partition the problem into independent subproblems; forced and prevented breaks only reduce the set of candidates; and the early-termination bound excludes only infeasible segments (see [Key Implementation Notes](#key-implementation-notes)). In this sense Stage 3 is an exact Knuth–Plass computation over Hegazy and Gourlay's springs. Its cost is the baseline, not the full Knuth–Plass cost model; which extensions keep exactness at which cost in state is stated under [Relationship to Knuth-Plass](#relationship-to-knuth-plass).
 
 **Why Stage 6 is not established**: its cost function is not specified, and page heights that depend on the page (a first page carrying a title, running headers) require the page number, or at least its parity, in the DP state. Both are open.
 
@@ -1933,7 +2002,7 @@ For remembered alterations, the timewalk provides temporal ordering independent 
 3. **Stave-local effects** - Compression affects individual staves within stacks, not uniform visual degradation
 4. **Policy-free core** - Algorithm is purely geometric by default; editorial preferences can be added via optional `break-penalty-fn` without modifying the core
 5. **Record storage** - Each barline carries three records beside each stack's interior, and the preamble table one entry per combination of clefs and keys; Stage 3 derives its prefix sums once; overhead is minimal
-6. **Global breaks** - The break configuration is a global optimum, so an edit can change system breaks anywhere between the forced breaks around it, before the edit as well as after it. Breaks stay where they are only where the user fixes them, with forced breaks or frozen systems; keeping the user oriented is presentation ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece))
+6. **Global breaks** - The break configuration is a global optimum, so an edit can change system breaks anywhere between the locks around it, before the edit as well as after it. Breaks stay where they are only where the user fixes them, with locks, forced breaks or frozen systems; keeping the user oriented is presentation ([Layout Is a Function of the Piece](#layout-is-a-function-of-the-piece))
 7. **Springs, not one scale factor** - Stage 4 fills each system gap by gap, and each record's input to Stage 3 includes short lists of its prestretched and raised gaps besides its sums
 
 **Future Considerations:**

@@ -138,7 +138,7 @@ Each record is a few numbers: fixed width (rigid blocks, rows and fixed space), 
 - **Its right edge is a wall.** On each stave, the right edge of the row's last item is a vertical edge that guards every height, as a barline does. Nothing tucks under a key signature, so a courtesy accidental can never read as part of one, and the start form depends only on the kind of the row's last item, not on its glyphs.
 - **The postamble block.** After the system's last barline: the cautionary key signature, with any cancellation naturals the change requires, and the cautionary time signature, at the distances for their pairs of items, barline to key signature, barline to time signature and key to time signature, fixed at every ratio. It is `end[k]`'s fixed width, for the changes taking effect at stack `k`; zero where none does, at the end of the piece, and when system-end cautionaries are suppressed.
 - **Material only a barline inside a system has**, the start part of a repeat and cancellation naturals if house style omits them at a system start (V4), is fixed width in `mid[k]`, so it counts exactly where no break falls.
-- **The distance from the system's left edge to the clef** is fixed space inside the block. A first-system indent and instrument names stay outside it, part of the system-width policy ([ADR-0037](0037-Measure-Distribution-Optimization.md#variable-system-widths)).
+- **The distance from the system's left edge to the clef** is fixed space inside the block. A first-system indent and instrument names stay outside it, in the insets of its place ([ADR-0037](0037-Measure-Distribution-Optimization.md#variable-system-widths)).
 
 ### Percussion Clefs in the Clef Column
 
@@ -255,10 +255,10 @@ That is O(1) per candidate. The difference `δ` is Stage 3's private arithmetic,
 
 ```
 bound(s,t) = Σ_{s≤i<t} (interior[i].fixed + interior[i].min) + Σ_{s<k<t} (mid[k].fixed + mid[k].min)
-stop when bound(s,t) > system_width
+stop when bound(s,t) > the widest place's width
 ```
 
-Moving `s` one stack left adds `interior[s − 1]` and `mid[s]`, both non-negative, so the bound never decreases. It leaves out `start[s]` and `end[t]`, which are non-negative too, so it never exceeds the true requirement, `fixed(s,t) + min(s,t)`; it therefore never prunes a feasible segment. ADR-0037's assumption on `system-width-fn` applies. The subtle case of a start form narrower than its mid-system form needs no special handling, because the bound never counts `mid[s]`, a record a system starting at `s` does not use. The reference check under Invariant 5 confirms both claims, and shows that counting `mid[s]` can prune the optimum.
+Moving `s` one stack left adds `interior[s − 1]` and `mid[s]`, both non-negative, so the bound never decreases. It leaves out `start[s]` and `end[t]`, which are non-negative too, so it never exceeds the true requirement, `fixed(s,t) + min(s,t)`; it therefore never prunes a feasible segment. The widest place's width does not depend on `s`, so the bound needs no assumption on widths ([ADR-0037](0037-Measure-Distribution-Optimization.md#key-implementation-notes)). The subtle case of a start form narrower than its mid-system form needs no special handling, because the bound never counts `mid[s]`, a record a system starting at `s` does not use. The reference check under Invariant 5 confirms both claims, and shows that counting `mid[s]` can prune the optimum.
 
 ### Where Breaks May Fall
 
@@ -277,7 +277,7 @@ A break at barline `k` uses `end[k]` and `start[k]`; no break uses `mid[k]`. For
 
 ### Settings
 
-- **Distances inside the blocks and rows** are one for each pair of kinds of item, house-style values applied alike to every system: engravers set a clef's distance to a key signature and a key signature's to a time signature apart, and the pairs do not grow with the symbols. In the preamble and the row after it, by default: the system's left edge to the clef 0.8, clef to key signature 0.82, clef to time signature 1.52, key to time signature 1.15. They are read in Stage 2. There is no setting that compresses a block. The pairs after a barline are V8.
+- **Distances inside the blocks and rows** are one for each pair of kinds of item, house-style values applied alike to every system: engravers set a clef's distance to a key signature and a key signature's to a time signature apart, and the pairs do not grow with the symbols. In the preamble and the row after it, by default: the system's left edge to the clef 0.8, clef to key signature 0.82, clef to time signature 1.52, key to time signature 1.15, and clef, key signature or time signature to a start repeat 0.7, 1.1 and 1.0, LilyPond's `staff-bar` entries in the `space-alist` of `Clef`, `KeySignature` and `TimeSignature` (`scm/define-grobs.scm`). They are read in Stage 2. There is no setting that compresses a block. The pairs after a barline are V8.
 - **Percussion clefs** stand at the clef column by default; a switch centres each on the widest clef in the stack ([Percussion Clefs in the Clef Column](#percussion-clefs-in-the-clef-column)). It is read in Stage 2, where the preamble table is built.
 - **A key signature's accidentals** step from one another by how far they may tuck, read on their outline profiles ([ADR-0056](0056-Glyph-Geometry-from-Outlines.md)): one value, whose meaning a switch sets, either a fraction from 0, the boxes touching, to 1, the profiles touching, or a clearance between the profiles, in stave spaces. By default it is a fraction of 0.25. A clearance treats every font's sharps and flats alike, where a fraction follows each font's boxes. It is read in Stage 2, where the preamble table is built.
 - **A time signature's digits** stand a setting apart, ink to ink, 0.12 by default. An additive numerator's plus is the font's own `timeSigPlus`, scaled to a share of its row's tallest digit, 0.8 by default, so that its crossbar reads thicker than a stave line, with 0.2 either side of it by default. All three are read in Stage 2, as the tuck is.
